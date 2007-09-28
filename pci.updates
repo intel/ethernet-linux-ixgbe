@@ -1,0 +1,16 @@
+# updates for the system pci.ids file
+#
+# IMPORTANT!  Entries in this list must be sorted as they
+#             would appear in the system pci.ids file.  Entries
+#             are sorted by ven, dev, subven, subdev
+#             (numerical order).
+#
+8086  Intel Corporation
+	10c6  82598EB 10 Gigabit AF Dual Port Network Connection
+		8086 a05f 10 Gigabit XF SR Dual Port Server Adapter
+		8086 a15f 10 Gigabit XF SR Dual Port Server Adapter
+	10c7  82598EB 10 Gigabit AF Network Connection
+		8086 a05f 10 Gigabit XF SR Server Adapter
+		8086 a15f 10 Gigabit XF SR Server Adapter
+		8086 a16f 10 Gigabit XF SR Server Adapter
+	10dd  82598EB 10 Gigabit AT CX4 Network Connection

@@ -1,0 +1,156 @@
+.\" LICENSE
+.\"
+.\" This software program is released under the terms of a license agreement between you ('Licensee') and Intel. Do not use or load this software or any associated materials (collectively, the 'Software') until you have carefully read the full terms and conditions of the LICENSE located in this software package. By loading or using the Software, you agree to the terms of this Agreement. If you do not agree with the terms of this Agreement, do not install or use the Software.
+.\"
+.\" * Other names and brands may be claimed as the property of others.
+.\"
+.TH ixgbe 1 "July 19, 2007"
+
+
+.SH NAME
+ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
+
+
+.SH SYNOPSIS
+.PD 0.4v
+modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
+.br
+insmod ixgbe [<option>=<VAL1>,<VAL2>,...]
+.PD 1v
+.LP
+
+
+.SH DESCRIPTION
+This driver is intended for \fB2.4.x\fR and \fB2.6.x\fR kernels. This driver includes support for Itanium(R)2-based systems.
+.LP
+This driver is only supported as a loadable module at this time. Intel is not supplying patches against the kernel source to allow for static linking of the driver. For questions related to hardware requirements, refer to the documentation supplied with your 10 Gigabit adapter. All hardware requirements listed apply to use with Linux.
+.LP
+
+
+.SH OPTIONS
+The following optional parameters are used by entering them on the command line with the modprobe or insmod command. For example:
+.IP
+.B modprobe ixgbe InterruptThrottleRate=16000,16000
+.PP
+.LP
+.B RxQueues
+.IP
+.B Valid Range: 
+1, 2, 4, 8
+.br
+.B Default Value: 
+8
+.LP
+.B RxFCHighThresh
+.IP
+.B Valid Range: 
+1,536 - 262,136 (0x600 - 0x3FFF8, 8 byte granularity)
+.br
+.B Default Value: 
+196,608 (0x30000)
+.IP
+Receive Flow control high threshold (when we send a pause frame)
+.LP
+.B RxFCLowThresh
+.IP
+.B Valid Range: 
+64 - 262,136 (0x40 - 0x3FFF8, 8 byte granularity); must be less than high threshold by at least 8 bytes
+.br
+.B Default Value: 163,840 (0x28000)
+.IP
+Receive Flow control high threshold (when we send a pause frame)
+.LP
+.B RxBufferMode
+.IP
+.B Valid Range: 
+0-2
+.br
+.B Default Value: 
+2
+.IP
+0 = Driver will use single buffer for Rx packets.
+1 = Driver will use packet split mode for Rx. Packet header will be 
+received in header buffer and payload will be received in data buffer.
+2. = Optimal mode. Driver will use single buffer mode for non-Jumbo 
+configurations and packet split mode for Jumbo configurations.
+.LP
+.B InterruptType
+.IP
+.B Valid Range: 
+0-2 0 = Legacy Int, 1 = MSI and 2 = MSIX
+.br
+.B Default Value: 
+2
+.IP
+Interrupt type
+.LP
+.B FCReqTimeout
+.IP
+.B Valid Range: 
+1 - 65535
+.br
+.B Default Value: 
+65535 (0xffff) (will send an xon if we recover)
+.IP
+Flow control request timeout (how long to pause the link partner's tx)
+.LP
+.B InterruptThrottleRate
+.IP
+.B Valid Range: 
+100-100000 (0=off, 1=dynamic)
+.br
+.B Default Value: 8000
+
+.IP
+Interrupt Throttle Rate (interrupts/sec)
+.LP
+.B LLIPort
+.IP
+.B Valid Range: 
+0-65535
+.br
+.B Default Value: 
+0 (disabled)
+.IP
+LLI is configured with the LLIPort command-line parameter, which specifies which TCP port should generate Low Latency Interrupts. For example, using LLIPort=80 would cause the board to generate an immediate interrupt upon receipt of any packet sent to TCP port 80 on the local machine.
+.LP
+.B LLIPush
+.IP
+.B Valid Range: 
+0-1
+.br
+.B Default Value: 
+0 (disabled)
+.IP
+LLIPush can be set to be enabled or disabled (default). It is most effective in an environment with many small transactions. NOTE: Enabling LLIPush may allow a denial of service attack.
+.LP
+.B LLISize
+.IP
+.B Valid Range: 
+0-1500
+.br
+.B Default Value: 
+0 (disabled)
+.IP
+LLISize causes an immediate interrupt if the board receives a packet smaller than the specified size.
+.LP
+
+
+.SH JUMBO FRAMES
+.LP
+The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabled by changing the MTU to a value larger than the default of 1500. Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:
+.IP
+ifconfig eth<x> mtu 9000 up
+.LP
+
+
+.SH SUPPORT
+.LP
+For additional information, including supported adapters, building, and installation, see the README file included with the driver.
+.LP
+For general information and support, go to the Intel support website at:
+.IP
+.B http://support.intel.com
+.LP
+If an issue is identified with the released source code on the supported kernel with a supported adapter, email the specific information related to the issue to linux.nics@intel.com.
+.LP

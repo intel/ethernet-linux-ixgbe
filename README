@@ -1,0 +1,483 @@
+Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
+====================================================================
+
+September 4, 2007
+
+
+Contents
+========
+
+- In This Release
+- Identifying Your Adapter
+- Building and Installation
+- Command Line Parameters
+- Additional Configurations
+- Known Issues
+- Support
+
+
+In This Release
+===============
+
+NOTE: This release includes two Linux* Base Drivers for the 10 Gigabit 
+Family of Adapters. These drivers are named ixgb and ixgbe. The ixgbe
+driver must be installed to support any 82598-based network connections. All 
+other 10 Gigabit network connections require the ixgb driver.
+
+This file describes the ixgbe Linux* Base Driver for the 10 Gigabit PCI 
+Express Family of Adapters.  This driver supports the 2.6.x kernel, and 
+includes support for any Linux supported system, including Itanium(R)2, 
+x86_64, i686, and PPC.
+
+This driver is only supported as a loadable module at this time.  Intel is
+not supplying patches against the kernel source to allow for static linking
+of the driver. A version of the driver may already be included by your 
+distribution and/or the kernel.org kernel. For questions related to hardware 
+requirements, refer to the documentation supplied with your 10 Gigabit PCI
+Express adapter.  All hardware requirements listed apply to use with Linux.
+
+The following features are now available in supported kernels:
+ - Native VLANs
+ - Channel Bonding (teaming)
+ - SNMP
+
+Channel Bonding documentation can be found in the Linux kernel source:
+/Documentation/networking/bonding.txt
+
+Instructions on updating ethtool can be found in the section "Additional
+Configurations" later in this document.
+
+
+Identifying Your Adapter
+========================
+
+The following Intel network adapters are compatible with the drivers in this
+release:
+
+Controller  Adapter Name                   Physical Layer
+----------  ------------                   --------------
+82598EB     Intel(R) 10 Gigabit XF SR/LR  10G Base -SR (850 nm optical fiber)
+            Server Adapter                 10G Base -LRM (850 nm optical fiber)
+            Intel(R) 10 Gigabit XF SR     10G Base -LR (1310 nm optical fiber)
+            Dual Port Server Adapters   
+            Intel(R) 82598EB 10 Gigabit AF 
+            Dual Port Network Connection
+            Intel(R) 82598EB 10 Gigabit AF 
+            Network Connection
+            Intel(R) 82598EB 10 Gigabit AT 
+            CX4 Network Connection                  
+
+For more information on how to identify your adapter, go to the Adapter &
+Driver ID Guide at:
+
+    http://support.intel.com/support/network/sb/CS-012904.htm
+
+For the latest Intel network drivers for Linux, refer to the following
+website.  In the search field, enter your adapter name or type, or use the
+networking link on the left to search for your adapter:
+
+    http://downloadfinder.intel.com/scripts-df/support_intel.asp
+
+
+Building and Installation
+=========================
+
+To build a binary RPM* package of this driver, run 'rpmbuild -tb
+<filename.tar.gz>'.  Replace <filename.tar.gz> with the specific filename
+of the driver.
+
+NOTE: For the build to work properly, the currently running kernel MUST match
+      the version and configuration of the installed kernel sources.  If you
+      have just recompiled the kernel reboot the system now.
+
+      RPM functionality has only been tested in RedHat distributions.
+
+To manually build this driver:
+
+1. Move the base driver tar file to the directory of your choice. For example,
+   use /home/username/ixgbe or /usr/local/src/ixgbe.
+
+2. Untar/unzip archive:
+
+     tar zxf ixgbe-x.x.x.tar.gz
+
+3. Change to the driver src directory:
+
+     cd ixgbe-x.x.x/src/
+
+4. Compile the driver module:
+
+     make install
+
+   The binary will be installed as:
+
+     /lib/modules/[KERNEL_VERSION]/kernel/drivers/net/ixgbe/ixgbe.[k]o
+
+   The install locations listed above are the default locations.  They might
+   not be correct for certain Linux distributions.  For more information,
+   see the ldistrib.txt file included in the driver tar.
+
+   NOTE: IXGBE_NO_LRO is a compile time flag. The user can enable it at 
+   compile time to remove support for LRO from the driver. The flag is used 
+   by adding `CFLAGS_EXTRA=-"DIXGBE_NO_LRO"` to the make file when it's being
+   compiled. 
+
+     make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
+
+5. Load the module:
+   For kernel 2.6.x, use the modprobe command:
+     modprobe ixgbe <parameter>=<value>
+
+   Note that for 2.6 kernels the insmod command can be used if the full
+   path to the driver module is specified.  For example:
+
+     insmod /lib/modules/<KERNEL VERSION>/kernel/drivers/net/ixgbe/ixgbe.ko
+
+   With 2.6 based kernels also make sure that older ixgbe drivers are
+   removed from the kernel, before loading the new module:
+
+     rmmod ixgbe; modprobe ixgbe
+
+6. Assign an IP address to the interface by entering the following, where
+   x is the interface number:
+
+     ifconfig ethx <IP_address> netmask <netmask>
+
+7. Verify that the interface works. Enter the following, where <IP_address>
+   is the IP address for another machine on the same subnet as the interface
+   that is being tested:
+
+     ping  <IP_address>
+
+
+To build ixgbe driver with DCA:
+------------------------------
+
+1) build ioatdma files
+
+2) install dma and dca drivers (make install)
+
+3) rebuild/reinstall ixgbe driver
+   
+
+    make install CLFAGS_EXTRA="-DIXGBE_DCA -I/path/to/ioatdma-1.22/include"
+
+4) reboot
+
+
+Command Line Parameters
+=======================
+
+If the driver is built as a module, the  following optional parameters are
+used by entering them on the command line with the modprobe command using
+this syntax:
+
+     modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
+
+For example:
+
+     modprobe ixgbe InterruptThrottleRate=16000,16000
+
+The default value for each parameter is generally the recommended setting,
+unless otherwise noted.
+
+
+RxQueues
+--------
+Valid Range: 1, 2, 4, 8
+Default Value: 8
+    Number of RX queues.
+   
+
+RxFCHighThresh
+--------------
+Valid Range: 1,536 - 262,136 (0x600 - 0x3FFF8, 8 byte granularity)
+Default Value: 196,608 (0x30000)
+    Receive Flow control high threshold (when we send a pause frame)
+
+
+RxFCLowThresh
+-------------
+Valid Range: 64 - 262,136 (0x40 - 0x3FFF8, 8 byte granularity)
+             *  must be less than high threshold by at least 8 bytes
+Default Value:  163,840 (0x28000)
+Receive Flow control low threshold (when we send a resume frame)
+
+
+RxBufferMode
+------------
+Valid Range: 0-2
+Default Value: 2
+0 = Driver will use single buffer for Rx packets.
+1 = Driver will use packet split mode for Rx. Packet header will be 
+received in header buffer and payload will be received in data buffer.
+2. = Optimal mode. Driver will use single buffer mode for non-Jumbo 
+configurations and packet split mode for Jumbo configurations.
+
+
+InterruptType
+-------------
+Valid Range: 0-2 0 = Legacy Int, 1 = MSI and 2 = MSIX
+Default Value: 2
+    Interrupt type
+
+
+FCReqTimeout
+------------
+Valid Range: 1 - 65535
+Default Value:  65535 (0xffff) (will send an xon if we recover)
+    Flow control request timeout (how long to pause the link partner's tx)
+  
+  
+InterruptThrottleRate
+---------------------
+Valid Range: 100-100000 (0=off, 1=dynamic)
+Default Value: 8000
+    Interrupt Throttle Rate (interrupts/sec)
+
+
+LLIPort
+-------
+Valid Range: 0 - 65535
+Default Value: 0 (disabled)
+
+  LLI is configured with the LLIPort command-line parameter, which specifies 
+  which TCP port should generate Low Latency Interrupts.
+
+  For example, using LLIPort=80 would cause the board to generate an 
+  immediate interrupt upon receipt of any packet sent to TCP port 80 on the 
+  local machine.
+
+WARNING: Enabling LLI can result in an excessive number of interrupts/second 
+that may cause problems with the system and in some cases may cause a kernel 
+panic. 
+
+
+LLIPush
+-------
+Valid Range: 0-1
+Default Value: 0 (disabled)
+
+  LLIPush can be set to be enabled or disabled (default). It is most 
+  effective in an environment with many small transactions.
+  NOTE: Enabling LLIPush may allow a denial of service attack.
+
+
+LLISize
+-------
+Valid Range: 0-1500
+Default Value: 0 (disabled)
+
+  LLISize causes an immediate interrupt if the board receives a packet smaller 
+  than the specified size.
+
+
+Additional Configurations
+=========================
+
+  Configuring the Driver on Different Distributions
+  -------------------------------------------------
+  Configuring a network driver to load properly when the system is started is
+  distribution dependent. Typically, the configuration process involves adding
+  an alias line to /etc/modules.conf or /etc/modprobe.conf as well as editing
+  other system startup scripts and/or configuration files.  Many popular Linux
+  distributions ship with tools to make these changes for you.  To learn the
+  proper way to configure a network device for your system, refer to your
+  distribution documentation.  If during this process you are asked for the
+  driver or module name, the name for the Linux Base Driver for the Intel
+  10GbE PCI Express Family of Adapters is ixgbe.
+
+  Viewing Link Messages
+  ---------------------
+  Link messages will not be displayed to the console if the distribution is
+  restricting system messages. In order to see network driver link messages on
+  your console, set dmesg to eight by entering the following:
+
+       dmesg -n 8
+
+  NOTE: This setting is not saved across reboots.
+
+
+  Jumbo Frames
+  ------------
+  The driver supports Jumbo Frames for all adapters. Jumbo Frames support is
+  enabled by changing the MTU to a value larger than the default of 1500.
+  The maximum value for the MTU is 16110.  Use the ifconfig command to
+  increase the MTU size.  For example:
+
+        ifconfig ethx mtu 9000 up
+
+  The maximum MTU setting for Jumbo Frames is 16110.  This value coincides
+  with the maximum Jumbo Frames size of 16128.
+
+
+  Ethtool
+  -------
+  The driver utilizes the ethtool interface for driver configuration and
+  diagnostics, as well as displaying statistical information.  Ethtool
+  version 3.0 or later is required for this functionality.
+
+  The latest release of ethtool can be found from
+  http://sourceforge.net/projects/gkernel.
+
+
+  NAPI
+  ----
+
+  NAPI (Rx polling mode) is supported in the ixgbe driver.  NAPI is enabled
+  or disabled based on the configuration of the kernel.  To override the 
+  default, use the following compile-time flags.
+
+  To enable NAPI, compile the driver module, passing in a configuration option:
+
+            make CFLAGS_EXTRA=-DIXGBE_NAPI install
+  NOTE: This will not do anything if NAPI is disabled in the kernel. 
+
+  To disable NAPI, compile the driver module, passing in a configuration option:
+
+            make CFLAGS_EXTRA=-DIXGBE_NO_NAPI install
+
+
+  See www.cyberus.ca/~hadi/usenix-paper.tgz for more information on NAPI.
+
+
+
+Known Issues
+============
+
+NOTE: For distribution-specific information, see the ldistrib.txt file
+      included in the driver tar.
+
+
+  MSI-X Issues with 82598-based Intel(R)10GbE-LR/LRM/SR/AT Server Adapters
+  ------------------------------------------------------------------------
+  Kernel panics and instability may be observed on some platforms when 
+  running 82598-based Intel(R) 10GbE-LR/LRM/SR/AT Server Adapters with 
+  MSI-X in a stress environment. Symptoms of this issue include observing 
+  "APIC 40 Error" or "no irq handler for vector" error messages on the 
+  console or in "dmesg."
+
+  If such problems are encountered, you may disable the irqbalance daemon. 
+  If the problems persist, compile the driver in pin interrupt mode, do 
+  	make CFLAGS_EXTRA=-DDISABLE_PCI_MSI
+ 
+  Or you can load the module with modprobe ixgbe InterruptType=0
+
+                         
+  Driver Compilation
+  ------------------
+  When trying to compile the driver by running make install, the following
+  error may occur:
+
+      "Linux kernel source not configured - missing version.h"
+
+  To solve this issue, create the version.h file by going to the Linux source
+  tree and entering:
+
+      make include/linux/version.h.
+
+
+  LRO May Cause Performance Degradation With Routing Packets
+  ----------------------------------------------------------
+  Large Receive Offload (LRO) increases performance by effectively letting 
+  the kernel handle fewer packet headers for the same amount of data.  The 
+  downside of this feature is that it causes the stack to have to fragment 
+  packets in the ip forwarding/routing case due to the large (effective) 
+  MTU size of the received packets.  Intel recommends disabling LRO with 
+  the compile option:
+  
+      make CFLAGS_EXTRA=-DIXGBE_NO_LRO
+
+
+  Jumbo Frames System Requirement
+  -------------------------------
+  Memory allocation failures have been observed on Linux systems with 64 MB
+  of RAM or less that are running Jumbo Frames.  If you are using Jumbo
+  Frames, your system may require more than the advertised minimum
+  requirement of 64 MB of system memory.
+
+
+  Performance Degradation with Jumbo Frames
+  -----------------------------------------
+  Degradation in throughput performance may be observed in some Jumbo frames
+  environments.  If this is observed, increasing the application's socket buffer
+  size and/or increasing the /proc/sys/net/ipv4/tcp_*mem entry values may help.
+  See the specific application manual and /usr/src/linux*/Documentation/
+  networking/ip-sysctl.txt for more details.
+
+
+  Multiple Interfaces on Same Ethernet Broadcast Network
+  ------------------------------------------------------
+  Due to the default ARP behavior on Linux, it is not possible to have
+  one system on two IP networks in the same Ethernet broadcast domain
+  (non-partitioned switch) behave as expected.  All Ethernet interfaces
+  will respond to IP traffic for any IP address assigned to the system.
+  This results in unbalanced receive traffic.
+
+  If you have multiple interfaces in a server, do either of the following:
+
+  - Turn on ARP filtering by entering:
+      echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
+
+  - Install the interfaces in separate broadcast domains - either in
+    different switches or in a switch partitioned to VLANs.
+
+
+  UDP Stress Test Dropped Packet Issue
+  --------------------------------------
+  Under small packets UDP stress test with 10GbE driver, the Linux system
+  may drop UDP packets due to the fullness of socket buffers. You may want
+  to change the driver's Flow Control variables to the minimum value for
+  controlling packet reception.
+
+  Or you can increase the kernel's default buffer sizes for udp by changing 
+  the values in /proc/sys/net/core/rmem_default and rmem_max
+
+
+Support
+=======
+
+For general information, go to the Intel support website at:
+
+    http://support.intel.com
+
+or the Intel Wired Networking project hosted by Sourceforge at:
+
+    http://sourceforge.net/projects/e1000
+
+If an issue is identified with the released source code on the supported
+kernel with a supported adapter, email the specific information related
+to the issue to e1000-devel@lists.sf.net
+
+
+License
+=======
+
+Intel 10 Gigabit PCI Express Linux driver.
+Copyright(c) 1999 - 2007 Intel Corporation.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms and conditions of the GNU General Public License,
+version 2, as published by the Free Software Foundation.
+
+This program is distributed in the hope it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+
+The full GNU General Public License is included in this distribution in
+the file called "COPYING".
+
+
+Trademarks
+==========
+
+Intel, Itanium, and Pentium are trademarks or registered trademarks of
+Intel Corporation or its subsidiaries in the United States and other
+countries.
+
+* Other names and brands may be claimed as the property of others.
