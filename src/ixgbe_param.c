@@ -85,50 +85,42 @@ IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X)");
 #define IXGBE_INT_MSIX			      2
 #define IXGBE_DEFAULT_INT	 IXGBE_INT_MSIX
 
-/* Rx Queues count
+/* MQ - Multiple Queue enable/disable
  *
- * Valid Range: 1, 2, 4, 8
+ * Valid Range: 0, 1
+ *  - 0 - disables MQ
+ *  - 1 - enables MQ
  *
- * Default Value: 8 (1 in NAPI mode)
+ * Default Value: 1
  */
-IXGBE_PARAM(RxQueues, "Number of RX queues");
 
-/* Receive Flow control high threshold (when we send a pause frame)
- * (FCRTH)
- *
- * Valid Range: 1,536 - 524,280 (0x600 - 0x7FFF8, 8 byte granularity)
- *
- * Default Value: 196,608 (0x30000)
- */
-IXGBE_PARAM(RxFCHighThresh, "Receive Flow Control High Threshold");
-#define DEFAULT_FCRTH            0x20000
-#define MIN_FCRTH                      0
-#define MAX_FCRTH                0x7FFF0
+IXGBE_PARAM(MQ, "Disable or enable Multiple Queues (MQ)");
 
-/* Receive Flow control low threshold (when we send a resume frame)
- * (FCRTL)
+#ifdef IXGBE_DCA
+/* DCA - Direct Cache Access (DCA) Enable/Disable
  *
- * Valid Range: 64 - 524,160 (0x40 - 0x7FF80, 8 byte granularity)
- *              must be less than high threshold by at least 8 bytes
+ * Valid Range: 0, 1
+ *  - 0 - disables DCA
+ *  - 1 - enables DCA
  *
- * Default Value:  163,840 (0x28000)
+ * Default Value: 1
  */
-IXGBE_PARAM(RxFCLowThresh, "Receive Flow Control Low Threshold");
-#define DEFAULT_FCRTL            0x10000
-#define MIN_FCRTL                      0
-#define MAX_FCRTL                0x7FF80
 
-/* Flow control request timeout (how long to pause the link partner's tx)
- * (PAP 15:0)
+IXGBE_PARAM(DCA, "Disable or enable Direct Cache Access (DCA)");
+
+#endif
+/* RSS - Receive-Side Scaling (RSS) Descriptor Queues
  *
- * Valid Range: 1 - 65535
+ * Valid Range: 0-16
+ *  - 0 - disables RSS
+ *  - 1 - enables RSS and sets the Desc. Q's to min(16, num_online_cpus()).
+ *  - 2-16 - enables RSS and sets the Desc. Q's to the specified value.
  *
- * Default Value:  65535 (0xffff) (we'll send an xon if we recover)
+ * Default Value: 1
  */
-IXGBE_PARAM(FCReqTimeout, "Flow Control Request Timeout");
-#define DEFAULT_FCPAUSE           0x6800  /* this may be too long */
-#define MIN_FCPAUSE                    0
-#define MAX_FCPAUSE               0xFFFF
+
+IXGBE_PARAM(RSS, "Number of Receive-Side Scaling (RSS) Descriptor Queues");
+
 
 /* Interrupt Throttle Rate (interrupts/sec)
  *
@@ -187,10 +179,10 @@ IXGBE_PARAM(LLISize, "Low Latency Interrupt on Packet Size");
  */
 IXGBE_PARAM(RxBufferMode, "Rx Buffer Mode - Packet split or one buffer in rx");
 
-#define IXGBE_RXBUFMODE_1BUF_ALWAYS     0
-#define IXGBE_RXBUFMODE_PS_ALWAYS       1
-#define IXGBE_RXBUFMODE_OPTIMAL         2
-#define IXGBE_DEFAULT_RXBUFMODE         IXGBE_RXBUFMODE_OPTIMAL
+#define IXGBE_RXBUFMODE_1BUF_ALWAYS			0
+#define IXGBE_RXBUFMODE_PS_ALWAYS			1
+#define IXGBE_RXBUFMODE_OPTIMAL				2
+#define IXGBE_DEFAULT_RXBUFMODE	  IXGBE_RXBUFMODE_OPTIMAL
 
 
 
@@ -276,7 +268,6 @@ static int __devinit ixgbe_validate_option(int *value, struct ixgbe_option *opt)
 void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 {
 	int bd = adapter->bd_number;
-	struct ixgbe_hw *hw = &adapter->hw;
 
 	if (bd >= IXGBE_MAX_NIC) {
 		printk(KERN_NOTICE
@@ -288,32 +279,41 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	}
 
 	{ /* Interrupt Type */
-		int int_type;
+		int i_type;
 		struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Interrupt Type",
-			.err = "using default of "
-					__MODULE_STRING(IXGBE_DEFAULT_INT),
+			.err =
+			  "using default of "__MODULE_STRING(IXGBE_DEFAULT_INT),
 			.def = IXGBE_DEFAULT_INT,
-			.arg = {.r = {.min = IXGBE_INT_LEGACY,
-				      .max = IXGBE_INT_MSIX}}
+			.arg = { .r = { .min = IXGBE_INT_LEGACY,
+					.max = IXGBE_INT_MSIX}}
 		};
 
 #ifdef module_param_array
 		if (num_InterruptType > bd) {
 #endif
-			int_type = InterruptType[bd];
-			ixgbe_validate_option(&int_type, &opt);
-			switch (int_type) {
+			i_type = InterruptType[bd];
+			ixgbe_validate_option(&i_type, &opt);
+			switch (i_type) {
 			case IXGBE_INT_MSIX:
-				adapter->flags |= IXGBE_FLAG_MSIX_CAPABLE;
-				adapter->flags |= IXGBE_FLAG_MSI_CAPABLE;
+				if (!adapter->flags & IXGBE_FLAG_MSIX_CAPABLE)
+					printk(KERN_INFO
+					       "Ignoring MSI-X setting; "
+					       "support unavailable.\n");
 				break;
 			case IXGBE_INT_MSI:
-				adapter->flags |= IXGBE_FLAG_MSI_CAPABLE;
+				if (!adapter->flags & IXGBE_FLAG_MSI_CAPABLE)
+					printk(KERN_INFO
+					       "Ignoring MSI setting; "
+					       "support unavailable.\n");
+				else
+					adapter->flags &= ~IXGBE_FLAG_MSIX_CAPABLE;
 				break;
 			case IXGBE_INT_LEGACY:
 			default:
+				adapter->flags &= ~IXGBE_FLAG_MSIX_CAPABLE;
+				adapter->flags &= ~IXGBE_FLAG_MSI_CAPABLE;
 				break;
 			}
 #ifdef module_param_array
@@ -323,127 +323,149 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 #endif
 	}
-	{ /* Receive Queues Count */
+	{ /* Multiple Queue Support */
 		struct ixgbe_option opt = {
-			.type = range_option,
-			.name = "Receive Queues",
-			.err = "using default of "
-					__MODULE_STRING(IXGBE_DEFAULT_RXQ),
-			.def = IXGBE_DEFAULT_RXQ,
-			.arg = {.r = {.min = IXGBE_MIN_RXQ,
-				      .max = IXGBE_MAX_RXQ}}
+			.type = enable_option,
+			.name = "Multiple Queue Support",
+			.err  = "defaulting to Enabled",
+			.def  = OPTION_ENABLED
 		};
 
 #ifdef module_param_array
-		if (num_RxQueues > bd) {
+		if (num_MQ > bd) {
 #endif
-			adapter->num_rx_queues = RxQueues[bd];
-
-#ifndef CONFIG_IXGBE_NAPI
-			if (adapter->num_rx_queues > 4)
-				adapter->num_rx_queues = 8;
-			else if (adapter->num_rx_queues > 2)
-				adapter->num_rx_queues = 4;
-#endif
-
-			ixgbe_validate_option(&adapter->num_rx_queues, &opt);
-
+			int mq = MQ[bd];
+			ixgbe_validate_option(&mq, &opt);
+			if (mq)
+				adapter->flags |= IXGBE_FLAG_MQ_CAPABLE;
+			else
+				adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
 #ifdef module_param_array
 		} else {
-			adapter->num_rx_queues = opt.def;
+			if (opt.def == OPTION_ENABLED)
+				adapter->flags |= IXGBE_FLAG_MQ_CAPABLE;
+			else
+				adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
 		}
 #endif
+#ifdef CONFIG_IXGBE_NAPI
+		/* Must disable multiqueue for NAPI operation until
+		 * multiqueue support is added in the kernel.  I.e.,
+		 * getting rid of the fake netdevs.
+		 */
+		if (adapter->flags & IXGBE_FLAG_MQ_CAPABLE) {
+			DPRINTK(PROBE, INFO,
+			        "Multiple queues are not supported while NAPI "
+			        "is enabled.  Disabling Multiple Queues.\n");
+			adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
+		}
+#endif
+		/* Check Interoperability */
+		if ((adapter->flags & IXGBE_FLAG_MQ_CAPABLE) &&
+		    !(adapter->flags & IXGBE_FLAG_MSIX_CAPABLE)) {
+			DPRINTK(PROBE, INFO,
+			        "Multiple queues are not supported while MSI-X "
+			        "is disabled.  Disabling Multiple Queues.\n");
+			adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
+		}
 	}
-	{ /* Receive Flow Control High Threshold */
+#ifdef IXGBE_DCA
+	{ /* Direct Cache Access (DCA) */
 		struct ixgbe_option opt = {
-			.type = range_option,
-			.name = "Rx Flow Control High Threshold",
-			.err  =
-			     "using default of " __MODULE_STRING(DEFAULT_FCRTH),
-			.def  = DEFAULT_FCRTH,
-			.arg  = { .r = { .min = MIN_FCRTH,
-					 .max = MAX_FCRTH}}
+			.type = enable_option,
+			.name = "Direct Cache Access (DCA)",
+			.err  = "defaulting to Disabled",
+			.def  = OPTION_ENABLED
 		};
 
 #ifdef module_param_array
-		if (num_RxFCHighThresh > bd) {
+		if (num_DCA > bd) {
 #endif
-			hw->fc.high_water = RxFCHighThresh[bd];
-			ixgbe_validate_option(&hw->fc.high_water, &opt);
+			int dca = DCA[bd];
+			ixgbe_validate_option(&dca, &opt);
+			if (dca)
+				adapter->flags |= IXGBE_FLAG_DCA_ENABLED;
+			else
+				adapter->flags &= ~IXGBE_FLAG_DCA_ENABLED;
 #ifdef module_param_array
 		} else {
-			hw->fc.high_water = opt.def;
+			if (opt.def == OPTION_ENABLED)
+				adapter->flags |= IXGBE_FLAG_DCA_ENABLED;
+			else
+				adapter->flags &= ~IXGBE_FLAG_DCA_ENABLED;
 		}
 #endif
-		if (!(hw->fc.type & ixgbe_fc_tx_pause))
-			printk(KERN_INFO
-			       "Ignoring RxFCHighThresh when no RxFC\n");
+		/* Check Interoperability */
+		if ((adapter->flags & IXGBE_FLAG_DCA_ENABLED) &&
+		    !(adapter->flags & IXGBE_FLAG_DCA_CAPABLE)) {
+			DPRINTK(PROBE, INFO,
+			        "DCA is not supported on this hardware.  "
+			        "Disabling DCA.\n");
+			adapter->flags &= ~IXGBE_FLAG_DCA_ENABLED;
+		}
 	}
-	{ /* Receive Flow Control Low Threshold */
+#endif /* IXGBE_DCA */
+	{ /* Receive-Side Scaling (RSS) */
 		struct ixgbe_option opt = {
 			.type = range_option,
-			.name = "Rx Flow Control Low Threshold",
-			.err  =
-			     "using default of " __MODULE_STRING(DEFAULT_FCRTL),
-			.def  = DEFAULT_FCRTL,
-			.arg  = { .r = { .min = MIN_FCRTL,
-					 .max = MAX_FCRTL}}
+			.name = "Receive-Side Scaling (RSS)",
+			.err  = "defaulting to Enabled",
+			.def  = OPTION_ENABLED,
+			.arg  = { .r = { .min = OPTION_DISABLED,
+					 .max = IXGBE_MAX_RSS_INDICES}}
 		};
+		int rss = RSS[bd];
 
 #ifdef module_param_array
-		if (num_RxFCLowThresh > bd) {
+		if (num_RSS > bd) {
 #endif
-			hw->fc.low_water = RxFCLowThresh[bd];
-			ixgbe_validate_option(&hw->fc.low_water, &opt);
+			switch (rss) {
+			case 1:
+				/*
+				 * Base it off num_online_cpus() with
+				 * a hardware limit cap.
+				 */
+				rss = min(IXGBE_MAX_RSS_INDICES,
+				          (int)num_online_cpus());
+				break;
+			default:
+				ixgbe_validate_option(&rss, &opt);
+				break;
+			}
+			adapter->ring_feature[RING_F_RSS].indices = rss;
+			if (rss)
+				adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
+			else
+				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
 #ifdef module_param_array
 		} else {
-			hw->fc.low_water = opt.def;
+			if (opt.def == OPTION_DISABLED) {
+				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
+			} else {
+				rss = min(IXGBE_MAX_RSS_INDICES,
+				          (int)num_online_cpus());
+				adapter->ring_feature[RING_F_RSS].indices = rss;
+				adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
+			}
 		}
 #endif
-		if (!(hw->fc.type & ixgbe_fc_tx_pause))
-			printk(KERN_INFO
-			       "Ignoring RxFCLowThresh when no RxFC\n");
-	}
-	{ /* Flow Control Pause Time Request */
-		struct ixgbe_option opt = {
-			.type = range_option,
-			.name = "Flow Control Pause Time Request",
-			.err  =
-			    "using default of "__MODULE_STRING(DEFAULT_FCPAUSE),
-			.def  = DEFAULT_FCPAUSE,
-			.arg = { .r = { .min = MIN_FCPAUSE,
-					.max = MAX_FCPAUSE}}
-		};
-
-#ifdef module_param_array
-		if (num_FCReqTimeout > bd) {
-#endif
-			int pause_time = FCReqTimeout[bd];
-			ixgbe_validate_option(&pause_time, &opt);
-			hw->fc.pause_time = pause_time;
-#ifdef module_param_array
-		} else {
-			hw->fc.pause_time = opt.def;
+		/* Check Interoperability */
+		if (adapter->flags & IXGBE_FLAG_RSS_ENABLED) {
+			if (!(adapter->flags & IXGBE_FLAG_RSS_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "RSS is not supported on this "
+				        "hardware.  Disabling RSS.\n");
+				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
+				adapter->ring_feature[RING_F_RSS].indices = 0;
+			} else if (!(adapter->flags & IXGBE_FLAG_MQ_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "RSS is not supported while multiple "
+				        "queues are disabled.  "
+				        "Disabling RSS.\n");
+				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
+				adapter->ring_feature[RING_F_RSS].indices = 0;
+			}
 		}
-#endif
-		if (!(hw->fc.type & ixgbe_fc_tx_pause))
-			printk(KERN_INFO
-			       "Ignoring FCReqTimeout when no RxFC\n");
-	}
-	/* high low and spacing check for rx flow control thresholds */
-	if (hw->fc.type & ixgbe_fc_tx_pause) {
-		/* high must be greater than low */
-		if (hw->fc.high_water < (hw->fc.low_water + 8)) {
-			/* set defaults */
-			printk(KERN_INFO
-			       "RxFCHighThresh must be >= (RxFCLowThresh + 8),"
-			       " Using Defaults\n");
-			hw->fc.high_water = DEFAULT_FCRTH;
-			hw->fc.low_water  = DEFAULT_FCRTL;
-		}
-		/* enable the sending of XON frames, otherwise the long pause
-		 * timeout is not good */
-		hw->fc.send_xon = 1;
 	}
 	{ /* Interrupt Throttling Rate */
 		struct ixgbe_option opt = {
@@ -454,30 +476,38 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.arg  = { .r = { .min = MIN_ITR,
 					 .max = MAX_ITR }}
 		};
+		u32 eitr;
 
 #ifdef module_param_array
 		if (num_InterruptThrottleRate > bd) {
 #endif
-			adapter->eitr = InterruptThrottleRate[bd];
-			switch (adapter->eitr) {
+			eitr = InterruptThrottleRate[bd];
+			switch (eitr) {
 			case 0:
 				DPRINTK(PROBE, INFO, "%s turned off\n",
-					opt.name);
+				        opt.name);
 				/* zero is a special value, we don't want to
 				 * turn off ITR completely, just set it to an
 				 * insane interrupt rate (like 3.5 Million
 				 * ints/s */
-				adapter->eitr = EITR_REG_TO_INTS_PER_SEC(1);
+				eitr = EITR_REG_TO_INTS_PER_SEC(1);
+				break;
+			case 1:
+				DPRINTK(PROBE, INFO, "dynamic interrupt "
+                                        "throttling enabled\n");
+				adapter->itr_setting = 1;
+				eitr = DEFAULT_ITR;
 				break;
 			default:
-				ixgbe_validate_option(&adapter->eitr, &opt);
+				ixgbe_validate_option(&eitr, &opt);
 				break;
 			}
 #ifdef module_param_array
 		} else {
-			adapter->eitr = DEFAULT_ITR;
+			eitr = DEFAULT_ITR;
 		}
 #endif
+		adapter->eitr_param = eitr;
 	}
 #ifndef IXGBE_NO_LLI
 	{ /* Low Latency Interrupt TCP Port*/
@@ -599,3 +629,4 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 }
+

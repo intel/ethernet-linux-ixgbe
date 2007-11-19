@@ -31,7 +31,8 @@
 
 # core driver files
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
-         ixgbe_ethtool.c kcompat.c ixgbe_82598.c ixgbe_phy.c
+         ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
+         ixgbe_phy.c
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
          ixgbe_phy.h
 ifeq (,$(BUILD_KERNEL))
@@ -63,7 +64,10 @@ ifeq (,$(KSRC))
 endif
 
 ifeq (,$(KSRC))
-  $(error Linux kernel source not found)
+  $(warning *** Linux kernel source not found in any of these locations:)
+  $(warning $(KSP))
+  $(warning *** Install the appropriate kernel development package, e.g.)
+  $(error kernel-devel, for building kernel modules and try again)
 else
 ifeq (/lib/modules/$(shell uname -r)/source, $(KSRC))
   KOBJ :=  /lib/modules/$(shell uname -r)/build
@@ -84,7 +88,7 @@ ifneq (,$(wildcard /boot/vmlinuz.version.h))
     x:=$(shell mkdir -p include/linux)
     x:=$(shell cp /boot/vmlinuz.version.h include/linux/version.h)
     x:=$(shell cp /boot/vmlinuz.autoconf.h include/linux/autoconf.h)
-    CFLAGS += -I./include
+    EXTRA_CFLAGS += -I./include
   else
     ifneq (,$(wildcard $(KOBJ)/include/linux/utsrelease.h))
       VERSION_FILE := $(KOBJ)/include/linux/utsrelease.h
@@ -127,37 +131,35 @@ endif
 # some additional features are only built on Intel platforms
 ARCH := $(shell uname -m | sed 's/i.86/i386/')
 ifeq ($(ARCH),alpha)
-  CFLAGS += -ffixed-8 -mno-fp-regs
+  EXTRA_CFLAGS += -ffixed-8 -mno-fp-regs
 endif
 ifeq ($(ARCH),x86_64)
-  CFLAGS += -mcmodel=kernel -mno-red-zone
+  EXTRA_CFLAGS += -mcmodel=kernel -mno-red-zone
 endif
 ifeq ($(ARCH),ppc)
-  CFLAGS += -msoft-float
+  EXTRA_CFLAGS += -msoft-float
 endif
 ifeq ($(ARCH),ppc64)
-  CFLAGS += -m64 -msoft-float
+  EXTRA_CFLAGS += -m64 -msoft-float
   LDFLAGS += -melf64ppc
 endif
 
 # standard flags for module builds
-CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -O2 -pipe -Wall
-CFLAGS += -I$(KSRC)/include -I.
-CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
+EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -O2 -pipe -Wall
+EXTRA_CFLAGS += -I$(KSRC)/include -I.
+EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
             echo "-DMODVERSIONS -DEXPORT_SYMTAB \
                   -include $(KSRC)/include/linux/modversions.h")
 
-CFLAGS += $(CFLAGS_EXTRA)
-#ifeq (,$(shell echo $(CFLAGS_EXTRA) | grep NAPI))
-#CFLAGS += -DIXGBE_NO_NAPI
-#CFLAGS_EXTRA += -DIXGBE_NO_NAPI
-#endif
+EXTRA_CFLAGS += $(CFLAGS_EXTRA)
+# enable RSS by default
+EXTRA_CFLAGS += -DCONFIG_IXGBE_RSS
 
 RHC := $(KSRC)/include/linux/rhconfig.h
 ifneq (,$(wildcard $(RHC)))
   # 7.3 typo in rhconfig.h
   ifneq (,$(shell $(CC) $(CFLAGS) -E -dM $(RHC) | grep __module__bigmem))
-	CFLAGS += -D__module_bigmem
+	EXTRA_CFLAGS += -D__module_bigmem
   endif
 endif
 
@@ -204,7 +206,7 @@ ifneq ($(SMP),$(shell uname -a | grep SMP > /dev/null 2>&1 && echo 1 || echo 0))
 endif
 
 ifeq ($(SMP),1)
-  CFLAGS += -D__SMP__
+  EXTRA_CFLAGS += -D__SMP__
 endif
 
 ###########################################################################
@@ -222,7 +224,7 @@ MANSECTION = 7
 MANFILE = $(TARGET:.ko=.$(MANSECTION))
 
 ifneq ($(PATCHLEVEL),)
-EXTRA_CFLAGS += $(CFLAGS_EXTRA)
+# EXTRA_CFLAGS += $(CFLAGS_EXTRA)
 obj-m += ixgbe.o
 ixgbe-objs := $(CFILES:.c=.o)
 else
@@ -242,6 +244,9 @@ TARGET = ixgbe.o
 # man page
 MANSECTION = 7
 MANFILE = $(TARGET:.o=.$(MANSECTION))
+
+# include the flags we set up above
+CFLAGS += $(EXTRA_CFLAGS)
 
 # Get rid of compile warnings in kernel header files from SuSE
 ifneq (,$(wildcard /etc/SuSE-release))

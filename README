@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-September 4, 2007
+October 31, 2007
 
 
 Contents
@@ -12,17 +12,12 @@ Contents
 - Building and Installation
 - Command Line Parameters
 - Additional Configurations
-- Known Issues
+- Known Issues/Troubleshooting
 - Support
 
 
 In This Release
 ===============
-
-NOTE: This release includes two Linux* Base Drivers for the 10 Gigabit 
-Family of Adapters. These drivers are named ixgb and ixgbe. The ixgbe
-driver must be installed to support any 82598-based network connections. All 
-other 10 Gigabit network connections require the ixgb driver.
 
 This file describes the ixgbe Linux* Base Driver for the 10 Gigabit PCI 
 Express Family of Adapters.  This driver supports the 2.6.x kernel, and 
@@ -54,18 +49,18 @@ Identifying Your Adapter
 The following Intel network adapters are compatible with the drivers in this
 release:
 
-Controller  Adapter Name                   Physical Layer
-----------  ------------                   --------------
-82598EB     Intel(R) 10 Gigabit XF SR/LR  10G Base -SR (850 nm optical fiber)
-            Server Adapter                 10G Base -LRM (850 nm optical fiber)
-            Intel(R) 10 Gigabit XF SR     10G Base -LR (1310 nm optical fiber)
-            Dual Port Server Adapters   
+Controller        Adapter Name                      Physical Layer
+----------        ------------                      --------------
+82598EB     Intel(R) 10 Gigabit XF SR/LR   10G Base -SR  (850 nm optical fiber)
+              Server Adapter               10G Base -LRM (850 nm optical fiber)
+            Intel(R) 10 Gigabit XF SR      10G Base -LR (1310 nm optical fiber)
+              Dual Port Server Adapters   
             Intel(R) 82598EB 10 Gigabit AF 
-            Dual Port Network Connection
+              Dual Port Network Connection
             Intel(R) 82598EB 10 Gigabit AF 
-            Network Connection
+              Network Connection
             Intel(R) 82598EB 10 Gigabit AT 
-            CX4 Network Connection                  
+              CX4 Network Connection                  
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -114,12 +109,11 @@ To manually build this driver:
      /lib/modules/[KERNEL_VERSION]/kernel/drivers/net/ixgbe/ixgbe.[k]o
 
    The install locations listed above are the default locations.  They might
-   not be correct for certain Linux distributions.  For more information,
-   see the ldistrib.txt file included in the driver tar.
+   not be correct for certain Linux distributions. 
 
    NOTE: IXGBE_NO_LRO is a compile time flag. The user can enable it at 
    compile time to remove support for LRO from the driver. The flag is used 
-   by adding `CFLAGS_EXTRA=-"DIXGBE_NO_LRO"` to the make file when it's being
+   by adding CFLAGS_EXTRA="-DIXGBE_NO_LRO" to the make file when it's being
    compiled. 
 
      make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
@@ -182,59 +176,79 @@ The default value for each parameter is generally the recommended setting,
 unless otherwise noted.
 
 
-RxQueues
---------
-Valid Range: 1, 2, 4, 8
-Default Value: 8
-    Number of RX queues.
-   
-
-RxFCHighThresh
---------------
-Valid Range: 1,536 - 262,136 (0x600 - 0x3FFF8, 8 byte granularity)
-Default Value: 196,608 (0x30000)
-    Receive Flow control high threshold (when we send a pause frame)
+RSS - Receive Side Scaling (or multiple queues for receives)
+------------------------------------------------------------
+Valid Range: 0 - 16
+0 = disables RSS
+1 = enables RSS and sets the descriptor queue count to 16 or the number of
+    online cpus, whichever is less.
+2-16 = enables RSS, with 2-16 queues
+Default Value: 1
+RSS also effects the number of transmit queues allocated on 2.6.23 and
+newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file.
 
 
-RxFCLowThresh
--------------
-Valid Range: 64 - 262,136 (0x40 - 0x3FFF8, 8 byte granularity)
-             *  must be less than high threshold by at least 8 bytes
-Default Value:  163,840 (0x28000)
-Receive Flow control low threshold (when we send a resume frame)
+MQ - Multi Queue
+----------------
+Valid Range: 0, 1
+0 = Disables Multiple Queue support
+1 = Enabled Multiple Queue support (a prerequisite for RSS)
+Default Value: 1
+
+
+DCA - Direct Cache Access
+-------------------------
+Valid Range: 0, 1
+0 = Disables DCA support in the driver
+1 = Enables DCA support in the driver
+Default Value: 1 (when IXGBE_DCA is enabled)
+See the above instructions for enabling DCA.  If the driver is enabled for
+DCA this parameter allows load-time control of the feature.
 
 
 RxBufferMode
 ------------
-Valid Range: 0-2
+Valid Range: 0 - 2
 Default Value: 2
 0 = Driver will use single buffer for Rx packets.
 1 = Driver will use packet split mode for Rx. Packet header will be 
-received in header buffer and payload will be received in data buffer.
-2. = Optimal mode. Driver will use single buffer mode for non-Jumbo 
-configurations and packet split mode for Jumbo configurations.
+    received in header buffer and payload will be received in data buffer.
+2 = Optimal mode. Driver will use single buffer mode for non-Jumbo 
+    configurations and packet split mode for Jumbo configurations.
 
 
 InterruptType
 -------------
-Valid Range: 0-2 0 = Legacy Int, 1 = MSI and 2 = MSIX
+Valid Range: 0 - 2 0 = Legacy Int, 1 = MSI and 2 = MSI-X
 Default Value: 2
-    Interrupt type
-
-
-FCReqTimeout
-------------
-Valid Range: 1 - 65535
-Default Value:  65535 (0xffff) (will send an xon if we recover)
-    Flow control request timeout (how long to pause the link partner's tx)
+Interrupt type controls allow load time control over the type of interrupt
+registered for by the driver.  MSI-X is required for multiple queue
+support, and some kernels and combinations of kernel .config options will
+force a lower level of interrupt support.  'cat /proc/interrupts' will show
+different values for each type of interrupt.    
   
   
 InterruptThrottleRate
 ---------------------
-Valid Range: 100-100000 (0=off, 1=dynamic)
+Valid Range: 100 - 100000 (0=off, 1=dynamic)
 Default Value: 8000
-    Interrupt Throttle Rate (interrupts/sec)
+     Interrupt Throttle Rate (interrupts/sec)
+The ITR parameter controls how many interrupts each interrupt vector can
+generate per second.  On MQ/RSS enabled kernels with MSI-X interrupts this
+means that each TX and each RX vector can generate (by default) 8000
+interrupts per second.
+Dynamic mode attempts to moderate interrupts per vector while maintaining
+very low latency.  This can sometimes cause extra CPU utilization when in
+dynamic mode.  If planning on deploying ixgbe in a latency sensitive
+environment please consider this parameter.
 
+
+LLI (Low Latency Interrupts)
+---------------------------- 
+LLI allows for immediate generation of an interrupt upon processing receive 
+packets that match certain criteria as set by the parameters described below. 
+LLI parameters are not enabled when Legacy interrupts are used. You must be 
+using MSI or MSI-X (see cat /proc/interrupts) to successfully use LLI.
 
 LLIPort
 -------
@@ -244,13 +258,13 @@ Default Value: 0 (disabled)
   LLI is configured with the LLIPort command-line parameter, which specifies 
   which TCP port should generate Low Latency Interrupts.
 
-  For example, using LLIPort=80 would cause the board to generate an 
+  For example, using LLIPort=80 would cause the hardware to generate an 
   immediate interrupt upon receipt of any packet sent to TCP port 80 on the 
   local machine.
 
 WARNING: Enabling LLI can result in an excessive number of interrupts/second 
 that may cause problems with the system and in some cases may cause a kernel 
-panic. 
+panic.
 
 
 LLIPush
@@ -268,8 +282,8 @@ LLISize
 Valid Range: 0-1500
 Default Value: 0 (disabled)
 
-  LLISize causes an immediate interrupt if the board receives a packet smaller 
-  than the specified size.
+  LLISize causes an immediate interrupt if the hardware receives a packet 
+  smaller than the specified size.
 
 
 Additional Configurations
@@ -308,7 +322,10 @@ Additional Configurations
         ifconfig ethx mtu 9000 up
 
   The maximum MTU setting for Jumbo Frames is 16110.  This value coincides
-  with the maximum Jumbo Frames size of 16128.
+  with the maximum Jumbo Frames size of 16128. This driver will attempt to
+  use multiple page sized buffers to receive each jumbo packet.  This
+  should help to avoid buffer starvation issues when allocating receive
+  packets.
 
 
   Ethtool
@@ -333,7 +350,8 @@ Additional Configurations
             make CFLAGS_EXTRA=-DIXGBE_NAPI install
   NOTE: This will not do anything if NAPI is disabled in the kernel. 
 
-  To disable NAPI, compile the driver module, passing in a configuration option:
+  To disable NAPI, compile the driver module, passing in a configuration 
+  option:
 
             make CFLAGS_EXTRA=-DIXGBE_NO_NAPI install
 
@@ -342,11 +360,13 @@ Additional Configurations
 
 
 
-Known Issues
-============
+Known Issues/Troubleshooting
+============================
 
-NOTE: For distribution-specific information, see the ldistrib.txt file
-      included in the driver tar.
+
+  NOTE: After installing the driver, if your Intel Network Connection is not 
+  working, verify in the "In This Release" section of the readme that you have 
+  installed the correct driver.
 
 
   MSI-X Issues with 82598-based Intel(R)10GbE-LR/LRM/SR/AT Server Adapters
@@ -432,6 +452,28 @@ NOTE: For distribution-specific information, see the ldistrib.txt file
 
   Or you can increase the kernel's default buffer sizes for udp by changing 
   the values in /proc/sys/net/core/rmem_default and rmem_max
+
+
+  Unplugging network cable while ethtool -p is running
+  ----------------------------------------------------
+  In kernel versions 2.5.50 and later (including 2.6 kernel), unplugging 
+  the network cable while ethtool -p is running will cause the system to 
+  become unresponsive to keyboard commands, except for control-alt-delete.  
+  Restarting the system appears to be the only remedy.
+
+
+  Cisco Catalyst 4948-10GE switch running ethtool -G may cause switch to shut
+  down ports
+  ---------------------------------------------------------------------------
+  82598-based hardware can re-establish link quickly and when connected to some 
+  switches, rapid resets within the driver may cause the switch port to become 
+  isolated due to "link flap". This is typically indicated by a yellow instead
+  of a green link light. Several operations may cause this problem, such as 
+  repeatedly running ethtool commands that cause a reset.  
+
+  A potential workaround is to use the Cisco IOS command "no errdisable detect 
+  cause all" from the Global Configuration prompt which enables the switch to 
+  keep the interfaces up, regardless of errors.
 
 
 Support

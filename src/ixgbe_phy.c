@@ -94,7 +94,7 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 {
 	u16 phy_id = 0;
-	bool valid = false;
+	bool valid = FALSE;
 
 	hw->phy.addr = phy_addr;
 	ixgbe_read_phy_reg_generic(hw,
@@ -103,7 +103,7 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 				   &phy_id);
 
 	if (phy_id != 0xFFFF && phy_id != 0x0)
-		valid = true;
+		valid = TRUE;
 
 	return valid;
 }
@@ -184,7 +184,6 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 {
 	u32 command;
 	u32 i;
-	u32 timeout = 10;
 	u32 data;
 	s32 status = IXGBE_SUCCESS;
 	u16 gssr;
@@ -211,7 +210,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 		 * The MDI Command bit will clear when the operation is
 		 * complete
 		 */
-		for (i = 0; i < timeout; i++) {
+		for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
 			udelay(10);
 
 			command = IXGBE_READ_REG(hw, IXGBE_MSCA);
@@ -243,7 +242,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			 * completed. The MDI Command bit will clear when the
 			 * operation is complete
 			 */
-			for (i = 0; i < timeout; i++) {
+			for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
 				udelay(10);
 
 				command = IXGBE_READ_REG(hw, IXGBE_MSCA);
@@ -253,7 +252,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			}
 
 			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-				DEBUGFUNC("PHY read command didn't complete\n");
+				DEBUGOUT("PHY read command didn't complete\n");
 				status = IXGBE_ERR_PHY;
 			} else {
 				/*
@@ -283,7 +282,6 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 {
 	u32 command;
 	u32 i;
-	u32 timeout = 10;
 	s32 status = IXGBE_SUCCESS;
 	u16 gssr;
 
@@ -312,7 +310,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 		 * The MDI Command bit will clear when the operation is
 		 * complete
 		 */
-		for (i = 0; i < timeout; i++) {
+		for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
 			udelay(10);
 
 			command = IXGBE_READ_REG(hw, IXGBE_MSCA);
@@ -343,7 +341,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			 * completed. The MDI Command bit will clear when the
 			 * operation is complete
 			 */
-			for (i = 0; i < timeout; i++) {
+			for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
 				udelay(10);
 
 				command = IXGBE_READ_REG(hw, IXGBE_MSCA);
@@ -384,7 +382,7 @@ s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
  *  Reads a PHY register to determine if link is up and the current speed for
  *  the PHY.
  **/
-s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, u32 *speed,
+s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 			 bool *link_up)
 {
 	return ixgbe_call_func(hw, ixgbe_func_check_phy_link, (hw, speed,
@@ -395,11 +393,11 @@ s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, u32 *speed,
  *  ixgbe_setup_phy_link_speed - Set auto advertise
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: true if autonegotiation enabled
+ *  @autoneg: TRUE if autonegotiation enabled
  *
  *  Sets the auto advertised capabilities
  **/
-s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, u32 speed,
+s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
 			       bool autoneg,
 			       bool autoneg_wait_to_complete)
 {

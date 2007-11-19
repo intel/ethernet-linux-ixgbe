@@ -1,6 +1,6 @@
 Name: ixgbe
-Summary: Intel(R) PRO/10GbE PCI Express driver for Linux
-Version: 1.1.21
+Summary: Intel(R) 10GbE PCI Express Ethernet Connection
+Version: 1.3.7.8
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -19,8 +19,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 Requires: kernel, fileutils, findutils, gawk, bash
 
 %description
-This package contains the Linux driver for the
-Intel(R) PRO/10GbE PCI Express Family of Server Adapters.
+This package contains the Linux driver for the Intel(R) PRO/10GbE PCI Express Family of Server Adapters.
 
 %prep
 %setup
@@ -118,7 +117,6 @@ rm -rf %{buildroot}
 %{_mandir}/man7/ixgbe.7.gz
 %doc COPYING
 %doc README
-%doc ldistrib.txt
 %doc file.list
 %doc pci.updates
 

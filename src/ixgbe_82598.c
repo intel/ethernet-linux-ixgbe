@@ -37,35 +37,33 @@
 
 s32 ixgbe_init_shared_code_82598(struct ixgbe_hw *hw);
 s32 ixgbe_assign_func_pointers_82598(struct ixgbe_hw *hw);
-s32 ixgbe_get_link_settings_82598(struct ixgbe_hw *hw,
-				  u32 *speed,
-				  bool *autoneg);
-s32 ixgbe_get_copper_link_settings_82598(struct ixgbe_hw *hw,
-					 u32 *speed,
-					 bool *autoneg);
+s32 ixgbe_get_link_capabilities_82598(struct ixgbe_hw *hw,
+				      ixgbe_link_speed *speed,
+				      bool *autoneg);
+s32 ixgbe_get_copper_link_capabilities_82598(struct ixgbe_hw *hw,
+					     ixgbe_link_speed *speed,
+					     bool *autoneg);
 enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw);
 u32 ixgbe_get_num_of_tx_queues_82598(struct ixgbe_hw *hw);
 u32 ixgbe_get_num_of_rx_queues_82598(struct ixgbe_hw *hw);
 s32 ixgbe_setup_mac_link_82598(struct ixgbe_hw *hw);
 s32 ixgbe_check_mac_link_82598(struct ixgbe_hw *hw,
-			       u32 *speed,
+			       ixgbe_link_speed *speed,
 			       bool *link_up);
 s32 ixgbe_setup_mac_link_speed_82598(struct ixgbe_hw *hw,
-				     u32 speed,
+				     ixgbe_link_speed speed,
 				     bool autoneg,
 				     bool autoneg_wait_to_complete);
 s32 ixgbe_setup_copper_link_82598(struct ixgbe_hw *hw);
-s32 ixgbe_check_copper_link_82598(struct ixgbe_hw *hw,
-				  u32 *speed,
-				  bool *link_up);
 s32 ixgbe_setup_copper_link_speed_82598(struct ixgbe_hw *hw,
-					u32 speed,
+					ixgbe_link_speed speed,
 					bool autoneg,
 					bool autoneg_wait_to_complete);
 s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw);
 u32 ixgbe_get_num_rx_addrs_82598(struct ixgbe_hw *hw);
 s32 ixgbe_read_analog_reg8_82598(struct ixgbe_hw *hw, u32 reg, u8 *val);
 s32 ixgbe_write_analog_reg8_82598(struct ixgbe_hw *hw, u32 reg, u8 val);
+
 
 /**
  *  ixgbe_init_shared_code_82598 - Inits func ptrs and MAC type
@@ -76,9 +74,6 @@ s32 ixgbe_write_analog_reg8_82598(struct ixgbe_hw *hw, u32 reg, u8 val);
  **/
 s32 ixgbe_init_shared_code_82598(struct ixgbe_hw *hw)
 {
-	/* Set MAC type */
-	hw->mac.type = ixgbe_mac_82598EB;
-
 	/* Assign function pointers */
 	ixgbe_assign_func_pointers_82598(hw);
 
@@ -109,41 +104,39 @@ s32 ixgbe_assign_func_pointers_82598(struct ixgbe_hw *hw)
 
 	hw->func.ixgbe_func_get_num_rx_addrs =
 			       &ixgbe_get_num_rx_addrs_82598;
+	hw->func.ixgbe_func_check_link =
+			       &ixgbe_check_mac_link_82598;
 
 	/* Link */
 	if (ixgbe_get_media_type(hw) == ixgbe_media_type_copper) {
 		hw->func.ixgbe_func_setup_link =
 			       &ixgbe_setup_copper_link_82598;
-		hw->func.ixgbe_func_check_link =
-			       &ixgbe_check_copper_link_82598;
 		hw->func.ixgbe_func_setup_link_speed =
 			       &ixgbe_setup_copper_link_speed_82598;
-		hw->func.ixgbe_func_get_link_settings =
-			       &ixgbe_get_copper_link_settings_82598;
+		hw->func.ixgbe_func_get_link_capabilities =
+			       &ixgbe_get_copper_link_capabilities_82598;
 	} else {
 		hw->func.ixgbe_func_setup_link =
 			       &ixgbe_setup_mac_link_82598;
-		hw->func.ixgbe_func_check_link =
-			       &ixgbe_check_mac_link_82598;
 		hw->func.ixgbe_func_setup_link_speed =
 			       &ixgbe_setup_mac_link_speed_82598;
-		hw->func.ixgbe_func_get_link_settings =
-			       &ixgbe_get_link_settings_82598;
+		hw->func.ixgbe_func_get_link_capabilities =
+			       &ixgbe_get_link_capabilities_82598;
 	}
 
 	return IXGBE_SUCCESS;
 }
 
 /**
- *  ixgbe_get_link_settings_82598 - Determines default link settings
+ *  ixgbe_get_link_capabilities_82598 - Determines link capabilities 
  *  @hw: pointer to hardware structure
  *  @speed: pointer to link speed
  *  @autoneg: boolean auto-negotiation value
  *
- *  Determines the default link settings by reading the AUTOC register.
+ *  Determines the link capabilities by reading the AUTOC register.
  **/
-s32 ixgbe_get_link_settings_82598(struct ixgbe_hw *hw, u32 *speed,
-				  bool *autoneg)
+s32 ixgbe_get_link_capabilities_82598(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
+				      bool *autoneg)
 {
 	s32 status = IXGBE_SUCCESS;
 	s32 autoc_reg;
@@ -160,17 +153,17 @@ s32 ixgbe_get_link_settings_82598(struct ixgbe_hw *hw, u32 *speed,
 	switch (autoc_reg & IXGBE_AUTOC_LMS_MASK) {
 	case IXGBE_AUTOC_LMS_1G_LINK_NO_AN:
 		*speed = IXGBE_LINK_SPEED_1GB_FULL;
-		*autoneg = false;
+		*autoneg = FALSE;
 		break;
 
 	case IXGBE_AUTOC_LMS_10G_LINK_NO_AN:
 		*speed = IXGBE_LINK_SPEED_10GB_FULL;
-		*autoneg = false;
+		*autoneg = FALSE;
 		break;
 
 	case IXGBE_AUTOC_LMS_1G_AN:
 		*speed = IXGBE_LINK_SPEED_1GB_FULL;
-		*autoneg = true;
+		*autoneg = TRUE;
 		break;
 
 	case IXGBE_AUTOC_LMS_KX4_AN:
@@ -182,7 +175,7 @@ s32 ixgbe_get_link_settings_82598(struct ixgbe_hw *hw, u32 *speed,
 		if (autoc_reg & IXGBE_AUTOC_KX_SUPP) {
 			*speed |= IXGBE_LINK_SPEED_1GB_FULL;
 		}
-		*autoneg = true;
+		*autoneg = TRUE;
 		break;
 
 	default:
@@ -194,22 +187,22 @@ s32 ixgbe_get_link_settings_82598(struct ixgbe_hw *hw, u32 *speed,
 }
 
 /**
- *  ixgbe_get_copper_link_settings_82598 - Determines default link settings
+ *  ixgbe_get_copper_link_capabilities_82598 - Determines link capabilities
  *  @hw: pointer to hardware structure
  *  @speed: pointer to link speed
  *  @autoneg: boolean auto-negotiation value
  *
- *  Determines the default link settings by reading the AUTOC register.
+ *  Determines the link capabilities by reading the AUTOC register.
  **/
-s32 ixgbe_get_copper_link_settings_82598(struct ixgbe_hw *hw,
-					 u32 *speed,
-					 bool *autoneg)
+s32 ixgbe_get_copper_link_capabilities_82598(struct ixgbe_hw *hw,
+					     ixgbe_link_speed *speed,
+					     bool *autoneg)
 {
 	s32 status = IXGBE_ERR_LINK_SETUP;
 	u16 speed_ability;
 
 	*speed = 0;
-	*autoneg = true;
+	*autoneg = TRUE;
 
 	status = ixgbe_read_phy_reg(hw, IXGBE_MDIO_PHY_SPEED_ABILITY,
 				    IXGBE_MDIO_PMA_PMD_DEV_TYPE,
@@ -251,7 +244,7 @@ enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_get_num_of_tx_queues_82598 - Get number of TX queues
+ *  ixgbe_get_num_of_tx_queues_82598 - Get number of Tx queues
  *  @hw: pointer to hardware structure
  *
  *  Returns the number of transmit queues for the given adapter.
@@ -262,7 +255,7 @@ u32 ixgbe_get_num_of_tx_queues_82598(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_get_num_of_rx_queues_82598 - Get number of RX queues
+ *  ixgbe_get_num_of_rx_queues_82598 - Get number of Rx queues
  *  @hw: pointer to hardware structure
  *
  *  Returns the number of receive queues for the given adapter.
@@ -295,6 +288,7 @@ s32 ixgbe_setup_mac_link_82598(struct ixgbe_hw *hw)
 		autoc_reg |= hw->mac.link_mode_select;
 
 		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
+		IXGBE_WRITE_FLUSH(hw);
 		msleep(50);
 	}
 
@@ -338,11 +332,11 @@ s32 ixgbe_setup_mac_link_82598(struct ixgbe_hw *hw)
  *  ixgbe_check_mac_link_82598 - Get link/speed status
  *  @hw: pointer to hardware structure
  *  @speed: pointer to link speed
- *  @link_up: true is link is up, false otherwise
+ *  @link_up: TRUE is link is up, FALSE otherwise
  *
  *  Reads the links register to determine if link is up and the current speed
  **/
-s32 ixgbe_check_mac_link_82598(struct ixgbe_hw *hw, u32 *speed,
+s32 ixgbe_check_mac_link_82598(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 			       bool *link_up)
 {
 	u32 links_reg;
@@ -350,9 +344,9 @@ s32 ixgbe_check_mac_link_82598(struct ixgbe_hw *hw, u32 *speed,
 	links_reg = IXGBE_READ_REG(hw, IXGBE_LINKS);
 
 	if (links_reg & IXGBE_LINKS_UP)
-		*link_up = true;
+		*link_up = TRUE;
 	else
-		*link_up = false;
+		*link_up = FALSE;
 
 	if (links_reg & IXGBE_LINKS_SPEED)
 		*speed = IXGBE_LINK_SPEED_10GB_FULL;
@@ -362,28 +356,29 @@ s32 ixgbe_check_mac_link_82598(struct ixgbe_hw *hw, u32 *speed,
 	return IXGBE_SUCCESS;
 }
 
+
 /**
  *  ixgbe_setup_mac_link_speed_82598 - Set MAC link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: true if auto-negotiation enabled
- *  @autoneg_wait_to_complete: true if waiting is needed to complete
+ *  @autoneg: TRUE if auto-negotiation enabled
+ *  @autoneg_wait_to_complete: TRUE if waiting is needed to complete
  *
  *  Set the link speed in the AUTOC register and restarts link.
  **/
 s32 ixgbe_setup_mac_link_speed_82598(struct ixgbe_hw *hw,
-				     u32 speed, bool autoneg,
+				     ixgbe_link_speed speed, bool autoneg,
 				     bool autoneg_wait_to_complete)
 {
 	s32 status = IXGBE_SUCCESS;
 
 	/* If speed is 10G, then check for CX4 or XAUI. */
 	if ((speed == IXGBE_LINK_SPEED_10GB_FULL) &&
-	    (!(hw->mac.link_attach_type & IXGBE_AUTOC_10G_KX4)))
+	    (!(hw->mac.link_attach_type & IXGBE_AUTOC_10G_KX4))) {
 		hw->mac.link_mode_select = IXGBE_AUTOC_LMS_10G_LINK_NO_AN;
-	else if ((speed == IXGBE_LINK_SPEED_1GB_FULL) && (!autoneg))
+	} else if ((speed == IXGBE_LINK_SPEED_1GB_FULL) && (!autoneg)) {
 		hw->mac.link_mode_select = IXGBE_AUTOC_LMS_1G_LINK_NO_AN;
-	else if (autoneg) {
+	} else if (autoneg) {
 		/* BX mode - Autonegotiate 1G */
 		if (!(hw->mac.link_attach_type & IXGBE_AUTOC_1G_PMA_PMD))
 			hw->mac.link_mode_select = IXGBE_AUTOC_LMS_1G_AN;
@@ -396,7 +391,7 @@ s32 ixgbe_setup_mac_link_speed_82598(struct ixgbe_hw *hw,
 	if (status == IXGBE_SUCCESS) {
 		hw->phy.autoneg_wait_to_complete = autoneg_wait_to_complete;
 
-		hw->mac.link_settings_loaded = true;
+		hw->mac.link_settings_loaded = TRUE;
 		/*
 		 * Setup and restart the link based on the new values in
 		 * ixgbe_hw This will write the AUTOC register based on the new
@@ -421,71 +416,16 @@ s32 ixgbe_setup_mac_link_speed_82598(struct ixgbe_hw *hw,
 s32 ixgbe_setup_copper_link_82598(struct ixgbe_hw *hw)
 {
 	s32 status;
-	u32 speed = 0;
-	bool link_up = false;
-
-	/* Set up MAC */
-	ixgbe_setup_mac_link_82598(hw);
 
 	/* Restart autonegotiation on PHY */
 	status = ixgbe_setup_phy_link(hw);
 
-	/* Synchronize MAC to PHY speed */
-	if (status == IXGBE_SUCCESS)
-		status = ixgbe_check_link(hw, &speed, &link_up);
+	/* Set MAC to KX/KX4 autoneg, which defaultis to Parallel detection */
+	hw->mac.link_attach_type = (IXGBE_AUTOC_10G_KX4 | IXGBE_AUTOC_1G_KX);
+	hw->mac.link_mode_select = IXGBE_AUTOC_LMS_KX4_AN;
 
-	return status;
-}
-
-/**
- *  ixgbe_check_copper_link_82598 - Syncs MAC & PHY link settings
- *  @hw: pointer to hardware structure
- *  @speed: pointer to link speed
- *  @link_up: true if link is up, false otherwise
- *
- *  Reads the mac link, phy link, and synchronizes the MAC to PHY.
- **/
-s32 ixgbe_check_copper_link_82598(struct ixgbe_hw *hw, u32 *speed,
-				  bool *link_up)
-{
-	s32 status;
-	u32 phy_speed = 0;
-	bool phy_link = false;
-
-	/* This is the speed and link the MAC is set at */
-	ixgbe_check_mac_link_82598(hw, speed, link_up);
-
-	/*
-	 * Check current speed and link status of the PHY register.
-	 * This is a vendor specific register and may have to
-	 * be changed for other copper PHYs.
-	 */
-	status = ixgbe_check_phy_link(hw, &phy_speed, &phy_link);
-
-	if ((status == IXGBE_SUCCESS) && (phy_link)) {
-		/*
-		 * Check current link status of the MACs link's register
-		 * matches that of the speed in the PHY register
-		 */
-		if (*speed != phy_speed) {
-			/*
-			 * The copper PHY requires 82598 attach type to be XAUI
-			 * for 10G and BX for 1G
-			 */
-			hw->mac.link_attach_type =
-				(IXGBE_AUTOC_10G_XAUI | IXGBE_AUTOC_1G_BX);
-
-			/* Synchronize the MAC speed to the PHY speed */
-			status = ixgbe_setup_mac_link_speed_82598(hw, phy_speed,
-								  false, false);
-			if (status == IXGBE_SUCCESS)
-				ixgbe_check_mac_link_82598(hw, speed, link_up);
-			else
-				status = IXGBE_ERR_LINK_SETUP;
-		}
-	} else {
-		*link_up = phy_link;
-	}
+	/* Set up MAC */
+	ixgbe_setup_mac_link_82598(hw);
 
 	return status;
 }
@@ -494,26 +434,28 @@ s32 ixgbe_check_copper_link_82598(struct ixgbe_hw *hw, u32 *speed,
  *  ixgbe_setup_copper_link_speed_82598 - Set the PHY autoneg advertised field
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: true if autonegotiation enabled
- *  @autoneg_wait_to_complete: true if waiting is needed to complete
+ *  @autoneg: TRUE if autonegotiation enabled
+ *  @autoneg_wait_to_complete: TRUE if waiting is needed to complete
  *
  *  Sets the link speed in the AUTOC register in the MAC and restarts link.
  **/
 s32 ixgbe_setup_copper_link_speed_82598(struct ixgbe_hw *hw,
-					u32 speed,
+					ixgbe_link_speed speed,
 					bool autoneg,
 					bool autoneg_wait_to_complete)
 {
 	s32 status;
-	bool link_up = 0;
 
 	/* Setup the PHY according to input speed */
 	status = ixgbe_setup_phy_link_speed(hw, speed, autoneg,
 					    autoneg_wait_to_complete);
 
-	/* Synchronize MAC to PHY speed */
-	if (status == IXGBE_SUCCESS)
-		status = ixgbe_check_link(hw, &speed, &link_up);
+	/* Set MAC to KX/KX4 autoneg, which defaults to Parallel detection */
+	hw->mac.link_attach_type = (IXGBE_AUTOC_10G_KX4 | IXGBE_AUTOC_1G_KX);
+	hw->mac.link_mode_select = IXGBE_AUTOC_LMS_KX4_AN;
+
+	/* Set up MAC */
+	ixgbe_setup_mac_link_82598(hw);
 
 	return status;
 }
@@ -539,13 +481,13 @@ s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw)
 	ixgbe_stop_adapter(hw);
 
 	/*
-	 * Power up the Atlas TX lanes if they are currently powered down.
-	 * Atlas TX lanes are powered down for MAC loopback tests, but
+	 * Power up the Atlas Tx lanes if they are currently powered down.
+	 * Atlas Tx lanes are powered down for MAC loopback tests, but
 	 * they are not automatically restored on reset.
 	 */
 	ixgbe_read_analog_reg8(hw, IXGBE_ATLAS_PDN_LPBK, &analog_val);
 	if (analog_val & IXGBE_ATLAS_PDN_TX_REG_EN) {
-		/* Enable TX Atlas so packets can be transmitted again */
+		/* Enable Tx Atlas so packets can be transmitted again */
 		ixgbe_read_analog_reg8(hw, IXGBE_ATLAS_PDN_LPBK, &analog_val);
 		analog_val &= ~IXGBE_ATLAS_PDN_TX_REG_EN;
 		ixgbe_write_analog_reg8(hw, IXGBE_ATLAS_PDN_LPBK, analog_val);
@@ -619,7 +561,7 @@ s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw)
 		hw->mac.link_attach_type =
 					 (autoc & IXGBE_AUTOC_LMS_ATTACH_TYPE);
 		hw->mac.link_mode_select = (autoc & IXGBE_AUTOC_LMS_MASK);
-		hw->mac.link_settings_loaded = true;
+		hw->mac.link_settings_loaded = TRUE;
 	}
 
 	/* Store the permanent mac address */
@@ -670,13 +612,14 @@ s32 ixgbe_write_analog_reg8_82598(struct ixgbe_hw *hw, u32 reg, u8 val)
 }
 
 /**
- *  ixgbe_get_num_rx_addrs_82598 - Get RX address registers
+ *  ixgbe_get_num_rx_addrs_82598 - Get Rx address registers
  *  @hw: pointer to hardware structure
  *
  *  Returns the of RAR entries for the given adapter.
  **/
 u32 ixgbe_get_num_rx_addrs_82598(struct ixgbe_hw *hw)
 {
+
 	return IXGBE_82598_RAR_ENTRIES;
 }
 

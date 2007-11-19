@@ -38,10 +38,21 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/if_ether.h>
-
 #include <linux/sched.h>
-
 #include "kcompat.h"
+
+#ifndef msleep
+#define msleep(x)	do { if(in_interrupt()) { \
+				/* Don't mdelay in interrupt context! */ \
+	                	BUG(); \
+			} else { \
+				msleep(x); \
+			} } while (0)
+
+#endif
+
+#undef ASSERT
+#define ASSERT(x)	if (!(x)) BUG()
 
 #ifdef DBG
 #define DEBUGOUT(S)		printk(KERN_DEBUG S)
@@ -67,7 +78,7 @@
 	case IXGBE_EICR: \
 	case IXGBE_EICS: \
 		printk("%s: Reg - 0x%05X, value - 0x%08X\n", __FUNCTION__, \
-			reg, (u32)(value)); \
+		       reg, (u32)(value)); \
 	default: \
 		break; \
 	} \
