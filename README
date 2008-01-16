@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-October 31, 2007
+December 3, 2007
 
 
 Contents
@@ -110,13 +110,6 @@ To manually build this driver:
 
    The install locations listed above are the default locations.  They might
    not be correct for certain Linux distributions. 
-
-   NOTE: IXGBE_NO_LRO is a compile time flag. The user can enable it at 
-   compile time to remove support for LRO from the driver. The flag is used 
-   by adding CFLAGS_EXTRA="-DIXGBE_NO_LRO" to the make file when it's being
-   compiled. 
-
-     make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
 
 5. Load the module:
    For kernel 2.6.x, use the modprobe command:
@@ -230,17 +223,19 @@ different values for each type of interrupt.
   
 InterruptThrottleRate
 ---------------------
-Valid Range: 100 - 100000 (0=off, 1=dynamic)
+Valid Range: 100 - 500,000 (0=off, 1=dynamic)
 Default Value: 8000
      Interrupt Throttle Rate (interrupts/sec)
 The ITR parameter controls how many interrupts each interrupt vector can
 generate per second.  On MQ/RSS enabled kernels with MSI-X interrupts this
-means that each TX and each RX vector can generate (by default) 8000
-interrupts per second.
-Dynamic mode attempts to moderate interrupts per vector while maintaining
-very low latency.  This can sometimes cause extra CPU utilization when in
-dynamic mode.  If planning on deploying ixgbe in a latency sensitive
-environment please consider this parameter.
+means that each RX vector can generate (by default) 8000 interrupts per second
+and each TX vector can generate (by default) 4000 interrupts per second.
+Increasing ITR lowers latency at the cost of increased CPU utilization, though
+it may help throughput in some circumstances.
+1 = Dynamic mode attempts to moderate interrupts per vector while maintaining
+very low latency.  This can sometimes cause extra CPU utilization.  If planning
+on deploying ixgbe in a latency sensitive environment please consider this
+parameter.
 
 
 LLI (Low Latency Interrupts)
@@ -359,6 +354,42 @@ Additional Configurations
   See www.cyberus.ca/~hadi/usenix-paper.tgz for more information on NAPI.
 
 
+  LRO
+  ---
+  Large Receive Offload (LRO) is a technique for increasing inbound throughput
+  of high-bandwidth network connections by reducing CPU overhead. It works by
+  aggregating multiple incoming packets from a single stream into a larger 
+  buffer before they are passed higher up the networking stack, thus reducing
+  the number of packets that have to be processed. LRO combines multiple 
+  Ethernet frames into a single receive in the stack, thereby potentially 
+  decreasing CPU utilization for receives.
+
+  IXGBE_NO_LRO is a compile time flag. The user can enable it at compile 
+  time to remove support for LRO from the driver. The flag is used by adding 
+  CFLAGS_EXTRA="-DIXGBE_NO_LRO" to the make file when it's being compiled. 
+
+     make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
+
+  You can verify that the driver is using LRO by looking at these counters in 
+  Ethtool:
+
+  lro_flushed - the total number of receives using LRO.
+  lro_coal - counts the total number of Ethernet packets that were combined.
+
+
+  rx_dropped_backlog
+  ------------------
+  When in a non-Napi (or Interrupt) mode, this counter indicates that the stack
+  is dropping packets. There is an adjustable parameter in the stack that allows
+  you to adjust the amount of backlog. We recommend increasing the 
+  netdev_max_backlog if the counter goes up.
+
+  # sysctl -a |grep netdev_max_backlog
+  net.core.netdev_max_backlog = 1000
+
+  # sysctl -e net.core.netdev_max_backlog=10000
+  net.core.netdev_max_backlog = 10000
+
 
 Known Issues/Troubleshooting
 ============================
@@ -462,9 +493,8 @@ Known Issues/Troubleshooting
   Restarting the system appears to be the only remedy.
 
 
-  Cisco Catalyst 4948-10GE switch running ethtool -G may cause switch to shut
-  down ports
-  ---------------------------------------------------------------------------
+  Cisco Catalyst 4948-10GE port resets may cause switch to shut down ports
+  ------------------------------------------------------------------------
   82598-based hardware can re-establish link quickly and when connected to some 
   switches, rapid resets within the driver may cause the switch port to become 
   isolated due to "link flap". This is typically indicated by a yellow instead

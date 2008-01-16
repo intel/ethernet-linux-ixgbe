@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 1.3.7.8
+Version: 1.3.16.1
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -8,7 +8,7 @@ License: GPL
 ExclusiveOS: linux
 Group: System Environment/Kernel
 Provides: %{name}
-URL: http://support.intel.com/support/go/linux/ixgbe.htm
+URL: http://www.intel.com/network/connectivity/products/server_adapters.htm
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 # macros for finding system files to update at install time (pci.ids, pcitable)
 %define find() %(for f in %*; do if [ -e $f ]; then echo $f; break; fi; done)
@@ -19,7 +19,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 Requires: kernel, fileutils, findutils, gawk, bash
 
 %description
-This package contains the Linux driver for the Intel(R) PRO/10GbE PCI Express Family of Server Adapters.
+This package contains the Linux driver for the Intel(R) 10GbE PCI Express Family of Server Adapters.
 
 %prep
 %setup

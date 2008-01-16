@@ -52,13 +52,13 @@ s32 ixgbe_init_shared_code_phy(struct ixgbe_hw *hw)
 s32 ixgbe_assign_func_pointers_phy(struct ixgbe_hw *hw)
 {
 	hw->func.ixgbe_func_reset_phy =
-			    &ixgbe_reset_phy_generic;
+	                    &ixgbe_reset_phy_generic;
 	hw->func.ixgbe_func_read_phy_reg =
-			    &ixgbe_read_phy_reg_generic;
+	                    &ixgbe_read_phy_reg_generic;
 	hw->func.ixgbe_func_write_phy_reg =
-			    &ixgbe_write_phy_reg_generic;
+	                    &ixgbe_write_phy_reg_generic;
 	hw->func.ixgbe_func_identify_phy =
-			    &ixgbe_identify_phy_generic;
+	                    &ixgbe_identify_phy_generic;
 
 	return IXGBE_SUCCESS;
 }
@@ -98,9 +98,9 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 
 	hw->phy.addr = phy_addr;
 	ixgbe_read_phy_reg_generic(hw,
-				   IXGBE_MDIO_PHY_ID_HIGH,
-				   IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-				   &phy_id);
+	                           IXGBE_MDIO_PHY_ID_HIGH,
+	                           IXGBE_MDIO_PMA_PMD_DEV_TYPE,
+	                           &phy_id);
 
 	if (phy_id != 0xFFFF && phy_id != 0x0)
 		valid = TRUE;
@@ -120,16 +120,16 @@ s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 	u16 phy_id_low = 0;
 
 	status = ixgbe_read_phy_reg_generic(hw,
-				   IXGBE_MDIO_PHY_ID_HIGH,
-				   IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-				   &phy_id_high);
+	                                    IXGBE_MDIO_PHY_ID_HIGH,
+	                                    IXGBE_MDIO_PMA_PMD_DEV_TYPE,
+	                                    &phy_id_high);
 
 	if (status == IXGBE_SUCCESS) {
 		hw->phy.id = (u32)(phy_id_high << 16);
 		status = ixgbe_read_phy_reg_generic(hw,
-					   IXGBE_MDIO_PHY_ID_LOW,
-					   IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-					   &phy_id_low);
+		                                   IXGBE_MDIO_PHY_ID_LOW,
+		                                   IXGBE_MDIO_PMA_PMD_DEV_TYPE,
+		                                   &phy_id_low);
 		hw->phy.id |= (u32)(phy_id_low & IXGBE_PHY_REVISION_MASK);
 		hw->phy.revision = (u32)(phy_id_low & ~IXGBE_PHY_REVISION_MASK);
 	}
@@ -169,8 +169,8 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 	 * This will cause a soft reset to the PHY
 	 */
 	return ixgbe_write_phy_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
-				   IXGBE_MDIO_PHY_XS_DEV_TYPE,
-				   IXGBE_MDIO_PHY_XS_RESET);
+	                           IXGBE_MDIO_PHY_XS_DEV_TYPE,
+	                           IXGBE_MDIO_PHY_XS_RESET);
 }
 
 /**
@@ -180,7 +180,7 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
  *  @phy_data: Pointer to read data from PHY register
  **/
 s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
-			       u32 device_type, u16 *phy_data)
+                               u32 device_type, u16 *phy_data)
 {
 	u32 command;
 	u32 i;
@@ -199,9 +199,9 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	if (status == IXGBE_SUCCESS) {
 		/* Setup and write the address cycle command */
 		command = ((reg_addr << IXGBE_MSCA_NP_ADDR_SHIFT)  |
-			   (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
-			   (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
-			   (IXGBE_MSCA_ADDR_CYCLE | IXGBE_MSCA_MDI_COMMAND));
+		           (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
+		           (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
+		           (IXGBE_MSCA_ADDR_CYCLE | IXGBE_MSCA_MDI_COMMAND));
 
 		IXGBE_WRITE_REG(hw, IXGBE_MSCA, command);
 
@@ -231,9 +231,9 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			 * command
 			 */
 			command = ((reg_addr << IXGBE_MSCA_NP_ADDR_SHIFT)  |
-				   (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
-				   (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
-				   (IXGBE_MSCA_READ | IXGBE_MSCA_MDI_COMMAND));
+			           (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
+			           (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
+			           (IXGBE_MSCA_READ | IXGBE_MSCA_MDI_COMMAND));
 
 			IXGBE_WRITE_REG(hw, IXGBE_MSCA, command);
 
@@ -278,7 +278,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
  *  @phy_data: Data to write to the PHY register
  **/
 s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
-				u32 device_type, u16 phy_data)
+                                u32 device_type, u16 phy_data)
 {
 	u32 command;
 	u32 i;
@@ -299,9 +299,9 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 
 		/* Setup and write the address cycle command */
 		command = ((reg_addr << IXGBE_MSCA_NP_ADDR_SHIFT)  |
-			   (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
-			   (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
-			   (IXGBE_MSCA_ADDR_CYCLE | IXGBE_MSCA_MDI_COMMAND));
+		           (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
+		           (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
+		           (IXGBE_MSCA_ADDR_CYCLE | IXGBE_MSCA_MDI_COMMAND));
 
 		IXGBE_WRITE_REG(hw, IXGBE_MSCA, command);
 
@@ -330,9 +330,9 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			 * command
 			 */
 			command = ((reg_addr << IXGBE_MSCA_NP_ADDR_SHIFT)  |
-				   (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
-				   (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
-				   (IXGBE_MSCA_WRITE | IXGBE_MSCA_MDI_COMMAND));
+			           (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
+			           (hw->phy.addr << IXGBE_MSCA_PHY_ADDR_SHIFT) |
+			           (IXGBE_MSCA_WRITE | IXGBE_MSCA_MDI_COMMAND));
 
 			IXGBE_WRITE_REG(hw, IXGBE_MSCA, command);
 
@@ -348,7 +348,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 
 				if ((command & IXGBE_MSCA_MDI_COMMAND) == 0) {
 					DEBUGFUNC("PHY write command did not "
-						  "complete.\n");
+					          "complete.\n");
 					break;
 				}
 			}
@@ -372,7 +372,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
 {
 	return ixgbe_call_func(hw, ixgbe_func_setup_phy_link, (hw),
-			       IXGBE_NOT_IMPLEMENTED);
+	                       IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
@@ -383,10 +383,10 @@ s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
  *  the PHY.
  **/
 s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
-			 bool *link_up)
+                         bool *link_up)
 {
 	return ixgbe_call_func(hw, ixgbe_func_check_phy_link, (hw, speed,
-			       link_up), IXGBE_NOT_IMPLEMENTED);
+	                       link_up), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
@@ -398,11 +398,11 @@ s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
  *  Sets the auto advertised capabilities
  **/
 s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
-			       bool autoneg,
-			       bool autoneg_wait_to_complete)
+                               bool autoneg,
+                               bool autoneg_wait_to_complete)
 {
 	return ixgbe_call_func(hw, ixgbe_func_setup_phy_link_speed, (hw, speed,
-			       autoneg, autoneg_wait_to_complete),
-			       IXGBE_NOT_IMPLEMENTED);
+	                       autoneg, autoneg_wait_to_complete),
+	                       IXGBE_NOT_IMPLEMENTED);
 }
 

@@ -94,6 +94,13 @@
 #endif
 #endif
 
+
+
+
+#ifdef DRIVER_IXGBE
+#define adapter_struct ixgbe_adapter
+#endif
+
 /* and finally set defines so that the code sees the changes */
 #ifdef NAPI
 #ifndef CONFIG_E1000_NAPI
@@ -292,6 +299,26 @@ enum {
 #ifndef _LINUX_RANDOM_H
 #include <linux/random.h>
 #endif
+
+#ifndef DECLARE_BITMAP
+#ifndef BITS_TO_LONGS
+#define BITS_TO_LONGS(bits) (((bits)+BITS_PER_LONG-1)/BITS_PER_LONG)
+#endif
+#define DECLARE_BITMAP(name,bits) long name[BITS_TO_LONGS(bits)]
+#endif
+
+#ifndef VLAN_HLEN
+#define VLAN_HLEN 4
+#endif
+
+#ifndef VLAN_ETH_HLEN
+#define VLAN_ETH_HLEN 18
+#endif
+
+#ifndef VLAN_ETH_FRAME_LEN
+#define VLAN_ETH_FRAME_LEN 1518
+#endif
+
 
 /*****************************************************************************/
 /* Installations with ethtool version without eeprom, adapter id, or statistics
@@ -818,18 +845,6 @@ extern void _kc_pci_unmap_page(struct pci_dev *dev, u64 dma_addr, size_t size, i
 	#define __devexit_p(x) &(x)
 #endif
 
-#ifndef VLAN_HLEN
-#define VLAN_HLEN 4
-#endif
-
-#ifndef VLAN_ETH_HLEN
-#define VLAN_ETH_HLEN 18
-#endif
-
-#ifndef VLAN_ETH_FRAME_LEN
-#define VLAN_ETH_FRAME_LEN 1518
-#endif
-
 #endif /* 2.4.17 => 2.4.13 */
 
 /*****************************************************************************/
@@ -1072,6 +1087,7 @@ static inline int _kc_pci_dma_mapping_error(dma_addr_t dma_addr)
  */
 #include <linux/bitops.h>
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
+#undef find_next_bit
 #define find_next_bit _kc_find_next_bit
 extern unsigned long _kc_find_next_bit(const unsigned long *addr,
                                        unsigned long size,
@@ -1092,6 +1108,22 @@ extern unsigned long _kc_find_next_bit(const unsigned long *addr,
 #define pci_dma_sync_single_for_cpu	pci_dma_sync_single
 #define pci_dma_sync_single_for_device	pci_dma_sync_single_for_cpu
 #endif /* 2.6.5 => 2.6.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,6) )
+/* taken from 2.6 include/linux/bitmap.h */
+#undef bitmap_zero
+#define bitmap_zero _kc_bitmap_zero
+static inline void _kc_bitmap_zero(unsigned long *dst, int nbits)
+{
+        if (nbits <= BITS_PER_LONG)
+                *dst = 0UL;
+        else {
+                int len = BITS_TO_LONGS(nbits) * sizeof(unsigned long);
+                memset(dst, 0, len);
+        }
+}
+#endif /* < 2.6.6 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,7) )
@@ -1280,10 +1312,6 @@ extern void *_kc_kzalloc(size_t size, int flags);
 #endif /* _IXGBE_H */
 #endif
 
-#ifndef DIV_ROUND_UP
-#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
-#endif
-
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18) )
 
@@ -1325,6 +1353,11 @@ static inline int _kc_skb_is_gso(const struct sk_buff *skb)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19) )
+
+#ifndef DIV_ROUND_UP
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+#endif
+
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0) )
 #ifndef RHEL_RELEASE_CODE
 #define RHEL_RELEASE_CODE 0
@@ -1413,6 +1446,12 @@ do { \
 } while (0)
 #endif
 
+#ifndef PCI_VDEVICE
+#define PCI_VDEVICE(ven, dev)        \
+	PCI_VENDOR_ID_##ven, (dev),  \
+	PCI_ANY_ID, PCI_ANY_ID, 0, 0
+#endif
+
 #ifndef round_jiffies
 #define round_jiffies(x) x
 #endif
@@ -1458,11 +1497,42 @@ do { \
 #endif /* < 2.6.22 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
+/* NAPI API changes in 2.6.24 break everything */
+struct napi_struct {
+	/* used to look up the real NAPI polling routine */
+	int (*poll)(struct napi_struct *, int);
+};
+extern int __kc_adapter_clean(struct net_device *, int *);
+#define netif_rx_complete(netdev, napi) netif_rx_complete(netdev)
+#define netif_rx_schedule_prep(netdev, napi) netif_rx_schedule_prep(netdev)
+#define netif_rx_schedule(netdev, napi) netif_rx_schedule(netdev)
+#define __netif_rx_schedule(netdev, napi) __netif_rx_schedule(netdev)
+#define napi_enable(napi) netif_poll_enable(adapter->netdev)
+#define napi_disable(napi) netif_poll_disable(adapter->netdev)
+#define netif_napi_add(_netdev, _napi, _poll, _weight) \
+	do { \
+		struct napi_struct *__napi = _napi; \
+		_netdev->poll = &(__kc_adapter_clean); \
+		_netdev->weight = (_weight); \
+		__napi->poll = &(_poll); \
+		netif_poll_disable(_netdev); \
+	} while (0)
+#endif /* < 2.6.24 */
+
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22) )
 #undef ETHTOOL_GPERMADDR
 #undef SET_MODULE_OWNER
 #define SET_MODULE_OWNER(dev) do { } while (0)
 #endif /* > 2.6.22 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
+#undef dev_get_by_name
+#define dev_get_by_name(_a, _b) dev_get_by_name(_b)
+#define __netif_subqueue_stopped(_a, _b) netif_subqueue_stopped(_a, _b)
+#endif /* < 2.6.24 */
 
 #endif /* _KCOMPAT_H_ */
 

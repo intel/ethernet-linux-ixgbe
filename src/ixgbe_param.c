@@ -65,7 +65,7 @@
 #else
 #define IXGBE_PARAM(X, desc) \
 	static int __devinitdata X[IXGBE_MAX_NIC+1] = IXGBE_PARAM_INIT; \
-	static int num_##X; \
+	static unsigned int num_##X; \
 	module_param_array_named(X, X, int, &num_##X, 0); \
 	MODULE_PARM_DESC(X, desc);
 #endif
@@ -188,9 +188,9 @@ IXGBE_PARAM(RxBufferMode, "Rx Buffer Mode - Packet split or one buffer in rx");
 
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
-	char *name;
-	char *err;
-	int  def;
+	const char *name;
+	const char *err;
+	int def;
 	union {
 		struct { /* range_option info */
 			int min;
@@ -206,7 +206,8 @@ struct ixgbe_option {
 	} arg;
 };
 
-static int __devinit ixgbe_validate_option(int *value, struct ixgbe_option *opt)
+static int __devinit ixgbe_validate_option(unsigned int *value,
+                                           struct ixgbe_option *opt)
 {
 	if (*value == OPTION_UNSET) {
 		*value = opt->def;
@@ -226,7 +227,7 @@ static int __devinit ixgbe_validate_option(int *value, struct ixgbe_option *opt)
 		break;
 	case range_option:
 		if (*value >= opt->arg.r.min && *value <= opt->arg.r.max) {
-			printk(KERN_INFO "ixgbe: %s set to %i\n", opt->name, *value);
+			printk(KERN_INFO "ixgbe: %s set to %d\n", opt->name, *value);
 			return 0;
 		}
 		break;
@@ -248,7 +249,7 @@ static int __devinit ixgbe_validate_option(int *value, struct ixgbe_option *opt)
 		BUG();
 	}
 
-	printk(KERN_INFO "Invalid %s specified (%i) %s\n",
+	printk(KERN_INFO "Invalid %s specified (%d) %s\n",
 	       opt->name, *value, opt->err);
 	*value = opt->def;
 	return -1;
@@ -271,7 +272,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 
 	if (bd >= IXGBE_MAX_NIC) {
 		printk(KERN_NOTICE
-		       "Warning: no configuration for board #%i\n", bd);
+		       "Warning: no configuration for board #%d\n", bd);
 		printk(KERN_NOTICE "Using defaults for all values\n");
 #ifndef module_param_array
 		bd = IXGBE_MAX_NIC;
@@ -279,7 +280,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	}
 
 	{ /* Interrupt Type */
-		int i_type;
+		unsigned int i_type;
 		struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Interrupt Type",
@@ -334,7 +335,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_MQ > bd) {
 #endif
-			int mq = MQ[bd];
+			unsigned int mq = MQ[bd];
 			ixgbe_validate_option(&mq, &opt);
 			if (mq)
 				adapter->flags |= IXGBE_FLAG_MQ_CAPABLE;
@@ -349,9 +350,9 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 #endif
 #ifdef CONFIG_IXGBE_NAPI
-		/* Must disable multiqueue for NAPI operation until
-		 * multiqueue support is added in the kernel.  I.e.,
-		 * getting rid of the fake netdevs.
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
+		/* Must disable multiqueue for NAPI operation on
+		 * kernels that don't have multiqueue NAPI support
 		 */
 		if (adapter->flags & IXGBE_FLAG_MQ_CAPABLE) {
 			DPRINTK(PROBE, INFO,
@@ -359,6 +360,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			        "is enabled.  Disabling Multiple Queues.\n");
 			adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
 		}
+#endif
 #endif
 		/* Check Interoperability */
 		if ((adapter->flags & IXGBE_FLAG_MQ_CAPABLE) &&
@@ -381,7 +383,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_DCA > bd) {
 #endif
-			int dca = DCA[bd];
+			unsigned int dca = DCA[bd];
 			ixgbe_validate_option(&dca, &opt);
 			if (dca)
 				adapter->flags |= IXGBE_FLAG_DCA_ENABLED;
@@ -414,7 +416,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.arg  = { .r = { .min = OPTION_DISABLED,
 					 .max = IXGBE_MAX_RSS_INDICES}}
 		};
-		int rss = RSS[bd];
+		unsigned int rss = RSS[bd];
 
 #ifdef module_param_array
 		if (num_RSS > bd) {
@@ -575,7 +577,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_LLIPush > bd) {
 #endif
-			int lli_push = LLIPush[bd];
+			unsigned int lli_push = LLIPush[bd];
 			ixgbe_validate_option(&lli_push, &opt);
 			if (lli_push)
 				adapter->flags |= IXGBE_FLAG_LLI_PUSH;
@@ -592,7 +594,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	}
 #endif /* IXGBE_NO_LLI */
 	{ /* Rx buffer mode */
-		int rx_buf_mode;
+		unsigned int rx_buf_mode;
 		struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Rx buffer mode",

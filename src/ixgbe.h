@@ -192,7 +192,9 @@ struct ixgbe_ring {
 	unsigned int total_bytes;
 	unsigned int total_packets;
 
-	u16 reg_idx;
+	u16 reg_idx; /* holds the special value that gets the hardware register
+	              * offset associated with this ring, which is different
+	              * for DCE and RSS modes */
 
 #ifdef IXGBE_DCA
 	/* cpu for tx queue */
@@ -200,7 +202,9 @@ struct ixgbe_ring {
 #endif
 
 	struct ixgbe_queue_stats q_stats;
-	u8 v_idx;
+	u8 v_idx; /* maps directly to the index for this ring in the hardware
+	           * vector array, can also be used for finding the bit in EICR
+	           * and friends that represents the vector for this ring */
 #ifndef IXGBE_NO_LRO
 	/* LRO list for rx queue */
 	struct ixgbe_lro_list lrolist;
@@ -225,6 +229,7 @@ struct ixgbe_ring_feature {
  */
 struct ixgbe_q_vector {
 	struct ixgbe_adapter *adapter;
+	struct napi_struct napi;
 	DECLARE_BITMAP(rxr_idx, MAX_RX_QUEUES); /* Rx ring indices */
 	DECLARE_BITMAP(txr_idx, MAX_TX_QUEUES); /* Tx ring indices */
 	u8 rxr_count;     /* Rx ring count assigned to this vector */
@@ -278,7 +283,6 @@ struct ixgbe_adapter {
 #endif
 	u16 bd_number;
 	u16 rx_buf_len;
-	atomic_t irq_sem;
 	struct work_struct reset_task;
 	struct ixgbe_q_vector q_vector[MAX_MSIX_Q_VECTORS];
 	char name[MAX_MSIX_COUNT][IFNAMSIZ + 5];
@@ -295,6 +299,7 @@ struct ixgbe_adapter {
 	
 	/* TX */
 	struct ixgbe_ring *tx_ring;	/* One per active queue */
+	int num_tx_queues;
 	u64 restart_queue;
 	u64 hw_csum_tx_good;
 	u64 lsc_int;
@@ -305,11 +310,13 @@ struct ixgbe_adapter {
 
 	/* RX */
 	struct ixgbe_ring *rx_ring;	/* One per active queue */
+	int num_rx_queues;
 	u64 hw_csum_rx_error;
 	u64 hw_csum_rx_good;
 	u64 non_eop_descs;
-	int num_tx_queues;
-	int num_rx_queues;
+#ifndef CONFIG_IXGBE_NAPI
+	u64 rx_dropped_backlog;		/* count drops from rx intr handler */
+#endif
 	int num_msix_vectors;
 	struct ixgbe_ring_feature ring_feature[3];
 	struct msix_entry *msix_entries;

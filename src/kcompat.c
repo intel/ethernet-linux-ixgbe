@@ -26,6 +26,14 @@
 
 *******************************************************************************/
 
+
+
+
+
+#ifdef DRIVER_IXGBE
+#include "ixgbe.h"
+#endif
+
 #include "kcompat.h"
 
 /*****************************************************************************/
@@ -280,3 +288,26 @@ struct sk_buff *_kc_netdev_alloc_skb(struct net_device *dev,
 	return skb;
 }
 #endif /* <= 2.6.17 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
+#ifdef NAPI
+int __kc_adapter_clean(struct net_device *netdev, int *budget)
+{
+	int work_done;
+	int work_to_do = min(*budget, netdev->quota);
+	struct adapter_struct *adapter = netdev_priv(netdev);
+#ifdef DRIVER_IXGBE
+	struct napi_struct *napi = &adapter->q_vector[0].napi;
+#else
+	struct napi_struct *napi = &adapter->rx_ring[0].napi;
+#endif
+
+	work_done = napi->poll(napi, work_to_do);
+	*budget -= work_done;
+	netdev->quota -= work_done;
+	return work_done ? 1 : 0;
+}
+#endif /* NAPI */
+#endif /* <= 2.6.24 */
+
