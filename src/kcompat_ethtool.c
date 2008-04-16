@@ -782,7 +782,7 @@ int ethtool_ioctl(struct ifreq *ifr)
 
 	/*
 	 * XXX: This can be pushed down into the ethtool_* handlers that
-	 * need it.  Keep existing behaviour for the moment.
+	 * need it.  Keep existing behavior for the moment.
 	 */
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;

@@ -53,6 +53,14 @@ s32 ixgbe_read_phy_reg(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 s32 ixgbe_write_phy_reg(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
                         u16 phy_data);
 
+s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw);
+s32 ixgbe_check_phy_link(struct ixgbe_hw *hw,
+                         ixgbe_link_speed *speed,
+                         bool *link_up);
+s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw,
+                               ixgbe_link_speed speed,
+                               bool autoneg,
+                               bool autoneg_wait_to_complete);
 s32 ixgbe_setup_link(struct ixgbe_hw *hw);
 s32 ixgbe_setup_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
                            bool autoneg, bool autoneg_wait_to_complete);
@@ -71,10 +79,13 @@ s32 ixgbe_read_eeprom(struct ixgbe_hw *hw, u16 offset, u16 *data);
 s32 ixgbe_validate_eeprom_checksum(struct ixgbe_hw *hw, u16 *checksum_val);
 s32 ixgbe_update_eeprom_checksum(struct ixgbe_hw *hw);
 
-s32 ixgbe_set_rar(struct ixgbe_hw *hw, u32 index, u8 *addr,
+s32 ixgbe_set_rar(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
                   u32 enable_addr);
+s32 ixgbe_set_vmdq(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
 s32 ixgbe_init_rx_addrs(struct ixgbe_hw *hw);
 u32 ixgbe_get_num_rx_addrs(struct ixgbe_hw *hw);
+s32 ixgbe_update_uc_addr_list(struct ixgbe_hw *hw, u8 *addr_list,
+                              u32 addr_count, ixgbe_mc_addr_itr func);
 s32 ixgbe_update_mc_addr_list(struct ixgbe_hw *hw, u8 *mc_addr_list,
                               u32 mc_addr_count, ixgbe_mc_addr_itr func);
 s32 ixgbe_enable_mc(struct ixgbe_hw *hw);

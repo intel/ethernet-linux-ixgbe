@@ -56,11 +56,10 @@
 
 #define PFX "ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
-	(void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
+	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
-		__FUNCTION__ , ## args))
+		__FUNCTION__ , ## args)))
 
-#define HW_PERF
 /* TX/RX descriptor defines */
 #define IXGBE_DEFAULT_TXD		   1024
 #define IXGBE_MAX_TXD			   4096
@@ -106,8 +105,6 @@
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0x0000e000
 #define IXGBE_TX_FLAGS_VLAN_SHIFT	16
-
-#define IXGBE_MAX_INTR 10
 
 #ifndef IXGBE_NO_LRO
 #define IXGBE_LRO_MAX 32	/*Maximum number of LRO descriptors*/
@@ -210,6 +207,7 @@ struct ixgbe_ring {
 	struct ixgbe_lro_list lrolist;
 #endif
 	u16 work_limit;                /* max work per interrupt */
+	u16 rx_buf_len;
 };
 
 #define RING_F_VMDQ 1
@@ -229,7 +227,9 @@ struct ixgbe_ring_feature {
  */
 struct ixgbe_q_vector {
 	struct ixgbe_adapter *adapter;
+#ifdef CONFIG_IXGBE_NAPI
 	struct napi_struct napi;
+#endif
 	DECLARE_BITMAP(rxr_idx, MAX_RX_QUEUES); /* Rx ring indices */
 	DECLARE_BITMAP(txr_idx, MAX_TX_QUEUES); /* Tx ring indices */
 	u8 rxr_count;     /* Rx ring count assigned to this vector */
@@ -282,7 +282,6 @@ struct ixgbe_adapter {
 	struct vlan_group *vlgrp;
 #endif
 	u16 bd_number;
-	u16 rx_buf_len;
 	struct work_struct reset_task;
 	struct ixgbe_q_vector q_vector[MAX_MSIX_Q_VECTORS];
 	char name[MAX_MSIX_COUNT][IFNAMSIZ + 5];

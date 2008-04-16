@@ -249,7 +249,7 @@ static int __devinit ixgbe_validate_option(unsigned int *value,
 		BUG();
 	}
 
-	printk(KERN_INFO "Invalid %s specified (%d) %s\n",
+	printk(KERN_INFO "ixgbe: Invalid %s specified (%d),  %s\n",
 	       opt->name, *value, opt->err);
 	*value = opt->def;
 	return -1;
@@ -411,7 +411,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Receive-Side Scaling (RSS)",
-			.err  = "defaulting to Enabled",
+			.err  = "using default.",
 			.def  = OPTION_ENABLED,
 			.arg  = { .r = { .min = OPTION_DISABLED,
 					 .max = IXGBE_MAX_RSS_INDICES}}
@@ -431,6 +431,21 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				          (int)num_online_cpus());
 				break;
 			default:
+				/* limit the value to no more than the number
+				 * of CPUs */
+				if (rss > num_online_cpus()) {
+					opt.arg.r.max = num_online_cpus();
+					/* print the message */
+					ixgbe_validate_option(&rss, &opt);
+					DPRINTK(PROBE, INFO,
+					"RSS should be no more than the number "
+					"of online CPUs\n");
+					/* use the default setting */
+					rss = min(IXGBE_MAX_RSS_INDICES,
+					          (int)num_online_cpus());
+					break;
+				}
+
 				ixgbe_validate_option(&rss, &opt);
 				break;
 			}

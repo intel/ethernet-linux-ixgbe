@@ -1,8 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-December 3, 2007
-
+January 22, 2008
 
 Contents
 ========
@@ -140,17 +139,24 @@ To manually build this driver:
 To build ixgbe driver with DCA:
 ------------------------------
 
-1) build ioatdma files
+This example assumes the ioatdma and ixgbe sources are in /usr/src
+ 
+1. Unpack the ioatdma source, build and install
 
-2) install dma and dca drivers (make install)
-
-3) rebuild/reinstall ixgbe driver
-   
-
-    make install CLFAGS_EXTRA="-DIXGBE_DCA -I/path/to/ioatdma-1.22/include"
-
-4) reboot
-
+     cd /usr/src
+     tar zxf ioatdma-<ioat version>.tar.gz
+     cd ioatdma-<ioat version>
+     make
+     make install
+ 
+2. Unpack with ixgbe driver, build with DCA support and install
+     
+     cd /usr/src
+     tar zxf ixgbe-<ixgbe version>.tar.gz
+     cd ixgbe-<ixgbe-version>/src
+     make install CLFLAGS_EXTRA="-DIXGBE_DCA -I/path/to/ioatdma-<ioat-version>
+     /include"
+    
 
 Command Line Parameters
 =======================
@@ -178,7 +184,7 @@ Valid Range: 0 - 16
 2-16 = enables RSS, with 2-16 queues
 Default Value: 1
 RSS also effects the number of transmit queues allocated on 2.6.23 and
-newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file.
+newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
 
 
 MQ - Multi Queue
@@ -236,6 +242,10 @@ it may help throughput in some circumstances.
 very low latency.  This can sometimes cause extra CPU utilization.  If planning
 on deploying ixgbe in a latency sensitive environment please consider this
 parameter.
+0 = Setting InterruptThrottleRate to 0 turns off any interrupt moderation and
+may improve small packet latency, but is generally not suitable for bulk 
+throughput traffic due to the increased cpu utilization of the higher interrupt
+rate.
 
 
 LLI (Low Latency Interrupts)

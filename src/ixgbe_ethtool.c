@@ -696,6 +696,61 @@ static int ixgbe_get_eeprom(struct net_device *netdev,
 	return ret_val;
 }
 
+static int ixgbe_set_eeprom(struct net_device *netdev,
+                            struct ethtool_eeprom *eeprom, u8 *bytes)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	u16 *eeprom_buff;
+	void *ptr;
+	int max_len, first_word, last_word, ret_val = 0;
+	u16 i;
+
+	if (eeprom->len == 0)
+		return -EOPNOTSUPP;
+
+	if (eeprom->magic != (hw->vendor_id | (hw->device_id << 16)))
+		return -EFAULT;
+
+	max_len = hw->eeprom.word_size * 2;
+
+	first_word = eeprom->offset >> 1;
+	last_word = (eeprom->offset + eeprom->len - 1) >> 1;
+	eeprom_buff = kmalloc(max_len, GFP_KERNEL);
+	if (!eeprom_buff)
+		return -ENOMEM;
+
+	ptr = (void *)eeprom_buff;
+
+	if (eeprom->offset & 1) {
+		/* need read/modify/write of first changed EEPROM word */
+		/* only the second byte of the word is being modified */
+		ret_val = ixgbe_read_eeprom(hw, first_word, &eeprom_buff[0]);
+		ptr++;
+	}
+	if (((eeprom->offset + eeprom->len) & 1) && (ret_val == 0)) {
+		/* need read/modify/write of last changed EEPROM word */
+		/* only the first byte of the word is being modified */
+		ret_val = ixgbe_read_eeprom(hw, last_word,
+		                  &eeprom_buff[last_word - first_word]);
+	}
+
+	/* Device's eeprom is always little-endian, word addressable */
+	for (i = 0; i < last_word - first_word + 1; i++)
+		le16_to_cpus(&eeprom_buff[i]);
+
+	memcpy(ptr, bytes, eeprom->len);
+
+	for (i = 0; i <= (last_word - first_word); i++)
+		ret_val |= ixgbe_write_eeprom(hw, first_word + i, eeprom_buff[i]);
+
+	/* Update the checksum */
+	ixgbe_update_eeprom_checksum(hw);
+
+	kfree(eeprom_buff);
+	return ret_val;
+}
+
 static void ixgbe_get_drvinfo(struct net_device *netdev,
                               struct ethtool_drvinfo *drvinfo)
 {
@@ -927,7 +982,7 @@ struct ixgbe_reg_test {
 };
 
 /* In the hardware, registers are laid out either singly, in arrays
- * spaced 0x100 bytes apart, or in contiguous tables.  We assume
+ * spaced 0x40 bytes apart, or in contiguous tables.  We assume
  * most tests take place on arrays or single registers (handled
  * as a single-element array) and special-case the tables.
  * Table tests are always pattern tests.
@@ -973,9 +1028,10 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 
 #define REG_PATTERN_TEST(R, M, W)                                             \
 {                                                                             \
-	u32 pat, val;                                                         \
+	u32 pat, val, before;                                                 \
 	const u32 _test[] = {0x5A5A5A5A, 0xA5A5A5A5, 0x00000000, 0xFFFFFFFF}; \
 	for (pat = 0; pat < ARRAY_SIZE(_test); pat++) {                       \
+		before = readl(adapter->hw.hw_addr + R);                      \
 		writel((_test[pat] & W), (adapter->hw.hw_addr + R));          \
 		val = readl(adapter->hw.hw_addr + R);                         \
 		if (val != (_test[pat] & W & M)) {                            \
@@ -983,22 +1039,27 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 					  "0x%08X expected 0x%08X\n",         \
 				R, val, (_test[pat] & W & M));                \
 			*data = R;                                            \
+			writel(before, adapter->hw.hw_addr + R);              \
 			return 1;                                             \
 		}                                                             \
+		writel(before, adapter->hw.hw_addr + R);                      \
 	}                                                                     \
 }
 
 #define REG_SET_AND_CHECK(R, M, W)                                            \
 {                                                                             \
-	u32 val;                                                              \
+	u32 val, before;                                                      \
+	before = readl(adapter->hw.hw_addr + R);                              \
 	writel((W & M), (adapter->hw.hw_addr + R));                           \
 	val = readl(adapter->hw.hw_addr + R);                                 \
 	if ((W & M) != (val & M)) {                                           \
 		DPRINTK(DRV, ERR, "set/check reg %04X test failed: got 0x%08X "\
 				 "expected 0x%08X\n", R, (val & M), (W & M)); \
 		*data = R;                                                    \
+		writel(before, (adapter->hw.hw_addr + R));                    \
 		return 1;                                                     \
 	}                                                                     \
+	writel(before, (adapter->hw.hw_addr + R));                            \
 }
 
 static int ixgbe_reg_test(struct ixgbe_adapter *adapter, u64 *data)
@@ -1037,19 +1098,19 @@ static int ixgbe_reg_test(struct ixgbe_adapter *adapter, u64 *data)
 		for (i = 0; i < test->array_len; i++) {
 			switch (test->test_type) {
 			case PATTERN_TEST:
-				REG_PATTERN_TEST(test->reg + (i * 0x100),
+				REG_PATTERN_TEST(test->reg + (i * 0x40),
 						test->mask,
 						test->write);
 				break;
 			case SET_READ_TEST:
-				REG_SET_AND_CHECK(test->reg + (i * 0x100),
+				REG_SET_AND_CHECK(test->reg + (i * 0x40),
 						test->mask,
 						test->write);
 				break;
 			case WRITE_NO_TEST:
 				writel(test->write,
 				       (adapter->hw.hw_addr + test->reg)
-				       + (i * 0x100));
+				       + (i * 0x40));
 				break;
 			case TABLE32_TEST:
 				REG_PATTERN_TEST(test->reg + (i * 4),
@@ -1340,6 +1401,7 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 	}
 
 	rx_ring->size = rx_ring->count * sizeof(struct ixgbe_legacy_rx_desc);
+	rx_ring->size = ALIGN(rx_ring->size, 4096);
 	if (!(rx_ring->desc = pci_alloc_consistent(pdev, rx_ring->size,
 						   &rx_ring->dma))) {
 		ret_val = 5;
@@ -1609,18 +1671,22 @@ static void ixgbe_diag_test(struct net_device *netdev,
 		else
 			ixgbe_reset(adapter);
 
+		DPRINTK(HW, INFO, "register testing starting\n");
 		if (ixgbe_reg_test(adapter, &data[0]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 		ixgbe_reset(adapter);
+		DPRINTK(HW, INFO, "eeprom testing starting\n");
 		if (ixgbe_eeprom_test(adapter, &data[1]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 		ixgbe_reset(adapter);
+		DPRINTK(HW, INFO, "interrupt testing starting\n");
 		if (ixgbe_intr_test(adapter, &data[2]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 		ixgbe_reset(adapter);
+		DPRINTK(HW, INFO, "loopback testing starting\n");
 		if (ixgbe_loopback_test(adapter, &data[3]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
@@ -1742,6 +1808,7 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 	.get_link               = ethtool_op_get_link,
 	.get_eeprom_len         = ixgbe_get_eeprom_len,
 	.get_eeprom             = ixgbe_get_eeprom,
+	.set_eeprom             = ixgbe_set_eeprom,
 	.get_ringparam          = ixgbe_get_ringparam,
 	.set_ringparam          = ixgbe_set_ringparam,
 	.get_pauseparam         = ixgbe_get_pauseparam,

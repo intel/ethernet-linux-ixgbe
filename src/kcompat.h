@@ -97,6 +97,8 @@
 
 
 
+
+
 #ifdef DRIVER_IXGBE
 #define adapter_struct ixgbe_adapter
 #endif
@@ -577,7 +579,7 @@ struct _kc_ethtool_pauseparam {
 	u32	cmd;	/* ETHTOOL_{G,S}PAUSEPARAM */
 
 	/* If the link is being auto-negotiated (via ethtool_cmd.autoneg
-	 * being true) the user may set 'autonet' here non-zero to have the
+	 * being true) the user may set 'autoneg' here non-zero to have the
 	 * pause parameters be auto-negotiated too.  In such a case, the
 	 * {rx,tx}_pause values below determine what capabilities are
 	 * advertised.
@@ -1275,7 +1277,7 @@ static inline unsigned long _kc_msleep_interruptible(unsigned int msecs)
 #define MII_STAT1000        0x0a        /* 1000BASE-T status           */
 /* Advertisement control register. */
 #define ADVERTISE_PAUSE_CAP     0x0400  /* Try for pause               */
-#define ADVERTISE_PAUSE_ASYM    0x0800  /* Try for asymetric pause     */
+#define ADVERTISE_PAUSE_ASYM    0x0800  /* Try for asymmetric pause     */
 /* 1000BASE-T Control register */
 #define ADVERTISE_1000FULL      0x0200  /* Advertise 1000BASE-T full duplex */
 #endif
@@ -1299,17 +1301,10 @@ extern void *_kc_kzalloc(size_t size, int flags);
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16) )
-#undef CONFIG_E1000_PCI_ERS
-#undef CONFIG_IXGB_PCI_ERS
-#ifdef _IXGBE_H_
-#undef CONFIG_IXGBE_PCI_ERS
-#endif /* _IXGBE_H */
-#else
-#define CONFIG_E1000_PCI_ERS
-#define CONFIG_IXGB_PCI_ERS
-#ifdef _IXGBE_H_
-#define CONFIG_IXGBE_PCI_ERS
-#endif /* _IXGBE_H */
+#undef HAVE_PCI_ERS
+#else /* 2.6.16 and above */
+#undef HAVE_PCI_ERS
+#define HAVE_PCI_ERS
 #endif
 
 /*****************************************************************************/
@@ -1502,6 +1497,7 @@ do { \
 struct napi_struct {
 	/* used to look up the real NAPI polling routine */
 	int (*poll)(struct napi_struct *, int);
+	int weight;
 };
 extern int __kc_adapter_clean(struct net_device *, int *);
 #define netif_rx_complete(netdev, napi) netif_rx_complete(netdev)
@@ -1516,6 +1512,7 @@ extern int __kc_adapter_clean(struct net_device *, int *);
 		_netdev->poll = &(__kc_adapter_clean); \
 		_netdev->weight = (_weight); \
 		__napi->poll = &(_poll); \
+		__napi->weight = (_weight); \
 		netif_poll_disable(_netdev); \
 	} while (0)
 #endif /* < 2.6.24 */

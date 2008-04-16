@@ -31,39 +31,6 @@
 #include "ixgbe_phy.h"
 
 /**
- *  ixgbe_init_shared_code_phy - Initialize PHY shared code
- *  @hw: pointer to hardware structure
- **/
-s32 ixgbe_init_shared_code_phy(struct ixgbe_hw *hw)
-{
-	/* Assign function pointers */
-	ixgbe_assign_func_pointers_phy(hw);
-
-	return IXGBE_SUCCESS;
-}
-
-/**
- *  ixgbe_assign_func_pointers_phy -  Assigns PHY-specific function pointers
- *  @hw: pointer to hardware structure
- *
- *  Note, generic function pointers have already been assigned, so the
- *  function pointers set here are only for PHY-specific functions.
- **/
-s32 ixgbe_assign_func_pointers_phy(struct ixgbe_hw *hw)
-{
-	hw->func.ixgbe_func_reset_phy =
-	                    &ixgbe_reset_phy_generic;
-	hw->func.ixgbe_func_read_phy_reg =
-	                    &ixgbe_read_phy_reg_generic;
-	hw->func.ixgbe_func_write_phy_reg =
-	                    &ixgbe_write_phy_reg_generic;
-	hw->func.ixgbe_func_identify_phy =
-	                    &ixgbe_identify_phy_generic;
-
-	return IXGBE_SUCCESS;
-}
-
-/**
  *  ixgbe_identify_phy_generic - Get physical layer module
  *  @hw: pointer to hardware structure
  *
@@ -74,15 +41,21 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 	s32 status = IXGBE_ERR_PHY_ADDR_INVALID;
 	u32 phy_addr;
 
-	for (phy_addr = 0; phy_addr < IXGBE_MAX_PHY_ADDR; phy_addr++) {
-		if (ixgbe_validate_phy_addr(hw, phy_addr)) {
-			hw->phy.addr = phy_addr;
-			ixgbe_get_phy_id(hw);
-			hw->phy.type = ixgbe_get_phy_type_from_id(hw->phy.id);
-			status = IXGBE_SUCCESS;
-			break;
+	if (hw->phy.type == ixgbe_phy_unknown) {
+		for (phy_addr = 0; phy_addr < IXGBE_MAX_PHY_ADDR; phy_addr++) {
+			if (ixgbe_validate_phy_addr(hw, phy_addr)) {
+				hw->phy.addr = phy_addr;
+				ixgbe_get_phy_id(hw);
+				hw->phy.type =
+				        ixgbe_get_phy_type_from_id(hw->phy.id);
+				status = IXGBE_SUCCESS;
+				break;
+			}
 		}
+	} else {
+		status = IXGBE_SUCCESS;
 	}
+
 	return status;
 }
 
@@ -97,10 +70,8 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 	bool valid = FALSE;
 
 	hw->phy.addr = phy_addr;
-	ixgbe_read_phy_reg_generic(hw,
-	                           IXGBE_MDIO_PHY_ID_HIGH,
-	                           IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-	                           &phy_id);
+	hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_HIGH,
+	                     IXGBE_MDIO_PMA_PMD_DEV_TYPE, &phy_id);
 
 	if (phy_id != 0xFFFF && phy_id != 0x0)
 		valid = TRUE;
@@ -119,17 +90,15 @@ s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 	u16 phy_id_high = 0;
 	u16 phy_id_low = 0;
 
-	status = ixgbe_read_phy_reg_generic(hw,
-	                                    IXGBE_MDIO_PHY_ID_HIGH,
-	                                    IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-	                                    &phy_id_high);
+	status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_HIGH,
+	                              IXGBE_MDIO_PMA_PMD_DEV_TYPE,
+	                              &phy_id_high);
 
 	if (status == IXGBE_SUCCESS) {
 		hw->phy.id = (u32)(phy_id_high << 16);
-		status = ixgbe_read_phy_reg_generic(hw,
-		                                   IXGBE_MDIO_PHY_ID_LOW,
-		                                   IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-		                                   &phy_id_low);
+		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_LOW,
+		                              IXGBE_MDIO_PMA_PMD_DEV_TYPE,
+		                              &phy_id_low);
 		hw->phy.id |= (u32)(phy_id_low & IXGBE_PHY_REVISION_MASK);
 		hw->phy.revision = (u32)(phy_id_low & ~IXGBE_PHY_REVISION_MASK);
 	}
@@ -168,9 +137,9 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 	 * Perform soft PHY reset to the PHY_XS.
 	 * This will cause a soft reset to the PHY
 	 */
-	return ixgbe_write_phy_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
-	                           IXGBE_MDIO_PHY_XS_DEV_TYPE,
-	                           IXGBE_MDIO_PHY_XS_RESET);
+	return hw->phy.ops.write_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
+	                             IXGBE_MDIO_PHY_XS_DEV_TYPE,
+	                             IXGBE_MDIO_PHY_XS_RESET);
 }
 
 /**
@@ -267,6 +236,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 
 		ixgbe_release_swfw_sync(hw, gssr);
 	}
+
 	return status;
 }
 
@@ -315,14 +285,14 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 
 			command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 
-			if ((command & IXGBE_MSCA_MDI_COMMAND) == 0) {
-				DEBUGFUNC("PHY address cmd didn't complete\n");
+			if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
 				break;
-			}
 		}
 
-		if ((command & IXGBE_MSCA_MDI_COMMAND) != 0)
+		if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
+			DEBUGOUT("PHY address cmd didn't complete\n");
 			status = IXGBE_ERR_PHY;
+		}
 
 		if (status == IXGBE_SUCCESS) {
 			/*
@@ -346,15 +316,14 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 
 				command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 
-				if ((command & IXGBE_MSCA_MDI_COMMAND) == 0) {
-					DEBUGFUNC("PHY write command did not "
-					          "complete.\n");
+				if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
 					break;
-				}
 			}
 
-			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0)
+			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
+				DEBUGOUT("PHY address cmd didn't complete\n");
 				status = IXGBE_ERR_PHY;
+			}
 		}
 
 		ixgbe_release_swfw_sync(hw, gssr);
@@ -364,45 +333,93 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 }
 
 /**
- *  ixgbe_setup_phy_link - Restart PHY autoneg
+ *  ixgbe_setup_phy_link_generic - Set and restart autoneg
  *  @hw: pointer to hardware structure
  *
  *  Restart autonegotiation and PHY and waits for completion.
  **/
-s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
+s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 {
-	return ixgbe_call_func(hw, ixgbe_func_setup_phy_link, (hw),
-	                       IXGBE_NOT_IMPLEMENTED);
+	s32 status = IXGBE_NOT_IMPLEMENTED;
+	u32 time_out;
+	u32 max_time_out = 10;
+	u16 autoneg_reg = IXGBE_MII_AUTONEG_REG;
+
+	/*
+	 * Set advertisement settings in PHY based on autoneg_advertised
+	 * settings. If autoneg_advertised = 0, then advertise default values
+	 * tnx devices cannot be "forced" to a autoneg 10G and fail.  But can
+	 * for a 1G.
+	 */
+	hw->phy.ops.read_reg(hw, IXGBE_MII_SPEED_SELECTION_REG,
+	                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
+
+	if (hw->phy.autoneg_advertised == IXGBE_LINK_SPEED_1GB_FULL)
+		autoneg_reg &= 0xEFFF; /* 0 in bit 12 is 1G operation */
+	else
+		autoneg_reg |= 0x1000; /* 1 in bit 12 is 10G/1G operation */
+
+	hw->phy.ops.write_reg(hw, IXGBE_MII_SPEED_SELECTION_REG,
+	                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_reg);
+
+	/* Restart PHY autonegotiation and wait for completion */
+	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
+	                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
+
+	autoneg_reg |= IXGBE_MII_RESTART;
+
+	hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
+	                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_reg);
+
+	/* Wait for autonegotiation to finish */
+	for (time_out = 0; time_out < max_time_out; time_out++) {
+		udelay(10);
+		/* Restart PHY autonegotiation and wait for completion */
+		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_STATUS,
+		                              IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                              &autoneg_reg);
+
+		autoneg_reg &= IXGBE_MII_AUTONEG_COMPLETE;
+		if (autoneg_reg == IXGBE_MII_AUTONEG_COMPLETE) {
+			status = IXGBE_SUCCESS;
+			break;
+		}
+	}
+
+	if (time_out == max_time_out)
+		status = IXGBE_ERR_LINK_SETUP;
+
+	return status;
 }
 
 /**
- *  ixgbe_check_phy_link - Determine link and speed status
- *  @hw: pointer to hardware structure
- *
- *  Reads a PHY register to determine if link is up and the current speed for
- *  the PHY.
- **/
-s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
-                         bool *link_up)
-{
-	return ixgbe_call_func(hw, ixgbe_func_check_phy_link, (hw, speed,
-	                       link_up), IXGBE_NOT_IMPLEMENTED);
-}
-
-/**
- *  ixgbe_setup_phy_link_speed - Set auto advertise
+ *  ixgbe_setup_phy_link_speed_generic - Sets the auto advertised capabilities
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
  *  @autoneg: TRUE if autonegotiation enabled
- *
- *  Sets the auto advertised capabilities
  **/
-s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
-                               bool autoneg,
-                               bool autoneg_wait_to_complete)
+s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
+                                       ixgbe_link_speed speed,
+                                       bool autoneg,
+                                       bool autoneg_wait_to_complete)
 {
-	return ixgbe_call_func(hw, ixgbe_func_setup_phy_link_speed, (hw, speed,
-	                       autoneg, autoneg_wait_to_complete),
-	                       IXGBE_NOT_IMPLEMENTED);
+
+	/*
+	 * Clear autoneg_advertised and set new values based on input link
+	 * speed.
+	 */
+	hw->phy.autoneg_advertised = 0;
+
+	if (speed & IXGBE_LINK_SPEED_10GB_FULL) {
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
+	}
+	if (speed & IXGBE_LINK_SPEED_1GB_FULL) {
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_1GB_FULL;
+	}
+
+	/* Setup link based on the new speed settings */
+	hw->phy.ops.setup_link(hw);
+
+	return IXGBE_SUCCESS;
 }
 

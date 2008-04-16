@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 1.3.16.1
+Version: 1.3.20.3
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -10,6 +10,10 @@ Group: System Environment/Kernel
 Provides: %{name}
 URL: http://www.intel.com/network/connectivity/products/server_adapters.htm
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
+# do not generate debugging packages by default - newer versions of rpmbuild
+# may instead need:
+#%define debug_package %{nil}
+%debug_package %{nil}
 # macros for finding system files to update at install time (pci.ids, pcitable)
 %define find() %(for f in %*; do if [ -e $f ]; then echo $f; break; fi; done)
 %define _pciids   /usr/share/pci.ids        /usr/share/hwdata/pci.ids
