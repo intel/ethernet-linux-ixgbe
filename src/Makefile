@@ -1,7 +1,7 @@
 ################################################################################
 #
 # Intel 10 Gigabit PCI Express Linux driver
-# Copyright(c) 1999 - 2007 Intel Corporation.
+# Copyright(c) 1999 - 2008 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -20,7 +20,6 @@
 # the file called "COPYING".
 #
 # Contact Information:
-# Linux NICS <linux.nics@intel.com>
 # e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
 # Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 #
@@ -32,8 +31,10 @@
 # core driver files
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
+         ixgbe_dcb.c ixgbe_dcb_82598.c \
          ixgbe_phy.c
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
+         ixgbe_dcb.h \
          ixgbe_phy.h
 ifeq (,$(BUILD_KERNEL))
 BUILD_KERNEL=$(shell uname -r)
@@ -82,7 +83,7 @@ endif
 ifneq (,$(wildcard /boot/vmlinuz.version.h))
   VERSION_FILE := /boot/vmlinuz.version.h
   CONFIG_FILE  := /boot/vmlinuz.autoconf.h
-  KVER := $(shell $(CC) $(CFLAGS) -E -dM $(VERSION_FILE) | \
+  KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | \
           grep UTS_RELEASE | awk '{ print $$3 }' | sed 's/\"//g')
   ifeq ($(KVER),$(shell uname -r))
     # set up include path to override headers from kernel source
@@ -158,8 +159,8 @@ EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
                   -include $(KSRC)/include/linux/modversions.h")
 
 EXTRA_CFLAGS += $(CFLAGS_EXTRA)
-# enable RSS by default
 EXTRA_CFLAGS += -DCONFIG_IXGBE_RSS
+# do nothing here, so it's stripped properly
 
 RHC := $(KSRC)/include/linux/rhconfig.h
 ifneq (,$(wildcard $(RHC)))
@@ -170,7 +171,7 @@ ifneq (,$(wildcard $(RHC)))
 endif
 
 # get the kernel version - we use this to find the correct install path
-KVER := $(shell $(CC) $(CFLAGS) -E -dM $(VERSION_FILE) | grep UTS_RELEASE | \
+KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | grep UTS_RELEASE | \
         awk '{ print $$3 }' | sed 's/\"//g')
 
 # assume source symlink is the same as build, otherwise adjust KOBJ
@@ -185,6 +186,14 @@ KKVER := $(shell echo $(KVER) | \
 ifeq ($(KKVER), 0)
   $(error *** Aborting the build. \
           *** This driver is not supported on kernel versions older than 2.4.0)
+endif
+
+# Add DCB netlink source and FCoE sysfs source if our kernel is 2.6.23 or newer
+KKVER := $(shell echo $(KVER) | \
+         awk '{ if ($$0 ~ /2\.[6-9]\.(2[3-9]|[3-9][0-9])/) print "1"; else print "0"}')
+ifeq ($(KKVER), 1)
+  CFILES += ixgbe_dcb_nl.c
+  CFILES += ixgbe_sysfs.c
 endif
 
 # set the install path

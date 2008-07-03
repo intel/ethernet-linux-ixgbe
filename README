@@ -1,11 +1,12 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-April 7, 2008
+June 17, 2008
 
 Contents
 ========
 
+- Important Note
 - In This Release
 - Identifying Your Adapter
 - Building and Installation
@@ -14,6 +15,16 @@ Contents
 - Known Issues/Troubleshooting
 - Support
 
+IMPORTANT NOTE
+==============
+
+WARNING: The ixgbe driver compiles by default with the LRO (Large Receive
+Offload) feature enabled. This option offers the lowest CPU utilization for
+receives, but is completely incompatible with *routing/ip fowarding* and
+*bridging*. If enabling ip forwarding or bridging is a requirement, it is
+necessary to disable LRO using compile time options as noted in the LRO
+section later in this document. The result of not disabling LRO when combined
+with ip forwarding or bridging can be low throughput or even a kernel PANIC.
 
 In This Release
 ===============
@@ -59,7 +70,9 @@ Controller        Adapter Name                      Physical Layer
             Intel(R) 82598EB 10 Gigabit AF 
               Network Connection
             Intel(R) 82598EB 10 Gigabit AT 
-              CX4 Network Connection                  
+              CX4 Network Connection         
+            Intel(R) 10 Gigabit SR Dual
+              Port Express Module
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -135,7 +148,7 @@ To manually build this driver:
 
      ping  <IP_address>
 
-
+e1000-eedc@lists.sourceforge.net
 To build ixgbe driver with DCA:
 ------------------------------
 
@@ -345,7 +358,6 @@ Additional Configurations
 
   NAPI
   ----
-
   NAPI (Rx polling mode) is supported in the ixgbe driver.  NAPI is enabled
   or disabled based on the configuration of the kernel.  To override the 
   default, use the following compile-time flags.
@@ -372,9 +384,9 @@ Additional Configurations
   buffer before they are passed higher up the networking stack, thus reducing
   the number of packets that have to be processed. LRO combines multiple 
   Ethernet frames into a single receive in the stack, thereby potentially 
-  decreasing CPU utilization for receives.
+  decreasing CPU utilization for receives. 
 
-  IXGBE_NO_LRO is a compile time flag. The user can enable it at compile 
+  IXGBE_NO_LRO is a compile time flag. The user can enable it at compile
   time to remove support for LRO from the driver. The flag is used by adding 
   CFLAGS_EXTRA="-DIXGBE_NO_LRO" to the make file when it's being compiled. 
 
@@ -407,7 +419,17 @@ Additional Configurations
   control capable link partner, use Ethtool:
 
      ethtool -A eth? autoneg off rx on tx on
-  
+
+  FCOE
+  ----
+  This release of the ixgbe driver contains new code to enable users to use 
+  Fiber Channel over Ethernet (FCoE) and Data Center Bridging (DCB) 
+  functionality that is supported by the 82598-based hardware.  This code has
+  no default effect on the regular driver operation, and configuring DCB and 
+  FCoE is outside the scope of this driver README. Refer to 
+  http://www.open-fcoe.org/ for FCoE project information and contact 
+  e1000-eedc@lists.sourceforge.net for DCB information.
+
 
 Known Issues/Troubleshooting
 ============================
@@ -446,16 +468,10 @@ Known Issues/Troubleshooting
       make include/linux/version.h.
 
 
-  LRO May Cause Performance Degradation With Routing Packets
-  ----------------------------------------------------------
-  Large Receive Offload (LRO) increases performance by effectively letting 
-  the kernel handle fewer packet headers for the same amount of data.  The 
-  downside of this feature is that it causes the stack to have to fragment 
-  packets in the ip forwarding/routing case due to the large (effective) 
-  MTU size of the received packets.  Intel recommends disabling LRO with 
-  the compile option:
-  
-      make CFLAGS_EXTRA=-DIXGBE_NO_LRO
+  Do Not Use LRO When Routing Packets
+  -----------------------------------
+  Due to a known general compatibility issue with LRO and routing, do not use
+  LRO when routing packets. 
 
 
   Jumbo Frames System Requirement

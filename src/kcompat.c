@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2007 Intel Corporation.
+  Copyright(c) 1999 - 2008 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -20,7 +20,6 @@
   the file called "COPYING".
 
   Contact Information:
-  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -289,6 +288,29 @@ struct sk_buff *_kc_netdev_alloc_skb(struct net_device *dev,
 	return skb;
 }
 #endif /* <= 2.6.17 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23) )
+int ixgbe_sysfs_create(struct ixgbe_adapter *adapter)
+{
+	return 0;
+}
+
+void ixgbe_sysfs_remove(struct ixgbe_adapter *adapter)
+{
+	return;
+}
+
+int ixgbe_dcb_netlink_register()
+{
+	return 0;
+}
+
+int ixgbe_dcb_netlink_unregister()
+{
+	return 0;
+}
+#endif /* < 2.6.23 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )

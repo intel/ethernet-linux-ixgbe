@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2007 Intel Corporation.
+  Copyright(c) 1999 - 2008 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -20,7 +20,6 @@
   the file called "COPYING".
 
   Contact Information:
-  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -81,6 +80,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		switch (hw->device_id) {
 		case IXGBE_DEV_ID_82598AF_SINGLE_PORT:
 		case IXGBE_DEV_ID_82598AF_DUAL_PORT:
+		case IXGBE_DEV_ID_82598AT:
 		case IXGBE_DEV_ID_82598EB_CX4:
 		case IXGBE_DEV_ID_82598_CX4_DUAL_PORT:
 		case IXGBE_DEV_ID_82598_DA_DUAL_PORT:
@@ -286,6 +286,21 @@ s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
 }
 
 /**
+ *  ixgbe_get_phy_firmware_version -
+ *  @hw: pointer to hardware structure
+ *  @firmware_version: pointer to firmware version
+ **/
+s32 ixgbe_get_phy_firmware_version(struct ixgbe_hw *hw, u16 *firmware_version)
+{
+	s32 status = IXGBE_SUCCESS;
+
+	status = ixgbe_call_func(hw, hw->phy.ops.get_firmware_version,
+	                         (hw, firmware_version),
+	                         IXGBE_NOT_IMPLEMENTED);
+	return status;
+}
+
+/**
  *  ixgbe_read_phy_reg - Read PHY register
  *  @hw: pointer to hardware structure
  *  @reg_addr: 32 bit address of PHY register to read
@@ -325,6 +340,20 @@ s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
 {
 	return ixgbe_call_func(hw, hw->phy.ops.setup_link, (hw),
 	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_check_phy_link - Determine link and speed status
+ *  @hw: pointer to hardware structure
+ *
+ *  Reads a PHY register to determine if link is up and the current speed for
+ *  the PHY.
+ **/
+s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
+                         bool *link_up)
+{
+	return ixgbe_call_func(hw, hw->phy.ops.check_link, (hw, speed,
+	                       link_up), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**

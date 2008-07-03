@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2007 Intel Corporation.
+  Copyright(c) 1999 - 2008 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -20,7 +20,6 @@
   the file called "COPYING".
 
   Contact Information:
-  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -140,9 +139,15 @@ int _kc_ethtool_op_set_tx_csum(struct net_device *dev, u32 data)
 {
 #ifdef NETIF_F_IP_CSUM
 	if (data)
+#ifdef NETIF_F_IPV6_CSUM
+		dev->features |= (NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
+	else
+		dev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
+#else
 		dev->features |= NETIF_F_IP_CSUM;
 	else
 		dev->features &= ~NETIF_F_IP_CSUM;
+#endif
 #endif
 
 	return 0;

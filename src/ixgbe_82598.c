@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2007 Intel Corporation.
+  Copyright(c) 1999 - 2008 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -20,7 +20,6 @@
   the file called "COPYING".
 
   Contact Information:
-  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -93,6 +92,11 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 
 	/* PHY Init */
 	switch (hw->phy.type) {
+	case ixgbe_phy_tn:
+		phy->ops.check_link = &ixgbe_check_phy_link_tnx;
+		phy->ops.get_firmware_version =
+		             &ixgbe_get_phy_firmware_version_tnx;
+		break;
 	case ixgbe_phy_nl:
 		phy->ops.reset = &ixgbe_reset_phy_nl;
 		break;
@@ -234,6 +238,9 @@ enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82598_SR_DUAL_PORT_EM:
 	case IXGBE_DEV_ID_82598EB_XF_LR:
 		media_type = ixgbe_media_type_fiber;
+		break;
+	case IXGBE_DEV_ID_82598AT:
+		media_type = ixgbe_media_type_copper;
 		break;
 	default:
 		media_type = ixgbe_media_type_unknown;
