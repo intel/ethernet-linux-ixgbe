@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-January 22, 2008
+April 7, 2008
 
 Contents
 ========
@@ -400,6 +400,14 @@ Additional Configurations
   # sysctl -e net.core.netdev_max_backlog=10000
   net.core.netdev_max_backlog = 10000
 
+
+  Flow Control
+  ------------
+  Flow control is disabled by default. If you want to enable and have a flow 
+  control capable link partner, use Ethtool:
+
+     ethtool -A eth? autoneg off rx on tx on
+  
 
 Known Issues/Troubleshooting
 ============================

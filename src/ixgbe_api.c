@@ -75,7 +75,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 {
 	s32 ret_val = IXGBE_SUCCESS;
 
-	DEBUGFUNC("ixgbe_set_mac_type");
+	DEBUGFUNC("ixgbe_set_mac_type\n");
 
 	if (hw->vendor_id == IXGBE_INTEL_VENDOR_ID) {
 		switch (hw->device_id) {
@@ -83,6 +83,8 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82598AF_DUAL_PORT:
 		case IXGBE_DEV_ID_82598EB_CX4:
 		case IXGBE_DEV_ID_82598_CX4_DUAL_PORT:
+		case IXGBE_DEV_ID_82598_DA_DUAL_PORT:
+		case IXGBE_DEV_ID_82598_SR_DUAL_PORT_EM:
 		case IXGBE_DEV_ID_82598EB_XF_LR:
 			hw->mac.type = ixgbe_mac_82598EB;
 			break;
@@ -94,6 +96,8 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
 	}
 
+	DEBUGOUT2("ixgbe_set_mac_type found mac: %d, returns: %d\n",
+	          hw->mac.type, ret_val);
 	return ret_val;
 }
 
@@ -282,21 +286,6 @@ s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_get_phy_firmware_version -
- *  @hw: pointer to hardware structure
- *  @firmware_version: pointer to firmware version
- **/
-s32 ixgbe_get_phy_firmware_version(struct ixgbe_hw *hw, u16 *firmware_version)
-{
-	s32 status = IXGBE_SUCCESS;
-
-	status = ixgbe_call_func(hw, hw->phy.ops.get_firmware_version,
-	                         (hw, firmware_version),
-	                         IXGBE_NOT_IMPLEMENTED);
-	return status;
-}
-
-/**
  *  ixgbe_read_phy_reg - Read PHY register
  *  @hw: pointer to hardware structure
  *  @reg_addr: 32 bit address of PHY register to read
@@ -339,24 +328,10 @@ s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_check_phy_link - Determine link and speed status
- *  @hw: pointer to hardware structure
- *
- *  Reads a PHY register to determine if link is up and the current speed for
- *  the PHY.
- **/
-s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
-                         bool *link_up)
-{
-	return ixgbe_call_func(hw, hw->phy.ops.check_link, (hw, speed,
-	                       link_up), IXGBE_NOT_IMPLEMENTED);
-}
-
-/**
  *  ixgbe_setup_phy_link_speed - Set auto advertise
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: TRUE if autonegotiation enabled
+ *  @autoneg: true if autonegotiation enabled
  *
  *  Sets the auto advertised capabilities
  **/
@@ -389,17 +364,18 @@ s32 ixgbe_setup_link(struct ixgbe_hw *hw)
  *  Reads the links register to determine if link is up and the current speed
  **/
 s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
-                     bool *link_up)
+                     bool *link_up, bool link_up_wait_to_complete)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.check_link, (hw, speed,
-	                       link_up), IXGBE_NOT_IMPLEMENTED);
+	                       link_up, link_up_wait_to_complete),
+	                       IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
  *  ixgbe_setup_link_speed - Set link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: TRUE if autonegotiation enabled
+ *  @autoneg: true if autonegotiation enabled
  *
  *  Set the link speed and restarts the link.
  **/

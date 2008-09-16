@@ -31,6 +31,7 @@
 
 #include "ixgbe_type.h"
 
+s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw);
 bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr);
 enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id);
 s32 ixgbe_get_phy_id(struct ixgbe_hw *hw);
@@ -46,4 +47,5 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
                                        bool autoneg,
                                        bool autoneg_wait_to_complete);
 
+s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw);
 #endif /* _IXGBE_PHY_H_ */

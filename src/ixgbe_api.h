@@ -54,9 +54,6 @@ s32 ixgbe_write_phy_reg(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
                         u16 phy_data);
 
 s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw);
-s32 ixgbe_check_phy_link(struct ixgbe_hw *hw,
-                         ixgbe_link_speed *speed,
-                         bool *link_up);
 s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw,
                                ixgbe_link_speed speed,
                                bool autoneg,
@@ -65,7 +62,7 @@ s32 ixgbe_setup_link(struct ixgbe_hw *hw);
 s32 ixgbe_setup_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
                            bool autoneg, bool autoneg_wait_to_complete);
 s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
-                     bool *link_up);
+                     bool *link_up, bool link_up_wait_to_complete);
 s32 ixgbe_get_link_capabilities(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
                             bool *autoneg);
 s32 ixgbe_led_on(struct ixgbe_hw *hw, u32 index);
@@ -97,8 +94,6 @@ s32 ixgbe_set_vfta(struct ixgbe_hw *hw, u32 vlan,
 s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num);
 
 void ixgbe_set_mta(struct ixgbe_hw *hw, u8 *mc_addr);
-s32 ixgbe_get_phy_firmware_version(struct ixgbe_hw *hw,
-                                   u16 *firmware_version);
 s32 ixgbe_read_analog_reg8(struct ixgbe_hw *hw, u32 reg, u8 *val);
 s32 ixgbe_write_analog_reg8(struct ixgbe_hw *hw, u32 reg, u8 val);
 

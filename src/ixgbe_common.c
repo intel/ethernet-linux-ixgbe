@@ -50,6 +50,71 @@ void ixgbe_add_mc_addr(struct ixgbe_hw *hw, u8 *mc_addr);
 void ixgbe_add_uc_addr(struct ixgbe_hw *hw, u8 *addr, u32 vmdq);
 
 /**
+ *  ixgbe_init_ops_generic - Inits function ptrs
+ *  @hw: pointer to the hardware structure
+ *
+ *  Initialize the function pointers.
+ **/
+s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
+{
+	struct ixgbe_eeprom_info *eeprom = &hw->eeprom;
+	struct ixgbe_mac_info *mac = &hw->mac;
+	u32 eec = IXGBE_READ_REG(hw, IXGBE_EEC);
+
+	/* EEPROM */
+	eeprom->ops.init_params = &ixgbe_init_eeprom_params_generic;
+	/* If EEPROM is valid (bit 8 = 1), use EERD otherwise use bit bang */
+	if (eec & (1 << 8))
+		eeprom->ops.read = &ixgbe_read_eeprom_generic;
+	else
+		eeprom->ops.read = &ixgbe_read_eeprom_bit_bang_generic;
+	eeprom->ops.write = &ixgbe_write_eeprom_generic;
+	eeprom->ops.validate_checksum =
+	                              &ixgbe_validate_eeprom_checksum_generic;
+	eeprom->ops.update_checksum = &ixgbe_update_eeprom_checksum_generic;
+
+	/* MAC */
+	mac->ops.init_hw = &ixgbe_init_hw_generic;
+	mac->ops.reset_hw = NULL;
+	mac->ops.start_hw = &ixgbe_start_hw_generic;
+	mac->ops.clear_hw_cntrs = &ixgbe_clear_hw_cntrs_generic;
+	mac->ops.get_media_type = NULL;
+	mac->ops.get_mac_addr = &ixgbe_get_mac_addr_generic;
+	mac->ops.stop_adapter = &ixgbe_stop_adapter_generic;
+	mac->ops.get_bus_info = &ixgbe_get_bus_info_generic;
+	mac->ops.read_analog_reg8 = &ixgbe_read_analog_reg8_generic;
+	mac->ops.write_analog_reg8 = &ixgbe_write_analog_reg8_generic;
+
+	/* LEDs */
+	mac->ops.led_on = &ixgbe_led_on_generic;
+	mac->ops.led_off = &ixgbe_led_off_generic;
+	mac->ops.blink_led_start = NULL;
+	mac->ops.blink_led_stop = NULL;
+
+	/* RAR, Multicast, VLAN */
+	mac->ops.set_rar = &ixgbe_set_rar_generic;
+	mac->ops.set_vmdq = NULL;
+	mac->ops.init_rx_addrs = &ixgbe_init_rx_addrs_generic;
+	mac->ops.update_uc_addr_list = &ixgbe_update_uc_addr_list_generic;
+	mac->ops.update_mc_addr_list = &ixgbe_update_mc_addr_list_generic;
+	mac->ops.enable_mc = &ixgbe_enable_mc_generic;
+	mac->ops.disable_mc = &ixgbe_disable_mc_generic;
+	mac->ops.clear_vfta = &ixgbe_clear_vfta_generic;
+	mac->ops.set_vfta = &ixgbe_set_vfta_generic;
+
+	/* Flow Control */
+	mac->ops.setup_fc = NULL;
+
+	/* Link */
+	mac->ops.get_link_capabilities = NULL;
+	mac->ops.setup_link = NULL;
+	mac->ops.setup_link_speed = NULL;
+	mac->ops.check_link = NULL;
+
+	return IXGBE_SUCCESS;
+}
+
+/**
  *  ixgbe_start_hw_generic - Prepare hardware for Tx/Rx
  *  @hw: pointer to hardware structure
  *
@@ -93,7 +158,7 @@ s32 ixgbe_start_hw_generic(struct ixgbe_hw *hw)
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Clear adapter stopped flag */
-	hw->adapter_stopped = FALSE;
+	hw->adapter_stopped = false;
 
 	return IXGBE_SUCCESS;
 }
@@ -322,7 +387,7 @@ s32 ixgbe_stop_adapter_generic(struct ixgbe_hw *hw)
 	 * Set the adapter_stopped flag so other driver functions stop touching
 	 * the hardware
 	 */
-	hw->adapter_stopped = TRUE;
+	hw->adapter_stopped = true;
 
 	/* Disable the receive unit */
 	reg_val = IXGBE_READ_REG(hw, IXGBE_RXCTRL);

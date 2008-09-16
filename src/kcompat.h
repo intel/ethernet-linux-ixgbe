@@ -1052,6 +1052,7 @@ static inline void _kc_synchronize_irq(void)
 #define container_of list_entry
 #define schedule_work schedule_task
 #define flush_scheduled_work flush_scheduled_tasks
+#define cancel_work_sync(x) flush_scheduled_work()
 
 #endif /* 2.5.28 => 2.4.17 */
 
@@ -1489,6 +1490,7 @@ do { \
 #ifndef ETH_FCS_LEN
 #define ETH_FCS_LEN 4
 #endif
+#define cancel_work_sync(x) flush_scheduled_work()
 #endif /* < 2.6.22 */
 
 /*****************************************************************************/

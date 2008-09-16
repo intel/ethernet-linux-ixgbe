@@ -7,15 +7,20 @@
 #
 8086  Intel Corporation
 	10c6  82598EB 10 Gigabit AF Dual Port Network Connection
-		8086 a05f 10 Gigabit XF SR Dual Port Server Adapter
-		8086 a15f 10 Gigabit XF SR Dual Port Server Adapter
+		8086 a05f  10 Gigabit XF SR Dual Port Server Adapter
+		8086 a15f  10 Gigabit XF SR Dual Port Server Adapter
 	10c7  82598EB 10 Gigabit AF Network Connection
-		8086 a05f 10 Gigabit XF SR Server Adapter
-		8086 a15f 10 Gigabit XF SR Server Adapter
-		8086 a16f 10 Gigabit XF SR Server Adapter
+		8086 a05f  10 Gigabit XF SR Server Adapter
+		8086 a15f  10 Gigabit XF SR Server Adapter
+		8086 a16f  10 Gigabit XF SR Server Adapter
 	10dd  82598EB 10 Gigabit AT CX4 Network Connection
+	10e1  82598EB 10 Gigabit AT Dual Port Network Connection
+		8086 a15f  10 Gigabit SR Dual Port Express Module
 	10ec  82598EB 10 Gigabit AT CX4 Network Connection
-		8086 a01f 10 Gigabit CX4 Dual Port Server Adapter
-		8086 a11f 10 Gigabit CX4 Dual Port Server Adapter
+		8086 a01f  10 Gigabit CX4 Dual Port Server Adapter
+		8086 a11f  10 Gigabit CX4 Dual Port Server Adapter
+	10f1  82598EB 10 Gigabit AT Dual Port Network Connection
+		8086 a20f  10 Gigabit AF DA Dual Port Server Adapter
+		8086 a21f  10 Gigabit AF DA Dual Port Server Adapter
 	10f4  82598EB 10 Gigabit AT Network Connection
-		8086 106f 10 Gigabit XF LR Server Adapter
+		8086 106f  10 Gigabit XF LR Server Adapter

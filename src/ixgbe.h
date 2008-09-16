@@ -352,6 +352,10 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_RSS_CAPABLE                  (u32)(1 << 17)
 #define IXGBE_FLAG_VMDQ_CAPABLE                 (u32)(1 << 18)
 #define IXGBE_FLAG_VMDQ_ENABLED                 (u32)(1 << 19)
+#define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 22)
+
+/* default to trying for four seconds */
+#define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
 
 	/* OS defined structs */
 	struct net_device *netdev;
@@ -382,6 +386,13 @@ struct ixgbe_adapter {
 	unsigned long state;
 	u32 *config_space;
 	u64 tx_busy;
+	u32 link_speed;
+	bool link_up;
+	unsigned long link_check_timeout;
+
+	unsigned int tx_ring_count;
+	unsigned int rx_ring_count;
+	struct work_struct watchdog_task;
 };
 
 enum ixbge_state_t {
@@ -405,6 +416,10 @@ extern char ixgbe_driver_version[];
 extern int ixgbe_setup_rx_resources(struct ixgbe_adapter *adapter,
                                     struct ixgbe_ring *rxdr);
 extern int ixgbe_setup_tx_resources(struct ixgbe_adapter *adapter,
+                                    struct ixgbe_ring *txdr);
+extern void ixgbe_free_rx_resources(struct ixgbe_adapter *adapter,
+                                    struct ixgbe_ring *rxdr);
+extern void ixgbe_free_tx_resources(struct ixgbe_adapter *adapter,
                                     struct ixgbe_ring *txdr);
 extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 
