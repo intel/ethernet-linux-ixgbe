@@ -176,18 +176,6 @@ _kc_pci_set_power_state(struct pci_dev *dev, int state)
 }
 
 int
-_kc_pci_save_state(struct pci_dev *dev, u32 *buffer)
-{
-	return 0;
-}
-
-int
-_kc_pci_restore_state(struct pci_dev *pdev, u32 *buffer)
-{
-	return 0;
-}
-
-int
 _kc_pci_enable_wake(struct pci_dev *pdev, u32 state, int enable)
 {
 	return 0;
@@ -290,7 +278,88 @@ struct sk_buff *_kc_netdev_alloc_skb(struct net_device *dev,
 #endif /* <= 2.6.17 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19) )
+int _kc_pci_save_state(struct pci_dev *pdev)
+{ 
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct adapter_struct *adapter = netdev_priv(netdev);
+	int size = PCI_CONFIG_SPACE_LEN, i;
+	u16 pcie_cap_offset = pci_find_capability(pdev, PCI_CAP_ID_EXP);
+	u16 pcie_link_status;
+
+	if (pcie_cap_offset) {
+		if (!pci_read_config_word(pdev,
+		                          pcie_cap_offset + PCIE_LINK_STATUS,
+		                          &pcie_link_status))
+		size = PCIE_CONFIG_SPACE_LEN;
+	}
+	pci_config_space_ich8lan();
+#ifdef HAVE_PCI_ERS 
+	if (adapter->config_space == NULL)
+#else
+	WARN_ON(adapter->config_space != NULL);
+#endif
+		adapter->config_space = kmalloc(size, GFP_KERNEL);
+	if (!adapter->config_space) {
+		printk(KERN_ERR "Out of memory in pci_save_state\n");
+		return -ENOMEM;
+	}
+	for (i = 0; i < (size / 4); i++)
+		pci_read_config_dword(pdev, i * 4, &adapter->config_space[i]);
+	return 0;
+}
+
+void _kc_pci_restore_state(struct pci_dev * pdev)
+{
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct adapter_struct *adapter = netdev_priv(netdev);
+	int size = PCI_CONFIG_SPACE_LEN, i;
+	u16 pcie_cap_offset;
+	u16 pcie_link_status;
+
+	if (adapter->config_space != NULL) {
+		pcie_cap_offset = pci_find_capability(pdev, PCI_CAP_ID_EXP);
+		if (pcie_cap_offset && 
+		    !pci_read_config_word(pdev,
+		                          pcie_cap_offset + PCIE_LINK_STATUS,
+		                          &pcie_link_status))
+			size = PCIE_CONFIG_SPACE_LEN;
+	
+		pci_config_space_ich8lan();
+		for (i = 0; i < (size / 4); i++)
+		pci_write_config_dword(pdev, i * 4, adapter->config_space[i]);
+#ifndef HAVE_PCI_ERS
+		kfree(adapter->config_space);
+		adapter->config_space = NULL;
+#endif
+	}
+}
+
+#ifdef HAVE_PCI_ERS
+void _kc_free_netdev(struct net_device *netdev)
+{
+	struct adapter_struct *adapter = netdev_priv(netdev);
+
+	if (adapter->config_space != NULL)
+		kfree(adapter->config_space);
+#ifdef CONFIG_SYSFS
+	if (netdev->reg_state == NETREG_UNINITIALIZED) {
+		kfree((char *)netdev - netdev->padded);
+	} else {
+		BUG_ON(netdev->reg_state != NETREG_UNREGISTERED);
+		netdev->reg_state = NETREG_RELEASED;
+		class_device_put(&netdev->class_dev);
+	}
+#else
+	kfree((char *)netdev - netdev->padded);
+#endif
+}
+#endif
+#endif /* <= 2.6.18 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23) )
+#ifdef DRIVER_IXGBE
 int ixgbe_sysfs_create(struct ixgbe_adapter *adapter)
 {
 	return 0;
@@ -310,6 +379,7 @@ int ixgbe_dcb_netlink_unregister()
 {
 	return 0;
 }
+#endif /* DRIVER_IXGBE */
 #endif /* < 2.6.23 */
 
 /*****************************************************************************/
@@ -319,13 +389,13 @@ int __kc_adapter_clean(struct net_device *netdev, int *budget)
 {
 	int work_done;
 	int work_to_do = min(*budget, netdev->quota);
-	struct adapter_struct *adapter = netdev_priv(netdev);
 #ifdef DRIVER_IXGBE
-	struct napi_struct *napi = &adapter->q_vector[0].napi;
+	/* kcompat.h netif_napi_add puts napi struct in "fake netdev->priv" */
+	struct napi_struct *napi = netdev->priv;
 #else
+	struct adapter_struct *adapter = netdev_priv(netdev);
 	struct napi_struct *napi = &adapter->rx_ring[0].napi;
 #endif
-
 	work_done = napi->poll(napi, work_to_do);
 	*budget -= work_done;
 	netdev->quota -= work_done;
@@ -334,3 +404,38 @@ int __kc_adapter_clean(struct net_device *netdev, int *budget)
 #endif /* NAPI */
 #endif /* <= 2.6.24 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27) )
+#ifdef HAVE_TX_MQ
+void _kc_netif_tx_stop_all_queues(struct net_device *netdev)
+{
+	struct adapter_struct *adapter = netdev_priv(netdev);
+	int i;
+
+	netif_stop_queue(netdev);
+	if (netif_is_multiqueue(netdev))
+		for (i = 0; i < adapter->num_tx_queues; i++)
+			netif_stop_subqueue(netdev, i);
+}
+void _kc_netif_tx_wake_all_queues(struct net_device *netdev)
+{
+	struct adapter_struct *adapter = netdev_priv(netdev);
+	int i;
+
+	netif_wake_queue(netdev);
+	if (netif_is_multiqueue(netdev))
+		for (i = 0; i < adapter->num_tx_queues; i++)
+			netif_wake_subqueue(netdev, i);
+}
+void _kc_netif_tx_start_all_queues(struct net_device *netdev)
+{
+	struct adapter_struct *adapter = netdev_priv(netdev);
+	int i;
+
+	netif_start_queue(netdev);
+	if (netif_is_multiqueue(netdev))
+		for (i = 0; i < adapter->num_tx_queues; i++)
+			netif_start_subqueue(netdev, i);
+}
+#endif /* HAVE_TX_MQ */
+#endif /* <= 2.6.27 */

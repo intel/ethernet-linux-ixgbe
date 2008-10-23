@@ -373,6 +373,9 @@ err_out:
 	return ret;
 }
 
+extern void ixgbe_napi_add_all(struct ixgbe_adapter *);
+extern void ixgbe_napi_del_all(struct ixgbe_adapter *);
+
 static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 {
 	struct net_device *netdev = NULL;
@@ -401,19 +404,28 @@ static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 		switch (value) {
 		case 0:
 			if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-				set_bit(__IXGBE_DOWN, &adapter->state);
 				if (netdev->flags & IFF_UP)
-					ixgbe_close(netdev);
+					netdev->stop(netdev);
 				ixgbe_reset_interrupt_capability(adapter);
+#ifdef CONFIG_IXGBE_NAPI
+				ixgbe_napi_del_all(adapter);
+#endif
 				kfree(adapter->tx_ring);
 				kfree(adapter->rx_ring);
+				adapter->tx_ring = NULL;
+				adapter->rx_ring = NULL;
 
 				adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
-				adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
+				if (adapter->flags & IXGBE_FLAG_RSS_CAPABLE)
+					adapter->flags |=
+					                 IXGBE_FLAG_RSS_ENABLED;
 				ixgbe_init_interrupt_scheme(adapter);
+#ifdef CONFIG_IXGBE_NAPI
+				ixgbe_napi_add_all(adapter);
+#endif
+				ixgbe_reset(adapter);
 				if (netdev->flags & IFF_UP)
-					ixgbe_open(netdev);
-				clear_bit(__IXGBE_DOWN, &adapter->state);
+					netdev->open(netdev);
 				break;
 			} else {
 				/* Nothing to do, already off */
@@ -423,20 +435,32 @@ static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 			if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
 				/* Nothing to do, already on */
 				goto out;
+			} else if (!(adapter->flags & IXGBE_FLAG_DCB_CAPABLE)) {
+				DPRINTK(DRV, ERR, "Enable failed.  Make sure "
+				        "the driver can enable MSI-X.\n");
+				ret = -EINVAL;
+				goto err_out;
 			} else {
-				set_bit(__IXGBE_DOWN, &adapter->state);
 				if (netdev->flags & IFF_UP)
-					ixgbe_close(netdev);
+					netdev->stop(netdev);
 				ixgbe_reset_interrupt_capability(adapter);
+#ifdef CONFIG_IXGBE_NAPI
+				ixgbe_napi_del_all(adapter);
+#endif
 				kfree(adapter->tx_ring);
 				kfree(adapter->rx_ring);
+				adapter->tx_ring = NULL;
+				adapter->rx_ring = NULL;
 
 				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
 				adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
 				ixgbe_init_interrupt_scheme(adapter);
+#ifdef CONFIG_IXGBE_NAPI
+				ixgbe_napi_add_all(adapter);
+#endif
+				ixgbe_reset(adapter);
 				if (netdev->flags & IFF_UP)
-					ixgbe_open(netdev);
-				clear_bit(__IXGBE_DOWN, &adapter->state);
+					netdev->open(netdev);
 				break;
 			}
 		}
@@ -1044,6 +1068,11 @@ static int ixgbe_dcb_set_all(struct sk_buff *skb, struct genl_info *info)
 		goto err_out;
 	else
 		adapter = netdev_priv(netdev);
+
+	if (!(adapter->flags & IXGBE_FLAG_DCA_CAPABLE)) {
+		ret = -EINVAL;
+		goto err_out;
+	}
 
 	value = nla_get_u8(info->attrs[DCB_A_SET_ALL]);
 	if ((value & 1) != value) {

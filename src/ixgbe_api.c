@@ -86,6 +86,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82598_DA_DUAL_PORT:
 		case IXGBE_DEV_ID_82598_SR_DUAL_PORT_EM:
 		case IXGBE_DEV_ID_82598EB_XF_LR:
+		case IXGBE_DEV_ID_82598EB_SFP_LOM:
 			hw->mac.type = ixgbe_mac_82598EB;
 			break;
 		default:
@@ -273,9 +274,8 @@ s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
 	s32 status = IXGBE_SUCCESS;
 
 	if (hw->phy.type == ixgbe_phy_unknown) {
-		if (ixgbe_identify_phy(hw) != IXGBE_SUCCESS) {
-		    status = IXGBE_ERR_PHY;
-		}
+		if (ixgbe_identify_phy(hw) != IXGBE_SUCCESS)
+			status = IXGBE_ERR_PHY;
 	}
 
 	if (status == IXGBE_SUCCESS) {
@@ -566,6 +566,19 @@ s32 ixgbe_set_rar(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 }
 
 /**
+ *  ixgbe_clear_rar - Clear Rx address register
+ *  @hw: pointer to hardware structure
+ *  @index: Receive address register to write
+ *
+ *  Puts an ethernet address into a receive address register.
+ **/
+s32 ixgbe_clear_rar(struct ixgbe_hw *hw, u32 index)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.clear_rar, (hw, index),
+	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
  *  ixgbe_set_vmdq - Associate a VMDq index with a receive address
  *  @hw: pointer to hardware structure
  *  @rar: receive address register index to associate with VMDq index
@@ -574,6 +587,18 @@ s32 ixgbe_set_rar(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 s32 ixgbe_set_vmdq(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.set_vmdq, (hw, rar, vmdq),
+	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_clear_vmdq - Disassociate a VMDq index from a receive address
+ *  @hw: pointer to hardware structure
+ *  @rar: receive address register index to disassociate with VMDq index
+ *  @vmdq: VMDq set or pool index
+ **/
+s32 ixgbe_clear_vmdq(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.clear_vmdq, (hw, rar, vmdq),
 	                       IXGBE_NOT_IMPLEMENTED);
 }
 
@@ -731,3 +756,42 @@ s32 ixgbe_write_analog_reg8(struct ixgbe_hw *hw, u32 reg, u8 val)
 	                       val), IXGBE_NOT_IMPLEMENTED);
 }
 
+/**
+ *  ixgbe_init_uta_tables - Initializes Unicast Table Arrays.
+ *  @hw: pointer to hardware structure
+ *
+ * Initializes the Unicast Table Arrays to zero on device load.  This
+ * is part of the Rx init addr execution path.
+ **/
+s32 ixgbe_init_uta_tables(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.init_uta_tables, (hw),
+	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_read_i2c_eeprom - Reads 8 bit EEPROM word over I2C interface
+ *  @hw: pointer to hardware structure
+ *  @byte_offset: EEPROM byte offset to read
+ *  @eeprom_data: value read
+ *
+ *  Performs byte read operation to SFP module's EEPROM over I2C interface.
+ **/
+s32 ixgbe_read_i2c_eeprom(struct ixgbe_hw *hw, u8 byte_offset, u8 *eeprom_data)
+{
+	return ixgbe_call_func(hw, hw->phy.ops.read_i2c_eeprom,
+	                      (hw, byte_offset, eeprom_data),
+	                      IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_get_supported_physical_layer - Returns physical layer type
+ *  @hw: pointer to hardware structure
+ *
+ *  Determines physical layer capabilities of the current configuration.
+ **/
+s32 ixgbe_get_supported_physical_layer(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_supported_physical_layer, (hw),
+	                       IXGBE_NOT_IMPLEMENTED);
+}

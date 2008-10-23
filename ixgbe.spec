@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 1.3.31.5
+Version: 1.3.47
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -275,10 +275,10 @@ do
 		# device entry
 		elif [[ $line == $DEV ]]
 		then
-			device=`echo ${line:1:4} | tr [:upper:] [:lower:]`
+			device=`echo ${line:1:4} | tr "[:upper:]" "[:lower:]"`
 			table_device=0x${line:1:4}
 			dev_str=${line#${line:0:7}}
-			ids_device=`echo ${ids_in:1:4} | tr [:upper:] [:lower:]`
+			ids_device=`echo ${ids_in:1:4} | tr "[:upper:]" "[:lower:]"`
 			table_line="$vendor	$table_device	\"$driver\"	\"$ven_str|$dev_str\""
 			# add entry to pci.ids
 			exec 0<&3
@@ -297,7 +297,7 @@ do
 					echo "$ids_in"
 				fi
 				read -r ids_in
-				ids_device=`echo ${ids_in:1:4} | tr [:upper:] [:lower:]`
+				ids_device=`echo ${ids_in:1:4} | tr "[:upper:]" "[:lower:]"`
 			done
 			if [[ $device != ${line:1:4} ]]
 			then
@@ -331,13 +331,13 @@ do
 		# subsystem entry
 		elif [[ $line == $SUB ]]
 		then
-			subven=`echo ${line:2:4} | tr [:upper:] [:lower:]`
-			subdev=`echo ${line:7:4} | tr [:upper:] [:lower:]`
+			subven=`echo ${line:2:4} | tr "[:upper:]" "[:lower:]"`
+			subdev=`echo ${line:7:4} | tr "[:upper:]" "[:lower:]"`
 			table_subven=0x${line:2:4}
 			table_subdev=0x${line:7:4}
 			sub_str=${line#${line:0:13}}
-			ids_subven=`echo ${ids_in:2:4} | tr [:upper:] [:lower:]`
-			ids_subdev=`echo ${ids_in:7:4} | tr [:upper:] [:lower:]`
+			ids_subven=`echo ${ids_in:2:4} | tr "[:upper:]" "[:lower:]"`
+			ids_subdev=`echo ${ids_in:7:4} | tr "[:upper:]" "[:lower:]"`
 			table_line="$vendor	$table_device	$table_subven	$table_subdev	\"$driver\"	\"$ven_str|$sub_str\""
 			# add entry to pci.ids
 			exec 0<&3
@@ -363,8 +363,8 @@ do
 					fi
 				fi
 				read -r ids_in
-				ids_subven=`echo ${ids_in:2:4} | tr [:upper:] [:lower:]`
-				ids_subdev=`echo ${ids_in:7:4} | tr [:upper:] [:lower:]`
+				ids_subven=`echo ${ids_in:2:4} | tr "[:upper:]" "[:lower:]"`
+				ids_subdev=`echo ${ids_in:7:4} | tr "[:upper:]" "[:lower:]"`
 			done
 			if [[ $subven != ${line:2:4} || $subdev != ${line:7:4} ]]
 			then

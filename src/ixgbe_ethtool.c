@@ -110,9 +110,13 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	{"alloc_rx_page_failed", IXGBE_STAT(alloc_rx_page_failed)},
 	{"alloc_rx_buff_failed", IXGBE_STAT(alloc_rx_buff_failed)},
 #ifndef IXGBE_NO_LRO
+	{"lro_aggregated", IXGBE_STAT(lro_data.stats.coal)},
 	{"lro_flushed", IXGBE_STAT(lro_data.stats.flushed)},
-	{"lro_coal", IXGBE_STAT(lro_data.stats.coal)},
 #endif /* IXGBE_NO_LRO */
+#ifndef IXGBE_NO_INET_LRO
+	{"lro_aggregated", IXGBE_STAT(lro_aggregated)},
+	{"lro_flushed", IXGBE_STAT(lro_flushed)},
+#endif
 
 };
 
@@ -336,14 +340,10 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 		netdev->features |= NETIF_F_TSO6;
 #endif
 	} else {
-#ifdef CONFIG_NETDEVICES_MULTIQUEUE
+#ifdef HAVE_TX_MQ
 		int i;
 #endif
-		netif_stop_queue(netdev);
-#ifdef CONFIG_NETDEVICES_MULTIQUEUE
-		for (i = 0; i < adapter->num_tx_queues; i++)
-			netif_stop_subqueue(netdev, i);
-#endif
+		netif_tx_stop_all_queues(netdev);
 		netdev->features &= ~NETIF_F_TSO;
 #ifdef NETIF_F_TSO6
 		netdev->features &= ~NETIF_F_TSO6;
@@ -367,7 +367,7 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 			}
 		}
 #endif
-#ifdef CONFIG_NETDEVICES_MULTIQUEUE
+#ifdef HAVE_TX_MQ
 		for (i = 0; i < adapter->num_tx_queues; i++)
 			netif_start_subqueue(netdev, i);
 #endif
@@ -432,7 +432,9 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 	regs_buff[17] = IXGBE_READ_REG(hw, IXGBE_GRC);
 
 	/* Interrupt */
-	regs_buff[18] = IXGBE_READ_REG(hw, IXGBE_EICR);
+	/* don't read EICR because it can clear interrupt causes, instead
+	 * read EICS which is a shadow but doesn't clear EICR */
+	regs_buff[18] = IXGBE_READ_REG(hw, IXGBE_EICS);
 	regs_buff[19] = IXGBE_READ_REG(hw, IXGBE_EICS);
 	regs_buff[20] = IXGBE_READ_REG(hw, IXGBE_EIMS);
 	regs_buff[21] = IXGBE_READ_REG(hw, IXGBE_EIMC);
@@ -940,6 +942,19 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 	int j, k;
 	int i;
 
+#ifndef IXGBE_NO_INET_LRO
+	unsigned int aggregated = 0, flushed = 0, no_desc = 0;
+
+	for (i = 0; i < adapter->num_rx_queues; i++) {
+		aggregated += adapter->rx_ring[i].lro_mgr.stats.aggregated;
+		flushed += adapter->rx_ring[i].lro_mgr.stats.flushed;
+		no_desc += adapter->rx_ring[i].lro_mgr.stats.no_desc;
+	}
+	adapter->lro_aggregated = aggregated;
+	adapter->lro_flushed = flushed;
+	adapter->lro_no_desc = no_desc;
+
+#endif
 	ixgbe_update_stats(adapter);
 	for (i = 0; i < IXGBE_GLOBAL_STATS_LEN; i++) {
 		char *p = (char *)adapter + ixgbe_gstrings_stats[i].stat_offset;
@@ -1828,8 +1843,6 @@ static int ixgbe_get_coalesce(struct net_device *netdev,
 	if (adapter->itr_setting == 0)
 		ec->rx_coalesce_usecs = 1000000/adapter->eitr_param;
 
-	ec->stats_block_coalesce_usecs = adapter->stats_freq_us;
-
 	return 0;
 }
 
@@ -1846,26 +1859,31 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		adapter->rx_ring[0].work_limit = ec->rx_max_coalesced_frames_irq;
 #endif
 
-	/* if in constant ITR mode, change the param, AN reset req'd */
-	if (ec->rx_coalesce_usecs && (adapter->itr_setting == 0)) {
+	if (ec->rx_coalesce_usecs > 3) {
 		struct ixgbe_hw *hw = &adapter->hw;
+		int i;
 		/* store the value in ints/second */
 		adapter->eitr_param = 1000000/ec->rx_coalesce_usecs;
-		IXGBE_WRITE_REG(hw, IXGBE_EITR(0),
-		            EITR_INTS_PER_SEC_TO_REG(adapter->eitr_param));
-	}
 
-	/* change the stats update frequency */
-	if (ec->stats_block_coalesce_usecs > (10 * 1000000)) {
-		DPRINTK(PROBE, INFO,
-		        "stats update > 10 seconds not supported\n");
-		return -EINVAL;
+		for (i = 0; i < adapter->num_msix_vectors - NON_Q_VECTORS; i++){
+			struct ixgbe_q_vector *q_vector = &adapter->q_vector[i];
+			if (q_vector->txr_count && !q_vector->rxr_count)
+				q_vector->eitr = (adapter->eitr_param >> 1);
+			else
+				/* rx only */
+				q_vector->eitr = adapter->eitr_param;
+			IXGBE_WRITE_REG(hw, IXGBE_EITR(i),
+			              EITR_INTS_PER_SEC_TO_REG(q_vector->eitr));
+		}
+
+		/* static value of interrupt rate */
+		adapter->itr_setting = adapter->eitr_param;
 	} else {
-		adapter->stats_freq_us = ec->stats_block_coalesce_usecs;
-		DPRINTK(PROBE, INFO, "update stats every %d usec\n",
-		        adapter->stats_freq_us);
+		/* 1,2,3 means dynamic mode */
+		adapter->itr_setting = ec->rx_coalesce_usecs;
 	}
 
+	/* if some error return -EINVAL */
 	return 0;
 }
 
@@ -1897,6 +1915,10 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #ifdef NETIF_F_TSO
 	.get_tso                = ethtool_op_get_tso,
 	.set_tso                = ixgbe_set_tso,
+#endif
+#ifndef IXGBE_NO_INET_LRO
+	.get_flags              = ethtool_op_get_flags,
+	.set_flags              = ethtool_op_set_flags,
 #endif
 	.self_test_count        = ixgbe_diag_test_count,
 	.self_test              = ixgbe_diag_test,

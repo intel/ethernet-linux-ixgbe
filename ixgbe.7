@@ -4,28 +4,20 @@
 .\"
 .\" * Other names and brands may be claimed as the property of others.
 .\"
-.TH ixgbe 1 "November 6, 2007"
-
+.TH ixgbe 1 "September 20, 2008"
 
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
-
-
 .SH SYNOPSIS
 .PD 0.4v
 modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
 .br
 .PD 1v
 .LP
-
-
 .SH DESCRIPTION
-This driver supports the \fB2.6.x\fR kernel. This driver includes support for Itanium(R)2-based systems.
+This driver supports the \fB2.6.x\fR kernel, and includes support for any Linux supported system, including Itanium(R)2, x86_64, i686, and PPC
 .LP
 This driver is only supported as a loadable module at this time. Intel is not supplying patches against the kernel source to allow for static linking of the driver. For questions related to hardware requirements, refer to the documentation supplied with your 10 Gigabit adapter. All hardware requirements listed apply to use with Linux.
-.LP
-
-
 .SH OPTIONS
 The following optional parameters are used by entering them on the command line with the modprobe or insmod command. For example:
 .IP
@@ -41,8 +33,7 @@ The following optional parameters are used by entering them on the command line 
 1
 .IP
 0 = disables RSS
-1 = enables RSS and sets the descriptor queue count to 16 or the number of
-    online cpus, whichever is less.
+1 = enables RSS and sets the descriptor queue count to 16 or the number of online cpus, whichever is less.
 2-16 = enables RSS, with 2-16 queues
 .IP
 RSS also effects the number of transmit queues allocated on 2.6.23 and
@@ -70,7 +61,7 @@ newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file.
 0 = Disables DCA support in the driver
 1 = Enables DCA support in the driver
 .IP
-See the above instructions for enabling DCA.  If the driver is enabled for
+See the instructions in the README for enabling DCA.  If the driver is enabled for
 DCA this parameter allows load-time control of the feature.
 .LP
 .B RxBufferMode
@@ -107,17 +98,14 @@ different values for each type of interrupt.
 100-500,000 (0=off, 1=dynamic)
 .br
 .B Default Value: 8000
-
 .IP
 Interrupt Throttle Rate (interrupts/sec). The ITR parameter controls how many interrupts each interrupt vector can
-generate per second.  On MQ/RSS enabled kernels with MSI-X interrupts this
-means that each TX and each RX vector can generate (by default) 8000
-interrupts per second.
+generate per second.  On MQ/RSS enabled kernels with MSI-X interrupts this means that each RX vector can generate 
+(by default) 8000 interrupts per second and each TX vector can generate (by default) 4000 interrupts per second.
 Dynamic mode attempts to moderate interrupts per vector while maintaining
 very low latency.  This can sometimes cause extra CPU utilization when in
 dynamic mode.  If planning on deploying ixgbe in a latency sensitive
 environment please consider this parameter.
-
 .LP
 .B LLIPort
 .IP
@@ -132,7 +120,6 @@ LLI is configured with the LLIPort command-line parameter, which specifies which
 WARNING: Enabling LLI can result in an excessive number of interrupts/second 
 that may cause problems with the system and in some cases may cause a kernel 
 panic.
-
 .LP
 .B LLIPush
 .IP
@@ -142,7 +129,9 @@ panic.
 .B Default Value: 
 0 (disabled)
 .IP
-LLIPush can be set to be enabled or disabled (default). It is most effective in an environment with many small transactions. NOTE: Enabling LLIPush may allow a denial of service attack.
+LLIPush can be set to be enabled or disabled (default). It is most effective in 
+an environment with many small transactions. NOTE: Enabling LLIPush may allow a
+denial of service attack.
 .LP
 .B LLISize
 .IP
@@ -152,11 +141,20 @@ LLIPush can be set to be enabled or disabled (default). It is most effective in 
 .B Default Value: 
 0 (disabled)
 .IP
-LLISize causes an immediate interrupt if the board receives a packet smaller than the specified size.
+LLISize causes an immediate interrupt if the board receives a packet smaller 
+than the specified size.
 .LP
-
+.B LROAggr
+.IP
+.B Valid Range: 
+2-44
+.br
+.B Default Value: 32
+.IP
+LROAggr is the maximum number of packets that can be aggregated by LRO into a 
+single packet before it must be passed up to the stack.
+.LP
 .SH JUMBO FRAMES
-.LP
 The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabled by changing the MTU to a value larger than the default of 1500. Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:
 .IP
 ifconfig eth<x> mtu 9000 up
@@ -166,12 +164,7 @@ with the maximum Jumbo Frames size of 16128. This driver will attempt to
 use multiple page sized buffers to receive each jumbo packet.  This
 should help to avoid buffer starvation issues when allocating receive
 packets.
-
-.LP
-
-
 .SH SUPPORT
-.LP
 For additional information, including supported adapters, building, and installation, see the README file included with the driver.
 .LP
 For general information and support, go to the Intel support website at:

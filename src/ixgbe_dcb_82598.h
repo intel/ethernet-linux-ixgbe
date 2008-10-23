@@ -65,8 +65,6 @@
 #define IXGBE_RXPBSIZE_64KB     0x00010000 /* 64KB Packet Buffer */
 #define IXGBE_RXPBSIZE_80KB     0x00014000 /* 80KB Packet Buffer */
 
-#define IXGBE_RDRXCTL_RDMTS_1_2 0x00000000
-
 /* DCB hardware-specific driver APIs */
 
 /* DCB PFC functions */

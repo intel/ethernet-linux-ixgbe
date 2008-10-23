@@ -179,7 +179,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
 		 * of a TC is too small, the maximum credit may not be
 		 * enough to send out a jumbo frame in data plane arbitration.
 		 */
-		if (credit_max && credit_max < MINIMUM_CREDIT_FOR_JUMBO)
+		if (credit_max && (credit_max < MINIMUM_CREDIT_FOR_JUMBO))
 			credit_max = MINIMUM_CREDIT_FOR_JUMBO;
 
 		if (direction == DCB_TX_CONFIG) {
@@ -189,11 +189,11 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
 			 * credit may not be enough to send out a TSO
 			 * packet in descriptor plane arbitration.
 			 */
-			if (credit_max &&
-			    (credit_max < MINIMUM_CREDIT_FOR_TSO))
+			if (credit_max && (credit_max < MINIMUM_CREDIT_FOR_TSO))
 				credit_max = MINIMUM_CREDIT_FOR_TSO;
 
-			dcb_config->tc_config[i].desc_credits_max = (u16)credit_max;
+			dcb_config->tc_config[i].desc_credits_max =
+			   (u16)credit_max;
 		}
 
 		p->data_credits_max = (u16)credit_max;

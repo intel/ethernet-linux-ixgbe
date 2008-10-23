@@ -180,6 +180,20 @@ IXGBE_PARAM(LLISize, "Low Latency Interrupt on Packet Size (0-1500)");
 #define MIN_LLISIZE                    0
 #endif /* IXGBE_NO_LLI */
 
+#ifndef IXGBE_NO_INET_LRO
+/* LROAggr (Large Receive Offload)
+ *
+ * Valid Range: 2 - 44
+ *
+ * Default Value:  32
+ */
+IXGBE_PARAM(LROAggr, "LRO - Maximum packets to aggregate");
+
+#define DEFAULT_LRO_AGGR              32
+#define MAX_LRO_AGGR                  44
+#define MIN_LRO_AGGR                   2
+
+#endif
 /* Rx buffer mode
  *
  * Valid Range: 0-2 0 = 1buf_mode_always, 1 = ps_mode_always and 2 = optimal
@@ -292,7 +306,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 
 	{ /* Interrupt Type */
 		unsigned int i_type;
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Interrupt Type",
 			.err =
@@ -315,17 +329,20 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 					       "support unavailable.\n");
 				break;
 			case IXGBE_INT_MSI:
-				if (!adapter->flags & IXGBE_FLAG_MSI_CAPABLE)
+				if (!adapter->flags & IXGBE_FLAG_MSI_CAPABLE) {
 					printk(KERN_INFO
 					       "Ignoring MSI setting; "
 					       "support unavailable.\n");
-				else
+				} else {
 					adapter->flags &= ~IXGBE_FLAG_MSIX_CAPABLE;
+					adapter->flags &= ~IXGBE_FLAG_DCB_CAPABLE;
+				}
 				break;
 			case IXGBE_INT_LEGACY:
 			default:
 				adapter->flags &= ~IXGBE_FLAG_MSIX_CAPABLE;
 				adapter->flags &= ~IXGBE_FLAG_MSI_CAPABLE;
+				adapter->flags &= ~IXGBE_FLAG_DCB_CAPABLE;
 				break;
 			}
 #ifdef module_param_array
@@ -336,7 +353,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 	{ /* Multiple Queue Support */
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = enable_option,
 			.name = "Multiple Queue Support",
 			.err  = "defaulting to Enabled",
@@ -360,19 +377,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
 		}
 #endif
-#ifdef CONFIG_IXGBE_NAPI
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
-		/* Must disable multiqueue for NAPI operation on
-		 * kernels that don't have multiqueue NAPI support
-		 */
-		if (adapter->flags & IXGBE_FLAG_MQ_CAPABLE) {
-			DPRINTK(PROBE, INFO,
-			        "Multiple queues are not supported while NAPI "
-			        "is enabled.  Disabling Multiple Queues.\n");
-			adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
-		}
-#endif
-#endif
 		/* Check Interoperability */
 		if ((adapter->flags & IXGBE_FLAG_MQ_CAPABLE) &&
 		    !(adapter->flags & IXGBE_FLAG_MSIX_CAPABLE)) {
@@ -384,7 +388,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	}
 #ifdef IXGBE_DCA
 	{ /* Direct Cache Access (DCA) */
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = enable_option,
 			.name = "Direct Cache Access (DCA)",
 			.err  = "defaulting to Enabled",
@@ -416,7 +420,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	}
 #endif /* IXGBE_DCA */
 	{ /* Receive-Side Scaling (RSS) */
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Receive-Side Scaling (RSS)",
 			.err  = "using default.",
@@ -439,21 +443,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				          (int)num_online_cpus());
 				break;
 			default:
-				/* limit the value to no more than the number
-				 * of CPUs */
-				if (rss > num_online_cpus()) {
-					opt.arg.r.max = num_online_cpus();
-					/* print the message */
-					ixgbe_validate_option(&rss, &opt);
-					DPRINTK(PROBE, INFO,
-					"RSS should be no more than the number "
-					"of online CPUs\n");
-					/* use the default setting */
-					rss = min(IXGBE_MAX_RSS_INDICES,
-					          (int)num_online_cpus());
-					break;
-				}
-
 				ixgbe_validate_option(&rss, &opt);
 				break;
 			}
@@ -488,12 +477,13 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				        "queues are disabled.  "
 				        "Disabling RSS.\n");
 				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
+				adapter->flags &= ~IXGBE_FLAG_DCB_CAPABLE;
 				adapter->ring_feature[RING_F_RSS].indices = 0;
 			}
 		}
 	}
 	{ /* Virtual Machine Device Queues (VMDQ) */
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Virtual Machine Device Queues (VMDQ)",
 			.err  = "defaulting to Disabled",
@@ -546,7 +536,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 	}
 	{ /* Interrupt Throttling Rate */
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Interrupt Throttling Rate (ints/sec)",
 			.err  = "using default of "__MODULE_STRING(DEFAULT_ITR),
@@ -589,7 +579,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	}
 #ifndef IXGBE_NO_LLI
 	{ /* Low Latency Interrupt TCP Port*/
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Low Latency Interrupt TCP Port",
 			.err  = "using default of "
@@ -616,7 +606,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 	{ /* Low Latency Interrupt on Packet Size */
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Low Latency Interrupt on Packet Size",
 			.err  = "using default of "
@@ -643,7 +633,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 	{ /*Low Latency Interrupt on TCP Push flag*/
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = enable_option,
 			.name = "Low Latency Interrupt on TCP Push flag",
 			.err  = "defaulting to Disabled",
@@ -669,9 +659,37 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 #endif /* IXGBE_NO_LLI */
+#ifndef IXGBE_NO_INET_LRO
+	{ /* Large Receive Offload - Maximum packets to aggregate */
+		static struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "LRO - Maximum packets to aggregate",
+			.err  = "using default of " __MODULE_STRING(DEFAULT_LRO_AGGR),
+			.def  = DEFAULT_LRO_AGGR,
+			.arg  = { .r = { .min = MIN_LRO_AGGR,
+					 .max = MAX_LRO_AGGR }}
+		};
+
+#ifdef module_param_array
+		if (num_LROAggr > bd) {
+#endif
+			adapter->lro_max_aggr = LROAggr[bd];
+			if (adapter->lro_max_aggr) {
+				ixgbe_validate_option(&adapter->lro_max_aggr, &opt);
+			} else {
+				DPRINTK(PROBE, INFO, "%s turned off\n",
+					opt.name);
+			}
+#ifdef module_param_array
+		} else {
+			adapter->lro_max_aggr = opt.def;
+		}
+#endif
+	}
+#endif /* IXGBE_NO_INET_LRO */
 	{ /* Rx buffer mode */
 		unsigned int rx_buf_mode;
-		struct ixgbe_option opt = {
+		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Rx buffer mode",
 			.err = "using default of "

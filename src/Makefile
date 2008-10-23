@@ -72,8 +72,8 @@ ifeq (,$(KSRC))
   $(warning *** Install the appropriate kernel development package, e.g.)
   $(error kernel-devel, for building kernel modules and try again)
 else
-ifeq (/lib/modules/$(shell uname -r)/source, $(KSRC))
-  KOBJ :=  /lib/modules/$(shell uname -r)/build
+ifeq (/lib/modules/$(BUILD_KERNEL)/source, $(KSRC))
+  KOBJ :=  /lib/modules/$(BUILD_KERNEL)/build
 else
   KOBJ :=  $(KSRC)
 endif
@@ -85,7 +85,7 @@ ifneq (,$(wildcard /boot/vmlinuz.version.h))
   CONFIG_FILE  := /boot/vmlinuz.autoconf.h
   KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | \
           grep UTS_RELEASE | awk '{ print $$3 }' | sed 's/\"//g')
-  ifeq ($(KVER),$(shell uname -r))
+  ifeq ($(KVER),$(BUILD_KERNEL))
     # set up include path to override headers from kernel source
     x:=$(shell rm -rf include)
     x:=$(shell mkdir -p include/linux)
@@ -176,7 +176,7 @@ KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | grep UTS_RELEASE 
 
 # assume source symlink is the same as build, otherwise adjust KOBJ
 ifneq (,$(wildcard /lib/modules/$(KVER)/build))
-ifneq ($(KSRC),$(shell cd /lib/modules/$(KVER)/build ; pwd -P))
+ifneq ($(KSRC),$(shell readlink /lib/modules/$(KVER)/build))
   KOBJ=/lib/modules/$(KVER)/build
 endif
 endif
@@ -200,7 +200,7 @@ endif
 INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/$(DRIVER_NAME)
 
 # look for SMP in config.h
-SMP := $(shell $(CC) $(CFLAGS) -E -dM $(CONFIG_FILE) | \
+SMP := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(CONFIG_FILE) | \
          grep -w CONFIG_SMP | awk '{ print $$3 }')
 ifneq ($(SMP),1)
   SMP := 0
@@ -227,7 +227,7 @@ endif
 ###########################################################################
 # 2.4.x & 2.6.x Specific rules
 
-K_VERSION:=$(shell uname -r | cut -c1-3 | sed 's/2\.[56]/2\.6/')
+K_VERSION:=$(shell echo $(BUILD_KERNEL) | cut -c1-3 | sed 's/2\.[56]/2\.6/')
 
 ifeq ($(K_VERSION), 2.6)
 
@@ -239,7 +239,7 @@ MANSECTION = 7
 MANFILE = $(TARGET:.ko=.$(MANSECTION))
 
 ifneq ($(PATCHLEVEL),)
-# EXTRA_CFLAGS += $(CFLAGS_EXTRA)
+EXTRA_CFLAGS += $(CFLAGS_EXTRA)
 obj-m += $(DRIVER_NAME).o
 $(DRIVER_NAME)-objs := $(CFILES:.c=.o)
 else
@@ -260,18 +260,17 @@ TARGET = $(DRIVER_NAME).o
 MANSECTION = 7
 MANFILE = $(TARGET:.o=.$(MANSECTION))
 
-# include the flags we set up above
-CFLAGS += $(EXTRA_CFLAGS)
-
 # Get rid of compile warnings in kernel header files from SuSE
 ifneq (,$(wildcard /etc/SuSE-release))
-  CFLAGS += -Wno-sign-compare -fno-strict-aliasing
+  EXTRA_CFLAGS += -Wno-sign-compare -fno-strict-aliasing
 endif
 
 # Get rid of compile warnings in kernel header files from fedora
 ifneq (,$(wildcard /etc/fedora-release))
-  CFLAGS += -fno-strict-aliasing
+  EXTRA_CFLAGS += -fno-strict-aliasing
 endif
+
+CFLAGS += $(EXTRA_CFLAGS)
 
 .SILENT: $(TARGET)
 $(TARGET): $(filter-out $(TARGET), $(CFILES:.c=.o))

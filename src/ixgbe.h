@@ -28,6 +28,10 @@
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
 
+#ifndef IXGBE_NO_LRO
+#include <net/tcp.h>
+#endif
+
 #include <linux/pci.h>
 #include <linux/netdevice.h>
 #include <linux/vmalloc.h>
@@ -51,6 +55,18 @@
 #include "kcompat.h"
 
 #include "ixgbe_api.h"
+
+#define IXGBE_NO_INET_LRO
+#ifndef IXGBE_NO_LRO
+#ifdef NETIF_F_LRO
+#if defined(CONFIG_INET_LRO) || defined(CONFIG_INET_LRO_MODULE)
+#include <linux/inet_lro.h>
+#define MAX_LRO_DESCRIPTORS		   8
+#undef IXGBE_NO_INET_LRO
+#define IXGBE_NO_LRO
+#endif
+#endif
+#endif /* IXGBE_NO_LRO */
 
 #define IXGBE_ERR(args...) printk(KERN_ERR "ixgbe: " args)
 
@@ -162,6 +178,7 @@ struct ixgbe_rx_buffer {
 	dma_addr_t dma;
 	struct page *page;
 	dma_addr_t page_dma;
+	unsigned int page_offset;
 };
 
 struct ixgbe_queue_stats {
@@ -199,12 +216,16 @@ struct ixgbe_ring {
 #endif
 
 	struct ixgbe_queue_stats q_stats;
-	u8 v_idx; /* maps directly to the index for this ring in the hardware
+	u16 v_idx; /* maps directly to the index for this ring in the hardware
 	           * vector array, can also be used for finding the bit in EICR
 	           * and friends that represents the vector for this ring */
 #ifndef IXGBE_NO_LRO
 	/* LRO list for rx queue */
 	struct ixgbe_lro_list *lrolist;
+#endif
+#ifndef IXGBE_NO_INET_LRO
+	struct net_lro_mgr  lro_mgr;
+	bool lro_used;
 #endif
 	u16 work_limit;                /* max work per interrupt */
 	u16 rx_buf_len;
@@ -366,6 +387,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_VMDQ_ENABLED                 (u32)(1 << 19)
 #define IXGBE_FLAG_FAN_FAIL_CAPABLE             (u32)(1 << 20)
 #define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 22)
+#define IXGBE_FLAG_IN_WATCHDOG_TASK             (u32)(1 << 23)
 
 /* default to trying for four seconds */
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
@@ -399,6 +421,12 @@ struct ixgbe_adapter {
 	unsigned long state;
 	u32 *config_space;
 	u64 tx_busy;
+#ifndef IXGBE_NO_INET_LRO
+	unsigned int lro_max_aggr;
+	unsigned int lro_aggregated;
+	unsigned int lro_flushed;
+	unsigned int lro_no_desc;
+#endif
 	unsigned int tx_ring_count;
 	unsigned int rx_ring_count;
 
@@ -406,14 +434,16 @@ struct ixgbe_adapter {
 	bool link_up;
 	unsigned long link_check_timeout;
 
-	u32 stats_freq_us;		/* stats update freq (microseconds) */
 	struct work_struct watchdog_task;
+	struct work_struct sfp_task;
+	struct timer_list sfp_timer;
 };
 
 enum ixbge_state_t {
 	__IXGBE_TESTING,
 	__IXGBE_RESETTING,
-	__IXGBE_DOWN
+	__IXGBE_DOWN,
+	__IXGBE_SFP_MODULE_NOT_FOUND
 };
 
 /* needed by ixgbe_main.c */
@@ -439,9 +469,7 @@ extern void ixgbe_free_tx_resources(struct ixgbe_adapter *adapter,
 extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 
 /* needed by ixgbe_dcb_nl.c */
-extern int ixgbe_close(struct net_device *netdev);
 extern void ixgbe_reset_interrupt_capability(struct ixgbe_adapter *adapter);
-extern int ixgbe_open(struct net_device *netdev);
 extern int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter);
 extern bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
 

@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-June 17, 2008
+September 15, 2008
 
 Contents
 ========
@@ -18,12 +18,12 @@ Contents
 IMPORTANT NOTE
 ==============
 
-WARNING: The ixgbe driver compiles by default with the LRO (Large Receive
-Offload) feature enabled. This option offers the lowest CPU utilization for
+WARNING:  The ixgbe driver compiles by default with the LRO (Large Receive
+Offload) feature enabled.  This option offers the lowest CPU utilization for
 receives, but is completely incompatible with *routing/ip fowarding* and
-*bridging*. If enabling ip forwarding or bridging is a requirement, it is
+*bridging*.  If enabling ip forwarding or bridging is a requirement, it is
 necessary to disable LRO using compile time options as noted in the LRO
-section later in this document. The result of not disabling LRO when combined
+section later in this document.  The result of not disabling LRO when combined
 with ip forwarding or bridging can be low throughput or even a kernel PANIC.
 
 In This Release
@@ -36,7 +36,7 @@ x86_64, i686, and PPC.
 
 This driver is only supported as a loadable module at this time.  Intel is
 not supplying patches against the kernel source to allow for static linking
-of the driver. A version of the driver may already be included by your 
+of the driver.  A version of the driver may already be included by your 
 distribution and/or the kernel.org kernel. For questions related to hardware 
 requirements, refer to the documentation supplied with your 10 Gigabit PCI
 Express adapter.  All hardware requirements listed apply to use with Linux.
@@ -67,12 +67,18 @@ Controller        Adapter Name                      Physical Layer
               Dual Port Server Adapters   
             Intel(R) 82598EB 10 Gigabit AF 
               Dual Port Network Connection
+            Intel(R) 82598EB 10 Gigabit 
+              Dual Port Network Connection            
             Intel(R) 82598EB 10 Gigabit AF 
               Network Connection
             Intel(R) 82598EB 10 Gigabit AT 
               CX4 Network Connection         
             Intel(R) 10 Gigabit SR Dual
               Port Express Module
+            Intel(R) 10 Gigabit AT Server 
+              Adapter
+            Intel(R) 10 Gigabit AF DA Dual
+              Port Server Adapter  
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -85,6 +91,51 @@ networking link on the left to search for your adapter:
 
     http://downloadfinder.intel.com/scripts-df/support_intel.asp
 
+SFP+ Devices with Pluggable Optics
+----------------------------------
+
+NOTES: 
+- Intel(R) Network Adapters that support removable optical modules only support 
+  their original module type (i.e., the Intel(R) 10 Gigabit SR Dual Port 
+  Express Module only supports SR optical modules). If you plug in a different 
+  type of module, the driver will not load.
+- Hot Swapping/hot plugging optical modules is not supported.
+- Only single speed, 10 gigabit modules are supported.
+- LAN on Motherboard (LOMs) may support DA, SR, or LR modules. Other module 
+  types are not supported. Please see your system documentation for details.
+
+The following is a list of SFP+ modules and direct attach cables that have 
+received some testing. Not all modules are applicable to all devices.
+
+Supplier  Type 	                                Part Numbers
+
+Finisar	  SFP+ SR bailed, 10g single rate 	FTLX8571D3BCL
+Avago	  SFP+ SR bailed, 10g single rate 	AFBR-700SDZ
+Finisar	  SFP+ LR bailed, 10g single rate	FTLX1471D3BCL
+Molex	  1m - Twin-ax cable	                74752-1101
+Molex	  3m - Twin-ax cable	                74752-2301
+Molex	  5m - Twin-ax cable 	                74752-3501
+Molex	  10m - Twin-ax cable	                74752-9004
+Tyco	  1m - Twin-ax cable	                2032237-2
+Tyco	  3m - Twin-ax cable	                2032237-4
+Tyco	  5m - Twin-ax cable	                2032237-6
+Tyco	  10m - Twin-ax cable	                1-2032237-1
+
+The optic modules and cables referred to above are listed only for the purpose
+of highlighting third party specifications and potential compatibility, and are
+not recommendations or endorsements or sponsorship of any third party's product
+by Intel. Intel is not endorsing or promoting products made by any third party 
+and the third party reference is provided only to share information regarding 
+certain optic modules and cables with the above specifications. There may be 
+other manufacturers or suppliers, producing or supplying optic modules and 
+cables with similar or matching descriptions. Customers must use their own 
+discretion and diligence to purchase optic modules and cables from any third 
+party of their choice. Customer are solely responsible for assessing the 
+suitability of the product and/or devices and for the selection of the vendor 
+for purchasing any product. THE OPTIC MODULES AND CABLES REFERRED TO ABOVE ARE 
+NOT WARRANTED OR SUPPORTED BY INTEL. INTEL ASSUMES NO LIABILITY WHATSOEVER, AND
+INTEL DISCLAIMS ANY EXPRESS OR IMPLIED WARRANTY, RELATING TO SALE AND/OR USE OF
+SUCH THIRD PARTY PRODUCTS OR SELECTION OF VENDOR BY CUSTOMERS.
 
 Building and Installation
 =========================
@@ -149,6 +200,7 @@ To manually build this driver:
      ping  <IP_address>
 
 e1000-eedc@lists.sourceforge.net
+
 To build ixgbe driver with DCA:
 ------------------------------
 
@@ -198,6 +250,8 @@ Valid Range: 0 - 16
 Default Value: 1
 RSS also effects the number of transmit queues allocated on 2.6.23 and
 newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
+CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26.  Other options 
+enable multiqueue in 2.6.27 and newer kernels.
 
 
 MQ - Multi Queue
@@ -231,7 +285,7 @@ Default Value: 2
 
 InterruptType
 -------------
-Valid Range: 0 - 2 0 = Legacy Int, 1 = MSI and 2 = MSI-X
+Valid Range: 0 - 2 (0 = Legacy Int, 1 = MSI and 2 = MSI-X)
 Default Value: 2
 Interrupt type controls allow load time control over the type of interrupt
 registered for by the driver.  MSI-X is required for multiple queue
@@ -303,6 +357,15 @@ Default Value: 0 (disabled)
   LLISize causes an immediate interrupt if the hardware receives a packet 
   smaller than the specified size.
 
+LROAggr
+-------
+Valid Range: 2-44
+Default Value: 32
+
+  LROAggr is the maximum number of packets that can be aggregated by LRO into
+  a single packet before it must be passed up to the stack.
+  NOTE: For kernel version 2.6.24 and greater. 
+
 
 Additional Configurations
 =========================
@@ -362,6 +425,9 @@ Additional Configurations
   or disabled based on the configuration of the kernel.  To override the 
   default, use the following compile-time flags.
 
+  You can tell if NAPI is enabled in the driver by looking at the version 
+  number of the driver.  It will contain the string -NAPI if NAPI is enabled.
+
   To enable NAPI, compile the driver module, passing in a configuration option:
 
             make CFLAGS_EXTRA=-DIXGBE_NAPI install
@@ -398,6 +464,8 @@ Additional Configurations
   lro_flushed - the total number of receives using LRO.
   lro_coal - counts the total number of Ethernet packets that were combined.
 
+  NOTE: IPv6 and UDP are not supported by LRO.
+
 
   rx_dropped_backlog
   ------------------
@@ -420,7 +488,7 @@ Additional Configurations
 
      ethtool -A eth? autoneg off rx on tx on
 
-  FCOE
+  FCoE
   ----
   This release of the ixgbe driver contains new code to enable users to use 
   Fiber Channel over Ethernet (FCoE) and Data Center Bridging (DCB) 
@@ -440,20 +508,13 @@ Known Issues/Troubleshooting
   installed the correct driver.
 
 
-  MSI-X Issues with 82598-based Intel(R)10GbE-LR/LRM/SR/AT Server Adapters
-  ------------------------------------------------------------------------
-  Kernel panics and instability may be observed on some platforms when 
-  running 82598-based Intel(R) 10GbE-LR/LRM/SR/AT Server Adapters with 
-  MSI-X in a stress environment. Symptoms of this issue include observing 
-  "APIC 40 Error" or "no irq handler for vector" error messages on the 
-  console or in "dmesg."
+  MSI-X Issues with Kernels between 2.6.19 - 2.6.21 (inclusive)
+  ------------------------------------------------------------
+  Kernel panics and instability may be observed on any MSI-X hardware if you
+  use irqbalance with kernels between 2.6.19 and 2.6.21. 
 
-  If such problems are encountered, you may disable the irqbalance daemon. 
-  If the problems persist, compile the driver in pin interrupt mode, do 
-  	make CFLAGS_EXTRA=-DDISABLE_PCI_MSI
- 
-  Or you can load the module with modprobe ixgbe InterruptType=0
-
+  If such problems are encountered, you may disable the irqbalance daemon or
+  upgrade to a newer kernel. 
                          
   Driver Compilation
   ------------------
@@ -468,18 +529,27 @@ Known Issues/Troubleshooting
       make include/linux/version.h.
 
 
-  Do Not Use LRO When Routing Packets
-  -----------------------------------
+  Do Not Use LRO When Routing or Bridging Packets
+  -----------------------------------------------
   Due to a known general compatibility issue with LRO and routing, do not use
-  LRO when routing packets. 
+  LRO when routing or bridging packets.
+
+
+  LRO and iSCSI Incompatibility
+  ----------------------------------
+  LRO is incompatible with iSCSI target or initiator traffic.  A panic may 
+  occur when iSCSI traffic is received through the ixgbe driver with LRO 
+  enabled.  To workaround this, the driver should be built and installed with:
+
+      # make CFLAGS_EXTRA=-DIXGBE_NO_LRO install
 
 
   Jumbo Frames System Requirement
   -------------------------------
-  Memory allocation failures have been observed on Linux systems with 64 MB
+  Memory allocation failures have been observed on Linux systems with 128 MB
   of RAM or less that are running Jumbo Frames.  If you are using Jumbo
   Frames, your system may require more than the advertised minimum
-  requirement of 64 MB of system memory.
+  requirement of 128 MB of system memory.
 
 
   Performance Degradation with Jumbo Frames
@@ -539,6 +609,17 @@ Known Issues/Troubleshooting
   cause all" from the Global Configuration prompt which enables the switch to 
   keep the interfaces up, regardless of errors.
 
+  Installing RedHat Enterprise Linux 5.2 with an Intel(R) 10 Gigabit AT Server 
+  Adapter may cause kernel panic
+  ----------------------------------------------------------------------------
+  A known issue may cause a kernel panic or hang after installing an 
+  82598AT-based Intel(R) 10 Gigabit AT Server Adapter in a RedHat Enterprise 
+  Linux 5.2 system.  The ixgbe driver for both the install kernel and the 
+  runtime kernel can create this panic if the 82598AT adapter is installed.  
+  RedHat may release a security update that contains a fix for the panic that 
+  you can download using RHN (RedHat Network) or Intel recommends that you 
+  install the ixgbe-1.3.31.5 driver or newer BEFORE installing the hardware.
+
 
 Support
 =======
@@ -560,7 +641,7 @@ License
 =======
 
 Intel 10 Gigabit PCI Express Linux driver.
-Copyright(c) 1999 - 2007 Intel Corporation.
+Copyright(c) 1999 - 2008 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,

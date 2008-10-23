@@ -62,8 +62,7 @@
 
 #define DCB_NOT_IMPLEMENTED      0x7FFFFFFF
 
-struct dcb_pfc_tc_debug
-{
+struct dcb_pfc_tc_debug {
 	u8  tc;
 	u8  pause_status;
 	u64 pause_quanta;
@@ -76,8 +75,7 @@ enum strict_prio_type {
 };
 
 /* Traffic class bandwidth allocation per direction */
-struct tc_bw_alloc
-{
+struct tc_bw_alloc {
 	u8 bwg_id;                /* Bandwidth Group (BWG) ID */
 	u8 bwg_percent;           /* % of BWG's bandwidth */
 	u8 link_percent;          /* % of link bandwidth */
@@ -96,8 +94,7 @@ enum dcb_pfc_type {
 };
 
 /* Traffic class configuration */
-struct tc_configuration
-{
+struct tc_configuration {
 	struct tc_bw_alloc path[2]; /* One each for Tx/Rx */
 	enum dcb_pfc_type  dcb_pfc; /* Class based flow control setting */
 
@@ -110,8 +107,8 @@ enum dcb_rx_pba_cfg {
 	pba_80_48      /* PBA[0-3] each use 80KB, PBA[4-7] each use 48KB */
 };
 
-struct ixgbe_dcb_config
-{
+
+struct ixgbe_dcb_config {
 	struct tc_configuration tc_config[MAX_TRAFFIC_CLASS];
 	u8     bw_percentage[2][MAX_BW_GROUP]; /* One each for Tx/Rx */
 
@@ -122,7 +119,6 @@ struct ixgbe_dcb_config
 	u32  dcb_cfg_version; /* Not used...OS-specific? */
 	u32  link_speed; /* For bandwidth allocation validation purpose */
 };
-
 
 /* DCB driver APIs */
 
