@@ -95,7 +95,7 @@ IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), de
 
 IXGBE_PARAM(MQ, "Disable or enable Multiple Queues, default 1");
 
-#ifdef IXGBE_DCA
+#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 /* DCA - Direct Cache Access (DCA) Enable/Disable
  *
  * Valid Range: 0, 1
@@ -137,8 +137,8 @@ IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable (defau
  *
  * Default Value: 8000
  */
-IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (100-500000), default 8000");
 #define DEFAULT_ITR                 8000
+IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (100-500000), default 8000");
 #define MAX_ITR                   500000
 #define MIN_ITR                      100
 
@@ -386,7 +386,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			adapter->flags &= ~IXGBE_FLAG_MQ_CAPABLE;
 		}
 	}
-#ifdef IXGBE_DCA
+#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	{ /* Direct Cache Access (DCA) */
 		static struct ixgbe_option opt = {
 			.type = enable_option,
@@ -418,7 +418,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 #endif
 	}
-#endif /* IXGBE_DCA */
+#endif /* CONFIG_DCA or CONFIG_DCA_MODULE */
 	{ /* Receive-Side Scaling (RSS) */
 		static struct ixgbe_option opt = {
 			.type = range_option,

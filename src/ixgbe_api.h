@@ -104,6 +104,6 @@ s32 ixgbe_read_analog_reg8(struct ixgbe_hw *hw, u32 reg, u8 *val);
 s32 ixgbe_write_analog_reg8(struct ixgbe_hw *hw, u32 reg, u8 val);
 s32 ixgbe_init_uta_tables(struct ixgbe_hw *hw);
 s32 ixgbe_read_i2c_eeprom(struct ixgbe_hw *hw, u8 byte_offset, u8 *eeprom_data);
-s32 ixgbe_get_supported_physical_layer(struct ixgbe_hw *hw);
+u32 ixgbe_get_supported_physical_layer(struct ixgbe_hw *hw);
 
 #endif /* _IXGBE_API_H_ */

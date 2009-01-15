@@ -32,6 +32,14 @@
 #include <net/genetlink.h>
 #include <linux/netdevice.h>
 
+/* Callbacks for DCB netlink in the kernel */
+#define BIT_DCB_MODE    0x01
+#define BIT_PFC         0x02
+#define BIT_PG_RX       0x04
+#define BIT_PG_TX       0x08
+#define BIT_BCN         0x10
+#define BIT_LINKSPEED   0x80
+
 /* DCB configuration commands */
 enum {
 	DCB_C_UNDEFINED,
@@ -150,12 +158,6 @@ enum {
 #define DCB_PROTO_VERSION             0x1
 #define is_pci_device(dev) ((dev)->bus == &pci_bus_type)
 
-#define BIT_DCB_MODE   0x01
-#define BIT_PFC        0x02
-#define BIT_PG_RX      0x04
-#define BIT_PG_TX      0x08
-#define BIT_LINKSPEED  0x10
-
 static struct genl_family dcb_family = {
     .id = GENL_ID_GENERATE,
     .hdrsize = 0,
@@ -249,7 +251,7 @@ static int ixgbe_dcb_check_adapter(struct net_device *netdev)
 		return -EINVAL;
 
 	if (ixgbe_is_ixgbe(pcidev))
-		return IXGBE_SUCCESS;
+		return 0;
 	else
 		return -EINVAL;
 }
@@ -454,6 +456,7 @@ static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 
 				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
 				adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
+				adapter->ring_feature[RING_F_DCB].indices = 8;
 				ixgbe_init_interrupt_scheme(adapter);
 #ifdef CONFIG_IXGBE_NAPI
 				ixgbe_napi_add_all(adapter);
@@ -914,17 +917,19 @@ static int ixgbe_dcb_spfccfg(struct sk_buff *skb, struct genl_info *info)
 	u8 setting;
 	u8 changed = 0;
 
+	netdev = dev_get_by_name(&init_net,
+				 nla_data(info->attrs[DCB_A_IFNAME]));
+	if (!netdev)
+		return -EINVAL;
+
+	adapter = netdev_priv(netdev);
+
 	if (!info->attrs[DCB_A_IFNAME] || !info->attrs[DCB_A_PFC_CFG]) {
 		DPRINTK(DRV, INFO, "set pfc: ifname:%d pfc_cfg:%d\n",
 			!info->attrs[DCB_A_IFNAME],
 			!info->attrs[DCB_A_PFC_CFG]);
 		return -EINVAL;
 	}
-
-	netdev = dev_get_by_name(&init_net,
-				 nla_data(info->attrs[DCB_A_IFNAME]));
-	if (!netdev)
-		return -EINVAL;
 
 	ret = ixgbe_dcb_check_adapter(netdev);
 	if (ret)

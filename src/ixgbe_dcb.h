@@ -111,7 +111,7 @@ enum dcb_rx_pba_cfg {
 struct ixgbe_dcb_config {
 	struct tc_configuration tc_config[MAX_TRAFFIC_CLASS];
 	u8     bw_percentage[2][MAX_BW_GROUP]; /* One each for Tx/Rx */
-
+	bool pfc_mode_enable;
 	bool  round_robin_enable;
 
 	enum dcb_rx_pba_cfg rx_pba_cfg;
@@ -155,9 +155,13 @@ s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw, struct ixgbe_dcb_config *config);
 /* DCB definitions for credit calculation */
 #define MAX_CREDIT_REFILL       511  /* 0x1FF * 64B = 32704B */
 #define MINIMUM_CREDIT_REFILL   5    /* 5*64B = 320B */
-#define MINIMUM_CREDIT_FOR_JUMBO 145  /* 145= UpperBound((9*1024+54)/64B) for 9KB jumbo frame */
-#define DCB_MAX_TSO_SIZE        32*1024 /* MAX TSO packet size supported in DCB mode */
-#define MINIMUM_CREDIT_FOR_TSO  (DCB_MAX_TSO_SIZE/64 + 1) /* 513 for 32KB TSO packet */
-#define MAX_CREDIT              4095 /* Maximum credit supported: 256KB * 1204 / 64B */
+#define MINIMUM_CREDIT_FOR_JUMBO 145  /* 145 = UpperBound((9*1024+54)/64B)
+                                       * for 9KB jumbo frame */
+#define DCB_MAX_TSO_SIZE        32*1024 /* MAX TSO packet size supported
+                                         * in DCB mode */
+#define MINIMUM_CREDIT_FOR_TSO  (DCB_MAX_TSO_SIZE/64 + 1) /* 513 for 32KB TSO
+                                                           * packet */
+#define MAX_CREDIT              4095 /* Maximum credit supported:
+                                      * 256KB * 1204 / 64B */
 
 #endif /* _DCB_CONFIG_H */

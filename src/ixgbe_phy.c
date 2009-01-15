@@ -51,7 +51,7 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 	phy->ops.identify_sfp = &ixgbe_identify_sfp_module_generic;
 	phy->sfp_type = ixgbe_sfp_type_unknown;
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -72,12 +72,12 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 				ixgbe_get_phy_id(hw);
 				hw->phy.type =
 				        ixgbe_get_phy_type_from_id(hw->phy.id);
-				status = IXGBE_SUCCESS;
+				status = 0;
 				break;
 			}
 		}
 	} else {
-		status = IXGBE_SUCCESS;
+		status = 0;
 	}
 
 	return status;
@@ -118,7 +118,7 @@ s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 	                              IXGBE_MDIO_PMA_PMD_DEV_TYPE,
 	                              &phy_id_high);
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		hw->phy.id = (u32)(phy_id_high << 16);
 		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_LOW,
 		                              IXGBE_MDIO_PMA_PMD_DEV_TYPE,
@@ -153,7 +153,7 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 		break;
 	}
 
-	DEBUGOUT1("phy type found is %d\n", phy_type);
+	hw_dbg(hw, "phy type found is %d\n", phy_type);
 	return phy_type;
 }
 
@@ -184,7 +184,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	u32 command;
 	u32 i;
 	u32 data;
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 	u16 gssr;
 
 	if (IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_LAN_ID_1)
@@ -192,10 +192,10 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	else
 		gssr = IXGBE_GSSR_PHY0_SM;
 
-	if (ixgbe_acquire_swfw_sync(hw, gssr) != IXGBE_SUCCESS)
+	if (ixgbe_acquire_swfw_sync(hw, gssr) != 0)
 		status = IXGBE_ERR_SWFW_SYNC;
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		/* Setup and write the address cycle command */
 		command = ((reg_addr << IXGBE_MSCA_NP_ADDR_SHIFT)  |
 		           (device_type << IXGBE_MSCA_DEV_TYPE_SHIFT) |
@@ -219,11 +219,11 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 		}
 
 		if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-			DEBUGOUT("PHY address command did not complete.\n");
+			hw_dbg(hw, "PHY address command did not complete.\n");
 			status = IXGBE_ERR_PHY;
 		}
 
-		if (status == IXGBE_SUCCESS) {
+		if (status == 0) {
 			/*
 			 * Address cycle complete, setup and write the read
 			 * command
@@ -250,7 +250,7 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			}
 
 			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-				DEBUGOUT("PHY read command didn't complete\n");
+				hw_dbg(hw, "PHY read command didn't complete\n");
 				status = IXGBE_ERR_PHY;
 			} else {
 				/*
@@ -281,7 +281,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 {
 	u32 command;
 	u32 i;
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 	u16 gssr;
 
 	if (IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_LAN_ID_1)
@@ -289,10 +289,10 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	else
 		gssr = IXGBE_GSSR_PHY0_SM;
 
-	if (ixgbe_acquire_swfw_sync(hw, gssr) != IXGBE_SUCCESS)
+	if (ixgbe_acquire_swfw_sync(hw, gssr) != 0)
 		status = IXGBE_ERR_SWFW_SYNC;
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		/* Put the data in the MDI single read and write data register*/
 		IXGBE_WRITE_REG(hw, IXGBE_MSRWD, (u32)phy_data);
 
@@ -319,11 +319,11 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 		}
 
 		if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-			DEBUGOUT("PHY address cmd didn't complete\n");
+			hw_dbg(hw, "PHY address cmd didn't complete\n");
 			status = IXGBE_ERR_PHY;
 		}
 
-		if (status == IXGBE_SUCCESS) {
+		if (status == 0) {
 			/*
 			 * Address cycle complete, setup and write the write
 			 * command
@@ -350,7 +350,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			}
 
 			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-				DEBUGOUT("PHY address cmd didn't complete\n");
+				hw_dbg(hw, "PHY address cmd didn't complete\n");
 				status = IXGBE_ERR_PHY;
 			}
 		}
@@ -410,7 +410,7 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 
 		autoneg_reg &= IXGBE_MII_AUTONEG_COMPLETE;
 		if (autoneg_reg == IXGBE_MII_AUTONEG_COMPLETE) {
-			status = IXGBE_SUCCESS;
+			status = 0;
 			break;
 		}
 	}
@@ -448,7 +448,7 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 	/* Setup link based on the new speed settings */
 	hw->phy.ops.setup_link(hw);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -461,7 +461,7 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 s32 ixgbe_check_phy_link_tnx(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
                              bool *link_up)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 	u32 time_out;
 	u32 max_time_out = 10;
 	u16 phy_link = 0;
@@ -507,7 +507,7 @@ s32 ixgbe_check_phy_link_tnx(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 s32 ixgbe_get_phy_firmware_version_tnx(struct ixgbe_hw *hw,
                                        u16 *firmware_version)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 
 	status = hw->phy.ops.read_reg(hw, TNX_FW_REV,
 	                              IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
@@ -526,7 +526,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	bool end_data = false;
 	u16 list_offset, data_offset;
 	u16 phy_data = 0;
-	s32 ret_val = IXGBE_SUCCESS;
+	s32 ret_val = 0;
 	u32 i;
 
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
@@ -546,7 +546,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	}
 
 	if ((phy_data & IXGBE_MDIO_PHY_XS_RESET) != 0) {
-		DEBUGOUT("PHY reset did not complete.\n");
+		hw_dbg(hw, "PHY reset did not complete.\n");
 		ret_val = IXGBE_ERR_PHY;
 		goto out;
 	}
@@ -554,7 +554,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	/* Get init offsets */
 	ret_val = ixgbe_get_sfp_init_sequence_offsets(hw, &list_offset,
 	                                              &data_offset);
-	if (ret_val != IXGBE_SUCCESS)
+	if (ret_val != 0)
 		goto out;
 
 	ret_val = hw->eeprom.ops.read(hw, data_offset, &block_crc);
@@ -565,24 +565,24 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 		 */
 		ret_val = hw->eeprom.ops.read(hw, data_offset, &eword);
 		control = (eword & IXGBE_CONTROL_MASK_NL) >>
-				IXGBE_CONTROL_SHIFT_NL;
+		           IXGBE_CONTROL_SHIFT_NL;
 		edata = eword & IXGBE_DATA_MASK_NL;
 		switch (control) {
 		case IXGBE_DELAY_NL:
 			data_offset++;
-			DEBUGOUT1("DELAY: %d MS\n", edata);
+			hw_dbg(hw, "DELAY: %d MS\n", edata);
 			msleep(edata);
 			break;
 		case IXGBE_DATA_NL:
-			DEBUGOUT("DATA:  \n");
+			hw_dbg(hw, "DATA:  \n");
 			data_offset++;
 			hw->eeprom.ops.read(hw, data_offset++,
-						&phy_offset);
+			                    &phy_offset);
 			for (i = 0; i < edata; i++) {
 				hw->eeprom.ops.read(hw, data_offset, &eword);
 				hw->phy.ops.write_reg(hw, phy_offset,
 				                      IXGBE_TWINAX_DEV, eword);
-				DEBUGOUT2("Wrote %4.4x to %4.4x\n", eword,
+				hw_dbg(hw, "Wrote %4.4x to %4.4x\n", eword,
 				          phy_offset);
 				data_offset++;
 				phy_offset++;
@@ -590,20 +590,20 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 			break;
 		case IXGBE_CONTROL_NL:
 			data_offset++;
-			DEBUGOUT("CONTROL: \n");
+			hw_dbg(hw, "CONTROL: \n");
 			if (edata == IXGBE_CONTROL_EOL_NL) {
-				DEBUGOUT("EOL\n");
+				hw_dbg(hw, "EOL\n");
 				end_data = true;
 			} else if (edata == IXGBE_CONTROL_SOL_NL) {
-				DEBUGOUT("SOL\n");
+				hw_dbg(hw, "SOL\n");
 			} else {
-				DEBUGOUT("Bad control value\n");
+				hw_dbg(hw, "Bad control value\n");
 				ret_val = IXGBE_ERR_PHY;
 				goto out;
 			}
 			break;
 		default:
-			DEBUGOUT("Bad control type\n");
+			hw_dbg(hw, "Bad control type\n");
 			ret_val = IXGBE_ERR_PHY;
 			goto out;
 		}
@@ -614,11 +614,10 @@ out:
 }
 
 /**
- *  ixgbe_identify_sfp_module_generic - Identifies SFP module and assigns
- *                                      the PHY type.
+ *  ixgbe_identify_sfp_module_generic - Identifies SFP modules
  *  @hw: pointer to hardware structure
  *
- *  Searches for and identifies the SFP module.  Assigns appropriate PHY type.
+ *  Searches for and identifies the SFP module and assigns appropriate PHY type.
  **/
 s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 {
@@ -630,7 +629,8 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 	u8 oui_bytes[4] = {0, 0, 0, 0};
 	u8 transmission_media = 0;
 
-	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_IDENTIFIER, &identifier);
+	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_IDENTIFIER,
+	                                     &identifier);
 
 	if (status == IXGBE_ERR_SFP_NOT_PRESENT) {
 		hw->phy.sfp_type = ixgbe_sfp_type_not_present;
@@ -645,12 +645,12 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_TRANSMISSION_MEDIA,
 		                           &transmission_media);
 
-		 /* ID	Module
-		 * ============
-		 * 0	SFP_DA_CU
-		 * 1	SFP_SR
-		 * 2	SFP_LR
-		 */
+		 /* ID Module
+		  * =========
+		  * 0   SFP_DA_CU
+		  * 1   SFP_SR
+		  * 2   SFP_LR
+		  */
 		if (transmission_media & IXGBE_SFF_TWIN_AX_CAPABLE)
 			hw->phy.sfp_type = ixgbe_sfp_type_da_cu;
 		else if (comp_codes_10g & IXGBE_SFF_10GBASESR_CAPABLE)
@@ -699,7 +699,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 				break;
 			}
 		}
-		status = IXGBE_SUCCESS;
+		status = 0;
 	}
 
 out:
@@ -707,12 +707,13 @@ out:
 }
 
 /**
- *  ixgbe_get_sfp_init_sequence_offsets - Checks the MAC's EEPROM to see
- *  if it supports a given SFP+ module type, if so it returns the offsets to the
- *  phy init sequence block.
+ *  ixgbe_get_sfp_init_sequence_offsets - Provides offset of PHY init sequence
  *  @hw: pointer to hardware structure
  *  @list_offset: offset to the SFP ID list
  *  @data_offset: offset to the SFP data block
+ *
+ *  Checks the MAC's EEPROM to see if it supports a given SFP+ module type, if
+ *  so it returns the offsets to the phy init sequence block.
  **/
 s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
                                         u16 *list_offset,
@@ -750,7 +751,7 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 			(*list_offset)++;
 			hw->eeprom.ops.read(hw, *list_offset, data_offset);
 			if ((!*data_offset) || (*data_offset == 0xFFFF)) {
-				DEBUGOUT("SFP+ module not supported\n");
+				hw_dbg(hw, "SFP+ module not supported\n");
 				return IXGBE_ERR_SFP_NOT_SUPPORTED;
 			} else {
 				break;
@@ -763,10 +764,10 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 	}
 
 	if (sfp_id == IXGBE_PHY_INIT_END_NL) {
-		DEBUGOUT("No matching SFP+ module found\n");
+		hw_dbg(hw, "No matching SFP+ module found\n");
 		return IXGBE_ERR_SFP_NOT_SUPPORTED;
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 

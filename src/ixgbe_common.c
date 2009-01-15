@@ -82,6 +82,7 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.get_mac_addr = &ixgbe_get_mac_addr_generic;
 	mac->ops.stop_adapter = &ixgbe_stop_adapter_generic;
 	mac->ops.get_bus_info = &ixgbe_get_bus_info_generic;
+	mac->ops.set_lan_id = &ixgbe_set_lan_id_multi_port_pcie;
 
 	/* LEDs */
 	mac->ops.led_on = &ixgbe_led_on_generic;
@@ -103,8 +104,6 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.set_vfta = NULL;
 	mac->ops.init_uta_tables = NULL;
 
-	/* Flow Control */
-	mac->ops.setup_fc = NULL;
 
 	/* Link */
 	mac->ops.get_link_capabilities = NULL;
@@ -112,7 +111,7 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.setup_link_speed = NULL;
 	mac->ops.check_link = NULL;
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -161,7 +160,7 @@ s32 ixgbe_start_hw_generic(struct ixgbe_hw *hw)
 	/* Clear adapter stopped flag */
 	hw->adapter_stopped = false;
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -182,7 +181,7 @@ s32 ixgbe_init_hw_generic(struct ixgbe_hw *hw)
 	/* Start the HW */
 	hw->mac.ops.start_hw(hw);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -207,17 +206,16 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 	IXGBE_READ_REG(hw, IXGBE_MRFC);
 	IXGBE_READ_REG(hw, IXGBE_RLEC);
 	IXGBE_READ_REG(hw, IXGBE_LXONTXC);
-	IXGBE_READ_REG(hw, IXGBE_LXONRXC);
 	IXGBE_READ_REG(hw, IXGBE_LXOFFTXC);
+	IXGBE_READ_REG(hw, IXGBE_LXONRXC);
 	IXGBE_READ_REG(hw, IXGBE_LXOFFRXC);
 
 	for (i = 0; i < 8; i++) {
 		IXGBE_READ_REG(hw, IXGBE_PXONTXC(i));
-		IXGBE_READ_REG(hw, IXGBE_PXONRXC(i));
 		IXGBE_READ_REG(hw, IXGBE_PXOFFTXC(i));
+		IXGBE_READ_REG(hw, IXGBE_PXONRXC(i));
 		IXGBE_READ_REG(hw, IXGBE_PXOFFRXC(i));
 	}
-
 	IXGBE_READ_REG(hw, IXGBE_PRC64);
 	IXGBE_READ_REG(hw, IXGBE_PRC127);
 	IXGBE_READ_REG(hw, IXGBE_PRC255);
@@ -260,7 +258,7 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 		IXGBE_READ_REG(hw, IXGBE_QBTC(i));
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -275,23 +273,21 @@ s32 ixgbe_read_pba_num_generic(struct ixgbe_hw *hw, u32 *pba_num)
 	s32 ret_val;
 	u16 data;
 
-	DEBUGFUNC("ixgbe_read_pba_num_generic");
-
 	ret_val = hw->eeprom.ops.read(hw, IXGBE_PBANUM0_PTR, &data);
 	if (ret_val) {
-		DEBUGOUT("NVM Read Error\n");
+		hw_dbg(hw, "NVM Read Error\n");
 		return ret_val;
 	}
 	*pba_num = (u32)(data << 16);
 
 	ret_val = hw->eeprom.ops.read(hw, IXGBE_PBANUM1_PTR, &data);
 	if (ret_val) {
-		DEBUGOUT("NVM Read Error\n");
+		hw_dbg(hw, "NVM Read Error\n");
 		return ret_val;
 	}
 	*pba_num |= data;
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -318,7 +314,7 @@ s32 ixgbe_get_mac_addr_generic(struct ixgbe_hw *hw, u8 *mac_addr)
 	for (i = 0; i < 2; i++)
 		mac_addr[i+4] = (u8)(rar_high >> (i*8));
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -329,6 +325,7 @@ s32 ixgbe_get_mac_addr_generic(struct ixgbe_hw *hw, u8 *mac_addr)
  **/
 s32 ixgbe_get_bus_info_generic(struct ixgbe_hw *hw)
 {
+	struct ixgbe_mac_info *mac = &hw->mac;
 	u16 link_status;
 
 	hw->bus.type = ixgbe_bus_type_pci_express;
@@ -366,7 +363,30 @@ s32 ixgbe_get_bus_info_generic(struct ixgbe_hw *hw)
 		break;
 	}
 
-	return IXGBE_SUCCESS;
+	mac->ops.set_lan_id(hw);
+
+	return 0;
+}
+
+/**
+ *  ixgbe_set_lan_id_multi_port_pcie - Set LAN id for PCIe multiple port devices
+ *  @hw: pointer to the HW structure
+ *
+ *  Determines the LAN function id by reading memory-mapped registers
+ *  and swaps the port value if requested.
+ **/
+void ixgbe_set_lan_id_multi_port_pcie(struct ixgbe_hw *hw)
+{
+	struct ixgbe_bus_info *bus = &hw->bus;
+	u32 reg;
+
+	reg = IXGBE_READ_REG(hw, IXGBE_STATUS);
+	bus->func = (reg & IXGBE_STATUS_LAN_ID) >> IXGBE_STATUS_LAN_ID_SHIFT;
+
+	/* check for a port swap */
+	reg = IXGBE_READ_REG(hw, IXGBE_FACTPS);
+	if (reg & IXGBE_FACTPS_LFS)
+		bus->func ^= 0x1;
 }
 
 /**
@@ -417,10 +437,10 @@ s32 ixgbe_stop_adapter_generic(struct ixgbe_hw *hw)
 	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
 	 * access and verify no pending requests
 	 */
-	if (ixgbe_disable_pcie_master(hw) != IXGBE_SUCCESS)
-		DEBUGOUT("PCI-E Master disable polling has failed.\n");
+	if (ixgbe_disable_pcie_master(hw) != 0)
+		hw_dbg(hw, "PCI-E Master disable polling has failed.\n");
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -438,7 +458,7 @@ s32 ixgbe_led_on_generic(struct ixgbe_hw *hw, u32 index)
 	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, led_reg);
 	IXGBE_WRITE_FLUSH(hw);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -456,7 +476,7 @@ s32 ixgbe_led_off_generic(struct ixgbe_hw *hw, u32 index)
 	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, led_reg);
 	IXGBE_WRITE_FLUSH(hw);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -491,21 +511,21 @@ s32 ixgbe_init_eeprom_params_generic(struct ixgbe_hw *hw)
 			 * change if a future EEPROM is not SPI.
 			 */
 			eeprom_size = (u16)((eec & IXGBE_EEC_SIZE) >>
-					    IXGBE_EEC_SIZE_SHIFT);
+			                    IXGBE_EEC_SIZE_SHIFT);
 			eeprom->word_size = 1 << (eeprom_size +
-						  IXGBE_EEPROM_WORD_SIZE_SHIFT);
+			                         IXGBE_EEPROM_WORD_SIZE_SHIFT);
 		}
 
 		if (eec & IXGBE_EEC_ADDR_SIZE)
 			eeprom->address_bits = 16;
 		else
 			eeprom->address_bits = 8;
-		DEBUGOUT3("Eeprom params: type = %d, size = %d, address bits: "
-			  "%d\n", eeprom->type, eeprom->word_size,
-			  eeprom->address_bits);
+		hw_dbg(hw, "Eeprom params: type = %d, size = %d, address bits: "
+		          "%d\n", eeprom->type, eeprom->word_size,
+		          eeprom->address_bits);
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -532,14 +552,14 @@ s32 ixgbe_write_eeprom_generic(struct ixgbe_hw *hw, u16 offset, u16 data)
 	/* Prepare the EEPROM for writing  */
 	status = ixgbe_acquire_eeprom(hw);
 
-	if (status == IXGBE_SUCCESS) {
-		if (ixgbe_ready_eeprom(hw) != IXGBE_SUCCESS) {
+	if (status == 0) {
+		if (ixgbe_ready_eeprom(hw) != 0) {
 			ixgbe_release_eeprom(hw);
 			status = IXGBE_ERR_EEPROM;
 		}
 	}
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		ixgbe_standby_eeprom(hw);
 
 		/*  Send the WRITE ENABLE command (8 bit opcode )  */
@@ -600,14 +620,14 @@ s32 ixgbe_read_eeprom_bit_bang_generic(struct ixgbe_hw *hw, u16 offset,
 	/* Prepare the EEPROM for reading  */
 	status = ixgbe_acquire_eeprom(hw);
 
-	if (status == IXGBE_SUCCESS) {
-		if (ixgbe_ready_eeprom(hw) != IXGBE_SUCCESS) {
+	if (status == 0) {
+		if (ixgbe_ready_eeprom(hw) != 0) {
 			ixgbe_release_eeprom(hw);
 			status = IXGBE_ERR_EEPROM;
 		}
 	}
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		ixgbe_standby_eeprom(hw);
 
 		/*
@@ -661,11 +681,11 @@ s32 ixgbe_read_eeprom_generic(struct ixgbe_hw *hw, u16 offset, u16 *data)
 	IXGBE_WRITE_REG(hw, IXGBE_EERD, eerd);
 	status = ixgbe_poll_eeprom_eerd_done(hw);
 
-	if (status == IXGBE_SUCCESS)
+	if (status == 0)
 		*data = (IXGBE_READ_REG(hw, IXGBE_EERD) >>
 		         IXGBE_EEPROM_READ_REG_DATA);
 	else
-		DEBUGOUT("Eeprom read timed out\n");
+		hw_dbg(hw, "Eeprom read timed out\n");
 
 out:
 	return status;
@@ -686,7 +706,7 @@ static s32 ixgbe_poll_eeprom_eerd_done(struct ixgbe_hw *hw)
 	for (i = 0; i < IXGBE_EERD_ATTEMPTS; i++) {
 		reg = IXGBE_READ_REG(hw, IXGBE_EERD);
 		if (reg & IXGBE_EEPROM_READ_REG_DONE) {
-			status = IXGBE_SUCCESS;
+			status = 0;
 			break;
 		}
 		udelay(5);
@@ -703,14 +723,14 @@ static s32 ixgbe_poll_eeprom_eerd_done(struct ixgbe_hw *hw)
  **/
 static s32 ixgbe_acquire_eeprom(struct ixgbe_hw *hw)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 	u32 eec;
 	u32 i;
 
-	if (ixgbe_acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) != IXGBE_SUCCESS)
+	if (ixgbe_acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) != 0)
 		status = IXGBE_ERR_SWFW_SYNC;
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		eec = IXGBE_READ_REG(hw, IXGBE_EEC);
 
 		/* Request EEPROM Access */
@@ -728,7 +748,7 @@ static s32 ixgbe_acquire_eeprom(struct ixgbe_hw *hw)
 		if (!(eec & IXGBE_EEC_GNT)) {
 			eec &= ~IXGBE_EEC_REQ;
 			IXGBE_WRITE_REG(hw, IXGBE_EEC, eec);
-			DEBUGOUT("Could not acquire EEPROM grant\n");
+			hw_dbg(hw, "Could not acquire EEPROM grant\n");
 
 			ixgbe_release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 			status = IXGBE_ERR_EEPROM;
@@ -736,7 +756,7 @@ static s32 ixgbe_acquire_eeprom(struct ixgbe_hw *hw)
 	}
 
 	/* Setup EEPROM for Read/Write */
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		/* Clear CS and SK */
 		eec &= ~(IXGBE_EEC_CS | IXGBE_EEC_SK);
 		IXGBE_WRITE_REG(hw, IXGBE_EEC, eec);
@@ -770,14 +790,14 @@ static s32 ixgbe_get_eeprom_semaphore(struct ixgbe_hw *hw)
 		 */
 		swsm = IXGBE_READ_REG(hw, IXGBE_SWSM);
 		if (!(swsm & IXGBE_SWSM_SMBI)) {
-			status = IXGBE_SUCCESS;
+			status = 0;
 			break;
 		}
 		msleep(1);
 	}
 
 	/* Now get the semaphore between SW/FW through the SWESMBI bit */
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		for (i = 0; i < timeout; i++) {
 			swsm = IXGBE_READ_REG(hw, IXGBE_SWSM);
 
@@ -801,7 +821,7 @@ static s32 ixgbe_get_eeprom_semaphore(struct ixgbe_hw *hw)
 		 * was not granted because we don't have access to the EEPROM
 		 */
 		if (i >= timeout) {
-			DEBUGOUT("Driver can't access the Eeprom - Semaphore "
+			hw_dbg(hw, "Driver can't access the Eeprom - Semaphore "
 			         "not granted.\n");
 			ixgbe_release_eeprom_semaphore(hw);
 			status = IXGBE_ERR_EEPROM;
@@ -835,7 +855,7 @@ static void ixgbe_release_eeprom_semaphore(struct ixgbe_hw *hw)
  **/
 static s32 ixgbe_ready_eeprom(struct ixgbe_hw *hw)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 	u16 i;
 	u8 spi_stat_reg;
 
@@ -861,7 +881,7 @@ static s32 ixgbe_ready_eeprom(struct ixgbe_hw *hw)
 	 * devices (and only 0-5mSec on 5V devices)
 	 */
 	if (i >= IXGBE_EEPROM_MAX_RETRY_SPI) {
-		DEBUGOUT("SPI EEPROM Status error\n");
+		hw_dbg(hw, "SPI EEPROM Status error\n");
 		status = IXGBE_ERR_EEPROM;
 	}
 
@@ -1055,8 +1075,8 @@ static u16 ixgbe_calc_eeprom_checksum(struct ixgbe_hw *hw)
 
 	/* Include 0x0-0x3F in the checksum */
 	for (i = 0; i < IXGBE_EEPROM_CHECKSUM; i++) {
-		if (hw->eeprom.ops.read(hw, i, &word) != IXGBE_SUCCESS) {
-			DEBUGOUT("EEPROM read failed\n");
+		if (hw->eeprom.ops.read(hw, i, &word) != 0) {
+			hw_dbg(hw, "EEPROM read failed\n");
 			break;
 		}
 		checksum += word;
@@ -1106,7 +1126,7 @@ s32 ixgbe_validate_eeprom_checksum_generic(struct ixgbe_hw *hw,
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		checksum = ixgbe_calc_eeprom_checksum(hw);
 
 		hw->eeprom.ops.read(hw, IXGBE_EEPROM_CHECKSUM, &read_checksum);
@@ -1122,7 +1142,7 @@ s32 ixgbe_validate_eeprom_checksum_generic(struct ixgbe_hw *hw,
 		if (checksum_val)
 			*checksum_val = checksum;
 	} else {
-		DEBUGOUT("EEPROM read failed\n");
+		hw_dbg(hw, "EEPROM read failed\n");
 	}
 
 	return status;
@@ -1144,12 +1164,12 @@ s32 ixgbe_update_eeprom_checksum_generic(struct ixgbe_hw *hw)
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		checksum = ixgbe_calc_eeprom_checksum(hw);
 		status = hw->eeprom.ops.write(hw, IXGBE_EEPROM_CHECKSUM,
-		                            checksum);
+		                              checksum);
 	} else {
-		DEBUGOUT("EEPROM read failed\n");
+		hw_dbg(hw, "EEPROM read failed\n");
 	}
 
 	return status;
@@ -1163,20 +1183,20 @@ s32 ixgbe_update_eeprom_checksum_generic(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_validate_mac_addr(u8 *mac_addr)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 
 	/* Make sure it is not a multicast address */
 	if (IXGBE_IS_MULTICAST(mac_addr)) {
-		DEBUGOUT("MAC address is multicast\n");
+		hw_dbg(hw, "MAC address is multicast\n");
 		status = IXGBE_ERR_INVALID_MAC_ADDR;
 	/* Not a broadcast address */
 	} else if (IXGBE_IS_BROADCAST(mac_addr)) {
-		DEBUGOUT("MAC address is broadcast\n");
+		hw_dbg(hw, "MAC address is broadcast\n");
 		status = IXGBE_ERR_INVALID_MAC_ADDR;
 	/* Reject the zero address */
 	} else if (mac_addr[0] == 0 && mac_addr[1] == 0 && mac_addr[2] == 0 &&
 	           mac_addr[3] == 0 && mac_addr[4] == 0 && mac_addr[5] == 0) {
-		DEBUGOUT("MAC address is all zeros\n");
+		hw_dbg(hw, "MAC address is all zeros\n");
 		status = IXGBE_ERR_INVALID_MAC_ADDR;
 	}
 	return status;
@@ -1226,10 +1246,10 @@ s32 ixgbe_set_rar_generic(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 		IXGBE_WRITE_REG(hw, IXGBE_RAL(index), rar_low);
 		IXGBE_WRITE_REG(hw, IXGBE_RAH(index), rar_high);
 	} else {
-		DEBUGOUT1("RAR index %d is out of range.\n", index);
+		hw_dbg(hw, "RAR index %d is out of range.\n", index);
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -1257,13 +1277,13 @@ s32 ixgbe_clear_rar_generic(struct ixgbe_hw *hw, u32 index)
 		IXGBE_WRITE_REG(hw, IXGBE_RAL(index), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_RAH(index), rar_high);
 	} else {
-		DEBUGOUT1("RAR index %d is out of range.\n", index);
+		hw_dbg(hw, "RAR index %d is out of range.\n", index);
 	}
 
 	/* clear VMDq pool/queue selection for this RAR */
 	hw->mac.ops.clear_vmdq(hw, index, IXGBE_CLEAR_VMDQ_ALL);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -1321,18 +1341,18 @@ s32 ixgbe_init_rx_addrs_generic(struct ixgbe_hw *hw)
 		/* Get the MAC address from the RAR0 for later reference */
 		hw->mac.ops.get_mac_addr(hw, hw->mac.addr);
 
-		DEBUGOUT3(" Keeping Current RAR0 Addr =%.2X %.2X %.2X ",
+		hw_dbg(hw, " Keeping Current RAR0 Addr =%.2X %.2X %.2X ",
 		          hw->mac.addr[0], hw->mac.addr[1],
 		          hw->mac.addr[2]);
-		DEBUGOUT3("%.2X %.2X %.2X\n", hw->mac.addr[3],
+		hw_dbg(hw, "%.2X %.2X %.2X\n", hw->mac.addr[3],
 		          hw->mac.addr[4], hw->mac.addr[5]);
 	} else {
 		/* Setup the receive address. */
-		DEBUGOUT("Overriding MAC Address in RAR[0]\n");
-		DEBUGOUT3(" New MAC Addr =%.2X %.2X %.2X ",
+		hw_dbg(hw, "Overriding MAC Address in RAR[0]\n");
+		hw_dbg(hw, " New MAC Addr =%.2X %.2X %.2X ",
 		          hw->mac.addr[0], hw->mac.addr[1],
 		          hw->mac.addr[2]);
-		DEBUGOUT3("%.2X %.2X %.2X\n", hw->mac.addr[3],
+		hw_dbg(hw, "%.2X %.2X %.2X\n", hw->mac.addr[3],
 		          hw->mac.addr[4], hw->mac.addr[5]);
 
 		hw->mac.ops.set_rar(hw, 0, hw->mac.addr, 0, IXGBE_RAH_AV);
@@ -1342,7 +1362,7 @@ s32 ixgbe_init_rx_addrs_generic(struct ixgbe_hw *hw)
 	hw->addr_ctrl.rar_used_count = 1;
 
 	/* Zero out the other receive addresses. */
-	DEBUGOUT1("Clearing RAR[1-%d]\n", rar_entries - 1);
+	hw_dbg(hw, "Clearing RAR[1-%d]\n", rar_entries - 1);
 	for (i = 1; i < rar_entries; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_RAL(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_RAH(i), 0);
@@ -1353,13 +1373,13 @@ s32 ixgbe_init_rx_addrs_generic(struct ixgbe_hw *hw)
 	hw->addr_ctrl.mta_in_use = 0;
 	IXGBE_WRITE_REG(hw, IXGBE_MCSTCTRL, hw->mac.mc_filter_type);
 
-	DEBUGOUT(" Clearing MTA\n");
+	hw_dbg(hw, " Clearing MTA\n");
 	for (i = 0; i < hw->mac.mcft_size; i++)
 		IXGBE_WRITE_REG(hw, IXGBE_MTA(i), 0);
 
 	ixgbe_init_uta_tables(hw);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -1374,7 +1394,7 @@ void ixgbe_add_uc_addr(struct ixgbe_hw *hw, u8 *addr, u32 vmdq)
 	u32 rar_entries = hw->mac.num_rar_entries;
 	u32 rar;
 
-	DEBUGOUT6(" UC Addr = %.2X %.2X %.2X %.2X %.2X %.2X\n",
+	hw_dbg(hw, " UC Addr = %.2X %.2X %.2X %.2X %.2X %.2X\n",
 	          addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 
 	/*
@@ -1385,13 +1405,13 @@ void ixgbe_add_uc_addr(struct ixgbe_hw *hw, u8 *addr, u32 vmdq)
 		rar = hw->addr_ctrl.rar_used_count -
 		      hw->addr_ctrl.mc_addr_in_rar_count;
 		hw->mac.ops.set_rar(hw, rar, addr, vmdq, IXGBE_RAH_AV);
-		DEBUGOUT1("Added a secondary address to RAR[%d]\n", rar);
+		hw_dbg(hw, "Added a secondary address to RAR[%d]\n", rar);
 		hw->addr_ctrl.rar_used_count++;
 	} else {
 		hw->addr_ctrl.overflow_promisc++;
 	}
 
-	DEBUGOUT("ixgbe_add_uc_addr Complete\n");
+	hw_dbg(hw, "ixgbe_add_uc_addr Complete\n");
 }
 
 /**
@@ -1428,7 +1448,7 @@ s32 ixgbe_update_uc_addr_list_generic(struct ixgbe_hw *hw, u8 *addr_list,
 	hw->addr_ctrl.overflow_promisc = 0;
 
 	/* Zero out the other receive addresses */
-	DEBUGOUT1("Clearing RAR[1-%d]\n", uc_addr_in_use);
+	hw_dbg(hw, "Clearing RAR[1-%d]\n", uc_addr_in_use);
 	for (i = 1; i <= uc_addr_in_use; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_RAL(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_RAH(i), 0);
@@ -1436,7 +1456,7 @@ s32 ixgbe_update_uc_addr_list_generic(struct ixgbe_hw *hw, u8 *addr_list,
 
 	/* Add the new addresses */
 	for (i = 0; i < addr_count; i++) {
-		DEBUGOUT(" Adding the secondary addresses:\n");
+		hw_dbg(hw, " Adding the secondary addresses:\n");
 		addr = next(hw, &addr_list, &vmdq);
 		ixgbe_add_uc_addr(hw, addr, vmdq);
 	}
@@ -1444,7 +1464,7 @@ s32 ixgbe_update_uc_addr_list_generic(struct ixgbe_hw *hw, u8 *addr_list,
 	if (hw->addr_ctrl.overflow_promisc) {
 		/* enable promisc if not already in overflow or set by user */
 		if (!old_promisc_setting && !hw->addr_ctrl.user_set_promisc) {
-			DEBUGOUT(" Entering address overflow promisc mode\n");
+			hw_dbg(hw, " Entering address overflow promisc mode\n");
 			fctrl = IXGBE_READ_REG(hw, IXGBE_FCTRL);
 			fctrl |= IXGBE_FCTRL_UPE;
 			IXGBE_WRITE_REG(hw, IXGBE_FCTRL, fctrl);
@@ -1452,15 +1472,15 @@ s32 ixgbe_update_uc_addr_list_generic(struct ixgbe_hw *hw, u8 *addr_list,
 	} else {
 		/* only disable if set by overflow, not by user */
 		if (old_promisc_setting && !hw->addr_ctrl.user_set_promisc) {
-			DEBUGOUT(" Leaving address overflow promisc mode\n");
+			hw_dbg(hw, " Leaving address overflow promisc mode\n");
 			fctrl = IXGBE_READ_REG(hw, IXGBE_FCTRL);
 			fctrl &= ~IXGBE_FCTRL_UPE;
 			IXGBE_WRITE_REG(hw, IXGBE_FCTRL, fctrl);
 		}
 	}
 
-	DEBUGOUT("ixgbe_update_uc_addr_list_generic Complete\n");
-	return IXGBE_SUCCESS;
+	hw_dbg(hw, "ixgbe_update_uc_addr_list_generic Complete\n");
+	return 0;
 }
 
 /**
@@ -1493,8 +1513,7 @@ static s32 ixgbe_mta_vector(struct ixgbe_hw *hw, u8 *mc_addr)
 		vector = ((mc_addr[4]) | (((u16)mc_addr[5]) << 8));
 		break;
 	default:  /* Invalid mc_filter_type */
-		DEBUGOUT("MC filter type param set incorrectly\n");
-		ASSERT(0);
+		hw_dbg(hw, "MC filter type param set incorrectly\n");
 		break;
 	}
 
@@ -1520,7 +1539,7 @@ void ixgbe_set_mta(struct ixgbe_hw *hw, u8 *mc_addr)
 	hw->addr_ctrl.mta_in_use++;
 
 	vector = ixgbe_mta_vector(hw, mc_addr);
-	DEBUGOUT1(" bit-vector = 0x%03X\n", vector);
+	hw_dbg(hw, " bit-vector = 0x%03X\n", vector);
 
 	/*
 	 * The MTA is a register array of 128 32-bit registers. It is treated
@@ -1550,7 +1569,7 @@ void ixgbe_add_mc_addr(struct ixgbe_hw *hw, u8 *mc_addr)
 	u32 rar_entries = hw->mac.num_rar_entries;
 	u32 rar;
 
-	DEBUGOUT6(" MC Addr =%.2X %.2X %.2X %.2X %.2X %.2X\n",
+	hw_dbg(hw, " MC Addr =%.2X %.2X %.2X %.2X %.2X %.2X\n",
 	          mc_addr[0], mc_addr[1], mc_addr[2],
 	          mc_addr[3], mc_addr[4], mc_addr[5]);
 
@@ -1562,14 +1581,14 @@ void ixgbe_add_mc_addr(struct ixgbe_hw *hw, u8 *mc_addr)
 		/* use RAR from the end up for multicast */
 		rar = rar_entries - hw->addr_ctrl.mc_addr_in_rar_count - 1;
 		hw->mac.ops.set_rar(hw, rar, mc_addr, 0, IXGBE_RAH_AV);
-		DEBUGOUT1("Added a multicast address to RAR[%d]\n", rar);
+		hw_dbg(hw, "Added a multicast address to RAR[%d]\n", rar);
 		hw->addr_ctrl.rar_used_count++;
 		hw->addr_ctrl.mc_addr_in_rar_count++;
 	} else {
 		ixgbe_set_mta(hw, mc_addr);
 	}
 
-	DEBUGOUT("ixgbe_add_mc_addr Complete\n");
+	hw_dbg(hw, "ixgbe_add_mc_addr Complete\n");
 }
 
 /**
@@ -1601,7 +1620,7 @@ s32 ixgbe_update_mc_addr_list_generic(struct ixgbe_hw *hw, u8 *mc_addr_list,
 	hw->addr_ctrl.mta_in_use = 0;
 
 	/* Zero out the other receive addresses. */
-	DEBUGOUT2("Clearing RAR[%d-%d]\n", hw->addr_ctrl.rar_used_count,
+	hw_dbg(hw, "Clearing RAR[%d-%d]\n", hw->addr_ctrl.rar_used_count,
 	          rar_entries - 1);
 	for (i = hw->addr_ctrl.rar_used_count; i < rar_entries; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_RAL(i), 0);
@@ -1609,13 +1628,13 @@ s32 ixgbe_update_mc_addr_list_generic(struct ixgbe_hw *hw, u8 *mc_addr_list,
 	}
 
 	/* Clear the MTA */
-	DEBUGOUT(" Clearing MTA\n");
+	hw_dbg(hw, " Clearing MTA\n");
 	for (i = 0; i < hw->mac.mcft_size; i++)
 		IXGBE_WRITE_REG(hw, IXGBE_MTA(i), 0);
 
 	/* Add the new addresses */
 	for (i = 0; i < mc_addr_count; i++) {
-		DEBUGOUT(" Adding the multicast addresses:\n");
+		hw_dbg(hw, " Adding the multicast addresses:\n");
 		ixgbe_add_mc_addr(hw, next(hw, &mc_addr_list, &vmdq));
 	}
 
@@ -1624,8 +1643,8 @@ s32 ixgbe_update_mc_addr_list_generic(struct ixgbe_hw *hw, u8 *mc_addr_list,
 		IXGBE_WRITE_REG(hw, IXGBE_MCSTCTRL,
 		                IXGBE_MCSTCTRL_MFE | hw->mac.mc_filter_type);
 
-	DEBUGOUT("ixgbe_update_mc_addr_list_generic Complete\n");
-	return IXGBE_SUCCESS;
+	hw_dbg(hw, "ixgbe_update_mc_addr_list_generic Complete\n");
+	return 0;
 }
 
 /**
@@ -1649,7 +1668,7 @@ s32 ixgbe_enable_mc_generic(struct ixgbe_hw *hw)
 		IXGBE_WRITE_REG(hw, IXGBE_MCSTCTRL, IXGBE_MCSTCTRL_MFE |
 		                hw->mac.mc_filter_type);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -1672,8 +1691,11 @@ s32 ixgbe_disable_mc_generic(struct ixgbe_hw *hw)
 	if (a->mta_in_use > 0)
 		IXGBE_WRITE_REG(hw, IXGBE_MCSTCTRL, hw->mac.mc_filter_type);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
+
+
+
 
 /**
  *  ixgbe_disable_pcie_master - Disable PCI-express master access
@@ -1681,7 +1703,7 @@ s32 ixgbe_disable_mc_generic(struct ixgbe_hw *hw)
  *
  *  Disables PCI-Express master access and verifies there are no pending
  *  requests. IXGBE_ERR_MASTER_REQUESTS_PENDING is returned if master disable
- *  bit hasn't caused the master requests to be disabled, else IXGBE_SUCCESS
+ *  bit hasn't caused the master requests to be disabled, else 0
  *  is returned signifying master requests disabled.
  **/
 s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
@@ -1707,7 +1729,7 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 
 	for (i = 0; i < IXGBE_PCI_MASTER_DISABLE_TIMEOUT; i++) {
 		if (!(IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_GIO)) {
-			status = IXGBE_SUCCESS;
+			status = 0;
 			break;
 		}
 		udelay(100);
@@ -1750,7 +1772,7 @@ s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u16 mask)
 	}
 
 	if (!timeout) {
-		DEBUGOUT("Driver can't access resource, GSSR timeout.\n");
+		hw_dbg(hw, "Driver can't access resource, GSSR timeout.\n");
 		return -IXGBE_ERR_SWFW_SYNC;
 	}
 
@@ -1758,7 +1780,7 @@ s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u16 mask)
 	IXGBE_WRITE_REG(hw, IXGBE_GSSR, gssr);
 
 	ixgbe_release_eeprom_semaphore(hw);
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**

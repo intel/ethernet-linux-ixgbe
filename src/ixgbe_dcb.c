@@ -47,7 +47,7 @@
 s32 ixgbe_dcb_check_config(struct ixgbe_dcb_config *dcb_config)
 {
 	struct tc_bw_alloc *p;
-	s32 ret_val = IXGBE_SUCCESS;
+	s32 ret_val = 0;
 	u8 i, j, bw = 0, bw_id;
 	u8 bw_sum[2][MAX_BW_GROUP];
 	bool link_strict[2][MAX_BW_GROUP];
@@ -121,7 +121,7 @@ s32 ixgbe_dcb_check_config(struct ixgbe_dcb_config *dcb_config)
 	return DCB_SUCCESS;
 
 err_config:
-	DEBUGOUT2("DCB error code %d while checking %s settings.\n",
+	hw_dbg(hw, "DCB error code %d while checking %s settings.\n",
 	          ret_val, (j == DCB_TX_CONFIG) ? "Tx" : "Rx");
 
 	return ret_val;
@@ -140,7 +140,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
                                    u8 direction)
 {
 	struct tc_bw_alloc *p;
-	s32 ret_val = IXGBE_SUCCESS;
+	s32 ret_val = 0;
 	/* Initialization values default for Tx settings */
 	u32 credit_refill       = 0;
 	u32 credit_max          = 0;
@@ -214,7 +214,7 @@ out:
 s32 ixgbe_dcb_get_tc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
                            u8 tc_count)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_get_tc_stats_82598(hw, stats, tc_count);
 	return ret;
@@ -222,16 +222,16 @@ s32 ixgbe_dcb_get_tc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
 
 /**
  * ixgbe_dcb_get_pfc_stats - Returns CBFC status of each traffic class
- * hw - pointer to hardware structure
- * stats - pointer to statistics structure
- * tc_count -  Number of elements in bwg_array.
+ * @hw: pointer to hardware structure
+ * @stats: pointer to statistics structure
+ * @tc_count:  Number of elements in bwg_array.
  *
  * This function returns the CBFC status data for each of the Traffic Classes.
  */
 s32 ixgbe_dcb_get_pfc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
                             u8 tc_count)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_get_pfc_stats_82598(hw, stats, tc_count);
 	return ret;
@@ -247,7 +247,7 @@ s32 ixgbe_dcb_get_pfc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
 s32 ixgbe_dcb_config_rx_arbiter(struct ixgbe_hw *hw,
                                 struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_config_rx_arbiter_82598(hw, dcb_config);
 	return ret;
@@ -263,7 +263,7 @@ s32 ixgbe_dcb_config_rx_arbiter(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_tx_desc_arbiter(struct ixgbe_hw *hw,
                                      struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_config_tx_desc_arbiter_82598(hw, dcb_config);
 	return ret;
@@ -279,7 +279,7 @@ s32 ixgbe_dcb_config_tx_desc_arbiter(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_tx_data_arbiter(struct ixgbe_hw *hw,
                                      struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_config_tx_data_arbiter_82598(hw, dcb_config);
 	return ret;
@@ -295,7 +295,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_pfc(struct ixgbe_hw *hw,
                          struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_config_pfc_82598(hw, dcb_config);
 	return ret;
@@ -310,7 +310,7 @@ s32 ixgbe_dcb_config_pfc(struct ixgbe_hw *hw,
  */
 s32 ixgbe_dcb_config_tc_stats(struct ixgbe_hw *hw)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_config_tc_stats_82598(hw);
 	return ret;
@@ -326,7 +326,7 @@ s32 ixgbe_dcb_config_tc_stats(struct ixgbe_hw *hw)
 s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw,
                         struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = IXGBE_SUCCESS;
+	s32 ret = 0;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ret = ixgbe_dcb_hw_config_82598(hw, dcb_config);
 	return ret;

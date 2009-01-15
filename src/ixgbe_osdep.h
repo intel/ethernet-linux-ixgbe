@@ -52,21 +52,12 @@
 #endif
 
 #undef ASSERT
-#define ASSERT(x)	if (!(x)) BUG()
 
 #ifdef DBG
-#define DEBUGOUT(S)		printk(KERN_DEBUG S)
-#define DEBUGOUT1(S, A...)	printk(KERN_DEBUG S, A)
+#define hw_dbg(hw, S, A...)	printk(KERN_DEBUG S, A)
 #else
-#define DEBUGOUT(S)             do {} while (0)
-#define DEBUGOUT1(S, A...)      do {} while (0)
+#define hw_dbg(hw, S, A...)      do {} while (0)
 #endif
-
-#define DEBUGFUNC(F) DEBUGOUT(F)
-#define DEBUGOUT2 DEBUGOUT1
-#define DEBUGOUT3 DEBUGOUT2
-#define DEBUGOUT6 DEBUGOUT3
-#define DEBUGOUT7 DEBUGOUT6
 
 #ifdef DBG
 #define IXGBE_WRITE_REG(a, reg, value) do {\

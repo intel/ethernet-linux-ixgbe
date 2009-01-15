@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-September 15, 2008
+November 21, 2008
 
 Contents
 ========
@@ -78,7 +78,9 @@ Controller        Adapter Name                      Physical Layer
             Intel(R) 10 Gigabit AT Server 
               Adapter
             Intel(R) 10 Gigabit AF DA Dual
-              Port Server Adapter  
+              Port Server Adapter 
+            Intel(R) 82598EB 10 Gigabit KX4 
+              Network Connection 
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -219,7 +221,7 @@ This example assumes the ioatdma and ixgbe sources are in /usr/src
      cd /usr/src
      tar zxf ixgbe-<ixgbe version>.tar.gz
      cd ixgbe-<ixgbe-version>/src
-     make install CLFLAGS_EXTRA="-DIXGBE_DCA -I/path/to/ioatdma-<ioat-version>
+     make install CFLAGS_EXTRA="-DCONFIG_DCA -I/path/to/ioatdma-<ioat-version>
      /include"
     
 
@@ -488,6 +490,9 @@ Additional Configurations
 
      ethtool -A eth? autoneg off rx on tx on
 
+  NOTE: Flow control can only be used if both sides are configured manually to
+  the same settings
+
   FCoE
   ----
   This release of the ixgbe driver contains new code to enable users to use 
@@ -609,16 +614,25 @@ Known Issues/Troubleshooting
   cause all" from the Global Configuration prompt which enables the switch to 
   keep the interfaces up, regardless of errors.
 
-  Installing RedHat Enterprise Linux 5.2 with an Intel(R) 10 Gigabit AT Server 
-  Adapter may cause kernel panic
+
+  Installing RedHat Enterprise Linux 4.7, 5.1, or 5.2 with an Intel(R) 10 
+  Gigabit AT Server Adapter may cause kernel panic
   ----------------------------------------------------------------------------
   A known issue may cause a kernel panic or hang after installing an 
   82598AT-based Intel(R) 10 Gigabit AT Server Adapter in a RedHat Enterprise 
-  Linux 5.2 system.  The ixgbe driver for both the install kernel and the 
-  runtime kernel can create this panic if the 82598AT adapter is installed.  
-  RedHat may release a security update that contains a fix for the panic that 
-  you can download using RHN (RedHat Network) or Intel recommends that you 
-  install the ixgbe-1.3.31.5 driver or newer BEFORE installing the hardware.
+  Linux 4.7, 5.1, or 5.2 system.  The ixgbe driver for both the install kernel 
+  and the runtime kernel can create this panic if the 82598AT adapter is 
+  installed. RedHat may release a security update that contains a fix for the 
+  panic that you can download using RHN (RedHat Network) or Intel recommends 
+  that you install the ixgbe-1.3.31.5 driver or newer BEFORE installing the 
+  hardware.
+
+
+  Rx Page Allocation Errors
+  -------------------------
+  Page allocation failure. order:0 errors may occur under stress with kernels 
+  2.6.25 and above. This is cause by the way the Linux kernel reports this 
+  stressed condition.
 
 
 Support

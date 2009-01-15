@@ -40,7 +40,7 @@ extern s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw);
  *  memset to 0 prior to calling this function.  The following fields in
  *  hw structure should be filled in prior to calling this function:
  *  hw_addr, back, device_id, vendor_id, subsystem_device_id,
- *   subsystem_vendor_id, and revision_id
+ *  subsystem_vendor_id, and revision_id
  **/
 s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
 {
@@ -72,12 +72,11 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 {
-	s32 ret_val = IXGBE_SUCCESS;
-
-	DEBUGFUNC("ixgbe_set_mac_type\n");
+	s32 ret_val = 0;
 
 	if (hw->vendor_id == IXGBE_INTEL_VENDOR_ID) {
 		switch (hw->device_id) {
+		case IXGBE_DEV_ID_82598:
 		case IXGBE_DEV_ID_82598AF_SINGLE_PORT:
 		case IXGBE_DEV_ID_82598AF_DUAL_PORT:
 		case IXGBE_DEV_ID_82598AT:
@@ -97,7 +96,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
 	}
 
-	DEBUGOUT2("ixgbe_set_mac_type found mac: %d, returns: %d\n",
+	hw_dbg(hw, "ixgbe_set_mac_type found mac: %d, returns: %d\n",
 	          hw->mac.type, ret_val);
 	return ret_val;
 }
@@ -253,7 +252,7 @@ s32 ixgbe_read_pba_num(struct ixgbe_hw *hw, u32 *pba_num)
  **/
 s32 ixgbe_identify_phy(struct ixgbe_hw *hw)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 
 	if (hw->phy.type == ixgbe_phy_unknown) {
 		status = ixgbe_call_func(hw,
@@ -271,14 +270,14 @@ s32 ixgbe_identify_phy(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 
 	if (hw->phy.type == ixgbe_phy_unknown) {
-		if (ixgbe_identify_phy(hw) != IXGBE_SUCCESS)
+		if (ixgbe_identify_phy(hw) != 0)
 			status = IXGBE_ERR_PHY;
 	}
 
-	if (status == IXGBE_SUCCESS) {
+	if (status == 0) {
 		status = ixgbe_call_func(hw, hw->phy.ops.reset, (hw),
 		                         IXGBE_NOT_IMPLEMENTED);
 	}
@@ -292,7 +291,7 @@ s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_get_phy_firmware_version(struct ixgbe_hw *hw, u16 *firmware_version)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status = 0;
 
 	status = ixgbe_call_func(hw, hw->phy.ops.get_firmware_version,
 	                         (hw, firmware_version),
@@ -760,8 +759,8 @@ s32 ixgbe_write_analog_reg8(struct ixgbe_hw *hw, u32 reg, u8 val)
  *  ixgbe_init_uta_tables - Initializes Unicast Table Arrays.
  *  @hw: pointer to hardware structure
  *
- * Initializes the Unicast Table Arrays to zero on device load.  This
- * is part of the Rx init addr execution path.
+ *  Initializes the Unicast Table Arrays to zero on device load.  This
+ *  is part of the Rx init addr execution path.
  **/
 s32 ixgbe_init_uta_tables(struct ixgbe_hw *hw)
 {
@@ -790,8 +789,8 @@ s32 ixgbe_read_i2c_eeprom(struct ixgbe_hw *hw, u8 byte_offset, u8 *eeprom_data)
  *
  *  Determines physical layer capabilities of the current configuration.
  **/
-s32 ixgbe_get_supported_physical_layer(struct ixgbe_hw *hw)
+u32 ixgbe_get_supported_physical_layer(struct ixgbe_hw *hw)
 {
-	return ixgbe_call_func(hw, hw->mac.ops.get_supported_physical_layer, (hw),
-	                       IXGBE_NOT_IMPLEMENTED);
+	return ixgbe_call_func(hw, hw->mac.ops.get_supported_physical_layer,
+	                       (hw), IXGBE_PHYSICAL_LAYER_UNKNOWN);
 }

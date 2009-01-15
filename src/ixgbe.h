@@ -42,12 +42,10 @@
 #ifdef NETIF_F_HW_VLAN_TX
 #include <linux/if_vlan.h>
 #endif
-
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 #define IXGBE_DCA
-#endif
-#ifdef IXGBE_DCA
 #include <linux/dca.h>
+
 #endif
 
 #include "ixgbe_dcb.h"
@@ -58,17 +56,13 @@
 
 #define IXGBE_NO_INET_LRO
 #ifndef IXGBE_NO_LRO
-#ifdef NETIF_F_LRO
 #if defined(CONFIG_INET_LRO) || defined(CONFIG_INET_LRO_MODULE)
 #include <linux/inet_lro.h>
-#define MAX_LRO_DESCRIPTORS		   8
+#define IXGBE_MAX_LRO_DESCRIPTORS		   8
 #undef IXGBE_NO_INET_LRO
 #define IXGBE_NO_LRO
 #endif
-#endif
 #endif /* IXGBE_NO_LRO */
-
-#define IXGBE_ERR(args...) printk(KERN_ERR "ixgbe: " args)
 
 #define PFX "ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
@@ -84,6 +78,7 @@
 #define IXGBE_DEFAULT_RXD		   1024
 #define IXGBE_MAX_RXD			   4096
 #define IXGBE_MIN_RXD			     64
+
 
 /* flow control */
 #define IXGBE_DEFAULT_FCRTL		0x10000
@@ -210,12 +205,12 @@ struct ixgbe_ring {
 	              * offset associated with this ring, which is different
 	              * for DCB and RSS modes */
 
-#ifdef IXGBE_DCA
+#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	/* cpu for tx queue */
 	int cpu;
 #endif
 
-	struct ixgbe_queue_stats q_stats;
+	struct ixgbe_queue_stats stats;
 	u16 v_idx; /* maps directly to the index for this ring in the hardware
 	           * vector array, can also be used for finding the bit in EICR
 	           * and friends that represents the vector for this ring */
@@ -316,11 +311,6 @@ struct ixgbe_adapter {
 	struct ixgbe_dcb_config dcb_cfg;
 	struct ixgbe_dcb_config temp_dcb_cfg;
 	u8 dcb_set_bitmap;
-
-#ifdef ETHTOOL_PHYS_ID
-	struct timer_list blink_timer;
-	unsigned long led_status;
-#endif
 
 	/* Interrupt Throttle Rate */
 	u32 itr_setting;
@@ -446,26 +436,24 @@ enum ixbge_state_t {
 	__IXGBE_SFP_MODULE_NOT_FOUND
 };
 
+
 /* needed by ixgbe_main.c */
-extern void ixgbe_set_ethtool_ops(struct net_device *netdev);
 extern int ixgbe_validate_mac_addr(u8 *mc_addr);
 extern void ixgbe_check_options(struct ixgbe_adapter *adapter);
 
 /* needed by ixgbe_ethtool.c */
 extern char ixgbe_driver_name[];
+extern const char ixgbe_driver_version[];
+
 extern int ixgbe_up(struct ixgbe_adapter *adapter);
 extern void ixgbe_down(struct ixgbe_adapter *adapter);
 extern void ixgbe_reinit_locked(struct ixgbe_adapter *adapter);
 extern void ixgbe_reset(struct ixgbe_adapter *adapter);
-extern char ixgbe_driver_version[];
-extern int ixgbe_setup_rx_resources(struct ixgbe_adapter *adapter,
-                                    struct ixgbe_ring *rxdr);
-extern int ixgbe_setup_tx_resources(struct ixgbe_adapter *adapter,
-                                    struct ixgbe_ring *txdr);
-extern void ixgbe_free_rx_resources(struct ixgbe_adapter *adapter,
-                                    struct ixgbe_ring *rxdr);
-extern void ixgbe_free_tx_resources(struct ixgbe_adapter *adapter,
-                                    struct ixgbe_ring *txdr);
+extern void ixgbe_set_ethtool_ops(struct net_device *netdev);
+extern int ixgbe_setup_rx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
+extern int ixgbe_setup_tx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
+extern void ixgbe_free_rx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
+extern void ixgbe_free_tx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
 extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 
 /* needed by ixgbe_dcb_nl.c */
@@ -475,12 +463,17 @@ extern bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
 
 #ifdef ETHTOOL_OPS_COMPAT
 extern int ethtool_ioctl(struct ifreq *ifr);
-#endif
 
+#endif
 extern int ixgbe_dcb_netlink_register(void);
 extern int ixgbe_dcb_netlink_unregister(void);
 
 extern int ixgbe_sysfs_create(struct ixgbe_adapter *adapter);
 extern void ixgbe_sysfs_remove(struct ixgbe_adapter *adapter);
+
+#ifdef CONFIG_IXGBE_NAPI
+extern void ixgbe_napi_add_all(struct ixgbe_adapter *adapter);
+extern void ixgbe_napi_del_all(struct ixgbe_adapter *adapter);
+#endif
 
 #endif /* _IXGBE_H_ */

@@ -63,6 +63,18 @@
 #define IXGBE_SFF_VENDOR_OUI_FTL      0x00906500
 #define IXGBE_SFF_VENDOR_OUI_AVAGO    0x00176A00
 
+/* I2C SDA and SCL timing parameters for standard mode */
+#define IXGBE_I2C_T_HD_STA  4
+#define IXGBE_I2C_T_LOW     5
+#define IXGBE_I2C_T_HIGH    4
+#define IXGBE_I2C_T_SU_STA  5
+#define IXGBE_I2C_T_HD_DATA 5
+#define IXGBE_I2C_T_SU_DATA 1
+#define IXGBE_I2C_T_RISE    1
+#define IXGBE_I2C_T_FALL    1
+#define IXGBE_I2C_T_SU_STO  4
+#define IXGBE_I2C_T_BUF     5
+
 
 s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw);
 bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr);

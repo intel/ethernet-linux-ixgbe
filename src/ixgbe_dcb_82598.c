@@ -44,11 +44,8 @@ s32 ixgbe_dcb_get_tc_stats_82598(struct ixgbe_hw *hw,
 {
 	int tc;
 
-	DEBUGFUNC("dcb_get_tc_stats");
-
 	if (tc_count > MAX_TRAFFIC_CLASS)
 		return DCB_ERR_PARAM;
-
 	/* Statistics pertaining to each traffic class */
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Transmitted Packets */
@@ -69,7 +66,7 @@ s32 ixgbe_dcb_get_tc_stats_82598(struct ixgbe_hw *hw,
 #endif
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -86,11 +83,8 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 {
 	int tc;
 
-	DEBUGFUNC("dcb_get_pfc_stats");
-
 	if (tc_count > MAX_TRAFFIC_CLASS)
 		return DCB_ERR_PARAM;
-
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Priority XOFF Transmitted */
 		stats->pxofftxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFTXC(tc));
@@ -98,7 +92,7 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 		stats->pxoffrxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFRXC(tc));
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -111,7 +105,7 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_packet_buffers_82598(struct ixgbe_hw *hw,
                                           struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret_val = IXGBE_SUCCESS;
+	s32 ret_val = 0;
 	u32 value = IXGBE_RXPBSIZE_64KB;
 	u8  i = 0;
 
@@ -195,7 +189,7 @@ s32 ixgbe_dcb_config_rx_arbiter_82598(struct ixgbe_hw *hw,
 	reg &= ~IXGBE_RXCTRL_DMBYPS;
 	IXGBE_WRITE_REG(hw, IXGBE_RXCTRL, reg);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -243,7 +237,7 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82598(struct ixgbe_hw *hw,
 		IXGBE_WRITE_REG(hw, IXGBE_TDTQ2TCCR(i), reg);
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -289,7 +283,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82598(struct ixgbe_hw *hw,
 	reg |= IXGBE_DTXCTL_ENDBUBD;
 	IXGBE_WRITE_REG(hw, IXGBE_DTXCTL, reg);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -309,7 +303,7 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
 	reg = IXGBE_READ_REG(hw, IXGBE_RMCS);
 	reg &= ~IXGBE_RMCS_TFCE_802_3X;
 	/* correct the reporting of our flow control status */
-	hw->fc.type = ixgbe_fc_none;
+	hw->fc.current_mode = ixgbe_fc_none;
 	reg |= IXGBE_RMCS_TFCE_PRIORITY;
 	IXGBE_WRITE_REG(hw, IXGBE_RMCS, reg);
 
@@ -353,7 +347,7 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
 	/* Configure flow control refresh threshold value */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, 0x3400);
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -385,7 +379,7 @@ s32 ixgbe_dcb_config_tc_stats_82598(struct ixgbe_hw *hw)
 		IXGBE_WRITE_REG(hw, IXGBE_TQSMR(i), reg);
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
 
 /**
@@ -415,5 +409,5 @@ s32 ixgbe_dcb_hw_config_82598(struct ixgbe_hw *hw,
 		IXGBE_WRITE_REG(hw, IXGBE_PAP, pap);
 	}
 
-	return IXGBE_SUCCESS;
+	return 0;
 }
