@@ -7,6 +7,7 @@
 #
 8086  Intel Corporation
 	10b6  82598EB 10 Gigabit KX4 Network Connection
+	1508  82598EB 10 Gigabit BX Network Connection
 	10c6  82598EB 10 Gigabit AF Dual Port Network Connection
 		8086 a05f  10 Gigabit XF SR Dual Port Server Adapter
 		8086 a15f  10 Gigabit XF SR Dual Port Server Adapter

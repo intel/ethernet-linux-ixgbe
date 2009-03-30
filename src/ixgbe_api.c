@@ -77,6 +77,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	if (hw->vendor_id == IXGBE_INTEL_VENDOR_ID) {
 		switch (hw->device_id) {
 		case IXGBE_DEV_ID_82598:
+		case IXGBE_DEV_ID_82598_BX:
 		case IXGBE_DEV_ID_82598AF_SINGLE_PORT:
 		case IXGBE_DEV_ID_82598AF_DUAL_PORT:
 		case IXGBE_DEV_ID_82598AT:

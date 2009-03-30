@@ -163,13 +163,33 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
  **/
 s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 {
+	u32 i;
+	u16 ctrl = 0;
+	s32 status = 0;
+
 	/*
 	 * Perform soft PHY reset to the PHY_XS.
 	 * This will cause a soft reset to the PHY
 	 */
-	return hw->phy.ops.write_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
-	                             IXGBE_MDIO_PHY_XS_DEV_TYPE,
-	                             IXGBE_MDIO_PHY_XS_RESET);
+	hw->phy.ops.write_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
+	                      IXGBE_MDIO_PHY_XS_DEV_TYPE,
+	                      IXGBE_MDIO_PHY_XS_RESET);
+
+	/* Poll for reset bit to self-clear indicating reset is complete */
+	for (i = 0; i < 500; i++) {
+		msleep(1);
+		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
+		                     IXGBE_MDIO_PHY_XS_DEV_TYPE, &ctrl);
+		if (!(ctrl & IXGBE_MDIO_PHY_XS_RESET))
+			break;
+	}
+
+	if (ctrl & IXGBE_MDIO_PHY_XS_RESET) {
+		status = IXGBE_ERR_RESET_FAILED;
+		hw_dbg(hw, "PHY reset polling failed to complete.\n");
+	}
+
+	return status;
 }
 
 /**

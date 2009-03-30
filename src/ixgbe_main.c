@@ -66,7 +66,7 @@ static const char ixgbe_driver_string[] =
 #define DRIVERNAPI "-NAPI"
 #endif
 
-#define DRV_VERSION "1.3.56.5" DRIVERNAPI DRV_HW_PERF
+#define DRV_VERSION "1.3.56.11" DRIVERNAPI DRV_HW_PERF
 const char ixgbe_driver_version[] = DRV_VERSION;
 static char ixgbe_copyright[] = "Copyright (c) 1999-2008 Intel Corporation.";
 /* ixgbe_pci_tbl - PCI Device ID Table
@@ -79,6 +79,7 @@ static char ixgbe_copyright[] = "Copyright (c) 1999-2008 Intel Corporation.";
  */
 static struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82598)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82598_BX)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82598AF_DUAL_PORT)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82598AF_SINGLE_PORT)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82598AT)},
@@ -1382,7 +1383,14 @@ static irqreturn_t ixgbe_msix_lsc(int irq, void *data)
 	struct net_device *netdev = data;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
-	u32 eicr = IXGBE_READ_REG(hw, IXGBE_EICR);
+	u32 eicr;
+
+	/*
+	 * Workaround of Silicon errata on 82598.  Use clear-by-write
+	 * instead of clear-by-read.
+	 */
+	eicr = IXGBE_READ_REG(hw, IXGBE_EICS);
+	IXGBE_WRITE_REG(hw, IXGBE_EICR, eicr);
 
 	if (eicr & IXGBE_EICR_LSC)
 		ixgbe_check_lsc(adapter);
@@ -1856,6 +1864,13 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 eicr;
 
+
+	/*
+	 * Workaround of Silicon errata on 82598.  Mask the interrupt
+	 * before the read of EICR.
+	 */
+	IXGBE_WRITE_REG(hw, IXGBE_EIMC, IXGBE_IRQ_CLEAR_MASK);
+
 	/* for NAPI, using EIAM to auto-mask tx/rx interrupt bits on read
 	 * therefore no explict interrupt disable is necessary */
 	eicr = IXGBE_READ_REG(hw, IXGBE_EICR);
@@ -1865,6 +1880,12 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 		 * make sure interrupts are enabled because the read will
 		 * have disabled interrupts due to EIAM */
 		ixgbe_irq_enable(adapter);
+#else
+		/*
+		 * Workaround of Silicon errata on 82598.  Unmask the
+		 * interrupt that we masked before the EICR read.
+		 */
+		IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_IRQ_CLEAR_MASK);
 #endif
 		return IRQ_NONE;  /* Not our interrupt */
 	}
@@ -1896,6 +1917,12 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	if (adapter->itr_setting & 3)
 		ixgbe_set_itr(adapter);
 
+	/*
+	 * Workaround of Silicon errata on 82598.  Unmask the interrupt
+	 * that we masked before the EICR read.  Only need to do this
+	 * in non NAPI as otherwise ixgbe_poll will handle it.
+	 */
+	IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_IRQ_CLEAR_MASK);
 #endif
 	return IRQ_HANDLED;
 }
@@ -4921,8 +4948,10 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	struct net_device *netdev;
 	struct ixgbe_adapter *adapter = NULL;
 	struct ixgbe_hw *hw = NULL;
+	struct pci_dev *us_dev;
 	static int cards_found;
-	int i, err, pci_using_dac;
+	int i, err, pci_using_dac, pos;
+	u16 state = 0;
 
 	err = pci_enable_device(pdev);
 	if (err)
@@ -4944,6 +4973,36 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		pci_using_dac = 0;
 	}
 
+	/*
+	 * Workaround of Silicon errata on 82598. Disable LOs in the switch
+	 * port to which the 82598 is connected to prevent duplicate 
+	 * completions caused by LOs.  We need the mac type so that we only
+	 * do this on 82598 devices, ixgbe_set_mac_type does this for us if
+	 * we set it's device ID.
+	 */
+	hw = vmalloc(sizeof(struct ixgbe_hw));
+	if (!hw) {
+		printk(KERN_INFO "Unable to allocate memory for LOs fix "
+			"- not checked\n");
+	} else {
+		hw->vendor_id = pdev->vendor;
+		hw->device_id = pdev->device;
+		ixgbe_set_mac_type(hw);
+		if (hw->mac.type == ixgbe_mac_82598EB) {
+			us_dev = pdev->bus->self;
+			pos = pci_find_capability(us_dev, PCI_CAP_ID_EXP);
+			if (pos) {
+				pci_read_config_word(us_dev, pos + PCI_EXP_LNKCTL, &state);
+				state &= ~PCIE_LINK_STATE_L0S;
+				pci_write_config_word(us_dev, pos + PCI_EXP_LNKCTL, state);
+				printk(KERN_INFO "Disabling ASPM L0s upstream switch "
+					"port %x:%x.%x\n", us_dev->bus->number,
+					PCI_SLOT(us_dev->devfn), PCI_FUNC(us_dev->devfn));
+			}
+		}
+		vfree(hw);
+	}
+	
 	err = pci_request_regions(pdev, ixgbe_driver_name);
 	if (err) {
 		dev_err(&pdev->dev, "pci_request_regions failed 0x%x\n", err);

@@ -74,6 +74,26 @@ enum strict_prio_type {
 	prio_link
 };
 
+/* DCB capability definitions */
+#define IXGBE_DCB_PG_SUPPORT        0x00000001
+#define IXGBE_DCB_PFC_SUPPORT       0x00000002
+#define IXGBE_DCB_BCN_SUPPORT       0x00000004
+#define IXGBE_DCB_UP2TC_SUPPORT     0x00000008
+#define IXGBE_DCB_GSP_SUPPORT       0x00000010
+
+#define IXGBE_DCB_8_TC_SUPPORT      0x80
+
+struct dcb_support {
+	/* DCB capabilities */
+	u32 capabilities;
+
+	/* Each bit represents a number of TCs configurable in the hw.
+	 * If 8 traffic classes can be configured, the value is 0x80.
+	 */
+	u8  traffic_classes;
+	u8  pfc_traffic_classes;
+};
+
 /* Traffic class bandwidth allocation per direction */
 struct tc_bw_alloc {
 	u8 bwg_id;                /* Bandwidth Group (BWG) ID */
@@ -108,8 +128,15 @@ enum dcb_rx_pba_cfg {
 };
 
 
+struct dcb_num_tcs {
+	u8 pg_tcs;
+	u8 pfc_tcs;
+};
+
 struct ixgbe_dcb_config {
 	struct tc_configuration tc_config[MAX_TRAFFIC_CLASS];
+	struct dcb_support support;
+	struct dcb_num_tcs num_tcs;
 	u8     bw_percentage[2][MAX_BW_GROUP]; /* One each for Tx/Rx */
 	bool pfc_mode_enable;
 	bool  round_robin_enable;

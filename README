@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-November 21, 2008
+February 11, 2009
 
 Contents
 ========
@@ -20,7 +20,7 @@ IMPORTANT NOTE
 
 WARNING:  The ixgbe driver compiles by default with the LRO (Large Receive
 Offload) feature enabled.  This option offers the lowest CPU utilization for
-receives, but is completely incompatible with *routing/ip fowarding* and
+receives, but is completely incompatible with *routing/ip forwarding* and
 *bridging*.  If enabling ip forwarding or bridging is a requirement, it is
 necessary to disable LRO using compile time options as noted in the LRO
 section later in this document.  The result of not disabling LRO when combined
@@ -80,6 +80,8 @@ Controller        Adapter Name                      Physical Layer
             Intel(R) 10 Gigabit AF DA Dual
               Port Server Adapter 
             Intel(R) 82598EB 10 Gigabit KX4 
+              Network Connection
+            Intel(R) 82598EB Gigabit BX 
               Network Connection 
 
 For more information on how to identify your adapter, go to the Adapter &
@@ -150,7 +152,7 @@ NOTE: For the build to work properly, the currently running kernel MUST match
       the version and configuration of the installed kernel sources.  If you
       have just recompiled the kernel reboot the system now.
 
-      RPM functionality has only been tested in RedHat distributions.
+      RPM functionality has only been tested in Red Hat distributions.
 
 To manually build this driver:
 
@@ -368,6 +370,14 @@ Default Value: 32
   a single packet before it must be passed up to the stack.
   NOTE: For kernel version 2.6.24 and greater. 
 
+VMDQ
+----
+Valid Range: 1-16 (2-16 enables VMDQ with the descriptor queues set to the 
+                   specified value).
+Default: 1 (disabled)
+
+The option for turning VMDQ on or off.
+
 
 Additional Configurations
 =========================
@@ -491,7 +501,8 @@ Additional Configurations
      ethtool -A eth? autoneg off rx on tx on
 
   NOTE: Flow control can only be used if both sides are configured manually to
-  the same settings
+  the same settings.
+
 
   FCoE
   ----
@@ -502,6 +513,7 @@ Additional Configurations
   FCoE is outside the scope of this driver README. Refer to 
   http://www.open-fcoe.org/ for FCoE project information and contact 
   e1000-eedc@lists.sourceforge.net for DCB information.
+
 
 
 Known Issues/Troubleshooting
@@ -547,14 +559,6 @@ Known Issues/Troubleshooting
   enabled.  To workaround this, the driver should be built and installed with:
 
       # make CFLAGS_EXTRA=-DIXGBE_NO_LRO install
-
-
-  Jumbo Frames System Requirement
-  -------------------------------
-  Memory allocation failures have been observed on Linux systems with 128 MB
-  of RAM or less that are running Jumbo Frames.  If you are using Jumbo
-  Frames, your system may require more than the advertised minimum
-  requirement of 128 MB of system memory.
 
 
   Performance Degradation with Jumbo Frames
@@ -615,15 +619,15 @@ Known Issues/Troubleshooting
   keep the interfaces up, regardless of errors.
 
 
-  Installing RedHat Enterprise Linux 4.7, 5.1, or 5.2 with an Intel(R) 10 
+  Installing Red Hat Enterprise Linux 4.7, 5.1, or 5.2 with an Intel(R) 10 
   Gigabit AT Server Adapter may cause kernel panic
   ----------------------------------------------------------------------------
   A known issue may cause a kernel panic or hang after installing an 
-  82598AT-based Intel(R) 10 Gigabit AT Server Adapter in a RedHat Enterprise 
+  82598AT-based Intel(R) 10 Gigabit AT Server Adapter in a Red Hat Enterprise 
   Linux 4.7, 5.1, or 5.2 system.  The ixgbe driver for both the install kernel 
   and the runtime kernel can create this panic if the 82598AT adapter is 
-  installed. RedHat may release a security update that contains a fix for the 
-  panic that you can download using RHN (RedHat Network) or Intel recommends 
+  installed. Red Hat may release a security update that contains a fix for the 
+  panic that you can download using RHN (Red Hat Network) or Intel recommends 
   that you install the ixgbe-1.3.31.5 driver or newer BEFORE installing the 
   hardware.
 
@@ -631,7 +635,7 @@ Known Issues/Troubleshooting
   Rx Page Allocation Errors
   -------------------------
   Page allocation failure. order:0 errors may occur under stress with kernels 
-  2.6.25 and above. This is cause by the way the Linux kernel reports this 
+  2.6.25 and above. This is caused by the way the Linux kernel reports this 
   stressed condition.
 
 

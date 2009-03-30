@@ -154,6 +154,15 @@ than the specified size.
 LROAggr is the maximum number of packets that can be aggregated by LRO into a 
 single packet before it must be passed up to the stack.
 .LP
+.B VMDQ
+.IP
+.B Valid Range: 
+1-16 (2-16 enables VMDQ with the descriptor queues set to the specified value).
+.br
+.B Default: 1 (disabled)
+.IP
+The option for turning VMDQ on or off.
+.LP
 .SH JUMBO FRAMES
 The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabled by changing the MTU to a value larger than the default of 1500. Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:
 .IP
