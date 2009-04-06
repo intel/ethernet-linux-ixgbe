@@ -66,7 +66,7 @@ static const char ixgbe_driver_string[] =
 #define DRIVERNAPI "-NAPI"
 #endif
 
-#define DRV_VERSION "1.3.56.11" DRIVERNAPI DRV_HW_PERF
+#define DRV_VERSION "1.3.56.17" DRIVERNAPI DRV_HW_PERF
 const char ixgbe_driver_version[] = DRV_VERSION;
 static char ixgbe_copyright[] = "Copyright (c) 1999-2008 Intel Corporation.";
 /* ixgbe_pci_tbl - PCI Device ID Table
@@ -1192,10 +1192,14 @@ static void ixgbe_configure_msix(struct ixgbe_adapter *adapter)
 		/* if this is a tx only vector halve the interrupt rate */
 		if (q_vector->txr_count && !q_vector->rxr_count)
 			q_vector->eitr = (adapter->eitr_param >> 1);
-		else
+		else if (q_vector->rxr_count)
 			/* rx only */
 			q_vector->eitr = adapter->eitr_param;
 
+		/*
+		 * since this is initial set up don't need to call
+		 * ixgbe_write_eitr helper
+		 */
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EITR(v_idx),
 		                EITR_INTS_PER_SEC_TO_REG(q_vector->eitr));
 	}
@@ -1283,10 +1287,29 @@ update_itr_done:
 	return retval;
 }
 
+/**
+ * ixgbe_write_eitr - write EITR register in hardware specific way
+ * @adapter: pointer to adapter struct
+ * @v_idx: vector index into q_vector array
+ * @itr_reg: new value to be written in *register* format, not ints/s
+ *
+ * This function is made to be called by ethtool and by the driver
+ * when it needs to update EITR registers at runtime.  Hardware
+ * specific quirks/differences are taken care of here.
+ */
+void ixgbe_write_eitr(struct ixgbe_adapter *adapter, int v_idx, u32 itr_reg)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
+		/* must write high and low 16 bits to reset counter */
+		itr_reg |= (itr_reg << 16);
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_EITR(v_idx), itr_reg);
+}
+
 static void ixgbe_set_itr_msix(struct ixgbe_q_vector *q_vector)
 {
 	struct ixgbe_adapter *adapter = q_vector->adapter;
-	struct ixgbe_hw *hw = &adapter->hw;
 	u32 new_itr;
 	u8 current_itr, ret_itr;
 	int i, r_idx, v_idx = ((void *)q_vector - (void *)(adapter->q_vector)) /
@@ -1341,13 +1364,13 @@ static void ixgbe_set_itr_msix(struct ixgbe_q_vector *q_vector)
 
 	if (new_itr != q_vector->eitr) {
 		u32 itr_reg;
+
+		/* save the algorithm value here, not the smoothed one */
+		q_vector->eitr = new_itr;
 		/* do an exponential smoothing */
 		new_itr = ((q_vector->eitr * 90)/100) + ((new_itr * 10)/100);
-		q_vector->eitr = new_itr;
 		itr_reg = EITR_INTS_PER_SEC_TO_REG(new_itr);
-		/* must write high and low 16 bits to reset counter */
-		DPRINTK(TX_ERR, DEBUG, "writing eitr(%d): %08X\n", v_idx, itr_reg);
-		IXGBE_WRITE_REG(hw, IXGBE_EITR(v_idx), itr_reg | (itr_reg)<<16);
+		ixgbe_write_eitr(adapter, v_idx, itr_reg);
 	}
 
 	return;
@@ -1387,7 +1410,8 @@ static irqreturn_t ixgbe_msix_lsc(int irq, void *data)
 
 	/*
 	 * Workaround of Silicon errata on 82598.  Use clear-by-write
-	 * instead of clear-by-read.
+	 * instead of clear-by-read to clear EICR, reading EICS gives
+	 * the value of EICR without read-clear of EICR
 	 */
 	eicr = IXGBE_READ_REG(hw, IXGBE_EICS);
 	IXGBE_WRITE_REG(hw, IXGBE_EICR, eicr);
@@ -1397,8 +1421,10 @@ static irqreturn_t ixgbe_msix_lsc(int irq, void *data)
 
 	ixgbe_check_fan_failure(adapter, eicr);
 
+	/* re-enable the original interrupt state, no lsc, no queues */
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
-		IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_EIMS_OTHER);
+		IXGBE_WRITE_REG(hw, IXGBE_EIMS, eicr & 
+			~(IXGBE_EIMS_LSC | IXGBE_EIMS_RTX_QUEUE));
 
 	return IRQ_HANDLED;
 }
@@ -1460,7 +1486,7 @@ static irqreturn_t ixgbe_msix_clean_tx(int irq, void *data)
 	/*
 	 * possibly later we can enable tx auto-adjustment if necessary
 	 *
-	if (adapter->itr_setting & 3)
+	if (adapter->itr_setting & 1)
 		ixgbe_set_itr_msix(q_vector);
 	 */
 
@@ -1497,7 +1523,7 @@ static irqreturn_t ixgbe_msix_clean_rx(int irq, void *data)
 		                      r_idx + 1);
 	}
 
-	if (adapter->itr_setting & 3)
+	if (adapter->itr_setting & 1)
 		ixgbe_set_itr_msix(q_vector);
 #else
 		r_idx = find_next_bit(q_vector->rxr_idx, adapter->num_rx_queues,
@@ -1511,7 +1537,7 @@ static irqreturn_t ixgbe_msix_clean_rx(int irq, void *data)
 	rx_ring = &(adapter->rx_ring[r_idx]);
 	/* disable interrupts on this vector only */
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, rx_ring->v_idx);
-	netif_rx_schedule(adapter->netdev, &q_vector->napi);
+	napi_schedule(&q_vector->napi);
 #endif
 
 	return IRQ_HANDLED;
@@ -1554,8 +1580,8 @@ static int ixgbe_clean_rxonly(struct napi_struct *napi, int budget)
 
 	/* If all Rx work done, exit the polling mode */
 	if ((work_done == 0) || !netif_running(adapter->netdev)) {
-		netif_rx_complete(adapter->netdev, napi);
-		if (adapter->itr_setting & 3)
+		napi_complete(napi);
+		if (adapter->itr_setting & 1)
 			ixgbe_set_itr_msix(q_vector);
 		if (!test_bit(__IXGBE_DOWN, &adapter->state))
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMS, rx_ring->v_idx);
@@ -1604,8 +1630,8 @@ static int ixgbe_clean_rxonly_many(struct napi_struct *napi, int budget)
 	rx_ring = &(adapter->rx_ring[r_idx]);
 	/* If all Rx work done, exit the polling mode */
 	if ((work_done == 0) || !netif_running(adapter->netdev)) {
-		netif_rx_complete(adapter->netdev, napi);
-		if (adapter->itr_setting & 3)
+		napi_complete(napi);
+		if (adapter->itr_setting & 1)
 			ixgbe_set_itr_msix(q_vector);
 		if (!test_bit(__IXGBE_DOWN, &adapter->state))
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMS, enable_mask);
@@ -1790,7 +1816,6 @@ out:
 
 static void ixgbe_set_itr(struct ixgbe_adapter *adapter)
 {
-	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_q_vector *q_vector = adapter->q_vector;
 	u8 current_itr;
 	u32 new_itr = q_vector->eitr;
@@ -1830,7 +1855,7 @@ static void ixgbe_set_itr(struct ixgbe_adapter *adapter)
 		q_vector->eitr = new_itr;
 		itr_reg = EITR_INTS_PER_SEC_TO_REG(new_itr);
 		/* must write high and low 16 bits to reset counter */
-		IXGBE_WRITE_REG(hw, IXGBE_EITR(0), itr_reg | (itr_reg)<<16);
+		ixgbe_write_eitr(adapter, 0, itr_reg);
 	}
 
 	return;
@@ -1840,14 +1865,23 @@ static void ixgbe_set_itr(struct ixgbe_adapter *adapter)
  * ixgbe_irq_enable - Enable default interrupt generation settings
  * @adapter: board private structure
  **/
-static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter)
+static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter, 
+	bool queues, bool flush)
 {
 	u32 mask;
+
 	mask = IXGBE_EIMS_ENABLE_MASK;
+
+	if (!queues)
+		mask &= ~IXGBE_EIMS_RTX_QUEUE;
+	/* don't reenable LSC while waiting for link */
+	if (adapter->flags & IXGBE_FLAG_NEED_LINK_UPDATE)
+		mask &= ~IXGBE_EIMS_LSC;
 	if (adapter->flags & IXGBE_FLAG_FAN_FAIL_CAPABLE)
 		mask |= IXGBE_EIMS_GPI_SDP1;
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMS, mask);
-	IXGBE_WRITE_FLUSH(&adapter->hw);
+	if (flush) 
+		IXGBE_WRITE_FLUSH(&adapter->hw);
 }
 
 
@@ -1875,18 +1909,14 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	 * therefore no explict interrupt disable is necessary */
 	eicr = IXGBE_READ_REG(hw, IXGBE_EICR);
 	if (!eicr) {
-#ifdef CONFIG_IXGBE_NAPI
-		/* shared interrupt alert!
-		 * make sure interrupts are enabled because the read will
-		 * have disabled interrupts due to EIAM */
-		ixgbe_irq_enable(adapter);
-#else
 		/*
-		 * Workaround of Silicon errata on 82598.  Unmask the
+		 * Shared interrupt alert!
+		 * Make sure interrupts are enabled because the read will
+		 * have disabled interrupts due to EIAM.
+		 * finish the workaround of silicon errata on 82598. Unmask
 		 * interrupt that we masked before the EICR read.
 		 */
-		IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_IRQ_CLEAR_MASK);
-#endif
+		ixgbe_irq_enable(adapter, true, true);
 		return IRQ_NONE;  /* Not our interrupt */
 	}
 
@@ -1896,15 +1926,20 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	ixgbe_check_fan_failure(adapter, eicr);
 
 #ifdef CONFIG_IXGBE_NAPI
-	if (netif_rx_schedule_prep(netdev, &adapter->q_vector[0].napi)) {
+	if (napi_schedule_prep(&adapter->q_vector[0].napi)) {
 		adapter->tx_ring[0].total_packets = 0;
 		adapter->tx_ring[0].total_bytes = 0;
 		adapter->rx_ring[0].total_packets = 0;
 		adapter->rx_ring[0].total_bytes = 0;
 		/* would disable interrupts here but EIAM disabled it */
-		__netif_rx_schedule(netdev, &adapter->q_vector[0].napi);
+		__napi_schedule(&adapter->q_vector[0].napi);
 	}
 
+	/*
+	 * re-enable link(maybe) and non-queue interrupts, no flush.
+	 * ixgbe_poll will re-enable the queue interrupts
+	 */
+	ixgbe_irq_enable(adapter, false, false);
 #else
 	adapter->tx_ring[0].total_packets = 0;
 	adapter->tx_ring[0].total_bytes = 0;
@@ -1914,15 +1949,15 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	ixgbe_clean_tx_irq(adapter, adapter->tx_ring);
 
 	/* dynamically adjust throttle */
-	if (adapter->itr_setting & 3)
+	if (adapter->itr_setting & 1)
 		ixgbe_set_itr(adapter);
 
 	/*
-	 * Workaround of Silicon errata on 82598.  Unmask the interrupt
-	 * that we masked before the EICR read.  Only need to do this
-	 * in non NAPI as otherwise ixgbe_poll will handle it.
+	 * Workaround of Silicon errata on 82598.  Unmask 
+	 * the interrupt that we masked before the EICR read
+	 * no flush of the re-enabled is necessary here
 	 */
-	IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_IRQ_CLEAR_MASK);
+	ixgbe_irq_enable(adapter, true, false);
 #endif
 	return IRQ_HANDLED;
 }
@@ -2368,7 +2403,7 @@ static void ixgbe_vlan_rx_register(struct net_device *netdev,
 	}
 
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
-		ixgbe_irq_enable(adapter);
+		ixgbe_irq_enable(adapter, true, true);
 }
 
 static void ixgbe_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
@@ -2404,7 +2439,7 @@ static void ixgbe_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 	vlan_group_set_device(adapter->vlgrp, vid, NULL);
 
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
-		ixgbe_irq_enable(adapter);
+		ixgbe_irq_enable(adapter, true, true);
 	/* remove VID from filter table */
 	if (hw->mac.ops.set_vfta)
 		hw->mac.ops.set_vfta(hw, vid, 0, false);
@@ -2803,7 +2838,7 @@ static int ixgbe_up_complete(struct ixgbe_adapter *adapter)
 	/* clear any pending interrupts, may auto mask */
 	IXGBE_READ_REG(hw, IXGBE_EICR);
 
-	ixgbe_irq_enable(adapter);
+	ixgbe_irq_enable(adapter, true, true);
 
 	/* bring the link up in the watchdog, this could race with our first
 	 * link up interrupt but shouldn't be a problem */
@@ -3048,8 +3083,8 @@ static int ixgbe_poll(struct napi_struct *napi, int budget)
 
 	/* If no Tx and not enough Rx work done, exit the polling mode */
 	if ((work_done == 0) || !netif_running(adapter->netdev)) {
-		netif_rx_complete(adapter->netdev, napi);
-		if (adapter->itr_setting & 3)
+		napi_complete(napi);
+		if (adapter->itr_setting & 1)
 			ixgbe_set_itr(adapter);
 		if (!test_bit(__IXGBE_DOWN, &adapter->state))
 			ixgbe_irq_enable_queues(adapter);
@@ -3689,12 +3724,13 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	}
 
 	/* default flow control settings */
-	hw->fc.current_mode = ixgbe_fc_none;
-	hw->fc.requested_mode = ixgbe_fc_none;
+	hw->fc.requested_mode = ixgbe_fc_full;
+	hw->fc.current_mode = ixgbe_fc_full;	/* init for ethtool output */
 	hw->fc.high_water = IXGBE_DEFAULT_FCRTH;
 	hw->fc.low_water = IXGBE_DEFAULT_FCRTL;
 	hw->fc.pause_time = IXGBE_DEFAULT_FCPAUSE;
 	hw->fc.send_xon = true;
+	hw->fc.disable_fc_autoneg = false;
 
 	/* set defaults for eitr in MegaBytes */
 	adapter->eitr_low = 10;
@@ -4363,8 +4399,8 @@ static void ixgbe_watchdog_task(struct work_struct *work)
 		if (link_up ||
 		    time_after(jiffies, (adapter->link_check_timeout +
 		                         IXGBE_TRY_LINK_TIMEOUT))) {
-			IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_EIMC_LSC);
 			adapter->flags &= ~IXGBE_FLAG_NEED_LINK_UPDATE;
+			IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_EIMC_LSC);
 		}
 		adapter->link_up = link_up;
 		adapter->link_speed = link_speed;
@@ -4896,7 +4932,7 @@ static void ixgbe_netpoll(struct net_device *netdev)
 	adapter->flags |= IXGBE_FLAG_IN_NETPOLL;
 	ixgbe_intr(adapter->pdev->irq, netdev);
 	adapter->flags &= ~IXGBE_FLAG_IN_NETPOLL;
-	ixgbe_irq_enable(adapter);
+	ixgbe_irq_enable(adapter, true, true);
 }
 
 #endif

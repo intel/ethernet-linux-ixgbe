@@ -386,11 +386,40 @@ int ixgbe_dcb_netlink_unregister()
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
 #ifdef NAPI
+#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_IGBVF) || defined(DRIVER_E1000)
+/* this function returns the true netdev of the napi struct */
+struct net_device * napi_to_netdev(struct napi_struct *napi)
+{
+	struct adapter_q_vector *q_vector = container_of(napi,
+	                                                struct adapter_q_vector,
+	                                                napi);
+	struct adapter_struct *adapter = q_vector->adapter;
+
+	return adapter->netdev;
+}
+
+int _kc_napi_schedule_prep(struct napi_struct *napi)
+{
+	return (netif_running(napi_to_netdev(napi)) &&
+	        netif_rx_schedule_prep(napi_to_poll_dev(napi)));
+}
+
+#else /* defined(DRIVER_IGB) || defined(DRIVER_IXGBE) defined(DRIVER_IGBVF) defined(DRIVER_E1000) */
+/* this function returns the true netdev of the napi struct */
+struct net_device * napi_to_netdev(struct napi_struct *napi)
+{
+	struct adapter_struct *adapter = container_of(napi,
+	                                              struct adapter_struct,
+	                                              napi);
+	return adapter->netdev;
+}
+
+#endif /* defined(DRIVER_IGB) || defined(DRIVER_IXGBE) defined(DRIVER_IGBVF) */
 int __kc_adapter_clean(struct net_device *netdev, int *budget)
 {
 	int work_done;
 	int work_to_do = min(*budget, netdev->quota);
-#ifdef DRIVER_IXGBE
+#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_IGBVF)
 	/* kcompat.h netif_napi_add puts napi struct in "fake netdev->priv" */
 	struct napi_struct *napi = netdev->priv;
 #else
@@ -400,7 +429,7 @@ int __kc_adapter_clean(struct net_device *netdev, int *budget)
 	work_done = napi->poll(napi, work_to_do);
 	*budget -= work_done;
 	netdev->quota -= work_done;
-	return work_done ? 1 : 0;
+	return (work_done >= work_to_do) ? 1 : 0;
 }
 #endif /* NAPI */
 #endif /* <= 2.6.24 */

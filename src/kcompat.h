@@ -118,6 +118,7 @@
 
 #ifdef DRIVER_IXGBE
 #define adapter_struct ixgbe_adapter
+#define adapter_q_vector ixgbe_q_vector
 #endif
 
 /* and finally set defines so that the code sees the changes */
@@ -226,12 +227,6 @@ struct msix_entry {
 #else
 #define mmiowb()
 #endif
-#endif
-
-#ifndef IRQ_HANDLED
-#define irqreturn_t void
-#define IRQ_HANDLED
-#define IRQ_NONE
 #endif
 
 #ifndef SET_NETDEV_DEV
@@ -1371,6 +1366,12 @@ extern void *_kc_kzalloc(size_t size, int flags);
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18) )
 
+#ifndef IRQ_HANDLED
+#define irqreturn_t void
+#define IRQ_HANDLED
+#define IRQ_NONE
+#endif
+
 #ifndef IRQF_PROBE_SHARED
 #ifdef SA_PROBEIRQ
 #define IRQF_PROBE_SHARED SA_PROBEIRQ
@@ -1555,12 +1556,9 @@ struct napi_struct {
 };
 #ifdef NAPI
 extern int __kc_adapter_clean(struct net_device *, int *);
-#if defined(DRIVER_IGB) || defined(DRIVER_IXGBE)
-#define netif_rx_complete(_netdev, napi) netif_rx_complete(&(napi)->poll_dev)
-#define netif_rx_schedule_prep(_netdev, napi) \
-	(netif_running(_netdev) && netif_rx_schedule_prep(&(napi)->poll_dev))
-#define netif_rx_schedule(_netdev, napi) netif_rx_schedule(&(napi)->poll_dev)
-#define __netif_rx_schedule(_netdev, napi) __netif_rx_schedule(&(napi)->poll_dev)
+extern struct net_device * napi_to_netdev(struct napi_struct *);
+#if defined(DRIVER_IGB) || defined(DRIVER_IXGBE) || defined(DRIVER_IGBVF)
+#define napi_to_poll_dev(_napi) &(_napi)->poll_dev
 #define napi_enable(napi) do { \
 	/* abuse if_port as a counter */ \
 	if (!adapter->netdev->if_port) { \
@@ -1597,11 +1595,10 @@ extern int __kc_adapter_clean(struct net_device *, int *);
 		dev_put(&(_napi)->poll_dev); \
 		memset(&(_napi)->poll_dev, 0, sizeof(struct napi_struct));\
 	} while (0)
-#else /* DRIVER_IGB || DRIVER_IXGBE */
-#define netif_rx_complete(netdev, napi) netif_rx_complete(netdev)
-#define netif_rx_schedule_prep(netdev, napi) netif_rx_schedule_prep(netdev)
-#define netif_rx_schedule(netdev, napi) netif_rx_schedule(netdev)
-#define __netif_rx_schedule(netdev, napi) __netif_rx_schedule(netdev)
+extern int _kc_napi_schedule_prep(struct napi_struct *napi);
+#define napi_schedule_prep _kc_napi_schedule_prep
+#else /* DRIVER_IGB || DRIVER_IXGBE || DRIVER_IGBVF */
+#define napi_to_poll_dev(napi) napi_to_netdev(napi)
 #define napi_enable(napi) netif_poll_enable(adapter->netdev)
 #define napi_disable(napi) netif_poll_disable(adapter->netdev)
 #define netif_napi_add(_netdev, _napi, _poll, _weight) \
@@ -1614,7 +1611,11 @@ extern int __kc_adapter_clean(struct net_device *, int *);
 		netif_poll_disable(_netdev); \
 	} while (0)
 #define netif_napi_del(_a) do {} while (0)
+#define napi_schedule_prep(napi) netif_rx_schedule_prep(napi_to_netdev(napi))
 #endif /* DRIVER_IGB || DRIVER_IXGBE */
+#define napi_schedule(napi) netif_rx_schedule(napi_to_poll_dev(napi))
+#define __napi_schedule(napi) __netif_rx_schedule(napi_to_poll_dev(napi))
+#define napi_complete(napi) netif_rx_complete(napi_to_poll_dev(napi))
 #else /* NAPI */
 #define netif_napi_add(_netdev, _napi, _poll, _weight) \
 	do { \

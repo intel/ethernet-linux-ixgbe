@@ -162,6 +162,16 @@ static int ixgbe_get_settings(struct net_device *netdev,
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
 			ecmd->advertising |= ADVERTISED_1000baseT_Full;
 
+		/*
+		 * It's possible that phy.autoneg_advertised may not be
+		 * set yet.  If so display what the default would be -
+		 * both 1G and 10G supported.
+		 */
+		if (!(ecmd->advertising & (ADVERTISED_1000baseT_Full |
+					   ADVERTISED_10000baseT_Full)))
+			ecmd->advertising |= (ADVERTISED_10000baseT_Full |
+					      ADVERTISED_1000baseT_Full);
+
 		ecmd->port = PORT_TP;
 	} else if (hw->phy.media_type == ixgbe_media_type_backplane) {
 		/* Set as FIBRE until SERDES defined in kernel */
@@ -267,7 +277,17 @@ static void ixgbe_get_pauseparam(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	pause->autoneg = (hw->fc.current_mode == ixgbe_fc_full ? 1 : 0);
+	/*
+	 * Flow Control Autoneg isn't on if
+	 *  - we didn't ask for it OR
+	 *  - it failed, we know this by tx & rx being off
+	 */
+	if (hw->fc.disable_fc_autoneg || 
+	    (hw->fc.current_mode == ixgbe_fc_none))
+		pause->autoneg = 0;
+	else
+		pause->autoneg = 1;
+
 
 	if (hw->fc.current_mode == ixgbe_fc_rx_pause) {
 		pause->rx_pause = 1;
@@ -285,19 +305,21 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	if ((pause->autoneg == AUTONEG_ENABLE) ||
-	    (pause->rx_pause && pause->tx_pause))
-		hw->fc.current_mode = ixgbe_fc_full;
+	if (pause->autoneg != AUTONEG_ENABLE)
+		hw->fc.disable_fc_autoneg = true;
+	else
+		hw->fc.disable_fc_autoneg = false;
+
+	if (pause->rx_pause && pause->tx_pause)
+		hw->fc.requested_mode = ixgbe_fc_full;
 	else if (pause->rx_pause && !pause->tx_pause)
-		hw->fc.current_mode = ixgbe_fc_rx_pause;
+		hw->fc.requested_mode = ixgbe_fc_rx_pause;
 	else if (!pause->rx_pause && pause->tx_pause)
-		hw->fc.current_mode = ixgbe_fc_tx_pause;
+		hw->fc.requested_mode = ixgbe_fc_tx_pause;
 	else if (!pause->rx_pause && !pause->tx_pause)
-		hw->fc.current_mode = ixgbe_fc_none;
+		hw->fc.requested_mode = ixgbe_fc_none;
 	else
 		return -EINVAL;
-
-	hw->fc.requested_mode = hw->fc.current_mode;
 
 	if (netif_running(netdev))
 		ixgbe_reinit_locked(adapter);
@@ -1859,16 +1881,31 @@ static int ixgbe_get_coalesce(struct net_device *netdev,
 #endif
 
 	/* only valid if in constant ITR mode */
-	if (adapter->itr_setting == 0)
+	switch (adapter->itr_setting) {
+	case 0:
+		/* throttling disabled */
+		ec->rx_coalesce_usecs = 0;
+		break;
+	case 1:
+		/* dynamic ITR mode */
+		ec->rx_coalesce_usecs = 1;
+		break;
+	default:
+		/* fixed interrupt rate mode */
 		ec->rx_coalesce_usecs = 1000000/adapter->eitr_param;
+		break;
+	}
 
 	return 0;
 }
+
+extern void ixgbe_write_eitr(struct ixgbe_adapter *, int, u32);
 
 static int ixgbe_set_coalesce(struct net_device *netdev,
                               struct ethtool_coalesce *ec)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	int i;
 
 	if (ec->tx_max_coalesced_frames_irq)
 		adapter->tx_ring[0].work_limit = ec->tx_max_coalesced_frames_irq;
@@ -1878,32 +1915,43 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		adapter->rx_ring[0].work_limit = ec->rx_max_coalesced_frames_irq;
 
 #endif
-	if (ec->rx_coalesce_usecs > 3) {
-		struct ixgbe_hw *hw = &adapter->hw;
-		int i;
+	if (ec->rx_coalesce_usecs > 1) {
+		/* check the limits */
+		if ((1000000/ec->rx_coalesce_usecs > IXGBE_MAX_INT_RATE) ||
+		    (1000000/ec->rx_coalesce_usecs < IXGBE_MIN_INT_RATE))
+			return -EINVAL;
+
 		/* store the value in ints/second */
 		adapter->eitr_param = 1000000/ec->rx_coalesce_usecs;
 
-		for (i = 0; i < adapter->num_msix_vectors - NON_Q_VECTORS; i++){
-			struct ixgbe_q_vector *q_vector = &adapter->q_vector[i];
-			if (q_vector->txr_count && !q_vector->rxr_count)
-				q_vector->eitr = (adapter->eitr_param >> 1);
-			else
-				/* rx only */
-				q_vector->eitr = adapter->eitr_param;
-			IXGBE_WRITE_REG(hw, IXGBE_EITR(i),
-			              EITR_INTS_PER_SEC_TO_REG(q_vector->eitr));
-		}
-
 		/* static value of interrupt rate */
 		adapter->itr_setting = adapter->eitr_param;
+		/* clear the lower bit as its used for dynamic state */
+		adapter->itr_setting &= ~1;
+	} else if (ec->rx_coalesce_usecs == 1) {
+		/* 1 means dynamic mode */
+		adapter->eitr_param = 20000;
+		adapter->itr_setting = 1;
 	} else {
-		/* 1,2,3 means dynamic mode */
-		adapter->itr_setting = ec->rx_coalesce_usecs;
+		/*
+		 * any other value means disable eitr, which is best
+		 * served by setting the interrupt rate very high
+		 */
+		adapter->eitr_param = IXGBE_MAX_INT_RATE;
+		adapter->itr_setting = 0;
 	}
 
-	if (netif_running(netdev))
-		ixgbe_reinit_locked(adapter);
+	for (i = 0; i < adapter->num_msix_vectors - NON_Q_VECTORS; i++) {
+		struct ixgbe_q_vector *q_vector = &adapter->q_vector[i];
+		if (q_vector->txr_count && !q_vector->rxr_count)
+			/* tx vector gets half the rate */
+			q_vector->eitr = (adapter->eitr_param >> 1);
+		else if (q_vector->rxr_count)
+			/* rx only or mixed */
+			q_vector->eitr = adapter->eitr_param;
+		ixgbe_write_eitr(adapter, i,
+		                 EITR_INTS_PER_SEC_TO_REG(q_vector->eitr));
+	}
 
 	return 0;
 }

@@ -75,6 +75,8 @@
 #define IXGBE_EIMC      0x00888
 #define IXGBE_EIAC      0x00810
 #define IXGBE_EIAM      0x00890
+#define IXGBE_MAX_INT_RATE 488281
+#define IXGBE_MIN_INT_RATE 956
 #define IXGBE_EITR(_i)  (((_i) <= 23) ? (0x00820 + ((_i) * 4)) : \
                          (0x012300 + ((_i) * 4)))
 #define IXGBE_EITR_ITR_INT_MASK 0x00000FFF
@@ -1444,6 +1446,7 @@ struct ixgbe_fc_info {
 	u16 pause_time; /* Flow Control Pause timer */
 	bool send_xon; /* Flow control send XON */
 	bool strict_ieee; /* Strict IEEE mode */
+	bool disable_fc_autoneg; /* Turn off autoneg FC mode */
 	enum ixgbe_fc_mode current_mode; /* FC mode in effect */
 	enum ixgbe_fc_mode requested_mode; /* FC mode requested by caller */
 };

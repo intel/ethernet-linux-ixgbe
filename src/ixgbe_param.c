@@ -133,14 +133,14 @@ IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable (defau
 
 /* Interrupt Throttle Rate (interrupts/sec)
  *
- * Valid Range: 100-500000 (0=off)
+ * Valid Range: 956-488281 (0=off, 1=dynamic)
  *
  * Default Value: 8000
  */
 #define DEFAULT_ITR                 8000
-IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (100-500000), default 8000");
-#define MAX_ITR                   500000
-#define MIN_ITR                      100
+IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (956-488281), default 8000");
+#define MAX_ITR                   IXGBE_MAX_INT_RATE
+#define MIN_ITR                   IXGBE_MIN_INT_RATE
 
 #ifndef IXGBE_NO_LLI
 /* LLIPort (Low Latency Interrupt TCP Port)
@@ -554,11 +554,13 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			case 0:
 				DPRINTK(PROBE, INFO, "%s turned off\n",
 				        opt.name);
-				/* zero is a special value, we don't want to
+				/*
+				 * zero is a special value, we don't want to
 				 * turn off ITR completely, just set it to an
-				 * insane interrupt rate (like 3.5 Million
-				 * ints/s */
-				eitr = EITR_REG_TO_INTS_PER_SEC(1);
+				 * insane interrupt rate, which the macro
+				 * takes care of for us
+				 */
+				eitr = EITR_REG_TO_INTS_PER_SEC(0);
 				break;
 			case 1:
 				DPRINTK(PROBE, INFO, "dynamic interrupt "
@@ -575,6 +577,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			eitr = DEFAULT_ITR;
 		}
 #endif
+		adapter->itr_setting = eitr;
 		adapter->eitr_param = eitr;
 	}
 #ifndef IXGBE_NO_LLI

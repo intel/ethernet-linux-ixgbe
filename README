@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-February 11, 2009
+March 17, 2009
 
 Contents
 ========
@@ -45,6 +45,8 @@ The following features are now available in supported kernels:
  - Native VLANs
  - Channel Bonding (teaming)
  - SNMP
+ - Generic Receive Offload
+ - Data Center Bridging
 
 Channel Bonding documentation can be found in the Linux kernel source:
 /Documentation/networking/bonding.txt
@@ -203,7 +205,6 @@ To manually build this driver:
 
      ping  <IP_address>
 
-e1000-eedc@lists.sourceforge.net
 
 To build ixgbe driver with DCA:
 ------------------------------
@@ -325,6 +326,7 @@ LLI allows for immediate generation of an interrupt upon processing receive
 packets that match certain criteria as set by the parameters described below. 
 LLI parameters are not enabled when Legacy interrupts are used. You must be 
 using MSI or MSI-X (see cat /proc/interrupts) to successfully use LLI.
+
 
 LLIPort
 -------
@@ -495,13 +497,10 @@ Additional Configurations
 
   Flow Control
   ------------
-  Flow control is disabled by default. If you want to enable and have a flow 
+  Flow control is enabled by default. If you want to disable a flow 
   control capable link partner, use Ethtool:
 
-     ethtool -A eth? autoneg off rx on tx on
-
-  NOTE: Flow control can only be used if both sides are configured manually to
-  the same settings.
+     ethtool -A eth? autoneg off rx off tx off
 
 
   FCoE
