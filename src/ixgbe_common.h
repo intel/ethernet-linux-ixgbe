@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2008 Intel Corporation.
+  Copyright(c) 1999 - 2009 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -61,11 +61,14 @@ s32 ixgbe_update_mc_addr_list_generic(struct ixgbe_hw *hw, u8 *mc_addr_list,
                                       ixgbe_mc_addr_itr func);
 s32 ixgbe_update_uc_addr_list_generic(struct ixgbe_hw *hw, u8 *addr_list,
                                       u32 addr_count, ixgbe_mc_addr_itr func);
+void ixgbe_add_uc_addr(struct ixgbe_hw *hw, u8 *addr, u32 vmdq);
 s32 ixgbe_enable_mc_generic(struct ixgbe_hw *hw);
 s32 ixgbe_disable_mc_generic(struct ixgbe_hw *hw);
+s32 ixgbe_enable_rx_dma_generic(struct ixgbe_hw *hw, u32 regval);
 
-s32 ixgbe_setup_fc_generic(struct ixgbe_hw *hw, s32 packetbuf_num);
-s32 ixgbe_fc_enable(struct ixgbe_hw *hw, s32 packtetbuf_num);
+s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num);
+s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw, s32 packtetbuf_num);
+s32 ixgbe_fc_autoneg(struct ixgbe_hw *hw);
 
 s32 ixgbe_validate_mac_addr(u8 *mac_addr);
 s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u16 mask);
@@ -74,4 +77,7 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw);
 
 s32 ixgbe_read_analog_reg8_generic(struct ixgbe_hw *hw, u32 reg, u8 *val);
 s32 ixgbe_write_analog_reg8_generic(struct ixgbe_hw *hw, u32 reg, u8 val);
+s32 ixgbe_blink_led_start_generic(struct ixgbe_hw *hw, u32 index);
+s32 ixgbe_blink_led_stop_generic(struct ixgbe_hw *hw, u32 index);
+
 #endif /* IXGBE_COMMON */

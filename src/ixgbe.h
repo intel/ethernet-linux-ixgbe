@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2008 Intel Corporation.
+  Copyright(c) 1999 - 2009 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -50,19 +50,11 @@
 
 #include "ixgbe_dcb.h"
 
+
 #include "kcompat.h"
 
-#include "ixgbe_api.h"
 
-#define IXGBE_NO_INET_LRO
-#ifndef IXGBE_NO_LRO
-#if defined(CONFIG_INET_LRO) || defined(CONFIG_INET_LRO_MODULE)
-#include <linux/inet_lro.h>
-#define IXGBE_MAX_LRO_DESCRIPTORS		   8
-#undef IXGBE_NO_INET_LRO
-#define IXGBE_NO_LRO
-#endif
-#endif /* IXGBE_NO_LRO */
+#include "ixgbe_api.h"
 
 #define PFX "ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
@@ -96,14 +88,17 @@
 #define IXGBE_RXBUFFER_128   128    /* Used for packet split */
 #define IXGBE_RXBUFFER_256   256    /* Used for packet split */
 #define IXGBE_RXBUFFER_2048  2048
+#define IXGBE_RXBUFFER_4096  4096
+#define IXGBE_RXBUFFER_8192  8192
+#define IXGBE_MAX_RXBUFFER   16384  /* largest size for single descriptor */
 
 #define IXGBE_RX_HDR_SIZE IXGBE_RXBUFFER_256
 
 #define MAXIMUM_ETHERNET_VLAN_SIZE (VLAN_ETH_FRAME_LEN + ETH_FCS_LEN)
 
-#if defined(CONFIG_IXGBE_DCB) || defined(CONFIG_IXGBE_RSS) || \
-    defined(CONFIG_IXGBE_VMDQ)
-#define CONFIG_IXGBE_MQ
+#if defined(IXGBE_DCB) || defined(IXGBE_RSS) || \
+    defined(IXGBE_VMDQ)
+#define IXGBE_MQ
 #endif
 
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
@@ -113,6 +108,8 @@
 #define IXGBE_TX_FLAGS_VLAN		(u32)(1 << 1)
 #define IXGBE_TX_FLAGS_TSO		(u32)(1 << 2)
 #define IXGBE_TX_FLAGS_IPV4		(u32)(1 << 3)
+#define IXGBE_TX_FLAGS_FCOE		(u32)(1 << 4)
+#define IXGBE_TX_FLAGS_FSO		(u32)(1 << 5)
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0x0000e000
 #define IXGBE_TX_FLAGS_VLAN_SHIFT	16
@@ -124,37 +121,34 @@
 struct ixgbe_lro_stats {
 	u32 flushed;
 	u32 coal;
+	u32 recycled;
 };
 
 struct ixgbe_lro_desc {
 	struct  hlist_node lro_node;
 	struct  sk_buff *skb;
-	struct  sk_buff *last_skb;
-	int     timestamp;
-	u32   tsval;
-	u32   tsecr;
 	u32   source_ip;
 	u32   dest_ip;
+	u16   source_port;
+	u16   dest_port;
+	u16   vlan_tag;
+	u16   len;
 	u32   next_seq;
 	u32   ack_seq;
 	u16   window;
-	u16   source_port;
-	u16   dest_port;
-	u16   append_cnt;
 	u16   mss;
-	u32   data_size;	/*TCP data size*/
-	u16   vlan_tag;
-};
-
-struct ixgbe_lro_info {
-	struct ixgbe_lro_stats stats;
-	int max;		/*Maximum number of packet to coalesce.*/
+	u16   opt_bytes;
+	u16   psh:1;
+	u32   tsval;
+	u32   tsecr;
+	u32   append_cnt;
 };
 
 struct ixgbe_lro_list {
 	struct hlist_head active;
 	struct hlist_head free;
 	int active_cnt;
+	struct ixgbe_lro_stats stats;
 };
 
 #endif /* IXGBE_NO_LRO */
@@ -183,17 +177,18 @@ struct ixgbe_queue_stats {
 
 struct ixgbe_ring {
 	void *desc;			/* descriptor ring memory */
-	dma_addr_t dma;			/* phys. address of descriptor ring */
-	unsigned int size;		/* length in bytes */
-	unsigned int count;		/* amount of descriptors */
-	unsigned int next_to_use;
-	unsigned int next_to_clean;
-
-	int queue_index; /* needed for multiqueue queue management */
 	union {
 		struct ixgbe_tx_buffer *tx_buffer_info;
 		struct ixgbe_rx_buffer *rx_buffer_info;
 	};
+	u8 atr_sample_rate;
+	u8 atr_count;
+	u16 count;			/* amount of descriptors */
+	u16 rx_buf_len;
+	u16 next_to_use;
+	u16 next_to_clean;
+
+	u8 queue_index; /* needed for multiqueue queue management */
 
 	u16 head;
 	u16 tail;
@@ -201,44 +196,43 @@ struct ixgbe_ring {
 	unsigned int total_bytes;
 	unsigned int total_packets;
 
-	u16 reg_idx; /* holds the special value that gets the hardware register
-	              * offset associated with this ring, which is different
-	              * for DCB and RSS modes */
-
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	/* cpu for tx queue */
 	int cpu;
 #endif
+	u16 work_limit;                /* max work per interrupt */
+	u16 reg_idx;			/* holds the special value that gets the
+					 * hardware register offset associated
+					 * with this ring, which is different
+					 * for DCB and RSS modes */
 
 	struct ixgbe_queue_stats stats;
-	u16 v_idx; /* maps directly to the index for this ring in the hardware
-	           * vector array, can also be used for finding the bit in EICR
-	           * and friends that represents the vector for this ring */
-#ifndef IXGBE_NO_LRO
-	/* LRO list for rx queue */
-	struct ixgbe_lro_list *lrolist;
-#endif
-#ifndef IXGBE_NO_INET_LRO
-	struct net_lro_mgr  lro_mgr;
-	bool lro_used;
-#endif
-	u16 work_limit;                /* max work per interrupt */
-	u16 rx_buf_len;
+	unsigned long reinit_state;
+	u64 rsc_count;                 /* stat for coalesced packets */
+	unsigned int size;		/* length in bytes */
+	dma_addr_t dma;			/* phys. address of descriptor ring */
 };
 
-#define RING_F_DCB  0
-#define RING_F_VMDQ 1
-#define RING_F_RSS  2
+enum ixgbe_ring_f_enum {
+	RING_F_NONE = 0,
+	RING_F_DCB,
+	RING_F_VMDQ,
+	RING_F_RSS,
+	RING_F_FDIR,
+	RING_F_ARRAY_SIZE      /* must be last in enum set */
+};
+
 #define IXGBE_MAX_DCB_INDICES   8
 #define IXGBE_MAX_RSS_INDICES  16
-#define IXGBE_MAX_VMDQ_INDICES 16
+#define IXGBE_MAX_VMDQ_INDICES 64
+#define IXGBE_MAX_FDIR_INDICES 64
 struct ixgbe_ring_feature {
 	int indices;
 	int mask;
 };
 
-#define MAX_RX_QUEUES 64
-#define MAX_TX_QUEUES 32
+#define MAX_RX_QUEUES 128
+#define MAX_TX_QUEUES 128
 
 #define MAX_RX_PACKET_BUFFERS ((adapter->flags & IXGBE_FLAG_DCB_ENABLED) \
                                ? 8 : 1)
@@ -249,6 +243,9 @@ struct ixgbe_ring_feature {
  */
 struct ixgbe_q_vector {
 	struct ixgbe_adapter *adapter;
+	unsigned int v_idx; /* index of q_vector within array, also used for
+	                     * finding the bit in EICR and friends that
+	                     * represents the vector for this ring */
 #ifdef CONFIG_IXGBE_NAPI
 	struct napi_struct napi;
 #endif
@@ -259,11 +256,15 @@ struct ixgbe_q_vector {
 	u8 tx_itr;
 	u8 rx_itr;
 	u32 eitr;
+#ifndef IXGBE_NO_LRO
+	struct ixgbe_lro_list *lrolist;   /* LRO list for queue vector*/
+#endif
+	char name[IFNAMSIZ + 9];
 };
 
 
 /* Helper macros to switch between ints/sec and what the register uses.
- * And yes, it's the same math going both ways.  The lowest vaule 
+ * And yes, it's the same math going both ways.  The lowest value
  * supported by all of the ixgbe hardware is 8.
  */
 #define EITR_INTS_PER_SEC_TO_REG(_eitr) \
@@ -294,9 +295,21 @@ struct ixgbe_q_vector {
 #define OTHER_VECTOR 1
 #define NON_Q_VECTORS (OTHER_VECTOR + TCP_TIMER_VECTOR)
 
-#define MAX_MSIX_Q_VECTORS 16
+#define IXGBE_MAX_MSIX_VECTORS_82599 64
+#define IXGBE_MAX_MSIX_Q_VECTORS_82599 64
+#define IXGBE_MAX_MSIX_Q_VECTORS_82598 16
+#define IXGBE_MAX_MSIX_VECTORS_82598 18
+
+/*
+ * Only for array allocations in our adapter struct.  On 82598, there will be
+ * unused entries in the array, but that's not a big deal.  Also, in 82599,
+ * we can actually assign 64 queue vectors based on our extended-extended
+ * interrupt registers.  This is different than 82598, which is limited to 16.
+ */
+#define MAX_MSIX_Q_VECTORS IXGBE_MAX_MSIX_Q_VECTORS_82599
+#define MAX_MSIX_COUNT IXGBE_MAX_MSIX_VECTORS_82599
+
 #define MIN_MSIX_Q_VECTORS 2
-#define MAX_MSIX_COUNT (MAX_MSIX_Q_VECTORS + NON_Q_VECTORS)
 #define MIN_MSIX_COUNT (MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
 
 /* board specific private data structure */
@@ -307,11 +320,11 @@ struct ixgbe_adapter {
 #endif
 	u16 bd_number;
 	struct work_struct reset_task;
-	struct ixgbe_q_vector q_vector[MAX_MSIX_Q_VECTORS];
-	char name[MAX_MSIX_COUNT][IFNAMSIZ + 5];
+	struct ixgbe_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
 	struct ixgbe_dcb_config dcb_cfg;
 	struct ixgbe_dcb_config temp_dcb_cfg;
 	u8 dcb_set_bitmap;
+	enum ixgbe_fc_mode last_lfc_mode;
 
 	/* Interrupt Throttle Rate */
 	u32 itr_setting;
@@ -332,21 +345,24 @@ struct ixgbe_adapter {
 	/* RX */
 	struct ixgbe_ring *rx_ring;	/* One per active queue */
 	int num_rx_queues;
+	int num_rx_pools;               /* == num_rx_queues in 82598 */
+	int num_rx_queues_per_pool;	/* 1 if 82598, can be many if 82599 */
 	u64 hw_csum_rx_error;
+	u64 hw_rx_no_dma_resources;
 	u64 hw_csum_rx_good;
 	u64 non_eop_descs;
 #ifndef CONFIG_IXGBE_NAPI
 	u64 rx_dropped_backlog;		/* count drops from rx intr handler */
 #endif
 	int num_msix_vectors;
-	struct ixgbe_ring_feature ring_feature[3];
+	int max_msix_q_vectors;         /* true count of q_vectors for device */
+	struct ixgbe_ring_feature ring_feature[RING_F_ARRAY_SIZE];
 	struct msix_entry *msix_entries;
 #ifdef IXGBE_TCP_TIMER
 	irqreturn_t (*msix_handlers[MAX_MSIX_COUNT])(int irq, void *data,
 	                                             struct pt_regs *regs);
 #endif
 
-	u64 rx_hdr_split;
 	u32 alloc_rx_page_failed;
 	u32 alloc_rx_buff_failed;
 
@@ -368,7 +384,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 9)
 #define IXGBE_FLAG_DCA_ENABLED                  (u32)(1 << 10)
 #define IXGBE_FLAG_DCA_CAPABLE                  (u32)(1 << 11)
-#define IXGBE_FLAG_IMIR_ENABLED                 (u32)(1 << 12)
+#define IXGBE_FLAG_DCA_ENABLED_DATA             (u32)(1 << 12)
 #define IXGBE_FLAG_MQ_CAPABLE                   (u32)(1 << 13)
 #define IXGBE_FLAG_DCB_ENABLED                  (u32)(1 << 14)
 #define IXGBE_FLAG_DCB_CAPABLE                  (u32)(1 << 15)
@@ -379,7 +395,19 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_FAN_FAIL_CAPABLE             (u32)(1 << 20)
 #define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 22)
 #define IXGBE_FLAG_IN_WATCHDOG_TASK             (u32)(1 << 23)
-
+#define IXGBE_FLAG_IN_SFP_LINK_TASK             (u32)(1 << 24)
+#define IXGBE_FLAG_IN_SFP_MOD_TASK              (u32)(1 << 25)
+#define IXGBE_FLAG_FDIR_HASH_CAPABLE            (u32)(1 << 26)
+#define IXGBE_FLAG_FDIR_PERFECT_CAPABLE         (u32)(1 << 27)
+	u32 flags2;
+#ifndef IXGBE_NO_HW_RSC
+#define IXGBE_FLAG2_RSC_CAPABLE                  (u32)(1)
+#define IXGBE_FLAG2_RSC_ENABLED                  (u32)(1 << 1)
+#endif /* IXGBE_NO_HW_RSC */
+#ifndef IXGBE_NO_LRO
+#define IXGBE_FLAG2_SWLRO_ENABLED                (u32)(1 << 2)
+#endif /* IXGBE_NO_LRO */
+#define IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE        (u32)(1 << 3)
 /* default to trying for four seconds */
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
 
@@ -388,7 +416,7 @@ struct ixgbe_adapter {
 	struct pci_dev *pdev;
 	struct net_device_stats net_stats;
 #ifndef IXGBE_NO_LRO
-	struct ixgbe_lro_info lro_data;
+	struct ixgbe_lro_stats lro_stats;
 #endif
 
 #ifdef ETHTOOL_TEST
@@ -405,19 +433,15 @@ struct ixgbe_adapter {
 	u32 lli_port;
 	u32 lli_size;
 	u64 lli_int;
-#endif
+	u32 lli_etype;
+	u32 lli_vlan_pri;
+#endif /* IXGBE_NO_LLI */
 	/* Interrupt Throttle Rate */
 	u32 eitr_param;
 
 	unsigned long state;
 	u32 *config_space;
 	u64 tx_busy;
-#ifndef IXGBE_NO_INET_LRO
-	unsigned int lro_max_aggr;
-	unsigned int lro_aggregated;
-	unsigned int lro_flushed;
-	unsigned int lro_no_desc;
-#endif
 	unsigned int tx_ring_count;
 	unsigned int rx_ring_count;
 
@@ -428,19 +452,41 @@ struct ixgbe_adapter {
 	struct work_struct watchdog_task;
 	struct work_struct sfp_task;
 	struct timer_list sfp_timer;
+	struct work_struct multispeed_fiber_task;
+	struct work_struct sfp_config_module_task;
+	u64 flm;
+	u32 fdir_pballoc;
+	u32 atr_sample_rate;
+	spinlock_t fdir_perfect_lock;
+	struct work_struct fdir_reinit_task;
+	u64 rsc_count;
+	u32 wol;
+	u16 eeprom_version;
+	bool netdev_registered;
+	char lsc_int_name[IFNAMSIZ + 9];
+#ifdef IXGBE_TCP_TIMER
+	char tcp_timer_name[IFNAMSIZ + 9];
+#endif
 };
 
 enum ixbge_state_t {
 	__IXGBE_TESTING,
 	__IXGBE_RESETTING,
 	__IXGBE_DOWN,
+	__IXGBE_FDIR_INIT_DONE,
 	__IXGBE_SFP_MODULE_NOT_FOUND
 };
 
+#ifdef CONFIG_DCB
+extern struct dcbnl_rtnl_ops dcbnl_ops;
+extern int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
+			      struct ixgbe_dcb_config *dst_dcb_cfg, int tc_max);
+#endif
 
 /* needed by ixgbe_main.c */
 extern int ixgbe_validate_mac_addr(u8 *mc_addr);
 extern void ixgbe_check_options(struct ixgbe_adapter *adapter);
+extern void ixgbe_assign_netdev_ops(struct net_device *netdev);
 
 /* needed by ixgbe_ethtool.c */
 extern char ixgbe_driver_name[];
@@ -456,10 +502,8 @@ extern int ixgbe_setup_tx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
 extern void ixgbe_free_rx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
 extern void ixgbe_free_tx_resources(struct ixgbe_adapter *,struct ixgbe_ring *);
 extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
-
-/* needed by ixgbe_dcb_nl.c */
-extern void ixgbe_reset_interrupt_capability(struct ixgbe_adapter *adapter);
 extern int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter);
+extern void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter);
 extern bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
 
 #ifdef ETHTOOL_OPS_COMPAT
@@ -469,12 +513,5 @@ extern int ethtool_ioctl(struct ifreq *ifr);
 extern int ixgbe_dcb_netlink_register(void);
 extern int ixgbe_dcb_netlink_unregister(void);
 
-extern int ixgbe_sysfs_create(struct ixgbe_adapter *adapter);
-extern void ixgbe_sysfs_remove(struct ixgbe_adapter *adapter);
-
-#ifdef CONFIG_IXGBE_NAPI
-extern void ixgbe_napi_add_all(struct ixgbe_adapter *adapter);
-extern void ixgbe_napi_del_all(struct ixgbe_adapter *adapter);
-#endif
 
 #endif /* _IXGBE_H_ */

@@ -1,7 +1,7 @@
 ################################################################################
 #
 # Intel 10 Gigabit PCI Express Linux driver
-# Copyright(c) 1999 - 2008 Intel Corporation.
+# Copyright(c) 1999 - 2009 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -31,7 +31,9 @@
 # core driver files
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
+         ixgbe_82599.c \
          ixgbe_dcb.c ixgbe_dcb_82598.c \
+         ixgbe_dcb_82599.c \
          ixgbe_phy.c
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
          ixgbe_dcb.h \
@@ -159,7 +161,7 @@ EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
                   -include $(KSRC)/include/linux/modversions.h")
 
 EXTRA_CFLAGS += $(CFLAGS_EXTRA)
-EXTRA_CFLAGS += -DCONFIG_IXGBE_RSS
+EXTRA_CFLAGS += -DIXGBE_RSS
 # do nothing here, so it's stripped properly
 
 RHC := $(KSRC)/include/linux/rhconfig.h
@@ -188,13 +190,13 @@ ifeq ($(KKVER), 0)
           *** This driver is not supported on kernel versions older than 2.4.0)
 endif
 
-# Add DCB netlink source and FCoE sysfs source if our kernel is 2.6.23 or newer
+# Add DCB netlink source if our kernel is 2.6.23 or newer
 KKVER := $(shell echo $(KVER) | \
          awk '{ if ($$0 ~ /2\.[6-9]\.(2[3-9]|[3-9][0-9])/) print "1"; else print "0"}')
 ifeq ($(KKVER), 1)
   CFILES += ixgbe_dcb_nl.c
-  CFILES += ixgbe_sysfs.c
 endif
+
 
 # set the install path
 INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/$(DRIVER_NAME)

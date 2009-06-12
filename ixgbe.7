@@ -4,7 +4,7 @@
 .\"
 .\" * Other names and brands may be claimed as the property of others.
 .\"
-.TH ixgbe 1 "September 20, 2008"
+.TH ixgbe 1 "June 10, 2009"
 
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
@@ -144,15 +144,25 @@ denial of service attack.
 LLISize causes an immediate interrupt if the board receives a packet smaller 
 than the specified size.
 .LP
-.B LROAggr
+.B LLIEType
 .IP
 .B Valid Range: 
-2-44
+0-x8fff
 .br
-.B Default Value: 32
+.B Default Value: 
+0 (disabled)
 .IP
-LROAggr is the maximum number of packets that can be aggregated by LRO into a 
-single packet before it must be passed up to the stack.
+Low Latency Interrupt Ethernet Protocol Type.
+.LP
+.B LLIVLANP
+.IP
+.B Valid Range: 
+0-7
+.br
+.B Default Value: 
+0 (disabled)
+.IP
+Low Latency Interrupt on VLAN priority threshold.
 .LP
 .B VMDQ
 .IP
@@ -162,6 +172,36 @@ single packet before it must be passed up to the stack.
 .B Default: 1 (disabled)
 .IP
 The option for turning VMDQ on or off.
+.LP
+.B FdirMode
+.IP
+.B Valid Range: 
+0-2 (0=off, 1=ATR, 2=Perfect filter mode)
+.br
+.B Default Value: 1
+.IP
+Flow Director filtering modes.
+.LP
+.B FdirPballoc
+.IP
+.B Valid Range: 
+0-2 (0=64k, 1=128k, 2=256k)
+.br
+.B Default Value: 
+0
+.IP
+Flow Director allocated packet buffer size.
+.LP
+.B AtrSampleRate
+.IP
+.B Valid Range: 
+1-100
+.br
+.B Default Value: 
+20
+.IP
+Software ATR Tx packet sample rate. For example, when set to 20, every 20th
+packet, looks to see if the packet will create a new flow.
 .LP
 .SH JUMBO FRAMES
 The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabled by changing the MTU to a value larger than the default of 1500. Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:

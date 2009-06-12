@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-March 17, 2009
+June 10, 2009
 
 Contents
 ========
@@ -12,6 +12,7 @@ Contents
 - Building and Installation
 - Command Line Parameters
 - Additional Configurations
+- Performance Tuning
 - Known Issues/Troubleshooting
 - Support
 
@@ -84,7 +85,22 @@ Controller        Adapter Name                      Physical Layer
             Intel(R) 82598EB 10 Gigabit KX4 
               Network Connection
             Intel(R) 82598EB Gigabit BX 
+              Network Connection
+
+82599       Intel(R) 82599 Dual 10 Gigabit 
               Network Connection 
+            Intel(R) Ethernet Server Adapter 
+              X520-DA2
+            Intel(R) Ethernet Server Adapter 
+              X520-1
+            Intel(R) Ethernet Server Adapter 
+              X520-2
+            Intel(R) Ethernet Mezzanine Adapter 
+              X520-KX4-2
+            Intel(R) 10 Gigabit BR KX4 Dual
+              Port Network Connection
+            Intel(R) 82599 10 Gigabit Dual 
+              Port Network Connection
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -100,47 +116,87 @@ networking link on the left to search for your adapter:
 SFP+ Devices with Pluggable Optics
 ----------------------------------
 
-NOTES: 
-- Intel(R) Network Adapters that support removable optical modules only support 
-  their original module type (i.e., the Intel(R) 10 Gigabit SR Dual Port 
+82599-BASED ADAPTERS  
+
+NOTE: If your 82599-based Intel(R) Network Adapter came with Intel optics, or
+is an Intel(R) Ethernet Server Adapter X520-2, then it only supports Intel 
+optics and/or the direct attach cables listed below. 
+ 
+Supplier    Type                                             Part Numbers
+
+SR Modules			
+Intel 	    DUAL RATE 1G/10G SFP+ SR (bailed)                FTLX8571D3BCV-IT	
+Intel	    DUAL RATE 1G/10G SFP+ SR (bailed)                AFBR-703SDZ-IN2	
+LR Modules			
+Intel 	    DUAL RATE 1G/10G SFP+ LR (bailed)                FTLX1471D3BCV-IT	
+Intel	    DUAL RATE 1G/10G SFP+ LR (bailed)                AFCT-701SDZ-IN2
+
+The following is a list of 3rd party SFP+ modules and direct attach cables that
+have received some testing. Not all modules are applicable to all devices.
+
+Supplier   Type                                              Part Numbers
+
+Finisar    SFP+ SR bailed, 10g single rate                   FTLX8571D3BCL
+Avago      SFP+ SR bailed, 10g single rate                   AFBR-700SDZ
+Finisar    SFP+ LR bailed, 10g single rate                   FTLX1471D3BCL
+		
+Finisar    DUAL RATE 1G/10G SFP+ SR (No Bail)	             FTLX8571D3QCV-IT
+Avago	   DUAL RATE 1G/10G SFP+ SR (No Bail)	             AFBR-703SDZ-IN1	
+Finisar	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             FTLX1471D3QCV-IT
+Avago	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             AFCT-701SDZ-IN1
+		
+Molex	   1m - Twin-ax cable	                             74752-1101
+Molex	   3m - Twin-ax cable	                             74752-2301
+Molex	   5m - Twin-ax cable	                             74752-3501
+Molex	   10m - Twin-ax cable	                             74752-9004
+Tyco	   1m - Twin-ax cable	                             2032237-2
+Tyco	   3m - Twin-ax cable	                             2032237-4
+Tyco 	   5m - Twin-ax cable	                             2032237-6
+Tyco	   10m - Twin-ax cable	                             1-2032237-1
+
+82598-BASED ADAPTERS
+
+NOTES for 82598-Based Adapters: 
+- Intel(R) Network Adapters that support removable optical modules only support 
+  their original module type (i.e., the Intel(R) 10 Gigabit SR Dual Port    
   Express Module only supports SR optical modules). If you plug in a different 
   type of module, the driver will not load.
-- Hot Swapping/hot plugging optical modules is not supported.
-- Only single speed, 10 gigabit modules are supported.
-- LAN on Motherboard (LOMs) may support DA, SR, or LR modules. Other module 
-  types are not supported. Please see your system documentation for details.
+- Hot Swapping/hot plugging optical modules is not supported.  
+- Only single speed, 10 gigabit modules are supported.  
+- LAN on Motherboard (LOMs) may support DA, SR, or LR modules. Other module 
+  types are not supported. Please see your system documentation for details.  
 
-The following is a list of SFP+ modules and direct attach cables that have 
+The following is a list of 3rd party SFP+ modules and direct attach cables that have 
 received some testing. Not all modules are applicable to all devices.
 
-Supplier  Type 	                                Part Numbers
+Supplier   Type                                              Part Numbers
 
-Finisar	  SFP+ SR bailed, 10g single rate 	FTLX8571D3BCL
-Avago	  SFP+ SR bailed, 10g single rate 	AFBR-700SDZ
-Finisar	  SFP+ LR bailed, 10g single rate	FTLX1471D3BCL
-Molex	  1m - Twin-ax cable	                74752-1101
-Molex	  3m - Twin-ax cable	                74752-2301
-Molex	  5m - Twin-ax cable 	                74752-3501
-Molex	  10m - Twin-ax cable	                74752-9004
-Tyco	  1m - Twin-ax cable	                2032237-2
-Tyco	  3m - Twin-ax cable	                2032237-4
-Tyco	  5m - Twin-ax cable	                2032237-6
-Tyco	  10m - Twin-ax cable	                1-2032237-1
+Finisar    SFP+ SR bailed, 10g single rate                   FTLX8571D3BCL
+Avago      SFP+ SR bailed, 10g single rate                   AFBR-700SDZ
+Finisar    SFP+ LR bailed, 10g single rate                   FTLX1471D3BCL
+Molex      1m - Twin-ax cable                                74752-1101
+Molex      3m - Twin-ax cable                                74752-2301
+Molex      5m - Twin-ax cable                                74752-3501
+Molex      10m - Twin-ax cable                               74752-9004
+Tyco       1m - Twin-ax cable                                2032237-2
+Tyco       3m - Twin-ax cable                                2032237-4
+Tyco       5m - Twin-ax cable                                2032237-6
+Tyco       10m - Twin-ax cable                               1-2032237-1
+		
 
-The optic modules and cables referred to above are listed only for the purpose
-of highlighting third party specifications and potential compatibility, and are
-not recommendations or endorsements or sponsorship of any third party's product
-by Intel. Intel is not endorsing or promoting products made by any third party 
-and the third party reference is provided only to share information regarding 
-certain optic modules and cables with the above specifications. There may be 
-other manufacturers or suppliers, producing or supplying optic modules and 
-cables with similar or matching descriptions. Customers must use their own 
+Third party optic modules and cables referred to above are listed only for the 
+purpose of highlighting third party specifications and potential compatibility, 
+and are not recommendations or endorsements or sponsorship of any third party's
+product by Intel. Intel is not endorsing or promoting products made by any 
+third party and the third party reference is provided only to share information
+regarding certain optic modules and cables with the above specifications. There
+may be other manufacturers or suppliers, producing or supplying optic modules 
+and cables with similar or matching descriptions. Customers must use their own 
 discretion and diligence to purchase optic modules and cables from any third 
 party of their choice. Customer are solely responsible for assessing the 
 suitability of the product and/or devices and for the selection of the vendor 
-for purchasing any product. THE OPTIC MODULES AND CABLES REFERRED TO ABOVE ARE 
-NOT WARRANTED OR SUPPORTED BY INTEL. INTEL ASSUMES NO LIABILITY WHATSOEVER, AND
-INTEL DISCLAIMS ANY EXPRESS OR IMPLIED WARRANTY, RELATING TO SALE AND/OR USE OF
+for purchasing any product. INTEL ASSUMES NO LIABILITY WHATSOEVER, AND INTEL
+DISCLAIMS ANY EXPRESS OR IMPLIED WARRANTY, RELATING TO SALE AND/OR USE OF 
 SUCH THIRD PARTY PRODUCTS OR SELECTION OF VENDOR BY CUSTOMERS.
 
 Building and Installation
@@ -363,14 +419,22 @@ Default Value: 0 (disabled)
   LLISize causes an immediate interrupt if the hardware receives a packet 
   smaller than the specified size.
 
-LROAggr
--------
-Valid Range: 2-44
-Default Value: 32
 
-  LROAggr is the maximum number of packets that can be aggregated by LRO into
-  a single packet before it must be passed up to the stack.
-  NOTE: For kernel version 2.6.24 and greater. 
+LLIEType
+--------
+Valid Range: 0-x8fff
+Default Value: 0 (disabled)
+
+  Low Latency Interrupt Ethernet Protocol Type.
+
+
+LLIVLANP
+--------
+Valid Range: 0-7
+Default Value: 0 (disabled)
+
+  Low Latency Interrupt on VLAN priority threshold.
+
 
 VMDQ
 ----
@@ -379,6 +443,58 @@ Valid Range: 1-16 (2-16 enables VMDQ with the descriptor queues set to the
 Default: 1 (disabled)
 
 The option for turning VMDQ on or off.
+
+
+Flow Control
+------------
+Flow Control looks at packets and assigns them into buckets. Flow Control is 
+enabled by default. If you want to disable a flow control capable link partner,
+use Ethtool:
+
+     ethtool -A eth? autoneg off rx off tx off
+
+
+Intel(R) Ethernet Flow Director
+-------------------------------
+Supports advanced filters that direct receive packets by their flows to 
+different queues. Enables tight control on routing a flow in the platform. 
+Matches flows and CPU cores for flow affinity. Supports multiple parameters 
+for flexible flow classification and load balancing. 
+
+Flow director is enabled only if the kernel is multiple TX queue capable.
+
+An included script (set_irq_affinity.sh) automates setting the IRQ to CPU 
+affinity.
+
+You can verify that the driver is using Flow Director by looking at the counter
+in ethtool: fdir_miss and fdir_match.
+
+The following three parameters impact Flow Director.
+
+
+FdirMode
+--------
+Valid Range: 0-2 (0=off, 1=ATR, 2=Perfect filter mode)
+Default Value: 1
+
+  Flow Director filtering modes.
+
+
+FdirPballoc
+-----------
+Valid Range: 0-2 (0=64k, 1=128k, 2=256k)
+Default Value: 0
+
+  Flow Director allocated packet buffer size.
+
+
+AtrSampleRate
+--------------
+Valid Range: 1-100
+Default Value: 20
+
+  Software ATR Tx packet sample rate. For example, when set to 20, every 20th
+  packet, looks to see if the packet will create a new flow.
 
 
 Additional Configurations
@@ -476,9 +592,30 @@ Additional Configurations
   Ethtool:
 
   lro_flushed - the total number of receives using LRO.
-  lro_coal - counts the total number of Ethernet packets that were combined.
+  lro_aggregated - counts the total number of Ethernet packets that were combined.
 
   NOTE: IPv6 and UDP are not supported by LRO.
+
+
+  HW RSC
+  ------
+  82599-based adapters support HW based receive side coalescing (RSC) which can
+  merge multiple frames from the same IPv4 TCP/IP flow into a single structure 
+  that can span one or more descriptors. It works similarly to SW Large receive 
+  offload technique. By default HW RSC is enabled and SW LRO can not be used 
+  for 82599-based adapters unless HW RSC is disabled.
+ 
+  IXGBE_NO_HW_RSC is a compile time flag. The user can enable it at compile 
+  time to remove support for HW RSC from the driver. The flag is used by adding 
+  CFLAGS_EXTRA="-DIXGBE_NO_HW_RSC" to the make file when it's being compiled.
+  
+     make CFLAGS_EXTRA="-DIXGBE_NO_HW_RSC" install
+ 
+  You can verify that the driver is using HW RSC by looking at the counter in 
+  Ethtool:
+ 
+     hw_rsc_count - counts the total number of Ethernet packets that were being
+     combined.
 
 
   rx_dropped_backlog
@@ -495,14 +632,6 @@ Additional Configurations
   net.core.netdev_max_backlog = 10000
 
 
-  Flow Control
-  ------------
-  Flow control is enabled by default. If you want to disable a flow 
-  control capable link partner, use Ethtool:
-
-     ethtool -A eth? autoneg off rx off tx off
-
-
   FCoE
   ----
   This release of the ixgbe driver contains new code to enable users to use 
@@ -514,10 +643,16 @@ Additional Configurations
   e1000-eedc@lists.sourceforge.net for DCB information.
 
 
+Performance Tuning
+==================
+
+An excellent article on performance tuning can be found at:
+
+http://www.redhat.com/promo/summit/2008/downloads/pdf/Thursday/Mark_Wagner.pdf
+
 
 Known Issues/Troubleshooting
 ============================
-
 
   NOTE: After installing the driver, if your Intel Network Connection is not 
   working, verify in the "In This Release" section of the readme that you have 
@@ -531,6 +666,7 @@ Known Issues/Troubleshooting
 
   If such problems are encountered, you may disable the irqbalance daemon or
   upgrade to a newer kernel. 
+
                          
   Driver Compilation
   ------------------
@@ -638,6 +774,34 @@ Known Issues/Troubleshooting
   stressed condition.
 
 
+  DCB: Generic segmentation offload on causes bandwidth allocation issues
+  -----------------------------------------------------------------------
+  In order for DCB to work correctly, GSO (Generic Segmentation Offload aka
+  software TSO) must be disabled using ethtool.  By default since the hardware
+  supports TSO (hardware offload of segmentation) GSO will not be running.  
+  The GSO state can be queried with ethtool using ethtool -k ethX.
+
+
+  When using 82598-based network connections, ixgbe driver only supports 16 
+  queues on a platform with more than 16 cores
+  -------------------------------------------------------------------------
+  Due to known hardware limitations, RSS can only filter in a maximum of 16 
+  receive queues.
+
+  82599-based network connections support up to 64 queues.
+
+
+  Disable GRO when routing/bridging
+  ---------------------------------
+  Due to a known kernel issue, GRO must be turned off when routing/bridging. 
+  GRO can be turned off via ethtool. 
+
+      ethtool -K ethX gro off
+
+      where ethX is the ethernet interface you're trying to modify.
+  
+
+
 Support
 =======
 
@@ -658,7 +822,7 @@ License
 =======
 
 Intel 10 Gigabit PCI Express Linux driver.
-Copyright(c) 1999 - 2008 Intel Corporation.
+Copyright(c) 1999 - 2009 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,

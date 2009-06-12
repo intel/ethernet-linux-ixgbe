@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2008 Intel Corporation.
+  Copyright(c) 1999 - 2009 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -126,7 +126,6 @@ enum dcb_rx_pba_cfg {
 	pba_equal,     /* PBA[0-7] each use 64KB FIFO */
 	pba_80_48      /* PBA[0-3] each use 80KB, PBA[4-7] each use 48KB */
 };
-
 
 struct dcb_num_tcs {
 	u8 pg_tcs;

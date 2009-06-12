@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2008 Intel Corporation.
+  Copyright(c) 1999 - 2009 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -299,11 +299,13 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
 	u32 reg, rx_pba_size;
 	u8  i;
 
+	if (!dcb_config->pfc_mode_enable)
+		goto out;
+
 	/* Enable Transmit Priority Flow Control */
 	reg = IXGBE_READ_REG(hw, IXGBE_RMCS);
 	reg &= ~IXGBE_RMCS_TFCE_802_3X;
 	/* correct the reporting of our flow control status */
-	hw->fc.current_mode = ixgbe_fc_none;
 	reg |= IXGBE_RMCS_TFCE_PRIORITY;
 	IXGBE_WRITE_REG(hw, IXGBE_RMCS, reg);
 
@@ -347,6 +349,7 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
 	/* Configure flow control refresh threshold value */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, 0x3400);
 
+out:
 	return 0;
 }
 
