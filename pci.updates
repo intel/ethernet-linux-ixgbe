@@ -30,7 +30,7 @@
 	10f7  82599EB 10 Gigabit KX4 Network Connection
 		8086 000d  Ethernet Mezzanine Adapter X520-KX4-2
 	10fb  82599EB 10 Gigabit Network Connection
-		108E 7B11  Ethernet Server Adapter X520-2
+		108e 7b11  Ethernet Server Adapter X520-2
 		8086 0002  Ethernet Server Adapter X520-DA2
 		8086 0003  Ethernet Server Adapter X520-2
 		8086 0006  Ethernet Server Adapter X520-1
@@ -38,3 +38,7 @@
 		8086 000c  Ethernet Server Adapter X520-2
 	10fc  82599EB 10 Gigabit Dual Port Network Connection
 	1508  82598EB 10 Gigabit BX Network Connection
+	150b  82598EB 10 Gigabit AT2 Server Adapter
+		8086 a10c  10 Gigabit AT2 Server Adapter
+		8086 a11c  10 Gigabit AT2 Server Adapter
+		8086 a12c  10 Gigabit AT2 Server Adapter

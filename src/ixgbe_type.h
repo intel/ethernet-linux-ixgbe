@@ -40,6 +40,7 @@
 #define IXGBE_DEV_ID_82598AF_DUAL_PORT   0x10C6
 #define IXGBE_DEV_ID_82598AF_SINGLE_PORT 0x10C7
 #define IXGBE_DEV_ID_82598AT             0x10C8
+#define IXGBE_DEV_ID_82598AT2            0x150B
 #define IXGBE_DEV_ID_82598EB_SFP_LOM     0x10DB
 #define IXGBE_DEV_ID_82598EB_CX4         0x10DD
 #define IXGBE_DEV_ID_82598_CX4_DUAL_PORT 0x10EC
@@ -696,14 +697,6 @@
 #define IXGBE_PBACLR_82599      0x11068
 #define IXGBE_CIAA_82599        0x11088
 #define IXGBE_CIAD_82599        0x1108C
-#define IXGBE_PCIE_DIAG_0_82599 0x11090
-#define IXGBE_PCIE_DIAG_1_82599 0x11094
-#define IXGBE_PCIE_DIAG_2_82599 0x11098
-#define IXGBE_PCIE_DIAG_3_82599 0x1109C
-#define IXGBE_PCIE_DIAG_4_82599 0x110A0
-#define IXGBE_PCIE_DIAG_5_82599 0x110A4
-#define IXGBE_PCIE_DIAG_6_82599 0x110A8
-#define IXGBE_PCIE_DIAG_7_82599 0x110C0
 #define IXGBE_INTRPT_CSR_82599  0x110B0
 #define IXGBE_INTRPT_MASK_82599 0x110B8
 #define IXGBE_CDQ_MBR_82599     0x110B4
@@ -712,6 +705,12 @@
 #define IXGBE_ECC_CTRL_1_82599  0x11104
 #define IXGBE_ECC_STATUS_82599  0x110E0
 #define IXGBE_BAR_CTRL_82599    0x110F4
+
+/* PCI Express Control */
+#define IXGBE_GCR_CMPL_TMOUT_MASK       0x0000F000
+#define IXGBE_GCR_CMPL_TMOUT_10ms       0x00001000
+#define IXGBE_GCR_CMPL_TMOUT_RESEND     0x00010000
+#define IXGBE_GCR_CAP_VER2              0x00040000
 
 /* Time Sync Registers */
 #define IXGBE_TSYNCRXCTL 0x05188 /* Rx Time Sync Control register - RW */
@@ -770,10 +769,20 @@
 #define IXGBE_TXDATARDPTR(_i)   (0x0C720 + ((_i) * 4)) /* 8 of these C720-C72C*/
 #define IXGBE_TXDESCRDPTR(_i)   (0x0C730 + ((_i) * 4)) /* 8 of these C730-C73C*/
 #define IXGBE_PCIEECCCTL 0x1106C
+#define IXGBE_RXWRPTR(_i)       (0x03100 + ((_i) * 4)) /* 8 of these 3100-310C*/
+#define IXGBE_RXUSED(_i)        (0x03120 + ((_i) * 4)) /* 8 of these 3120-312C*/
+#define IXGBE_RXRDPTR(_i)       (0x03140 + ((_i) * 4)) /* 8 of these 3140-314C*/
+#define IXGBE_RXRDWRPTR(_i)     (0x03160 + ((_i) * 4)) /* 8 of these 3160-310C*/
+#define IXGBE_TXWRPTR(_i)       (0x0C100 + ((_i) * 4)) /* 8 of these C100-C10C*/
+#define IXGBE_TXUSED(_i)        (0x0C120 + ((_i) * 4)) /* 8 of these C120-C12C*/
+#define IXGBE_TXRDPTR(_i)       (0x0C140 + ((_i) * 4)) /* 8 of these C140-C14C*/
+#define IXGBE_TXRDWRPTR(_i)     (0x0C160 + ((_i) * 4)) /* 8 of these C160-C10C*/
 #define IXGBE_PCIEECCCTL0 0x11100
 #define IXGBE_PCIEECCCTL1 0x11104
 #define IXGBE_RXDBUECC  0x03F70
 #define IXGBE_TXDBUECC  0x0CF70
+#define IXGBE_RXDBUEST 0x03F74
+#define IXGBE_TXDBUEST 0x0CF74
 #define IXGBE_PBTXECC   0x0C300
 #define IXGBE_PBRXECC   0x03300
 #define IXGBE_GHECCR    0x110B0
@@ -991,10 +1000,17 @@
 /* MII clause 22/28 definitions */
 #define IXGBE_MDIO_PHY_LOW_POWER_MODE  0x0800
 
-#define IXGBE_MII_SPEED_SELECTION_REG  0x10
-#define IXGBE_MII_RESTART              0x200
-#define IXGBE_MII_AUTONEG_COMPLETE     0x20
-#define IXGBE_MII_AUTONEG_REG          0x0
+#define IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG     0x20   /* 10G Control Reg */
+#define IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG 0xC400 /* 1G Provisioning 1 */
+#define IXGBE_MII_AUTONEG_XNP_TX_REG             0x17   /* 1G XNP Transmit */
+#define IXGBE_MII_AUTONEG_ADVERTISE_REG          0x10   /* 100M Advertisement */
+#define IXGBE_MII_10GBASE_T_ADVERTISE            0x1000 /* full duplex, bit:12*/
+#define IXGBE_MII_1GBASE_T_ADVERTISE_XNP_TX      0x4000 /* full duplex, bit:14*/
+#define IXGBE_MII_1GBASE_T_ADVERTISE             0x8000 /* full duplex, bit:15*/
+#define IXGBE_MII_100BASE_T_ADVERTISE            0x0100 /* full duplex, bit:8 */
+#define IXGBE_MII_RESTART                        0x200
+#define IXGBE_MII_AUTONEG_COMPLETE               0x20
+#define IXGBE_MII_AUTONEG_REG                    0x0
 
 #define IXGBE_PHY_REVISION_MASK        0xFFFFFFF0
 #define IXGBE_MAX_PHY_ADDR             32
@@ -1338,6 +1354,7 @@
 /* VLAN pool filtering masks */
 #define IXGBE_VLVF_VIEN         0x80000000  /* filter is valid */
 #define IXGBE_VLVF_ENTRIES      64
+#define IXGBE_VLVF_VLANID_MASK  0x00000FFF
 
 #define IXGBE_ETHERNET_IEEE_VLAN_TYPE 0x8100  /* 802.1q protocol */
 
@@ -1584,6 +1601,7 @@
 
 /* PCI Bus Info */
 #define IXGBE_PCI_LINK_STATUS     0xB2
+#define IXGBE_PCI_DEVICE_CONTROL2 0xC8
 #define IXGBE_PCI_LINK_WIDTH      0x3F0
 #define IXGBE_PCI_LINK_WIDTH_1    0x10
 #define IXGBE_PCI_LINK_WIDTH_2    0x20
@@ -1594,6 +1612,7 @@
 #define IXGBE_PCI_LINK_SPEED_5000 0x2
 #define IXGBE_PCI_HEADER_TYPE_REGISTER  0x0E
 #define IXGBE_PCI_HEADER_TYPE_MULTIFUNC 0x80
+#define IXGBE_PCI_DEVICE_CONTROL2_16ms  0x0005
 
 /* Number of 100 microseconds we wait for PCI Express master disable */
 #define IXGBE_PCI_MASTER_DISABLE_TIMEOUT 800
@@ -1633,6 +1652,7 @@
 /* Transmit Config masks */
 #define IXGBE_TXDCTL_ENABLE     0x02000000 /* Enable specific Tx Queue */
 #define IXGBE_TXDCTL_SWFLSH     0x04000000 /* Tx Desc. write-back flushing */
+#define IXGBE_TXDCTL_WTHRESH_SHIFT      16 /* shift to WTHRESH bits */
 /* Enable short packet padding to 64 bytes */
 #define IXGBE_TX_PAD_ENABLE     0x00000400
 #define IXGBE_JUMBO_FRAME_ENABLE 0x00000004  /* Allow jumbo frames */

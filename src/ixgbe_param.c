@@ -135,16 +135,7 @@ IXGBE_PARAM(DCA, "Disable or enable Direct Cache Access, 0=disabled, 1=descripto
 
 IXGBE_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues, default 1=number of cpus");
 
-/* VMDQ - Virtual Machine Device Queues (VMDQ)
- *
- * Valid Range: 1-16
- *  - 1 Disables VMDQ by allocating only a single queue.
- *  - 2-16 - enables VMDQ and sets the Desc. Q's to the specified value.
- *
- * Default Value: 1
- */
 
-IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable (default), 2-16 enable");
 
 /* Interrupt Throttle Rate (interrupts/sec)
  *
@@ -566,68 +557,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 		}
 	}
-	{ /* Virtual Machine Device Queues (VMDQ) */
-		static struct ixgbe_option opt = {
-			.type = range_option,
-			.name = "Virtual Machine Device Queues (VMDQ)",
-			.err  = "defaulting to Disabled",
-			.def  = OPTION_DISABLED,
-			.arg  = { .r = { .min = OPTION_DISABLED,
-					 .max = IXGBE_MAX_VMDQ_INDICES}}
-		};
-
-#ifdef module_param_array
-		if (num_VMDQ > bd) {
-#endif
-			unsigned int vmdq = VMDQ[bd];
-			ixgbe_validate_option(&vmdq, &opt);
-			feature[RING_F_VMDQ].indices = vmdq;
-			adapter->flags2 |= IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE;
-			/* zero or one both mean disabled from our driver's
-			 * perspective */
-			if (vmdq > 1)
-				*aflags |= IXGBE_FLAG_VMDQ_ENABLED;
-			else
-				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-#ifdef module_param_array
-		} else {
-			if (opt.def == OPTION_DISABLED) {
-				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-			} else {
-				feature[RING_F_VMDQ].indices = 8;
-				*aflags |= IXGBE_FLAG_VMDQ_ENABLED;
-			}
-		}
-#endif
-		/* Check Interoperability */
-		if (*aflags & IXGBE_FLAG_VMDQ_ENABLED) {
-			if (!(*aflags & IXGBE_FLAG_VMDQ_CAPABLE)) {
-				DPRINTK(PROBE, INFO,
-				        "VMDQ is not supported on this "
-				        "hardware.  Disabling VMDQ.\n");
-				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-				feature[RING_F_VMDQ].indices = 0;
-			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
-				DPRINTK(PROBE, INFO,
-				        "VMDQ is not supported while multiple "
-				        "queues are disabled.  "
-				        "Disabling VMDQ.\n");
-				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-				feature[RING_F_VMDQ].indices = 0;
-			}
-			if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
-				/* for now, disable RSS when using VMDQ mode */
-				*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
-				*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
-			} else if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
-				if (feature[RING_F_RSS].indices > 2
-				    && feature[RING_F_VMDQ].indices > 32)
-					feature[RING_F_RSS].indices = 2;
-				else if (feature[RING_F_RSS].indices != 0)
-					feature[RING_F_RSS].indices = 4;
-			}
-		}
-	}
 	{ /* Interrupt Throttling Rate */
 		static struct ixgbe_option opt = {
 			.type = range_option,
@@ -939,6 +868,7 @@ no_flow_director:
 			.arg = {.r = {.min = IXGBE_FDIR_PBALLOC_64K,
 				      .max = IXGBE_FDIR_PBALLOC_256K}}
 		};
+		char pstring[10];
 
 		if ((adapter->hw.mac.type == ixgbe_mac_82598EB) ||
 		    (!(*aflags & (IXGBE_FLAG_FDIR_HASH_CAPABLE |
@@ -947,7 +877,6 @@ no_flow_director:
 #ifdef module_param_array
 		if (num_FdirPballoc > bd) {
 #endif
-			char pstring[10];
 			fdir_pballoc_mode = FdirPballoc[bd];
 			ixgbe_validate_option(&fdir_pballoc_mode, &opt);
 			switch (fdir_pballoc_mode) {

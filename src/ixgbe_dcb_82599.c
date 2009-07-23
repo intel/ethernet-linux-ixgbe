@@ -206,13 +206,6 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw,
 	u32    reg, max_credits;
 	u8     i;
 
-	/*
-	 * Disable the arbiter before changing parameters
-	 * (always enable recycle mode; WSP)
-	 */
-	reg = IXGBE_RTTDCS_TDPAC | IXGBE_RTTDCS_TDRM | IXGBE_RTTDCS_ARBDIS;
-	IXGBE_WRITE_REG(hw, IXGBE_RTTDCS, reg);
-
 	/* Clear the per-Tx queue credits; we use per-TC instead */
 	for (i = 0; i < 128; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, i);

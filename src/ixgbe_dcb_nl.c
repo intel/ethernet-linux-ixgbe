@@ -420,8 +420,6 @@ static u8 ixgbe_dcbnl_get_state(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	DPRINTK(DRV, INFO, "Get DCB Admin Mode.\n");
-
 	return !!(adapter->flags & IXGBE_FLAG_DCB_ENABLED);
 }
 
@@ -429,8 +427,6 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 {
 	u8 err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-
-	DPRINTK(DRV, INFO, "Set DCB Admin Mode.\n");
 
 	if (state > 0) {
 		/* Turn on DCB */
@@ -484,6 +480,8 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 			adapter->dcb_cfg.pfc_mode_enable = false;
 			adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
 			adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
+			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+				adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
 			ixgbe_init_interrupt_scheme(adapter);
 			if (netif_running(netdev))
 #ifdef HAVE_NET_DEVICE_OPS
@@ -522,8 +520,6 @@ static int ixgbe_dcb_gstate(struct sk_buff *skb, struct genl_info *info)
 	if (ret)
 		goto err_out;
 
-	DPRINTK(DRV, INFO, "Get DCB Admin Mode.\n");
-
 err_out:
 	dev_put(netdev);
 	return ret;
@@ -552,7 +548,7 @@ static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 
 	value = nla_get_u8(info->attrs[DCB_A_STATE]);
 	if ((value & 1) != value) {
-		DPRINTK(DRV, INFO, "Value is not 1 or 0, it is %d.\n", value);
+		DPRINTK(DRV, ERR, "Value is not 1 or 0, it is %d.\n", value);
 	} else {
 		switch (value) {
 		case 0:
@@ -634,8 +630,6 @@ out:
 	if (ret)
 		goto err_out;
 
-	DPRINTK(DRV, INFO, "Set DCB Admin Mode.\n");
-
 err_out:
 	dev_put(netdev);
 err:
@@ -666,8 +660,6 @@ static int ixgbe_dcb_glink_spd(struct sk_buff *skb, struct genl_info *info)
 				DCB_C_GLINK_SPD, DCB_A_LINK_SPD, info);
 	if (ret)
 		goto err_out;
-
-	DPRINTK(DRV, INFO, "Get DCB Link Speed.\n");
 
 err_out:
 	dev_put(netdev);
@@ -714,8 +706,6 @@ static int ixgbe_dcb_slink_spd(struct sk_buff *skb, struct genl_info *info)
 	if (ret)
 		goto err_out;
 
-	DPRINTK(DRV, INFO, "Set DCB Link Speed to %d.\n", value);
-
 err_out:
 	dev_put(netdev);
 err:
@@ -729,6 +719,8 @@ static void ixgbe_dcbnl_get_perm_hw_addr(struct net_device *netdev,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	int i, j;
+
+	memset(perm_addr, 0xff, MAX_ADDR_LEN);
 
 	for (i = 0; i < netdev->addr_len; i++)
 		perm_addr[i] = adapter->hw.mac.perm_addr[i];
@@ -1045,11 +1037,8 @@ static int ixgbe_dcb_pg_scfg(struct sk_buff *skb, struct genl_info *info,
 			adapter->dcb_set_bitmap |= BIT_PG_TX;
 		else
 			adapter->dcb_set_bitmap |= BIT_PG_RX;
-		adapter->dcb_set_bitmap |= BIT_RESETLINK;
 
-		DPRINTK(DRV, INFO, "Set DCB PG\n");
-	} else {
-		DPRINTK(DRV, INFO, "Set DCB PG - no changes\n");
+		adapter->dcb_set_bitmap |= BIT_RESETLINK;
 	}
 
 	ret = ixgbe_nl_reply(0, (dir? DCB_C_PGRX_SCFG : DCB_C_PGTX_SCFG),
@@ -1190,7 +1179,6 @@ static int ixgbe_dcb_pg_gcfg(struct sk_buff *skb, struct genl_info *info,
 	if (ret)
 		goto err;
 
-	DPRINTK(DRV, INFO, "Get PG %s Attributes.\n", dir?"RX":"TX");
 	dev_put(netdev);
 	return 0;
 
@@ -1254,12 +1242,8 @@ static int ixgbe_dcb_spfccfg(struct sk_buff *skb, struct genl_info *info)
 
 	adapter = netdev_priv(netdev);
 
-	if (!info->attrs[DCB_A_IFNAME] || !info->attrs[DCB_A_PFC_CFG]) {
-		DPRINTK(DRV, INFO, "set pfc: ifname:%d pfc_cfg:%d\n",
-			!info->attrs[DCB_A_IFNAME],
-			!info->attrs[DCB_A_PFC_CFG]);
+	if (!info->attrs[DCB_A_IFNAME] || !info->attrs[DCB_A_PFC_CFG])
 		return -EINVAL;
-	}
 
 	ret = ixgbe_dcb_check_adapter(netdev);
 	if (ret)
@@ -1292,12 +1276,8 @@ static int ixgbe_dcb_spfccfg(struct sk_buff *skb, struct genl_info *info)
 			changed = 1;
 	}
 
-	if (changed) {
+	if (changed)
 		adapter->dcb_set_bitmap |= BIT_PFC;
-		DPRINTK(DRV, INFO, "Set DCB PFC\n");
-	} else {
-		DPRINTK(DRV, INFO, "Set DCB PFC - no changes\n");
-	}
 
 	ret = ixgbe_nl_reply(0, DCB_C_PFC_SCFG, DCB_A_PFC_CFG, info);
 	if (ret)
@@ -1370,7 +1350,6 @@ static int ixgbe_dcb_gpfccfg(struct sk_buff *skb, struct genl_info *info)
 	if (ret)
 		goto err;
 
-	DPRINTK(DRV, INFO, "Get PFC CFG.\n");
 	dev_put(netdev);
 	return 0;
 
@@ -1474,7 +1453,7 @@ static int ixgbe_dcb_set_all(struct sk_buff *skb, struct genl_info *info)
 
 	value = nla_get_u8(info->attrs[DCB_A_SET_ALL]);
 	if ((value & 1) != value) {
-		DPRINTK(DRV, INFO, "Value is not 1 or 0, it is %d.\n", value);
+		DPRINTK(DRV, ERR, "Value is not 1 or 0, it is %d.\n", value);
 	} else {
 		if (!adapter->dcb_set_bitmap) {
 			retval = 1;
@@ -1502,8 +1481,6 @@ out:
 	ret = ixgbe_nl_reply(retval, DCB_C_SET_ALL, DCB_A_SET_ALL, info);
 	if (ret)
 		goto err_out;
-
-	DPRINTK(DRV, INFO, "Set all pfc pg and link speed configuration.\n");
 
 err_out:
 	dev_put(netdev);
@@ -1589,7 +1566,6 @@ static void ixgbe_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	DPRINTK(DRV, INFO, "Setting PFC state to %d.\n", state);
 	adapter->temp_dcb_cfg.pfc_mode_enable = state;
 	if (adapter->temp_dcb_cfg.pfc_mode_enable != 
 		adapter->dcb_cfg.pfc_mode_enable)

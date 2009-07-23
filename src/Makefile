@@ -197,6 +197,14 @@ ifeq ($(KKVER), 1)
   CFILES += ixgbe_dcb_nl.c
 endif
 
+# Add FCoE source if FCoE is supported by the kernel
+FCOE := $(shell grep -wE 'CONFIG_FCOE|CONFIG_FCOE_MODULE' $(CONFIG_FILE) | \
+	awk '{print $$3}')
+ifeq ($(FCOE), 1)
+  CFILES += ixgbe_sysfs.c
+  CFILES += ixgbe_fcoe.c
+  HFILES += ixgbe_fcoe.h
+endif
 
 # set the install path
 INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/$(DRIVER_NAME)
@@ -352,4 +360,9 @@ uninstall:
 .PHONY: clean install
 
 clean:
+ifeq ($(KOBJ),$(KSRC))
+	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) clean
+else
+	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) clean
+endif
 	rm -rf $(TARGET) $(TARGET:.ko=.o) $(TARGET:.ko=.mod.c) $(TARGET:.ko=.mod.o) $(CFILES:.c=.o) $(MANFILE).gz .*cmd .tmp_versions

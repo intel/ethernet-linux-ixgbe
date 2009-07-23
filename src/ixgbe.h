@@ -53,6 +53,10 @@
 
 #include "kcompat.h"
 
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+#define IXGBE_FCOE
+#include "ixgbe_fcoe.h"
+#endif /* CONFIG_FCOE or CONFIG_FCOE_MODULE */
 
 #include "ixgbe_api.h"
 
@@ -113,6 +117,8 @@
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0x0000e000
 #define IXGBE_TX_FLAGS_VLAN_SHIFT	16
+
+#define IXGBE_MAX_RSC_INT_RATE          162760
 
 #ifndef IXGBE_NO_LRO
 #define IXGBE_LRO_MAX 32	/*Maximum number of LRO descriptors*/
@@ -260,6 +266,9 @@ struct ixgbe_q_vector {
 	struct ixgbe_lro_list *lrolist;   /* LRO list for queue vector*/
 #endif
 	char name[IFNAMSIZ + 9];
+#ifndef HAVE_NETDEV_NAPI_LIST
+	struct net_device poll_dev;
+#endif
 };
 
 
@@ -281,9 +290,6 @@ struct ixgbe_q_vector {
 	(&(((union ixgbe_adv_tx_desc *)((R).desc))[i]))
 #define IXGBE_TX_CTXTDESC_ADV(R, i)	    \
 	(&(((struct ixgbe_adv_tx_context_desc *)((R).desc))[i]))
-#define IXGBE_GET_DESC(R, i, type)	(&(((struct type *)((R).desc))[i]))
-#define IXGBE_TX_DESC(R, i)	IXGBE_GET_DESC(R, i, ixgbe_legacy_tx_desc)
-#define IXGBE_RX_DESC(R, i)	IXGBE_GET_DESC(R, i, ixgbe_legacy_rx_desc)
 
 #define IXGBE_MAX_JUMBO_FRAME_SIZE        16128
 
@@ -399,6 +405,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_IN_SFP_MOD_TASK              (u32)(1 << 25)
 #define IXGBE_FLAG_FDIR_HASH_CAPABLE            (u32)(1 << 26)
 #define IXGBE_FLAG_FDIR_PERFECT_CAPABLE         (u32)(1 << 27)
+
 	u32 flags2;
 #ifndef IXGBE_NO_HW_RSC
 #define IXGBE_FLAG2_RSC_CAPABLE                  (u32)(1)
@@ -408,6 +415,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_SWLRO_ENABLED                (u32)(1 << 2)
 #endif /* IXGBE_NO_LRO */
 #define IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE        (u32)(1 << 3)
+
 /* default to trying for four seconds */
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
 
@@ -467,6 +475,7 @@ struct ixgbe_adapter {
 #ifdef IXGBE_TCP_TIMER
 	char tcp_timer_name[IFNAMSIZ + 9];
 #endif
+
 };
 
 enum ixbge_state_t {
@@ -505,6 +514,9 @@ extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 extern int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter);
 extern void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter);
 extern bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
+
+
+void ixgbe_set_rx_mode(struct net_device *netdev);
 
 #ifdef ETHTOOL_OPS_COMPAT
 extern int ethtool_ioctl(struct ifreq *ifr);

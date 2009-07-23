@@ -90,6 +90,7 @@ s32 ixgbe_update_uc_addr_list(struct ixgbe_hw *hw, u8 *addr_list,
                               u32 addr_count, ixgbe_mc_addr_itr func);
 s32 ixgbe_update_mc_addr_list(struct ixgbe_hw *hw, u8 *mc_addr_list,
                               u32 mc_addr_count, ixgbe_mc_addr_itr func);
+void ixgbe_add_uc_addr(struct ixgbe_hw *hw, u8 *addr_list, u32 vmdq);
 s32 ixgbe_enable_mc(struct ixgbe_hw *hw);
 s32 ixgbe_disable_mc(struct ixgbe_hw *hw);
 s32 ixgbe_clear_vfta(struct ixgbe_hw *hw);

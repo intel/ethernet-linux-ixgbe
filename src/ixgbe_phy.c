@@ -430,10 +430,10 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 }
 
 /**
- *  ixgbe_setup_phy_link_generic - Set and restart autoneg
- *  @hw: pointer to hardware structure
+ *	ixgbe_setup_phy_link_generic - Set and restart autoneg
+ *	@hw: pointer to hardware structure
  *
- *  Restart autonegotiation and PHY and waits for completion.
+ *	Restart autonegotiation and PHY and waits for completion.
  **/
 s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 {
@@ -441,23 +441,57 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 	u32 time_out;
 	u32 max_time_out = 10;
 	u16 autoneg_reg = IXGBE_MII_AUTONEG_REG;
+	bool autoneg = false;
+	ixgbe_link_speed speed;
 
-	/*
-	 * Set advertisement settings in PHY based on autoneg_advertised
-	 * settings. If autoneg_advertised = 0, then advertise default values
-	 * tnx devices cannot be "forced" to a autoneg 10G and fail.  But can
-	 * for a 1G.
-	 */
-	hw->phy.ops.read_reg(hw, IXGBE_MII_SPEED_SELECTION_REG,
-	                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
+	ixgbe_get_copper_link_capabilities_generic(hw, &speed, &autoneg);
 
-	if (hw->phy.autoneg_advertised == IXGBE_LINK_SPEED_1GB_FULL)
-		autoneg_reg &= 0xEFFF; /* 0 in bit 12 is 1G operation */
-	else
-		autoneg_reg |= 0x1000; /* 1 in bit 12 is 10G/1G operation */
+	if (speed & IXGBE_LINK_SPEED_10GB_FULL) {
+		/* Set or unset auto-negotiation 10G advertisement */
+		hw->phy.ops.read_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
+		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+	                             &autoneg_reg);
 
-	hw->phy.ops.write_reg(hw, IXGBE_MII_SPEED_SELECTION_REG,
-	                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_reg);
+		autoneg_reg &= ~IXGBE_MII_10GBASE_T_ADVERTISE;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL)
+			autoneg_reg |= IXGBE_MII_10GBASE_T_ADVERTISE;
+
+		hw->phy.ops.write_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
+		                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                      autoneg_reg);
+	}
+
+	if (speed & IXGBE_LINK_SPEED_1GB_FULL) {
+		/* Set or unset auto-negotiation 1G advertisement */
+		hw->phy.ops.read_reg(hw,
+		                     IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                     &autoneg_reg);
+
+		autoneg_reg &= ~IXGBE_MII_1GBASE_T_ADVERTISE;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
+			autoneg_reg |= IXGBE_MII_1GBASE_T_ADVERTISE;
+
+		hw->phy.ops.write_reg(hw,
+		                      IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+		                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                      autoneg_reg);
+	}
+
+	if (speed & IXGBE_LINK_SPEED_100_FULL) {
+		/* Set or unset auto-negotiation 100M advertisement */
+		hw->phy.ops.read_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
+		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                     &autoneg_reg);
+
+		autoneg_reg &= ~IXGBE_MII_100BASE_T_ADVERTISE;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
+			autoneg_reg |= IXGBE_MII_100BASE_T_ADVERTISE;
+
+		hw->phy.ops.write_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
+		                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                      autoneg_reg);
+	}
 
 	/* Restart PHY autonegotiation and wait for completion */
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
@@ -482,8 +516,10 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 		}
 	}
 
-	if (time_out == max_time_out)
+	if (time_out == max_time_out) {
 		status = IXGBE_ERR_LINK_SETUP;
+		hw_dbg(hw, "ixgbe_setup_phy_link_generic: time out");
+	}
 
 	return status;
 }
@@ -602,6 +638,100 @@ s32 ixgbe_check_phy_link_tnx(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 
 	return status;
 }
+
+/**
+ *	ixgbe_setup_phy_link_tnx - Set and restart autoneg
+ *	@hw: pointer to hardware structure
+ *
+ *	Restart autonegotiation and PHY and waits for completion.
+ **/
+s32 ixgbe_setup_phy_link_tnx(struct ixgbe_hw *hw)
+{
+	s32 status = 0;
+	u32 time_out;
+	u32 max_time_out = 10;
+	u16 autoneg_reg = IXGBE_MII_AUTONEG_REG;
+	bool autoneg = false;
+	ixgbe_link_speed speed;
+
+	ixgbe_get_copper_link_capabilities_generic(hw, &speed, &autoneg);
+
+	if (speed & IXGBE_LINK_SPEED_10GB_FULL) {
+		/* Set or unset auto-negotiation 10G advertisement */
+		hw->phy.ops.read_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
+		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                     &autoneg_reg);
+
+		autoneg_reg &= ~IXGBE_MII_10GBASE_T_ADVERTISE;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL)
+			autoneg_reg |= IXGBE_MII_10GBASE_T_ADVERTISE;
+
+		hw->phy.ops.write_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
+		                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                      autoneg_reg);
+	}
+
+	if (speed & IXGBE_LINK_SPEED_1GB_FULL) {
+		/* Set or unset auto-negotiation 1G advertisement */
+		hw->phy.ops.read_reg(hw, IXGBE_MII_AUTONEG_XNP_TX_REG,
+		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                     &autoneg_reg);
+
+		autoneg_reg &= ~IXGBE_MII_1GBASE_T_ADVERTISE_XNP_TX;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
+			autoneg_reg |= IXGBE_MII_1GBASE_T_ADVERTISE_XNP_TX;
+
+		hw->phy.ops.write_reg(hw, IXGBE_MII_AUTONEG_XNP_TX_REG,
+		                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                      autoneg_reg);
+	}
+
+	if (speed & IXGBE_LINK_SPEED_100_FULL) {
+		/* Set or unset auto-negotiation 100M advertisement */
+		hw->phy.ops.read_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
+		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                     &autoneg_reg);
+
+		autoneg_reg &= ~IXGBE_MII_100BASE_T_ADVERTISE;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
+			autoneg_reg |= IXGBE_MII_100BASE_T_ADVERTISE;
+
+		hw->phy.ops.write_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
+		                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                      autoneg_reg);
+	}
+
+	/* Restart PHY autonegotiation and wait for completion */
+	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
+	                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
+
+	autoneg_reg |= IXGBE_MII_RESTART;
+
+	hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
+	                      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_reg);
+
+	/* Wait for autonegotiation to finish */
+	for (time_out = 0; time_out < max_time_out; time_out++) {
+		udelay(10);
+		/* Restart PHY autonegotiation and wait for completion */
+		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_STATUS,
+		                              IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+		                              &autoneg_reg);
+
+		autoneg_reg &= IXGBE_MII_AUTONEG_COMPLETE;
+		if (autoneg_reg == IXGBE_MII_AUTONEG_COMPLETE) {
+			break;
+		}
+	}
+
+	if (time_out == max_time_out) {
+		status = IXGBE_ERR_LINK_SETUP;
+		hw_dbg(hw, "ixgbe_setup_phy_link_tnx: time out");
+	}
+
+	return status;
+}
+
 
 /**
  *  ixgbe_get_phy_firmware_version_tnx - Gets the PHY Firmware Version
@@ -775,7 +905,10 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 	/* LAN ID is needed for sfp_type determination */
 	hw->mac.ops.set_lan_id(hw);
 
-	if (identifier == IXGBE_SFF_IDENTIFIER_SFP) {
+	if (identifier != IXGBE_SFF_IDENTIFIER_SFP) {
+		hw->phy.type = ixgbe_phy_sfp_unsupported;
+		status = IXGBE_ERR_SFP_NOT_SUPPORTED;
+	} else {
 		hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_1GBE_COMP_CODES,
 		                           &comp_codes_1g);
 		hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_10GBE_COMP_CODES,

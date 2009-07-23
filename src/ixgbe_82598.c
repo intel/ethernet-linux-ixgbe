@@ -51,6 +51,7 @@ static s32 ixgbe_setup_copper_link_speed_82598(struct ixgbe_hw *hw,
                                                bool autoneg,
                                                bool autoneg_wait_to_complete);
 static s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw);
+s32 ixgbe_start_hw_82598(struct ixgbe_hw *hw);
 s32 ixgbe_set_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
 static s32 ixgbe_clear_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
 s32 ixgbe_set_vfta_82598(struct ixgbe_hw *hw, u32 vlan,
@@ -64,6 +65,48 @@ u32 ixgbe_get_supported_physical_layer_82598(struct ixgbe_hw *hw);
 s32 ixgbe_init_phy_ops_82598(struct ixgbe_hw *hw);
 void ixgbe_set_lan_id_multi_port_pcie_82598(struct ixgbe_hw *hw);
 
+
+/**
+ *  ixgbe_set_pcie_completion_timeout - set pci-e completion timeout
+ *  @hw: pointer to the HW structure
+ *
+ *  The defaults for 82598 should be in the range of 50us to 50ms,
+ *  however the hardware default for these parts is 500us to 1ms which is less
+ *  than the 10ms recommended by the pci-e spec.  To address this we need to
+ *  increase the value to either 10ms to 250ms for capability version 1 config,
+ *  or 16ms to 55ms for version 2.
+ **/
+void ixgbe_set_pcie_completion_timeout(struct ixgbe_hw *hw)
+{
+	u32 gcr = IXGBE_READ_REG(hw, IXGBE_GCR);
+	u16 pcie_devctl2;
+
+	/* only take action if timeout value is defaulted to 0 */
+	if (gcr & IXGBE_GCR_CMPL_TMOUT_MASK)
+		goto out;
+
+	/*
+	 * if capababilities version is type 1 we can write the
+	 * timeout of 10ms to 250ms through the GCR register
+	 */
+	if (!(gcr & IXGBE_GCR_CAP_VER2)) {
+		gcr |= IXGBE_GCR_CMPL_TMOUT_10ms;
+		goto out;
+	}
+
+	/*
+	 * for version 2 capabilities we need to write the config space
+	 * directly in order to set the completion timeout value for
+	 * 16ms to 55ms
+	 */
+	pcie_devctl2 = IXGBE_READ_PCIE_WORD(hw, IXGBE_PCI_DEVICE_CONTROL2);
+	pcie_devctl2 |= IXGBE_PCI_DEVICE_CONTROL2_16ms;
+	IXGBE_WRITE_PCIE_WORD(hw, IXGBE_PCI_DEVICE_CONTROL2, pcie_devctl2);
+out:
+	/* disable completion timeout resend */
+	gcr &= ~IXGBE_GCR_CMPL_TMOUT_RESEND;
+	IXGBE_WRITE_REG(hw, IXGBE_GCR, gcr);
+}
 
 /**
  *  ixgbe_get_pcie_msix_count_82598 - Gets MSI-X vector count
@@ -108,6 +151,7 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	phy->ops.init = &ixgbe_init_phy_ops_82598;
 
 	/* MAC */
+	mac->ops.start_hw = &ixgbe_start_hw_82598;
 	mac->ops.reset_hw = &ixgbe_reset_hw_82598;
 	mac->ops.get_media_type = &ixgbe_get_media_type_82598;
 	mac->ops.get_supported_physical_layer =
@@ -161,7 +205,6 @@ s32 ixgbe_init_phy_ops_82598(struct ixgbe_hw *hw)
 	s32 ret_val = 0;
 	u16 list_offset, data_offset;
 
-
 	/* Identify the PHY */
 	phy->ops.identify(hw);
 
@@ -176,6 +219,7 @@ s32 ixgbe_init_phy_ops_82598(struct ixgbe_hw *hw)
 
 	switch (hw->phy.type) {
 	case ixgbe_phy_tn:
+		phy->ops.setup_link = &ixgbe_setup_phy_link_tnx;
 		phy->ops.check_link = &ixgbe_check_phy_link_tnx;
 		phy->ops.get_firmware_version =
 		             &ixgbe_get_phy_firmware_version_tnx;
@@ -210,6 +254,26 @@ s32 ixgbe_init_phy_ops_82598(struct ixgbe_hw *hw)
 	}
 
 out:
+	return ret_val;
+}
+
+/**
+ *  ixgbe_start_hw_82598 - Prepare hardware for Tx/Rx
+ *  @hw: pointer to hardware structure
+ *
+ *  Starts the hardware using the generic start_hw function.
+ *  Then set pcie completion timeout
+ **/
+s32 ixgbe_start_hw_82598(struct ixgbe_hw *hw)
+{
+	s32 ret_val = 0;
+
+	ret_val = ixgbe_start_hw_generic(hw);
+
+	/* set the completion timeout for interface */
+	if (ret_val == 0)
+		ixgbe_set_pcie_completion_timeout(hw);
+
 	return ret_val;
 }
 
@@ -308,6 +372,7 @@ static enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw)
 		media_type = ixgbe_media_type_fiber;
 		break;
 	case IXGBE_DEV_ID_82598AT:
+	case IXGBE_DEV_ID_82598AT2:
 		media_type = ixgbe_media_type_copper;
 		break;
 	default:

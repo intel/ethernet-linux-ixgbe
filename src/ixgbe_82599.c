@@ -77,7 +77,6 @@ s32 ixgbe_set_san_mac_addr_82599(struct ixgbe_hw *hw, u8 *san_mac_addr);
 s32 ixgbe_get_device_caps_82599(struct ixgbe_hw *hw, u16 *device_caps);
 static s32 ixgbe_verify_fw_version_82599(struct ixgbe_hw *hw);
 
-
 void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 {
 	struct ixgbe_mac_info *mac = &hw->mac;
@@ -412,7 +411,6 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw)
 	u32 links_reg;
 	u32 i;
 	s32 status = 0;
-
 
 	/* Restart link */
 	autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
@@ -874,7 +872,6 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 	if (status == IXGBE_ERR_SFP_NOT_SUPPORTED)
 		goto reset_hw_out;
 
-
 	/* Setup SFP module if there is one present. */
 	if (hw->phy.sfp_setup_needed) {
 		status = hw->mac.ops.setup_sfp(hw);
@@ -1121,6 +1118,49 @@ s32 ixgbe_set_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 }
 
 /**
+ *  ixgbe_find_vlvf_slot - find the vlanid or the first empty slot
+ *  @hw: pointer to hardware structure
+ *  @vlan: VLAN id to write to VLAN filter
+ *
+ *  return the VLVF index where this VLAN id should be placed
+ *
+ **/
+inline s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan)
+{
+	u32 bits = 0;
+	u32 first_empty_slot = 0;
+	s32 regindex;
+
+	/*
+	  * Search for the vlan id in the VLVF entries. Save off the first empty
+	  * slot found along the way
+	  */
+	for (regindex = 1; regindex < IXGBE_VLVF_ENTRIES; regindex++) {
+		bits = IXGBE_READ_REG(hw, IXGBE_VLVF(regindex));
+		if (!bits && !(first_empty_slot))
+			first_empty_slot = regindex;
+		else if ((bits & 0x0FFF) == vlan)
+			break;
+	}
+
+	/*
+	  * If regindex is less than IXGBE_VLVF_ENTRIES, then we found the vlan
+	  * in the VLVF. Else use the first empty VLVF register for this
+	  * vlan id.
+	  */
+	if (regindex >= IXGBE_VLVF_ENTRIES) {
+		if (first_empty_slot)
+			regindex = first_empty_slot;
+		else {
+			hw_dbg(hw, "No space in VLVF.\n");
+			regindex = -1;
+		}
+	}
+
+	return regindex;
+}
+
+/**
  *  ixgbe_set_vfta_82599 - Set VLAN filter table
  *  @hw: pointer to hardware structure
  *  @vlan: VLAN id to write to VLAN filter
@@ -1132,17 +1172,17 @@ s32 ixgbe_set_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 s32 ixgbe_set_vfta_82599(struct ixgbe_hw *hw, u32 vlan, u32 vind,
                            bool vlan_on)
 {
-	u32 regindex;
+	s32 regindex;
 	u32 bitindex;
 	u32 bits;
-	u32 first_empty_slot;
+	u32 vt;
 
 	if (vlan > 4095)
 		return IXGBE_ERR_PARAM;
 
 	/*
 	 * this is a 2 part operation - first the VFTA, then the
-	 * VLVF and VLVFB if vind is set
+	 * VLVF and VLVFB if VT Mode is set
 	 */
 
 	/* Part 1
@@ -1162,78 +1202,69 @@ s32 ixgbe_set_vfta_82599(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 
 
 	/* Part 2
-	 * If the vind is set
+	 * If VT Mode is set
 	 *   Either vlan_on
 	 *     make sure the vlan is in VLVF
 	 *     set the vind bit in the matching VLVFB
 	 *   Or !vlan_on
 	 *     clear the pool bit and possibly the vind
 	 */
-	if (vind) {
-		/* find the vlanid or the first empty slot */
-		first_empty_slot = 0;
-
-		for (regindex = 1; regindex < IXGBE_VLVF_ENTRIES; regindex++) {
-			bits = IXGBE_READ_REG(hw, IXGBE_VLVF(regindex));
-			if (!bits && !first_empty_slot)
-				first_empty_slot = regindex;
-			else if ((bits & 0x0FFF) == vlan)
-				break;
-		}
-
-		if (regindex >= IXGBE_VLVF_ENTRIES) {
-			if (first_empty_slot)
-				regindex = first_empty_slot;
-			else {
-				hw_dbg(hw, "No space in VLVF.\n");
+	vt = IXGBE_READ_REG(hw, IXGBE_VT_CTL);
+	if (vt & IXGBE_VT_CTL_VT_ENABLE) {
+		if (vlan == 0) {
+			regindex = 0;
+		} else {
+			regindex = ixgbe_find_vlvf_slot(hw, vlan);
+			if (regindex < 0)
 				goto out;
-			}
 		}
-
 
 		if (vlan_on) {
 			/* set the pool bit */
 			if (vind < 32) {
-				bits =
-				   IXGBE_READ_REG(hw, IXGBE_VLVFB(regindex*2));
+				bits = IXGBE_READ_REG(hw,
+						IXGBE_VLVFB(regindex*2));
 				bits |= (1 << vind);
 				IXGBE_WRITE_REG(hw,
-				                IXGBE_VLVFB(regindex*2), bits);
+						IXGBE_VLVFB(regindex*2),
+						bits);
 			} else {
 				bits = IXGBE_READ_REG(hw,
-				                  IXGBE_VLVFB((regindex*2)+1));
+						IXGBE_VLVFB((regindex*2)+1));
 				bits |= (1 << vind);
 				IXGBE_WRITE_REG(hw,
-				            IXGBE_VLVFB((regindex*2)+1), bits);
+						IXGBE_VLVFB((regindex*2)+1),
+						bits);
 			}
 		} else {
 			/* clear the pool bit */
 			if (vind < 32) {
 				bits = IXGBE_READ_REG(hw,
-				     IXGBE_VLVFB(regindex*2));
-			bits &= ~(1 << vind);
-				IXGBE_WRITE_REG(hw,
-				                IXGBE_VLVFB(regindex*2), bits);
-				bits |= IXGBE_READ_REG(hw,
-				                  IXGBE_VLVFB((regindex*2)+1));
-			} else {
-				bits = IXGBE_READ_REG(hw,
-				                  IXGBE_VLVFB((regindex*2)+1));
+						IXGBE_VLVFB(regindex*2));
 				bits &= ~(1 << vind);
 				IXGBE_WRITE_REG(hw,
-	                                    IXGBE_VLVFB((regindex*2)+1), bits);
+						IXGBE_VLVFB(regindex*2),
+						bits);
 				bits |= IXGBE_READ_REG(hw,
-				                      IXGBE_VLVFB(regindex*2));
+						IXGBE_VLVFB((regindex*2)+1));
+			} else {
+				bits = IXGBE_READ_REG(hw,
+						IXGBE_VLVFB((regindex*2)+1));
+				bits &= ~(1 << vind);
+				IXGBE_WRITE_REG(hw,
+						IXGBE_VLVFB((regindex*2)+1),
+						bits);
+				bits |= IXGBE_READ_REG(hw,
+						IXGBE_VLVFB(regindex*2));
 			}
 		}
 
 		if (bits)
 			IXGBE_WRITE_REG(hw, IXGBE_VLVF(regindex),
-			                             (IXGBE_VLVF_VIEN | vlan));
+					(IXGBE_VLVF_VIEN | vlan));
 		else
 			IXGBE_WRITE_REG(hw, IXGBE_VLVF(regindex), 0);
 	}
-
 out:
 	return 0;
 }
@@ -1267,6 +1298,7 @@ s32 ixgbe_clear_vfta_82599(struct ixgbe_hw *hw)
 s32 ixgbe_init_uta_tables_82599(struct ixgbe_hw *hw)
 {
 	int i;
+
 	hw_dbg(hw, " Clearing UTA\n");
 
 	for (i = 0; i < 128; i++)

@@ -118,9 +118,12 @@ SFP+ Devices with Pluggable Optics
 
 82599-BASED ADAPTERS  
 
-NOTE: If your 82599-based Intel(R) Network Adapter came with Intel optics, or
+NOTES: If your 82599-based Intel(R) Network Adapter came with Intel optics, or
 is an Intel(R) Ethernet Server Adapter X520-2, then it only supports Intel 
-optics and/or the direct attach cables listed below. 
+optics and/or the direct attach cables listed below.
+
+When 82599-based SFP+ devices are connected back to back, they should be set to
+the same Speed setting via Ethtool. Results may vary if you mix speed settings. 
  
 Supplier    Type                                             Part Numbers
 
@@ -435,14 +438,6 @@ Default Value: 0 (disabled)
 
   Low Latency Interrupt on VLAN priority threshold.
 
-
-VMDQ
-----
-Valid Range: 1-16 (2-16 enables VMDQ with the descriptor queues set to the 
-                   specified value).
-Default: 1 (disabled)
-
-The option for turning VMDQ on or off.
 
 
 Flow Control
