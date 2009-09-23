@@ -30,6 +30,14 @@ set_affinity()
     #echo $MASK > /proc/irq/$IRQ/smp_affinity
 }
 
+if [ "$1" = "" ] ; then
+	echo "Description:"
+	echo "    This script attempts to bind each queue of a multi-queue NIC"
+	echo "    to the same numbered core, ie tx0|rx0 --> cpu0, tx1|rx1 --> cpu1"
+	echo "usage:"
+	echo "    $0 eth0 [eth1 eth2 eth3]"
+fi
+
 #
 # Set up the desired devices.
 #

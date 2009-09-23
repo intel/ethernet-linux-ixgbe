@@ -476,7 +476,6 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw)
 s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw,
                               struct ixgbe_dcb_config *dcb_config)
 {
-	u32  pap = 0;
 
 	ixgbe_dcb_config_packet_buffers_82599(hw, dcb_config);
 	ixgbe_dcb_config_82599(hw);
@@ -486,15 +485,6 @@ s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw,
 	ixgbe_dcb_config_pfc_82599(hw, dcb_config);
 	ixgbe_dcb_config_tc_stats_82599(hw);
 
-	/*
-	 * TODO: For DCB SV purpose only,
-	 * remove it before product release
-	 */
-	if (dcb_config->link_speed > 0 && dcb_config->link_speed <= 9) {
-		pap = IXGBE_READ_REG(hw, IXGBE_PAP);
-		pap |= (dcb_config->link_speed << 16);
-		IXGBE_WRITE_REG(hw, IXGBE_PAP, pap);
-	}
 
 	return 0;
 }

@@ -186,24 +186,21 @@ static int ixgbe_get_settings(struct net_device *netdev,
 		}
 	} else if (hw->phy.media_type == ixgbe_media_type_backplane) {
 		/* Set as FIBRE until SERDES defined in kernel */
-		switch (hw->device_id) {
-		case IXGBE_DEV_ID_82598:
-			ecmd->supported |= (SUPPORTED_1000baseT_Full |
-					    SUPPORTED_FIBRE);
-			ecmd->advertising = (ADVERTISED_10000baseT_Full |
-					     ADVERTISED_1000baseT_Full |
-					     ADVERTISED_FIBRE);
-			ecmd->port = PORT_FIBRE;
-			break;
-		case IXGBE_DEV_ID_82598_BX:
+		if (hw->device_id == IXGBE_DEV_ID_82598_BX) {
 			ecmd->supported = (SUPPORTED_1000baseT_Full |
 					   SUPPORTED_FIBRE);
 			ecmd->advertising = (ADVERTISED_1000baseT_Full |
 					     ADVERTISED_FIBRE);
 			ecmd->port = PORT_FIBRE;
 			ecmd->autoneg = AUTONEG_DISABLE;
-			break;
-	}
+		} else {
+			ecmd->supported |= (SUPPORTED_1000baseT_Full |
+					    SUPPORTED_FIBRE);
+			ecmd->advertising = (ADVERTISED_10000baseT_Full |
+					     ADVERTISED_1000baseT_Full |
+					     ADVERTISED_FIBRE);
+			ecmd->port = PORT_FIBRE;
+		}
 	} else {
 		ecmd->supported |= SUPPORTED_FIBRE;
 		ecmd->advertising = (ADVERTISED_10000baseT_Full |
@@ -263,11 +260,11 @@ static int ixgbe_set_settings(struct net_device *netdev,
 			return err;
 		/* this sets the link speed and restarts auto-neg */
 		hw->mac.autotry_restart = true;
-		err = hw->mac.ops.setup_link_speed(hw, advertised, true, true);
+		err = hw->mac.ops.setup_link(hw, advertised, true, true);
 		if (err) {
 			DPRINTK(PROBE, INFO,
 			        "setup link failed with code %d\n", err);
-			hw->mac.ops.setup_link_speed(hw, old, true, true);
+			hw->mac.ops.setup_link(hw, old, true, true);
 		}
 	} else {
 		/* in this case we currently only support 10Gb/FULL */
@@ -464,6 +461,10 @@ static int ixgbe_get_regs_len(struct net_device *netdev)
 }
 
 #define IXGBE_GET_STAT(_A_, _R_) _A_->stats._R_
+
+#ifdef DEBUG_IOV
+extern void ixgbe_dump_registers(struct ixgbe_adapter *adapter);
+#endif
 
 static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
                            void *p)
@@ -765,6 +766,9 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 	regs_buff[1125] = IXGBE_READ_REG(hw, IXGBE_PCIEECCCTL);
 	regs_buff[1126] = IXGBE_READ_REG(hw, IXGBE_PBTXECC);
 	regs_buff[1127] = IXGBE_READ_REG(hw, IXGBE_PBRXECC);
+#ifdef DEBUG_IOV
+	ixgbe_dump_registers(adapter);
+#endif
 }
 
 static int ixgbe_get_eeprom_len(struct net_device *netdev)

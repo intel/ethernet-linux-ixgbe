@@ -870,7 +870,9 @@ static inline void _kc_netif_poll_disable(struct net_device *netdev)
 	}
 }
 #endif
-
+#ifndef IPPROTO_SCTP
+#define IPPROTO_SCTP 132
+#endif
 #ifndef netif_poll_enable
 #define netif_poll_enable(x) _kc_netif_poll_enable(x)
 static inline void _kc_netif_poll_enable(struct net_device *netdev)
@@ -1401,8 +1403,6 @@ typedef irqreturn_t (*irq_handler_t)(int, void*, struct pt_regs *);
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
 #undef CONFIG_INET_LRO
 #undef CONFIG_INET_LRO_MODULE
-#undef CONFIG_FCOE
-#undef CONFIG_FCOE_MODULE
 #endif
 typedef irqreturn_t (*new_handler_t)(int, void*);
 static inline irqreturn_t _kc_request_irq(unsigned int irq, new_handler_t handler, unsigned long flags, const char *devname, void *dev_id)
@@ -1595,7 +1595,15 @@ extern struct net_device *napi_to_poll_dev(struct napi_struct *napi);
 	(netif_running((_napi)->dev) && netif_rx_schedule_prep(napi_to_poll_dev(_napi)))
 #define napi_schedule(_napi) netif_rx_schedule(napi_to_poll_dev(_napi))
 #define __napi_schedule(_napi) __netif_rx_schedule(napi_to_poll_dev(_napi))
+#ifndef NETIF_F_GRO
 #define napi_complete(_napi) netif_rx_complete(napi_to_poll_dev(_napi))
+#else
+#define napi_complete(_napi) \
+	do { \
+		napi_gro_flush(_napi); \
+		netif_rx_complete(napi_to_poll_dev(_napi)); \
+	} while (0)
+#endif /* NETIF_F_GRO */
 #else /* NAPI */
 #define netif_napi_add(_netdev, _napi, _poll, _weight) \
 	do { \
@@ -1782,8 +1790,6 @@ extern void _kc_pci_disable_link_state(struct pci_dev *dev, int state);
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30) )
-#undef CONFIG_FCOE
-#undef CONFIG_FCOE_MODULE
 extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #define skb_tx_hash(n, s) _kc_skb_tx_hash(n, s)
 #define skb_record_rx_queue(a, b) do {} while (0)

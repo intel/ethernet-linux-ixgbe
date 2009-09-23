@@ -27,8 +27,11 @@
 		8086 a21f  10 Gigabit AF DA Dual Port Server Adapter
 	10f4  82598EB 10 Gigabit AF Network Connection
 		8086 106f  10 Gigabit XF LR Server Adapter
-	10f7  82599EB 10 Gigabit KX4 Network Connection
+	10f7  82599EB 10 Gigabit BR KX4 Dual Port Network Connection
+		108e 7b12  Sun Dual 10GbE PCIe 2.0 FEM
 		8086 000d  Ethernet Mezzanine Adapter X520-KX4-2
+	10f8  82599EB 10 Gigabit Dual Port Backplane Connection
+	10f9  82599EB 10 Gigabit CX4 Dual Port Network Connection
 	10fb  82599EB 10 Gigabit Network Connection
 		108e 7b11  Ethernet Server Adapter X520-2
 		8086 0002  Ethernet Server Adapter X520-DA2
@@ -36,7 +39,10 @@
 		8086 0006  Ethernet Server Adapter X520-1
 		8086 000a  Ethernet Server Adapter X520-1
 		8086 000c  Ethernet Server Adapter X520-2
+		8086 7a11  Ethernet Server Adapter X520-2
 	10fc  82599EB 10 Gigabit Dual Port Network Connection
+	1507  82599EB 10 Gigabit Network Connection
+		108e 7b10  Ethernet Express Module X520-P2
 	1508  82598EB 10 Gigabit BX Network Connection
 	150b  82598EB 10 Gigabit AT2 Server Adapter
 		8086 a10c  10 Gigabit AT2 Server Adapter

@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 2.0.38.2
+Version: 2.0.44.13
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -43,6 +43,11 @@ if [ -e /usr/src/kernels ] && [ $(echo $KV_BASE | grep "^2.6") ]; then
 			   [ $(echo $K | grep hugemem) ]; then
 				# Include path for x86_64 hugemem is broken
 				# on RHEL4
+				continue
+			fi
+			if [ -e /lib/modules/$K/build/.config ] && \
+			   !(grep -w CONFIG_PCI /lib/modules/$K/build/.config | grep -i y) ; then
+				# Exclude kernels that don't support PCI
 				continue
 			fi
 			make -C src clean

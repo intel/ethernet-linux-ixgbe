@@ -53,10 +53,6 @@
 
 #include "kcompat.h"
 
-#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
-#define IXGBE_FCOE
-#include "ixgbe_fcoe.h"
-#endif /* CONFIG_FCOE or CONFIG_FCOE_MODULE */
 
 #include "ixgbe_api.h"
 
@@ -117,6 +113,8 @@
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0x0000e000
 #define IXGBE_TX_FLAGS_VLAN_SHIFT	16
+
+#define IXGBE_MAX_RX_DESC_POLL          10
 
 #define IXGBE_MAX_RSC_INT_RATE          162760
 
@@ -196,6 +194,8 @@ struct ixgbe_ring {
 
 	u8 queue_index; /* needed for multiqueue queue management */
 
+#define IXGBE_RING_RX_PS_ENABLED                (u8)(1)
+	u8 flags;			/* per ring feature flags */
 	u16 head;
 	u16 tail;
 
@@ -514,6 +514,10 @@ extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 extern int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter);
 extern void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter);
 extern bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
+extern void ixgbe_alloc_rx_buffers(struct ixgbe_adapter *adapter,
+                                   struct ixgbe_ring *rx_ring,
+                                   int cleaned_count);
+extern void ixgbe_rx_desc_queue_enable(struct ixgbe_adapter *adapter, int rxr);
 
 
 void ixgbe_set_rx_mode(struct net_device *netdev);

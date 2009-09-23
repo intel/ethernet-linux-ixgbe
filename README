@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-June 10, 2009
+September 15, 2009
 
 Contents
 ========
@@ -55,52 +55,11 @@ Channel Bonding documentation can be found in the Linux kernel source:
 Instructions on updating ethtool can be found in the section "Additional
 Configurations" later in this document.
 
-
 Identifying Your Adapter
 ========================
 
-The following Intel network adapters are compatible with the drivers in this
-release:
-
-Controller        Adapter Name                      Physical Layer
-----------        ------------                      --------------
-82598EB     Intel(R) 10 Gigabit XF SR/LR   10G Base -SR  (850 nm optical fiber)
-              Server Adapter               10G Base -LRM (850 nm optical fiber)
-            Intel(R) 10 Gigabit XF SR      10G Base -LR (1310 nm optical fiber)
-              Dual Port Server Adapters   
-            Intel(R) 82598EB 10 Gigabit AF 
-              Dual Port Network Connection
-            Intel(R) 82598EB 10 Gigabit 
-              Dual Port Network Connection            
-            Intel(R) 82598EB 10 Gigabit AF 
-              Network Connection
-            Intel(R) 82598EB 10 Gigabit AT 
-              CX4 Network Connection         
-            Intel(R) 10 Gigabit SR Dual
-              Port Express Module
-            Intel(R) 10 Gigabit AT Server 
-              Adapter
-            Intel(R) 10 Gigabit AF DA Dual
-              Port Server Adapter 
-            Intel(R) 82598EB 10 Gigabit KX4 
-              Network Connection
-            Intel(R) 82598EB Gigabit BX 
-              Network Connection
-
-82599       Intel(R) 82599 Dual 10 Gigabit 
-              Network Connection 
-            Intel(R) Ethernet Server Adapter 
-              X520-DA2
-            Intel(R) Ethernet Server Adapter 
-              X520-1
-            Intel(R) Ethernet Server Adapter 
-              X520-2
-            Intel(R) Ethernet Mezzanine Adapter 
-              X520-KX4-2
-            Intel(R) 10 Gigabit BR KX4 Dual
-              Port Network Connection
-            Intel(R) 82599 10 Gigabit Dual 
-              Port Network Connection
+The driver in this release is compatible with 82598 and 82599-based Intel 
+Network Connections.
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -111,7 +70,7 @@ For the latest Intel network drivers for Linux, refer to the following
 website.  In the search field, enter your adapter name or type, or use the
 networking link on the left to search for your adapter:
 
-    http://downloadfinder.intel.com/scripts-df/support_intel.asp
+    http://support.intel.com/support/go/network/adapter/home.htm
 
 SFP+ Devices with Pluggable Optics
 ----------------------------------
@@ -360,7 +319,7 @@ different values for each type of interrupt.
   
 InterruptThrottleRate
 ---------------------
-Valid Range: 100 - 500,000 (0=off, 1=dynamic)
+Valid Range: 956-488281 (0=off, 1=dynamic)
 Default Value: 8000
      Interrupt Throttle Rate (interrupts/sec)
 The ITR parameter controls how many interrupts each interrupt vector can
@@ -447,6 +406,10 @@ enabled by default. If you want to disable a flow control capable link partner,
 use Ethtool:
 
      ethtool -A eth? autoneg off rx off tx off
+
+NOTE: For 82598 backplane cards entering 1 gig mode, flow control default 
+behavior is changed to off.  Flow control in 1 gig mode on these devices can 
+lead to Tx hangs. 
 
 
 Intel(R) Ethernet Flow Director
@@ -794,7 +757,18 @@ Known Issues/Troubleshooting
       ethtool -K ethX gro off
 
       where ethX is the ethernet interface you're trying to modify.
+
   
+  Lower than expected performance on dual port 10GbE devices
+  ----------------------------------------------------------
+  Some PCI-E x8 slots are actually configured as x4 slots. These slots have 
+  insufficient bandwidth for full 10Gbe line rate with dual port 10GbE devices.
+  The driver can detect this situation and will write the following message in
+  the system log: "PCI-Express bandwidth available for this card is not 
+  sufficient for optimal performance. For optimal performance a x8 PCI-Express
+  slot is required."
+  If this error occurs, moving your adapter to a true x8 slot will resolve the 
+  issue.
 
 
 Support
@@ -802,7 +776,7 @@ Support
 
 For general information, go to the Intel support website at:
 
-    http://support.intel.com
+    www.intel.com/support/
 
 or the Intel Wired Networking project hosted by Sourceforge at:
 

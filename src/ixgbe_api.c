@@ -96,7 +96,10 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 			break;
 		case IXGBE_DEV_ID_82599_KX4:
 		case IXGBE_DEV_ID_82599_XAUI_LOM:
+		case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
 		case IXGBE_DEV_ID_82599_SFP:
+		case IXGBE_DEV_ID_82599_SFP_EM:
+		case IXGBE_DEV_ID_82599_CX4:
 			hw->mac.type = ixgbe_mac_82599EB;
 			break;
 		default:
@@ -430,19 +433,6 @@ s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
 }
 
 /**
- *  ixgbe_setup_link - Configure link settings
- *  @hw: pointer to hardware structure
- *
- *  Configures link settings based on values in the ixgbe_hw struct.
- *  Restarts the link.  Performs autonegotiation if needed.
- **/
-s32 ixgbe_setup_link(struct ixgbe_hw *hw)
-{
-	return ixgbe_call_func(hw, hw->mac.ops.setup_link, (hw),
-	                       IXGBE_NOT_IMPLEMENTED);
-}
-
-/**
  *  ixgbe_check_link - Get link and speed status
  *  @hw: pointer to hardware structure
  *
@@ -457,18 +447,19 @@ s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 }
 
 /**
- *  ixgbe_setup_link_speed - Set link speed
+ *  ixgbe_setup_link - Set link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
  *  @autoneg: true if autonegotiation enabled
  *
- *  Set the link speed and restarts the link.
+ *  Configures link settings.  Restarts the link.
+ *  Performs autonegotiation if needed.
  **/
-s32 ixgbe_setup_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
+s32 ixgbe_setup_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
                            bool autoneg,
                            bool autoneg_wait_to_complete)
 {
-	return ixgbe_call_func(hw, hw->mac.ops.setup_link_speed, (hw, speed,
+	return ixgbe_call_func(hw, hw->mac.ops.setup_link, (hw, speed,
 	                       autoneg, autoneg_wait_to_complete),
 	                       IXGBE_NOT_IMPLEMENTED);
 }

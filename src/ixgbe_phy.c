@@ -971,6 +971,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		   ((comp_codes_1g & IXGBE_SFF_1GBASELX_CAPABLE) &&
 		   (comp_codes_10g & IXGBE_SFF_10GBASELR_CAPABLE)))
 			hw->phy.multispeed_fiber = true;
+
 		/* Determine PHY vendor */
 		if (hw->phy.type != ixgbe_phy_nl) {
 			hw->phy.id = identifier;

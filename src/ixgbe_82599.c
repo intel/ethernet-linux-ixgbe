@@ -36,20 +36,22 @@ s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
                                       ixgbe_link_speed *speed,
                                       bool *autoneg);
 enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw);
-s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw);
-s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
+s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
                                      ixgbe_link_speed speed, bool autoneg,
                                      bool autoneg_wait_to_complete);
-s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw);
+s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
+				     ixgbe_link_speed speed, bool autoneg,
+				     bool autoneg_wait_to_complete);
+s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
+				bool autoneg_wait_to_complete);
 s32 ixgbe_check_mac_link_82599(struct ixgbe_hw *hw,
                                ixgbe_link_speed *speed,
                                bool *link_up, bool link_up_wait_to_complete);
-s32 ixgbe_setup_mac_link_speed_82599(struct ixgbe_hw *hw,
+s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
                                      ixgbe_link_speed speed,
                                      bool autoneg,
                                      bool autoneg_wait_to_complete);
-static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw);
-static s32 ixgbe_setup_copper_link_speed_82599(struct ixgbe_hw *hw,
+static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw,
                                                ixgbe_link_speed speed,
                                                bool autoneg,
                                                bool autoneg_wait_to_complete);
@@ -83,15 +85,14 @@ void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 
 	if (hw->phy.multispeed_fiber) {
 		/* Set up dual speed SFP+ support */
-		mac->ops.setup_link =
-		          &ixgbe_setup_mac_link_multispeed_fiber;
-		mac->ops.setup_link_speed =
-		          &ixgbe_setup_mac_link_speed_multispeed_fiber;
+		mac->ops.setup_link = &ixgbe_setup_mac_link_multispeed_fiber;
 	} else {
-		mac->ops.setup_link =
-			&ixgbe_setup_mac_link_82599;
-		mac->ops.setup_link_speed =
-		          &ixgbe_setup_mac_link_speed_82599;
+		if ((ixgbe_get_media_type(hw) == ixgbe_media_type_backplane) &&
+		     (hw->phy.smart_speed == ixgbe_smart_speed_auto ||
+		      hw->phy.smart_speed == ixgbe_smart_speed_on))
+			mac->ops.setup_link = &ixgbe_setup_mac_link_smartspeed;
+		else
+			mac->ops.setup_link = &ixgbe_setup_mac_link_82599;
 	}
 }
 
@@ -123,8 +124,6 @@ s32 ixgbe_init_phy_ops_82599(struct ixgbe_hw *hw)
 	/* If copper media, overwrite with copper function pointers */
 	if (mac->ops.get_media_type(hw) == ixgbe_media_type_copper) {
 		mac->ops.setup_link = &ixgbe_setup_copper_link_82599;
-		mac->ops.setup_link_speed =
-		                     &ixgbe_setup_copper_link_speed_82599;
 		mac->ops.get_link_capabilities =
 		                  &ixgbe_get_copper_link_capabilities_generic;
 	}
@@ -383,12 +382,17 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 
 	switch (hw->device_id) {
 	case IXGBE_DEV_ID_82599_KX4:
+	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
 	case IXGBE_DEV_ID_82599_XAUI_LOM:
 		/* Default device ID is mezzanine card KX/KX4 */
 		media_type = ixgbe_media_type_backplane;
 		break;
 	case IXGBE_DEV_ID_82599_SFP:
+	case IXGBE_DEV_ID_82599_SFP_EM:
 		media_type = ixgbe_media_type_fiber;
+		break;
+	case IXGBE_DEV_ID_82599_CX4:
+		media_type = ixgbe_media_type_cx4;
 		break;
 	default:
 		media_type = ixgbe_media_type_unknown;
@@ -399,13 +403,14 @@ out:
 }
 
 /**
- *  ixgbe_setup_mac_link_82599 - Setup MAC link settings
+ *  ixgbe_start_mac_link_82599 - Setup MAC link settings
  *  @hw: pointer to hardware structure
  *
  *  Configures link settings based on values in the ixgbe_hw struct.
  *  Restarts the link.  Performs autonegotiation if needed.
  **/
-s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw)
+s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
+                               bool autoneg_wait_to_complete)
 {
 	u32 autoc_reg;
 	u32 links_reg;
@@ -418,7 +423,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw)
 	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
 
 	/* Only poll for autoneg to complete if specified to do so */
-	if (hw->phy.autoneg_wait_to_complete) {
+	if (autoneg_wait_to_complete) {
 		if ((autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
 		     IXGBE_AUTOC_LMS_KX4_KX_KR ||
 		    (autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
@@ -446,25 +451,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_setup_mac_link_multispeed_fiber - Setup MAC link settings
- *  @hw: pointer to hardware structure
- *
- *  Configures link settings based on values in the ixgbe_hw struct.
- *  Restarts the link for multi-speed fiber at 1G speed, if link
- *  fails at 10G.
- *  Performs autonegotiation if needed.
- **/
-s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw)
-{
-	s32 status = 0;
-	ixgbe_link_speed link_speed = IXGBE_LINK_SPEED_82599_AUTONEG;
-	status = ixgbe_setup_mac_link_speed_multispeed_fiber(hw,
-	                                               link_speed, true, true);
-	return status;
-}
-
-/**
- *  ixgbe_setup_mac_link_speed_multispeed_fiber - Set MAC link speed
+ *  ixgbe_setup_mac_link_multispeed_fiber - Set MAC link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
  *  @autoneg: true if autonegotiation enabled
@@ -472,7 +459,7 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw)
  *
  *  Set the link speed in the AUTOC register and restarts link.
  **/
-s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
+s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
                                      ixgbe_link_speed speed, bool autoneg,
                                      bool autoneg_wait_to_complete)
 {
@@ -488,18 +475,9 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 	/* Mask off requested but non-supported speeds */
 	status = ixgbe_get_link_capabilities(hw, &link_speed, &negotiation);
 	if (status != 0)
-		goto out;
+		return status;
 
 	speed &= link_speed;
-
-	 /* Set autoneg_advertised value based on input link speed */
-	hw->phy.autoneg_advertised = 0;
-
-	if (speed & IXGBE_LINK_SPEED_10GB_FULL)
-		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
-
-	if (speed & IXGBE_LINK_SPEED_1GB_FULL)
-		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_1GB_FULL;
 
 	/*
 	 * When the driver changes the link speeds that it can support,
@@ -522,7 +500,7 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 		/* If we already have link at this speed, just jump out */
 		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
 		if (status != 0)
-			goto out;
+			return status;
 
 		if ((link_speed == IXGBE_LINK_SPEED_10GB_FULL) && link_up)
 			goto out;
@@ -534,11 +512,11 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 		/* Allow module to change analog characteristics (1G->10G) */
 		msleep(40);
 
-		status = ixgbe_setup_mac_link_speed_82599(
+		status = ixgbe_setup_mac_link_82599(
 			hw, IXGBE_LINK_SPEED_10GB_FULL, autoneg,
 			autoneg_wait_to_complete);
 		if (status != 0)
-			goto out;
+			return status;
 
 		/* Flap the tx laser if it has not already been done */
 		if (hw->mac.autotry_restart) {
@@ -555,7 +533,11 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 			hw->mac.autotry_restart = false;
 		}
 
-		/* The controller may take up to 500ms at 10g to acquire link */
+		/*
+		 * Wait for the controller to acquire link.  Per IEEE 802.3ap,
+		 * Section 73.10.2, we may have to wait up to 500ms if KR is
+		 * attempted.  82599 uses the same timing for 10g SFI.
+		 */
 		for (i = 0; i < 5; i++) {
 			/* Wait for the link partner to also set speed */
 			msleep(100);
@@ -564,7 +546,7 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 			status = ixgbe_check_link(hw, &link_speed,
 			                          &link_up, false);
 			if (status != 0)
-				goto out;
+				return status;
 
 			if (link_up)
 				goto out;
@@ -579,7 +561,7 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 		/* If we already have link at this speed, just jump out */
 		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
 		if (status != 0)
-			goto out;
+			return status;
 
 		if ((link_speed == IXGBE_LINK_SPEED_1GB_FULL) && link_up)
 			goto out;
@@ -592,11 +574,11 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 		/* Allow module to change analog characteristics (10G->1G) */
 		msleep(40);
 
-		status = ixgbe_setup_mac_link_speed_82599(
+		status = ixgbe_setup_mac_link_82599(
 			hw, IXGBE_LINK_SPEED_1GB_FULL, autoneg,
 			autoneg_wait_to_complete);
 		if (status != 0)
-			goto out;
+			return status;
 
 		/* Flap the tx laser if it has not already been done */
 		if (hw->mac.autotry_restart) {
@@ -619,7 +601,7 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 		/* If we have link, just jump out */
 		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
 		if (status != 0)
-			goto out;
+			return status;
 
 		if (link_up)
 			goto out;
@@ -631,8 +613,124 @@ s32 ixgbe_setup_mac_link_speed_multispeed_fiber(struct ixgbe_hw *hw,
 	 * single highest speed that the user requested.
 	 */
 	if (speedcnt > 1)
-		status = ixgbe_setup_mac_link_speed_multispeed_fiber(hw,
+		status = ixgbe_setup_mac_link_multispeed_fiber(hw,
 		        highest_link_speed, autoneg, autoneg_wait_to_complete);
+
+out:
+	/* Set autoneg_advertised value based on input link speed */
+	hw->phy.autoneg_advertised = 0;
+
+	if (speed & IXGBE_LINK_SPEED_10GB_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
+
+	if (speed & IXGBE_LINK_SPEED_1GB_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_1GB_FULL;
+
+	return status;
+}
+
+/**
+ *  ixgbe_setup_mac_link_smartspeed - Set MAC link speed using SmartSpeed
+ *  @hw: pointer to hardware structure
+ *  @speed: new link speed
+ *  @autoneg: true if autonegotiation enabled
+ *  @autoneg_wait_to_complete: true when waiting for completion is needed
+ *
+ *  Implements the Intel SmartSpeed algorithm.
+ **/
+s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
+				     ixgbe_link_speed speed, bool autoneg,
+				     bool autoneg_wait_to_complete)
+{
+	s32 status = 0;
+	ixgbe_link_speed link_speed;
+	s32 i, j;
+	bool link_up = false;
+	u32 autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+
+	 /* Set autoneg_advertised value based on input link speed */
+	hw->phy.autoneg_advertised = 0;
+
+	if (speed & IXGBE_LINK_SPEED_10GB_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
+
+	if (speed & IXGBE_LINK_SPEED_1GB_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_1GB_FULL;
+
+	if (speed & IXGBE_LINK_SPEED_100_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_100_FULL;
+
+	/*
+	 * Implement Intel SmartSpeed algorithm.  SmartSpeed will reduce the
+	 * autoneg advertisement if link is unable to be established at the
+	 * highest negotiated rate.  This can sometimes happen due to integrity
+	 * issues with the physical media connection.
+	 */
+
+	/* First, try to get link with full advertisement */
+	hw->phy.smart_speed_active = false;
+	for (j = 0; j < IXGBE_SMARTSPEED_MAX_RETRIES; j++) {
+		status = ixgbe_setup_mac_link_82599(hw, speed, autoneg,
+						    autoneg_wait_to_complete);
+		if (status != 0)
+			goto out;
+
+		/*
+		 * Wait for the controller to acquire link.  Per IEEE 802.3ap,
+		 * Section 73.10.2, we may have to wait up to 500ms if KR is
+		 * attempted, or 200ms if KX/KX4/BX/BX4 is attempted, per
+		 * Table 9 in the AN MAS.
+		 */
+		for (i = 0; i < 5; i++) {
+			msleep(100);
+
+			/* If we have link, just jump out */
+			status = ixgbe_check_link(hw, &link_speed, &link_up,
+						  false);
+			if (status != 0)
+				goto out;
+
+			if (link_up)
+				goto out;
+		}
+	}
+
+	/*
+	 * We didn't get link.  If we advertised KR plus one of KX4/KX
+	 * (or BX4/BX), then disable KR and try again.
+	 */
+	if (((autoc_reg & IXGBE_AUTOC_KR_SUPP) == 0) ||
+	    ((autoc_reg & IXGBE_AUTOC_KX4_KX_SUPP_MASK) == 0))
+		goto out;
+
+	/* Turn SmartSpeed on to disable KR support */
+	hw->phy.smart_speed_active = true;
+	status = ixgbe_setup_mac_link_82599(hw, speed, autoneg,
+					    autoneg_wait_to_complete);
+	if (status != 0)
+		goto out;
+
+	/*
+	 * Wait for the controller to acquire link.  Per IEEE 802.3ap, Table 9
+	 * in the AN MAS, we may have to wait up to 200ms when KX/KX4/BX/BX4
+	 * is attempted.
+	 */
+	for (i = 0; i < 2; i++) {
+		msleep(100);
+
+		/* If we have link, just jump out */
+		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
+		if (status != 0)
+			goto out;
+
+		if (link_up)
+			goto out;
+	}
+
+	/* We didn't get link.  Turn SmartSpeed back off. */
+	hw->phy.smart_speed_active = false;
+	status = ixgbe_setup_mac_link_82599(hw, speed, autoneg,
+					    autoneg_wait_to_complete);
 
 out:
 	return status;
@@ -691,7 +789,7 @@ s32 ixgbe_check_mac_link_82599(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 }
 
 /**
- *  ixgbe_setup_mac_link_speed_82599 - Set MAC link speed
+ *  ixgbe_setup_mac_link_82599 - Set MAC link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
  *  @autoneg: true if autonegotiation enabled
@@ -699,7 +797,7 @@ s32 ixgbe_check_mac_link_82599(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
  *
  *  Set the link speed in the AUTOC register and restarts link.
  **/
-s32 ixgbe_setup_mac_link_speed_82599(struct ixgbe_hw *hw,
+s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
                                      ixgbe_link_speed speed, bool autoneg,
                                      bool autoneg_wait_to_complete)
 {
@@ -741,7 +839,8 @@ s32 ixgbe_setup_mac_link_speed_82599(struct ixgbe_hw *hw,
 		if (speed & IXGBE_LINK_SPEED_10GB_FULL)
 			if (orig_autoc & IXGBE_AUTOC_KX4_SUPP)
 				autoc |= IXGBE_AUTOC_KX4_SUPP;
-			if (orig_autoc & IXGBE_AUTOC_KR_SUPP)
+			if ((orig_autoc & IXGBE_AUTOC_KR_SUPP) &&
+			    (hw->phy.smart_speed_active == false))
 				autoc |= IXGBE_AUTOC_KR_SUPP;
 		if (speed & IXGBE_LINK_SPEED_1GB_FULL)
 			autoc |= IXGBE_AUTOC_KX_SUPP;
@@ -803,26 +902,7 @@ out:
 }
 
 /**
- *  ixgbe_setup_copper_link_82599 - Setup copper link settings
- *  @hw: pointer to hardware structure
- *
- *  Restarts the link on PHY and then MAC. Performs autonegotiation if needed.
- **/
-static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw)
-{
-	s32 status;
-
-	/* Restart autonegotiation on PHY */
-	status = hw->phy.ops.setup_link(hw);
-
-	/* Set up MAC */
-	ixgbe_setup_mac_link_82599(hw);
-
-	return status;
-}
-
-/**
- *  ixgbe_setup_copper_link_speed_82599 - Set the PHY autoneg advertised field
+ *  ixgbe_setup_copper_link_82599 - Set the PHY autoneg advertised field
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
  *  @autoneg: true if autonegotiation enabled
@@ -830,7 +910,7 @@ static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw)
  *
  *  Restarts link on PHY and MAC based on settings passed in.
  **/
-static s32 ixgbe_setup_copper_link_speed_82599(struct ixgbe_hw *hw,
+static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw,
                                                ixgbe_link_speed speed,
                                                bool autoneg,
                                                bool autoneg_wait_to_complete)
@@ -841,7 +921,7 @@ static s32 ixgbe_setup_copper_link_speed_82599(struct ixgbe_hw *hw,
 	status = hw->phy.ops.setup_link_speed(hw, speed, autoneg,
 	                                      autoneg_wait_to_complete);
 	/* Set up MAC */
-	ixgbe_setup_mac_link_82599(hw);
+	ixgbe_start_mac_link_82599(hw, autoneg_wait_to_complete);
 
 	return status;
 }
@@ -1125,7 +1205,7 @@ s32 ixgbe_set_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
  *  return the VLVF index where this VLAN id should be placed
  *
  **/
-inline s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan)
+s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan)
 {
 	u32 bits = 0;
 	u32 first_empty_slot = 0;
