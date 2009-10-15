@@ -382,6 +382,7 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 
 	switch (hw->device_id) {
 	case IXGBE_DEV_ID_82599_KX4:
+	case IXGBE_DEV_ID_82599_KX4_MEZZ:
 	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
 	case IXGBE_DEV_ID_82599_XAUI_LOM:
 		/* Default device ID is mezzanine card KX/KX4 */
@@ -711,11 +712,12 @@ s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
 		goto out;
 
 	/*
-	 * Wait for the controller to acquire link.  Per IEEE 802.3ap, Table 9
-	 * in the AN MAS, we may have to wait up to 200ms when KX/KX4/BX/BX4
-	 * is attempted.
+	 * Wait for the controller to acquire link.  600ms will allow for
+	 * the AN link_fail_inhibit_timer as well for multiple cycles of
+	 * parallel detect, both 10g and 1g. This allows for the maximum
+	 * connect attempts as defined in the AN MAS table 73-7.
 	 */
-	for (i = 0; i < 2; i++) {
+	for (i = 0; i < 6; i++) {
 		msleep(100);
 
 		/* If we have link, just jump out */

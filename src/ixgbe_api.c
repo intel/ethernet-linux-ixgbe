@@ -95,6 +95,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 			hw->mac.type = ixgbe_mac_82598EB;
 			break;
 		case IXGBE_DEV_ID_82599_KX4:
+		case IXGBE_DEV_ID_82599_KX4_MEZZ:
 		case IXGBE_DEV_ID_82599_XAUI_LOM:
 		case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
 		case IXGBE_DEV_ID_82599_SFP:

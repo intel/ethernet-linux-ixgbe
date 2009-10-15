@@ -71,7 +71,7 @@ static const char ixgbe_driver_string[] =
 
 #define FPGA
 
-#define DRV_VERSION "2.0.44.13" DRIVERNAPI DRV_HW_PERF FPGA
+#define DRV_VERSION "2.0.44.14" DRIVERNAPI DRV_HW_PERF FPGA
 const char ixgbe_driver_version[] = DRV_VERSION;
 static char ixgbe_copyright[] = "Copyright (c) 1999-2009 Intel Corporation.";
 /* ixgbe_pci_tbl - PCI Device ID Table
@@ -99,6 +99,7 @@ static struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_XAUI_LOM)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP_EM)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_KX4_MEZZ)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_CX4)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_COMBO_BACKPLANE)},
 	/* required last entry */

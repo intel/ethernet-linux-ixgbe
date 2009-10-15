@@ -529,12 +529,14 @@ u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb)
 		addr2 = ip_hdr(skb)->daddr;
 		ihl = ip_hdr(skb)->ihl;
 		break;
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	case htons(ETH_P_IPV6):
 		ip_proto = ipv6_hdr(skb)->nexthdr;
 		addr1 = ipv6_hdr(skb)->saddr.s6_addr32[3];
 		addr2 = ipv6_hdr(skb)->daddr.s6_addr32[3];
 		ihl = (40 >> 2);
 		break;
+#endif
 	default:
 		return 0;
 	}
