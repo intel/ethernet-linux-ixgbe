@@ -38,21 +38,32 @@ if [ "$1" = "" ] ; then
 	echo "    $0 eth0 [eth1 eth2 eth3]"
 fi
 
+
+# check for irqbalance running
+IRQBALANCE_ON=`ps ax | grep -v grep | grep -q irqbalance; echo $?`
+if [ "$IRQBALANCE_ON" == "0" ] ; then
+	echo " WARNING: irqbalance is running and will"
+	echo "          likely override this script's affinitization."
+	echo "          Please stop the irqbalance service and/or execute"
+	echo "          'killall irqbalance'"
+fi
+
 #
 # Set up the desired devices.
 #
 
 for DEV in $*
 do
-  for DIR in  rx tx
+  for DIR in rx tx TxRx
   do
      MAX=`grep $DEV-$DIR /proc/interrupts | wc -l`
      if [ "$MAX" == "0" ] ; then
        MAX=`egrep -i "$DEV:.*$DIR" /proc/interrupts | wc -l`
      fi
      if [ "$MAX" == "0" ] ; then
-       echo no vectors found on $DEV
-       exit 1
+       echo no $DIR vectors found on $DEV
+       continue
+       #exit 1
      fi
      for VEC in `seq 0 1 $MAX`
      do

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -30,7 +30,6 @@
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
 
-u32 ixgbe_get_pcie_msix_count_82599(struct ixgbe_hw *hw);
 s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw);
 s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
                                       ixgbe_link_speed *speed,
@@ -44,9 +43,6 @@ s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
 				     bool autoneg_wait_to_complete);
 s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
 				bool autoneg_wait_to_complete);
-s32 ixgbe_check_mac_link_82599(struct ixgbe_hw *hw,
-                               ixgbe_link_speed *speed,
-                               bool *link_up, bool link_up_wait_to_complete);
 s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
                                      ixgbe_link_speed speed,
                                      bool autoneg,
@@ -58,24 +54,14 @@ static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw,
 s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw);
 void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw);
 s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw);
-s32 ixgbe_set_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
-s32 ixgbe_clear_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
-s32 ixgbe_insert_mac_addr_82599(struct ixgbe_hw *hw, u8 *addr, u32 vmdq);
-s32 ixgbe_set_vfta_82599(struct ixgbe_hw *hw, u32 vlan,
-                         u32 vind, bool vlan_on);
-s32 ixgbe_clear_vfta_82599(struct ixgbe_hw *hw);
-s32 ixgbe_init_uta_tables_82599(struct ixgbe_hw *hw);
 s32 ixgbe_read_analog_reg8_82599(struct ixgbe_hw *hw, u32 reg, u8 *val);
 s32 ixgbe_write_analog_reg8_82599(struct ixgbe_hw *hw, u32 reg, u8 val);
 s32 ixgbe_start_hw_rev_1_82599(struct ixgbe_hw *hw);
+void ixgbe_enable_relaxed_ordering_82599(struct ixgbe_hw *hw);
 s32 ixgbe_identify_phy_82599(struct ixgbe_hw *hw);
 s32 ixgbe_init_phy_ops_82599(struct ixgbe_hw *hw);
 u32 ixgbe_get_supported_physical_layer_82599(struct ixgbe_hw *hw);
 s32 ixgbe_enable_rx_dma_82599(struct ixgbe_hw *hw, u32 regval);
-s32 ixgbe_get_san_mac_addr_offset_82599(struct ixgbe_hw *hw,
-                                        u16 *san_mac_offset);
-s32 ixgbe_get_san_mac_addr_82599(struct ixgbe_hw *hw, u8 *san_mac_addr);
-s32 ixgbe_set_san_mac_addr_82599(struct ixgbe_hw *hw, u8 *san_mac_addr);
 s32 ixgbe_get_device_caps_82599(struct ixgbe_hw *hw, u16 *device_caps);
 static s32 ixgbe_verify_fw_version_82599(struct ixgbe_hw *hw);
 
@@ -131,13 +117,14 @@ s32 ixgbe_init_phy_ops_82599(struct ixgbe_hw *hw)
 	/* Set necessary function pointers based on phy type */
 	switch (hw->phy.type) {
 	case ixgbe_phy_tn:
+		phy->ops.setup_link = &ixgbe_setup_phy_link_tnx;
 		phy->ops.check_link = &ixgbe_check_phy_link_tnx;
 		phy->ops.get_firmware_version =
 		             &ixgbe_get_phy_firmware_version_tnx;
 		break;
 	case ixgbe_phy_aq:
 		phy->ops.get_firmware_version =
-		             &ixgbe_get_phy_firmware_version_aq;
+		             &ixgbe_get_phy_firmware_version_generic;
 		break;
 	default:
 		break;
@@ -189,30 +176,6 @@ setup_sfp_out:
 }
 
 /**
- *  ixgbe_get_pcie_msix_count_82599 - Gets MSI-X vector count
- *  @hw: pointer to hardware structure
- *
- *  Read PCIe configuration space, and get the MSI-X vector count from
- *  the capabilities table.
- **/
-u32 ixgbe_get_pcie_msix_count_82599(struct ixgbe_hw *hw)
-{
-	u32 msix_count = 64;
-
-	if (hw->mac.msix_vectors_from_pcie) {
-		msix_count = IXGBE_READ_PCIE_WORD(hw,
-		                                  IXGBE_PCIE_MSIX_82599_CAPS);
-		msix_count &= IXGBE_PCIE_MSIX_TBL_SZ_MASK;
-
-		/* MSI-X count is zero-based in HW, so increment to give
-		 * proper value */
-		msix_count++;
-	}
-
-	return msix_count;
-}
-
-/**
  *  ixgbe_init_ops_82599 - Inits func ptrs and MAC type
  *  @hw: pointer to hardware structure
  *
@@ -242,23 +205,24 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->ops.read_analog_reg8 = &ixgbe_read_analog_reg8_82599;
 	mac->ops.write_analog_reg8 = &ixgbe_write_analog_reg8_82599;
 	mac->ops.start_hw = &ixgbe_start_hw_rev_1_82599;
-	mac->ops.get_san_mac_addr = &ixgbe_get_san_mac_addr_82599;
-	mac->ops.set_san_mac_addr = &ixgbe_set_san_mac_addr_82599;
+	mac->ops.get_san_mac_addr = &ixgbe_get_san_mac_addr_generic;
+	mac->ops.set_san_mac_addr = &ixgbe_set_san_mac_addr_generic;
 	mac->ops.get_device_caps = &ixgbe_get_device_caps_82599;
+	mac->ops.get_wwn_prefix = &ixgbe_get_wwn_prefix_generic;
 
 	/* RAR, Multicast, VLAN */
-	mac->ops.set_vmdq = &ixgbe_set_vmdq_82599;
-	mac->ops.clear_vmdq = &ixgbe_clear_vmdq_82599;
-	mac->ops.insert_mac_addr = &ixgbe_insert_mac_addr_82599;
+	mac->ops.set_vmdq = &ixgbe_set_vmdq_generic;
+	mac->ops.clear_vmdq = &ixgbe_clear_vmdq_generic;
+	mac->ops.insert_mac_addr = &ixgbe_insert_mac_addr_generic;
 	mac->rar_highwater = 1;
-	mac->ops.set_vfta = &ixgbe_set_vfta_82599;
-	mac->ops.clear_vfta = &ixgbe_clear_vfta_82599;
-	mac->ops.init_uta_tables = &ixgbe_init_uta_tables_82599;
+	mac->ops.set_vfta = &ixgbe_set_vfta_generic;
+	mac->ops.clear_vfta = &ixgbe_clear_vfta_generic;
+	mac->ops.init_uta_tables = &ixgbe_init_uta_tables_generic;
 	mac->ops.setup_sfp = &ixgbe_setup_sfp_modules_82599;
 
 	/* Link */
 	mac->ops.get_link_capabilities = &ixgbe_get_link_capabilities_82599;
-	mac->ops.check_link            = &ixgbe_check_mac_link_82599;
+	mac->ops.check_link            = &ixgbe_check_mac_link_generic;
 	ixgbe_init_mac_link_ops_82599(hw);
 
 	mac->mcft_size        = 128;
@@ -266,8 +230,9 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->num_rar_entries  = 128;
 	mac->max_tx_queues    = 128;
 	mac->max_rx_queues    = 128;
-	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_82599(hw);
+	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_generic(hw);
 
+	hw->mbx.ops.init_params = ixgbe_init_mbx_params_pf;
 
 	return ret_val;
 }
@@ -384,6 +349,7 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_KX4:
 	case IXGBE_DEV_ID_82599_KX4_MEZZ:
 	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
+	case IXGBE_DEV_ID_82599_KR:
 	case IXGBE_DEV_ID_82599_XAUI_LOM:
 		/* Default device ID is mezzanine card KX/KX4 */
 		media_type = ixgbe_media_type_backplane;
@@ -739,58 +705,6 @@ out:
 }
 
 /**
- *  ixgbe_check_mac_link_82599 - Determine link and speed status
- *  @hw: pointer to hardware structure
- *  @speed: pointer to link speed
- *  @link_up: true when link is up
- *  @link_up_wait_to_complete: bool used to wait for link up or not
- *
- *  Reads the links register to determine if link is up and the current speed
- **/
-s32 ixgbe_check_mac_link_82599(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
-                               bool *link_up, bool link_up_wait_to_complete)
-{
-	u32 links_reg;
-	u32 i;
-
-	links_reg = IXGBE_READ_REG(hw, IXGBE_LINKS);
-	if (link_up_wait_to_complete) {
-		for (i = 0; i < IXGBE_LINK_UP_TIME; i++) {
-			if (links_reg & IXGBE_LINKS_UP) {
-				*link_up = true;
-				break;
-			} else {
-				*link_up = false;
-			}
-			msleep(100);
-			links_reg = IXGBE_READ_REG(hw, IXGBE_LINKS);
-		}
-	} else {
-		if (links_reg & IXGBE_LINKS_UP)
-			*link_up = true;
-		else
-			*link_up = false;
-	}
-
-	if ((links_reg & IXGBE_LINKS_SPEED_82599) ==
-	    IXGBE_LINKS_SPEED_10G_82599)
-		*speed = IXGBE_LINK_SPEED_10GB_FULL;
-	else if ((links_reg & IXGBE_LINKS_SPEED_82599) ==
-	         IXGBE_LINKS_SPEED_1G_82599)
-		*speed = IXGBE_LINK_SPEED_1GB_FULL;
-	else
-		*speed = IXGBE_LINK_SPEED_100_FULL;
-
-	/* if link is down, zero out the current_mode */
-	if (*link_up == false) {
-		hw->fc.current_mode = ixgbe_fc_none;
-		hw->fc.fc_was_autonegged = false;
-	}
-
-	return 0;
-}
-
-/**
  *  ixgbe_setup_mac_link_82599 - Set MAC link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
@@ -971,12 +885,9 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
 	 * access and verify no pending requests before reset
 	 */
-	status = ixgbe_disable_pcie_master(hw);
-	if (status != 0) {
-		status = IXGBE_ERR_MASTER_REQUESTS_PENDING;
-		hw_dbg(hw, "PCI-E Master disable polling has failed.\n");
-	}
+	ixgbe_disable_pcie_master(hw);
 
+mac_reset_top:
 	/*
 	 * Issue global reset to the MAC.  This needs to be a SW reset.
 	 * If link reset is used, it might reset the MAC when mng is using it
@@ -1001,9 +912,20 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 	ctrl_ext |= IXGBE_CTRL_EXT_PFRSTD;
 	IXGBE_WRITE_REG(hw, IXGBE_CTRL_EXT, ctrl_ext);
 
+	/*
+	 * Double resets are required for recovery from certain error
+	 * conditions.  Between resets, it is necessary to stall to allow time
+	 * for any pending HW events to complete.  We use 1usec since that is
+	 * what is needed for ixgbe_disable_pcie_master().  The second reset
+	 * then clears out any effects of those events.
+	 */
+	if (hw->mac.flags & IXGBE_FLAGS_DOUBLE_RESET_REQUIRED) {
+		hw->mac.flags &= ~IXGBE_FLAGS_DOUBLE_RESET_REQUIRED;
+		udelay(1);
+		goto mac_reset_top;
+	}
+
 	msleep(50);
-
-
 
 	/*
 	 * Store the original AUTOC/AUTOC2 values if they have not been
@@ -1041,8 +963,6 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 	hw->mac.num_rar_entries = 128;
 	hw->mac.ops.init_rx_addrs(hw);
 
-
-
 	/* Store the permanent SAN mac address */
 	hw->mac.ops.get_san_mac_addr(hw, hw->mac.san_addr);
 
@@ -1055,338 +975,12 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 		hw->mac.num_rar_entries--;
        }
 
+	/* Store the alternative WWNN/WWPN prefix */
+	hw->mac.ops.get_wwn_prefix(hw, &hw->mac.wwnn_prefix,
+	                               &hw->mac.wwpn_prefix);
+
 reset_hw_out:
 	return status;
-}
-
-/**
- *  ixgbe_insert_mac_addr_82599 - Find a RAR for this mac address
- *  @hw: pointer to hardware structure
- *  @addr: Address to put into receive address register
- *  @vmdq: VMDq pool to assign
- *
- *  Puts an ethernet address into a receive address register, or
- *  finds the rar that it is aleady in; adds to the pool list
- **/
-s32 ixgbe_insert_mac_addr_82599(struct ixgbe_hw *hw, u8 *addr, u32 vmdq)
-{
-	static const u32 NO_EMPTY_RAR_FOUND = 0xFFFFFFFF;
-	u32 first_empty_rar = NO_EMPTY_RAR_FOUND;
-	u32 rar;
-	u32 rar_low, rar_high;
-	u32 addr_low, addr_high;
-
-	/* swap bytes for HW little endian */
-	addr_low  = addr[0] | (addr[1] << 8)
-			    | (addr[2] << 16)
-			    | (addr[3] << 24);
-	addr_high = addr[4] | (addr[5] << 8);
-
-	/*
-	 * Either find the mac_id in rar or find the first empty space.
-	 * rar_highwater points to just after the highest currently used
-	 * rar in order to shorten the search.  It grows when we add a new
-	 * rar to the top.
-	 */
-	for (rar = 0; rar < hw->mac.rar_highwater; rar++) {
-		rar_high = IXGBE_READ_REG(hw, IXGBE_RAH(rar));
-
-		if (((IXGBE_RAH_AV & rar_high) == 0)
-		    && first_empty_rar == NO_EMPTY_RAR_FOUND) {
-			first_empty_rar = rar;
-		} else if ((rar_high & 0xFFFF) == addr_high) {
-			rar_low = IXGBE_READ_REG(hw, IXGBE_RAL(rar));
-			if (rar_low == addr_low)
-				break;    /* found it already in the rars */
-		}
-	}
-
-	if (rar < hw->mac.rar_highwater) {
-		/* already there so just add to the pool bits */
-		ixgbe_set_vmdq(hw, rar, vmdq);
-	} else if (first_empty_rar != NO_EMPTY_RAR_FOUND) {
-		/* stick it into first empty RAR slot we found */
-		rar = first_empty_rar;
-		ixgbe_set_rar(hw, rar, addr, vmdq, IXGBE_RAH_AV);
-	} else if (rar == hw->mac.rar_highwater) {
-		/* add it to the top of the list and inc the highwater mark */
-		ixgbe_set_rar(hw, rar, addr, vmdq, IXGBE_RAH_AV);
-		hw->mac.rar_highwater++;
-	} else if (rar >= hw->mac.num_rar_entries) {
-		return IXGBE_ERR_INVALID_MAC_ADDR;
-	}
-
-	/*
-	 * If we found rar[0], make sure the default pool bit (we use pool 0)
-	 * remains cleared to be sure default pool packets will get delivered
-	 */
-	if (rar == 0)
-		ixgbe_clear_vmdq(hw, rar, 0);
-
-	return rar;
-}
-
-/**
- *  ixgbe_clear_vmdq_82599 - Disassociate a VMDq pool index from a rx address
- *  @hw: pointer to hardware struct
- *  @rar: receive address register index to disassociate
- *  @vmdq: VMDq pool index to remove from the rar
- **/
-s32 ixgbe_clear_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
-{
-	u32 mpsar_lo, mpsar_hi;
-	u32 rar_entries = hw->mac.num_rar_entries;
-
-	if (rar < rar_entries) {
-		mpsar_lo = IXGBE_READ_REG(hw, IXGBE_MPSAR_LO(rar));
-		mpsar_hi = IXGBE_READ_REG(hw, IXGBE_MPSAR_HI(rar));
-
-		if (!mpsar_lo && !mpsar_hi)
-			goto done;
-
-		if (vmdq == IXGBE_CLEAR_VMDQ_ALL) {
-			if (mpsar_lo) {
-				IXGBE_WRITE_REG(hw, IXGBE_MPSAR_LO(rar), 0);
-				mpsar_lo = 0;
-			}
-			if (mpsar_hi) {
-				IXGBE_WRITE_REG(hw, IXGBE_MPSAR_HI(rar), 0);
-				mpsar_hi = 0;
-			}
-		} else if (vmdq < 32) {
-			mpsar_lo &= ~(1 << vmdq);
-			IXGBE_WRITE_REG(hw, IXGBE_MPSAR_LO(rar), mpsar_lo);
-		} else {
-			mpsar_hi &= ~(1 << (vmdq - 32));
-			IXGBE_WRITE_REG(hw, IXGBE_MPSAR_HI(rar), mpsar_hi);
-		}
-
-		/* was that the last pool using this rar? */
-		if (mpsar_lo == 0 && mpsar_hi == 0 && rar != 0)
-			hw->mac.ops.clear_rar(hw, rar);
-	} else {
-		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
-	}
-
-done:
-	return 0;
-}
-
-/**
- *  ixgbe_set_vmdq_82599 - Associate a VMDq pool index with a rx address
- *  @hw: pointer to hardware struct
- *  @rar: receive address register index to associate with a VMDq index
- *  @vmdq: VMDq pool index
- **/
-s32 ixgbe_set_vmdq_82599(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
-{
-	u32 mpsar;
-	u32 rar_entries = hw->mac.num_rar_entries;
-
-	if (rar < rar_entries) {
-		if (vmdq < 32) {
-			mpsar = IXGBE_READ_REG(hw, IXGBE_MPSAR_LO(rar));
-			mpsar |= 1 << vmdq;
-			IXGBE_WRITE_REG(hw, IXGBE_MPSAR_LO(rar), mpsar);
-		} else {
-			mpsar = IXGBE_READ_REG(hw, IXGBE_MPSAR_HI(rar));
-			mpsar |= 1 << (vmdq - 32);
-			IXGBE_WRITE_REG(hw, IXGBE_MPSAR_HI(rar), mpsar);
-		}
-	} else {
-		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
-	}
-	return 0;
-}
-
-/**
- *  ixgbe_find_vlvf_slot - find the vlanid or the first empty slot
- *  @hw: pointer to hardware structure
- *  @vlan: VLAN id to write to VLAN filter
- *
- *  return the VLVF index where this VLAN id should be placed
- *
- **/
-s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan)
-{
-	u32 bits = 0;
-	u32 first_empty_slot = 0;
-	s32 regindex;
-
-	/*
-	  * Search for the vlan id in the VLVF entries. Save off the first empty
-	  * slot found along the way
-	  */
-	for (regindex = 1; regindex < IXGBE_VLVF_ENTRIES; regindex++) {
-		bits = IXGBE_READ_REG(hw, IXGBE_VLVF(regindex));
-		if (!bits && !(first_empty_slot))
-			first_empty_slot = regindex;
-		else if ((bits & 0x0FFF) == vlan)
-			break;
-	}
-
-	/*
-	  * If regindex is less than IXGBE_VLVF_ENTRIES, then we found the vlan
-	  * in the VLVF. Else use the first empty VLVF register for this
-	  * vlan id.
-	  */
-	if (regindex >= IXGBE_VLVF_ENTRIES) {
-		if (first_empty_slot)
-			regindex = first_empty_slot;
-		else {
-			hw_dbg(hw, "No space in VLVF.\n");
-			regindex = -1;
-		}
-	}
-
-	return regindex;
-}
-
-/**
- *  ixgbe_set_vfta_82599 - Set VLAN filter table
- *  @hw: pointer to hardware structure
- *  @vlan: VLAN id to write to VLAN filter
- *  @vind: VMDq output index that maps queue to VLAN id in VFVFB
- *  @vlan_on: boolean flag to turn on/off VLAN in VFVF
- *
- *  Turn on/off specified VLAN in the VLAN filter table.
- **/
-s32 ixgbe_set_vfta_82599(struct ixgbe_hw *hw, u32 vlan, u32 vind,
-                           bool vlan_on)
-{
-	s32 regindex;
-	u32 bitindex;
-	u32 bits;
-	u32 vt;
-
-	if (vlan > 4095)
-		return IXGBE_ERR_PARAM;
-
-	/*
-	 * this is a 2 part operation - first the VFTA, then the
-	 * VLVF and VLVFB if VT Mode is set
-	 */
-
-	/* Part 1
-	 * The VFTA is a bitstring made up of 128 32-bit registers
-	 * that enable the particular VLAN id, much like the MTA:
-	 *    bits[11-5]: which register
-	 *    bits[4-0]:  which bit in the register
-	 */
-	regindex = (vlan >> 5) & 0x7F;
-	bitindex = vlan & 0x1F;
-	bits = IXGBE_READ_REG(hw, IXGBE_VFTA(regindex));
-	if (vlan_on)
-		bits |= (1 << bitindex);
-	else
-		bits &= ~(1 << bitindex);
-	IXGBE_WRITE_REG(hw, IXGBE_VFTA(regindex), bits);
-
-
-	/* Part 2
-	 * If VT Mode is set
-	 *   Either vlan_on
-	 *     make sure the vlan is in VLVF
-	 *     set the vind bit in the matching VLVFB
-	 *   Or !vlan_on
-	 *     clear the pool bit and possibly the vind
-	 */
-	vt = IXGBE_READ_REG(hw, IXGBE_VT_CTL);
-	if (vt & IXGBE_VT_CTL_VT_ENABLE) {
-		if (vlan == 0) {
-			regindex = 0;
-		} else {
-			regindex = ixgbe_find_vlvf_slot(hw, vlan);
-			if (regindex < 0)
-				goto out;
-		}
-
-		if (vlan_on) {
-			/* set the pool bit */
-			if (vind < 32) {
-				bits = IXGBE_READ_REG(hw,
-						IXGBE_VLVFB(regindex*2));
-				bits |= (1 << vind);
-				IXGBE_WRITE_REG(hw,
-						IXGBE_VLVFB(regindex*2),
-						bits);
-			} else {
-				bits = IXGBE_READ_REG(hw,
-						IXGBE_VLVFB((regindex*2)+1));
-				bits |= (1 << vind);
-				IXGBE_WRITE_REG(hw,
-						IXGBE_VLVFB((regindex*2)+1),
-						bits);
-			}
-		} else {
-			/* clear the pool bit */
-			if (vind < 32) {
-				bits = IXGBE_READ_REG(hw,
-						IXGBE_VLVFB(regindex*2));
-				bits &= ~(1 << vind);
-				IXGBE_WRITE_REG(hw,
-						IXGBE_VLVFB(regindex*2),
-						bits);
-				bits |= IXGBE_READ_REG(hw,
-						IXGBE_VLVFB((regindex*2)+1));
-			} else {
-				bits = IXGBE_READ_REG(hw,
-						IXGBE_VLVFB((regindex*2)+1));
-				bits &= ~(1 << vind);
-				IXGBE_WRITE_REG(hw,
-						IXGBE_VLVFB((regindex*2)+1),
-						bits);
-				bits |= IXGBE_READ_REG(hw,
-						IXGBE_VLVFB(regindex*2));
-			}
-		}
-
-		if (bits)
-			IXGBE_WRITE_REG(hw, IXGBE_VLVF(regindex),
-					(IXGBE_VLVF_VIEN | vlan));
-		else
-			IXGBE_WRITE_REG(hw, IXGBE_VLVF(regindex), 0);
-	}
-out:
-	return 0;
-}
-
-/**
- *  ixgbe_clear_vfta_82599 - Clear VLAN filter table
- *  @hw: pointer to hardware structure
- *
- *  Clears the VLAN filer table, and the VMDq index associated with the filter
- **/
-s32 ixgbe_clear_vfta_82599(struct ixgbe_hw *hw)
-{
-	u32 offset;
-
-	for (offset = 0; offset < hw->mac.vft_size; offset++)
-		IXGBE_WRITE_REG(hw, IXGBE_VFTA(offset), 0);
-
-	for (offset = 0; offset < IXGBE_VLVF_ENTRIES; offset++) {
-		IXGBE_WRITE_REG(hw, IXGBE_VLVF(offset), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_VLVFB(offset*2), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_VLVFB((offset*2)+1), 0);
-	}
-
-	return 0;
-}
-
-/**
- *  ixgbe_init_uta_tables_82599 - Initialize the Unicast Table Array
- *  @hw: pointer to hardware structure
- **/
-s32 ixgbe_init_uta_tables_82599(struct ixgbe_hw *hw)
-{
-	int i;
-
-	hw_dbg(hw, " Clearing UTA\n");
-
-	for (i = 0; i < 128; i++)
-		IXGBE_WRITE_REG(hw, IXGBE_UTA(i), 0);
-
-	return 0;
 }
 
 /**
@@ -2368,17 +1962,32 @@ s32 ixgbe_write_analog_reg8_82599(struct ixgbe_hw *hw, u32 reg, u8 val)
  **/
 s32 ixgbe_start_hw_rev_1_82599(struct ixgbe_hw *hw)
 {
-	u32 q_num;
+	u32 i;
+	u32 regval;
 	s32 ret_val = 0;
 
 	ret_val = ixgbe_start_hw_generic(hw);
 
 	/* Clear the rate limiters */
-	for (q_num = 0; q_num < hw->mac.max_tx_queues; q_num++) {
-		IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, q_num);
+	for (i = 0; i < hw->mac.max_tx_queues; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, i);
 		IXGBE_WRITE_REG(hw, IXGBE_RTTBCNRC, 0);
 	}
 	IXGBE_WRITE_FLUSH(hw);
+
+	/* Disable relaxed ordering */
+	for (i = 0; i < hw->mac.max_tx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+		regval &= ~IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), regval);
+	}
+
+	for (i = 0; i < hw->mac.max_rx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
+		regval &= ~(IXGBE_DCA_RXCTRL_DESC_WRO_EN |
+		            IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
+	}
 
 	/* We need to run link autotry after the driver loads */
 	hw->mac.autotry_restart = true;
@@ -2585,113 +2194,6 @@ s32 ixgbe_get_device_caps_82599(struct ixgbe_hw *hw, u16 *device_caps)
 }
 
 /**
- *  ixgbe_get_san_mac_addr_offset_82599 - SAN MAC address offset for 82599
- *  @hw: pointer to hardware structure
- *  @san_mac_offset: SAN MAC address offset
- *
- *  This function will read the EEPROM location for the SAN MAC address
- *  pointer, and returns the value at that location.  This is used in both
- *  get and set mac_addr routines.
- **/
-s32 ixgbe_get_san_mac_addr_offset_82599(struct ixgbe_hw *hw,
-                                        u16 *san_mac_offset)
-{
-	/*
-	 * First read the EEPROM pointer to see if the MAC addresses are
-	 * available.
-	 */
-	hw->eeprom.ops.read(hw, IXGBE_SAN_MAC_ADDR_PTR, san_mac_offset);
-
-	return 0;
-}
-
-/**
- *  ixgbe_get_san_mac_addr_82599 - SAN MAC address retrieval for 82599
- *  @hw: pointer to hardware structure
- *  @san_mac_addr: SAN MAC address
- *
- *  Reads the SAN MAC address from the EEPROM, if it's available.  This is
- *  per-port, so set_lan_id() must be called before reading the addresses.
- *  set_lan_id() is called by identify_sfp(), but this cannot be relied
- *  upon for non-SFP connections, so we must call it here.
- **/
-s32 ixgbe_get_san_mac_addr_82599(struct ixgbe_hw *hw, u8 *san_mac_addr)
-{
-	u16 san_mac_data, san_mac_offset;
-	u8 i;
-
-	/*
-	 * First read the EEPROM pointer to see if the MAC addresses are
-	 * available.  If they're not, no point in calling set_lan_id() here.
-	 */
-	ixgbe_get_san_mac_addr_offset_82599(hw, &san_mac_offset);
-
-	if ((san_mac_offset == 0) || (san_mac_offset == 0xFFFF)) {
-		/*
-		 * No addresses available in this EEPROM.  It's not an
-		 * error though, so just wipe the local address and return.
-		 */
-		for (i = 0; i < 6; i++)
-			san_mac_addr[i] = 0xFF;
-
-		goto san_mac_addr_out;
-	}
-
-	/* make sure we know which port we need to program */
-	hw->mac.ops.set_lan_id(hw);
-	/* apply the port offset to the address offset */
-	(hw->bus.func) ? (san_mac_offset += IXGBE_SAN_MAC_ADDR_PORT1_OFFSET) :
-	                 (san_mac_offset += IXGBE_SAN_MAC_ADDR_PORT0_OFFSET);
-	for (i = 0; i < 3; i++) {
-		hw->eeprom.ops.read(hw, san_mac_offset, &san_mac_data);
-		san_mac_addr[i * 2] = (u8)(san_mac_data);
-		san_mac_addr[i * 2 + 1] = (u8)(san_mac_data >> 8);
-		san_mac_offset++;
-	}
-
-san_mac_addr_out:
-	return 0;
-}
-
-/**
- *  ixgbe_set_san_mac_addr_82599 - Write the SAN MAC address to the EEPROM
- *  @hw: pointer to hardware structure
- *  @san_mac_addr: SAN MAC address
- *
- *  Write a SAN MAC address to the EEPROM.
- **/
-s32 ixgbe_set_san_mac_addr_82599(struct ixgbe_hw *hw, u8 *san_mac_addr)
-{
-	s32 status = 0;
-	u16 san_mac_data, san_mac_offset;
-	u8 i;
-
-	/* Look for SAN mac address pointer.  If not defined, return */
-	ixgbe_get_san_mac_addr_offset_82599(hw, &san_mac_offset);
-
-	if ((san_mac_offset == 0) || (san_mac_offset == 0xFFFF)) {
-		status = IXGBE_ERR_NO_SAN_ADDR_PTR;
-		goto san_mac_addr_out;
-	}
-
-	/* Make sure we know which port we need to write */
-	hw->mac.ops.set_lan_id(hw);
-	/* Apply the port offset to the address offset */
-	(hw->bus.func) ? (san_mac_offset += IXGBE_SAN_MAC_ADDR_PORT1_OFFSET) :
-	                 (san_mac_offset += IXGBE_SAN_MAC_ADDR_PORT0_OFFSET);
-
-	for (i = 0; i < 3; i++) {
-		san_mac_data = (u16)((u16)(san_mac_addr[i * 2 + 1]) << 8);
-		san_mac_data |= (u16)(san_mac_addr[i * 2]);
-		hw->eeprom.ops.write(hw, san_mac_offset, san_mac_data);
-		san_mac_offset++;
-	}
-
-san_mac_addr_out:
-	return status;
-}
-
-/**
  *  ixgbe_verify_fw_version_82599 - verify fw version for 82599
  *  @hw: pointer to hardware structure
  *
@@ -2737,4 +2239,29 @@ static s32 ixgbe_verify_fw_version_82599(struct ixgbe_hw *hw)
 
 fw_version_out:
 	return status;
+}
+/**
+ *  ixgbe_enable_relaxed_ordering_82599 - Enable relaxed ordering
+ *  @hw: pointer to hardware structure
+ *
+ **/
+void ixgbe_enable_relaxed_ordering_82599(struct ixgbe_hw *hw)
+{
+	u32 regval;
+	u32 i;
+
+	/* Enable relaxed ordering */
+	for (i = 0; i < hw->mac.max_tx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+		regval |= IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), regval);
+	}
+
+	for (i = 0; i < hw->mac.max_rx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
+		regval |= (IXGBE_DCA_RXCTRL_DESC_WRO_EN |
+		           IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
+	}
+
 }

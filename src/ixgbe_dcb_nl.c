@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -43,6 +43,7 @@
 #define BIT_PFC         0x02
 #define BIT_PG_RX       0x04
 #define BIT_PG_TX       0x08
+#define BIT_APP_UPCHG   0x10
 #define BIT_RESETLINK   0x40
 #define BIT_LINKSPEED   0x80
 
@@ -1378,8 +1379,14 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
 			msleep(1);
 
-		if (netif_running(netdev))
-			ixgbe_down(adapter);
+		if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
+			if (netif_running(netdev))
+				netdev->netdev_ops->ndo_stop(netdev);
+			ixgbe_clear_interrupt_scheme(adapter);
+		} else {
+			if (netif_running(netdev))
+				ixgbe_down(adapter);
+		}
 	}
 
 	ret = ixgbe_copy_dcb_cfg(&adapter->temp_dcb_cfg, &adapter->dcb_cfg,
@@ -1403,8 +1410,14 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	}
 
 	if (adapter->dcb_set_bitmap & BIT_RESETLINK) {
-		if (netif_running(netdev))
-			ixgbe_up(adapter);
+		if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
+			ixgbe_init_interrupt_scheme(adapter);
+			if (netif_running(netdev))
+				netdev->netdev_ops->ndo_open(netdev);
+		} else {
+			if (netif_running(netdev))
+				ixgbe_up(adapter);
+		}
 		ret = DCB_HW_CHG_RST;
 	} else if (adapter->dcb_set_bitmap & BIT_PFC) {
 		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
@@ -1573,6 +1586,58 @@ static void ixgbe_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 	return;
 }
 
+#ifdef HAVE_DCBNL_OPS_GETAPP
+/**
+ * ixgbe_dcbnl_getapp - retrieve the DCBX application user priority
+ * @netdev : the corresponding netdev
+ * @idtype : identifies the id as ether type or TCP/UDP port number
+ * @id: id is either ether type or TCP/UDP port number
+ *
+ * Returns : on success, returns a non-zero 802.1p user priority bitmap
+ * otherwise returns 0 as the invalid user priority bitmap to indicate an
+ * error.
+ */
+static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
+{
+	u8 rval = 0;
+
+	switch (idtype) {
+	case DCB_APP_IDTYPE_ETHTYPE:
+		break;
+	case DCB_APP_IDTYPE_PORTNUM:
+		break;
+	default:
+		break;
+	}
+	return rval;
+}
+
+/**
+ * ixgbe_dcbnl_setapp - set the DCBX application user priority
+ * @netdev : the corresponding netdev
+ * @idtype : identifies the id as ether type or TCP/UDP port number
+ * @id: id is either ether type or TCP/UDP port number
+ * @up: the 802.1p user priority bitmap
+ *
+ * Returns : 0 on success or 1 on error
+ */
+static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
+                             u8 idtype, u16 id, u8 up)
+{
+	u8 rval = 1;
+
+	switch (idtype) {
+	case DCB_APP_IDTYPE_ETHTYPE:
+		break;
+	case DCB_APP_IDTYPE_PORTNUM:
+		break;
+	default:
+		break;
+	}
+	return rval;
+}
+#endif /* HAVE_DCBNL_OPS_GETAPP */
+
 #else
 #endif
 
@@ -1597,6 +1662,10 @@ struct dcbnl_rtnl_ops dcbnl_ops = {
 	.setnumtcs	= ixgbe_dcbnl_setnumtcs,
 	.getpfcstate	= ixgbe_dcbnl_getpfcstate,
 	.setpfcstate	= ixgbe_dcbnl_setpfcstate,
+#ifdef HAVE_DCBNL_OPS_GETAPP
+	.getapp		= ixgbe_dcbnl_getapp,
+	.setapp		= ixgbe_dcbnl_setapp,
+#endif
 };
 #else
 /* DCB Generic NETLINK command Definitions */

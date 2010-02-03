@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-September 15, 2009
+January 20, 2010
 
 Contents
 ========
@@ -143,8 +143,7 @@ Molex      10m - Twin-ax cable                               74752-9004
 Tyco       1m - Twin-ax cable                                2032237-2
 Tyco       3m - Twin-ax cable                                2032237-4
 Tyco       5m - Twin-ax cable                                2032237-6
-Tyco       10m - Twin-ax cable                               1-2032237-1
-		
+Tyco       10m - Twin-ax cable                               1-2032237-1		
 
 Third party optic modules and cables referred to above are listed only for the 
 purpose of highlighting third party specifications and potential compatibility, 
@@ -223,28 +222,10 @@ To manually build this driver:
 
      ping  <IP_address>
 
-
 To build ixgbe driver with DCA:
 ------------------------------
 
-This example assumes the ioatdma and ixgbe sources are in /usr/src
- 
-1. Unpack the ioatdma source, build and install
-
-     cd /usr/src
-     tar zxf ioatdma-<ioat version>.tar.gz
-     cd ioatdma-<ioat version>
-     make
-     make install
- 
-2. Unpack with ixgbe driver, build with DCA support and install
-     
-     cd /usr/src
-     tar zxf ixgbe-<ixgbe version>.tar.gz
-     cd ixgbe-<ixgbe-version>/src
-     make install CFLAGS_EXTRA="-DCONFIG_DCA -I/path/to/ioatdma-<ioat-version>
-     /include"
-    
+If your kernel supports DCA, the driver will build by default with DCA enabled. 
 
 Command Line Parameters
 =======================
@@ -262,7 +243,6 @@ For example:
 The default value for each parameter is generally the recommended setting,
 unless otherwise noted.
 
-
 RSS - Receive Side Scaling (or multiple queues for receives)
 ------------------------------------------------------------
 Valid Range: 0 - 16
@@ -276,14 +256,12 @@ newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
 CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26.  Other options 
 enable multiqueue in 2.6.27 and newer kernels.
 
-
 MQ - Multi Queue
 ----------------
 Valid Range: 0, 1
 0 = Disables Multiple Queue support
 1 = Enabled Multiple Queue support (a prerequisite for RSS)
 Default Value: 1
-
 
 DCA - Direct Cache Access
 -------------------------
@@ -293,7 +271,6 @@ Valid Range: 0, 1
 Default Value: 1 (when IXGBE_DCA is enabled)
 See the above instructions for enabling DCA.  If the driver is enabled for
 DCA this parameter allows load-time control of the feature.
-
 
 RxBufferMode
 ------------
@@ -305,7 +282,6 @@ Default Value: 2
 2 = Optimal mode. Driver will use single buffer mode for non-Jumbo 
     configurations and packet split mode for Jumbo configurations.
 
-
 InterruptType
 -------------
 Valid Range: 0 - 2 (0 = Legacy Int, 1 = MSI and 2 = MSI-X)
@@ -314,8 +290,7 @@ Interrupt type controls allow load time control over the type of interrupt
 registered for by the driver.  MSI-X is required for multiple queue
 support, and some kernels and combinations of kernel .config options will
 force a lower level of interrupt support.  'cat /proc/interrupts' will show
-different values for each type of interrupt.    
-  
+different values for each type of interrupt.
   
 InterruptThrottleRate
 ---------------------
@@ -337,14 +312,12 @@ may improve small packet latency, but is generally not suitable for bulk
 throughput traffic due to the increased cpu utilization of the higher interrupt
 rate.
 
-
 LLI (Low Latency Interrupts)
 ---------------------------- 
 LLI allows for immediate generation of an interrupt upon processing receive 
 packets that match certain criteria as set by the parameters described below. 
 LLI parameters are not enabled when Legacy interrupts are used. You must be 
 using MSI or MSI-X (see cat /proc/interrupts) to successfully use LLI.
-
 
 LLIPort
 -------
@@ -362,7 +335,6 @@ WARNING: Enabling LLI can result in an excessive number of interrupts/second
 that may cause problems with the system and in some cases may cause a kernel 
 panic.
 
-
 LLIPush
 -------
 Valid Range: 0-1
@@ -372,7 +344,6 @@ Default Value: 0 (disabled)
   effective in an environment with many small transactions.
   NOTE: Enabling LLIPush may allow a denial of service attack.
 
-
 LLISize
 -------
 Valid Range: 0-1500
@@ -381,7 +352,6 @@ Default Value: 0 (disabled)
   LLISize causes an immediate interrupt if the hardware receives a packet 
   smaller than the specified size.
 
-
 LLIEType
 --------
 Valid Range: 0-x8fff
@@ -389,15 +359,12 @@ Default Value: 0 (disabled)
 
   Low Latency Interrupt Ethernet Protocol Type.
 
-
 LLIVLANP
 --------
 Valid Range: 0-7
 Default Value: 0 (disabled)
 
   Low Latency Interrupt on VLAN priority threshold.
-
-
 
 Flow Control
 ------------
@@ -410,7 +377,6 @@ use Ethtool:
 NOTE: For 82598 backplane cards entering 1 gig mode, flow control default 
 behavior is changed to off.  Flow control in 1 gig mode on these devices can 
 lead to Tx hangs. 
-
 
 Intel(R) Ethernet Flow Director
 -------------------------------
@@ -429,7 +395,6 @@ in ethtool: fdir_miss and fdir_match.
 
 The following three parameters impact Flow Director.
 
-
 FdirMode
 --------
 Valid Range: 0-2 (0=off, 1=ATR, 2=Perfect filter mode)
@@ -437,14 +402,12 @@ Default Value: 1
 
   Flow Director filtering modes.
 
-
 FdirPballoc
 -----------
 Valid Range: 0-2 (0=64k, 1=128k, 2=256k)
 Default Value: 0
 
   Flow Director allocated packet buffer size.
-
 
 AtrSampleRate
 --------------
@@ -454,6 +417,41 @@ Default Value: 20
   Software ATR Tx packet sample rate. For example, when set to 20, every 20th
   packet, looks to see if the packet will create a new flow.
 
+Node
+----
+Valid Range:   0-n
+Default Value: 1 (off)
+
+  0 - n: where n is the number of NUMA nodes (i.e. 0 - 3) currently online in 
+  your system
+  1: turns this option off
+
+  The Node parameter will allow you to pick which NUMA node you want to have 
+  the adapter allocate memory on.
+
+max_vfs
+-------
+Valid Range:   1-63
+Default Value: 0
+
+  If the value is greater than 0 it will also force the VMDq parameter to be 1
+  or more.
+
+  This parameter adds support for SR-IOV.  It causes the driver to spawn up to 
+  max_vfs worth of virtual function.  
+
+The parameters for the driver are referenced by position.  So, if you have a 
+dual port 82599-based adapter and you want N virtual functions per port, you 
+must specify a number for each port with each parameter separated by a comma.
+
+For example:
+  insmod ixgbe max_vfs=63,63
+
+NOTE: If both 82598 and 82599-based adapters are installed on the same machine,
+you must be careful in loading the driver with the parameters. Depending on 
+system configuration, number of slots, etc. it’s impossible to predict in all
+cases where the positions would be on the command line and the user
+will have to specify zero in those positions occupied by an 82598 port.
 
 Additional Configurations
 =========================
@@ -480,7 +478,6 @@ Additional Configurations
 
   NOTE: This setting is not saved across reboots.
 
-
   Jumbo Frames
   ------------
   The driver supports Jumbo Frames for all adapters. Jumbo Frames support is
@@ -496,7 +493,6 @@ Additional Configurations
   should help to avoid buffer starvation issues when allocating receive
   packets.
 
-
   Ethtool
   -------
   The driver utilizes the ethtool interface for driver configuration and
@@ -505,7 +501,6 @@ Additional Configurations
 
   The latest release of ethtool can be found from
   http://sourceforge.net/projects/gkernel.
-
 
   NAPI
   ----
@@ -526,9 +521,7 @@ Additional Configurations
 
             make CFLAGS_EXTRA=-DIXGBE_NO_NAPI install
 
-
   See www.cyberus.ca/~hadi/usenix-paper.tgz for more information on NAPI.
-
 
   LRO
   ---
@@ -554,7 +547,6 @@ Additional Configurations
 
   NOTE: IPv6 and UDP are not supported by LRO.
 
-
   HW RSC
   ------
   82599-based adapters support HW based receive side coalescing (RSC) which can
@@ -575,7 +567,6 @@ Additional Configurations
      hw_rsc_count - counts the total number of Ethernet packets that were being
      combined.
 
-
   rx_dropped_backlog
   ------------------
   When in a non-Napi (or Interrupt) mode, this counter indicates that the stack
@@ -589,7 +580,6 @@ Additional Configurations
   # sysctl -e net.core.netdev_max_backlog=10000
   net.core.netdev_max_backlog = 10000
 
-
   FCoE
   ----
   This release of the ixgbe driver contains new code to enable users to use 
@@ -600,14 +590,12 @@ Additional Configurations
   http://www.open-fcoe.org/ for FCoE project information and contact 
   e1000-eedc@lists.sourceforge.net for DCB information.
 
-
 Performance Tuning
 ==================
 
 An excellent article on performance tuning can be found at:
 
 http://www.redhat.com/promo/summit/2008/downloads/pdf/Thursday/Mark_Wagner.pdf
-
 
 Known Issues/Troubleshooting
 ============================
@@ -616,7 +604,6 @@ Known Issues/Troubleshooting
   working, verify in the "In This Release" section of the readme that you have 
   installed the correct driver.
 
-
   MSI-X Issues with Kernels between 2.6.19 - 2.6.21 (inclusive)
   ------------------------------------------------------------
   Kernel panics and instability may be observed on any MSI-X hardware if you
@@ -624,7 +611,6 @@ Known Issues/Troubleshooting
 
   If such problems are encountered, you may disable the irqbalance daemon or
   upgrade to a newer kernel. 
-
                          
   Driver Compilation
   ------------------
@@ -638,12 +624,10 @@ Known Issues/Troubleshooting
 
       make include/linux/version.h.
 
-
   Do Not Use LRO When Routing or Bridging Packets
   -----------------------------------------------
   Due to a known general compatibility issue with LRO and routing, do not use
   LRO when routing or bridging packets.
-
 
   LRO and iSCSI Incompatibility
   ----------------------------------
@@ -653,7 +637,6 @@ Known Issues/Troubleshooting
 
       # make CFLAGS_EXTRA=-DIXGBE_NO_LRO install
 
-
   Performance Degradation with Jumbo Frames
   -----------------------------------------
   Degradation in throughput performance may be observed in some Jumbo frames
@@ -661,7 +644,6 @@ Known Issues/Troubleshooting
   size and/or increasing the /proc/sys/net/ipv4/tcp_*mem entry values may help.
   See the specific application manual and /usr/src/linux*/Documentation/
   networking/ip-sysctl.txt for more details.
-
 
   Multiple Interfaces on Same Ethernet Broadcast Network
   ------------------------------------------------------
@@ -679,7 +661,6 @@ Known Issues/Troubleshooting
   - Install the interfaces in separate broadcast domains - either in
     different switches or in a switch partitioned to VLANs.
 
-
   UDP Stress Test Dropped Packet Issue
   --------------------------------------
   Under small packets UDP stress test with 10GbE driver, the Linux system
@@ -690,14 +671,12 @@ Known Issues/Troubleshooting
   Or you can increase the kernel's default buffer sizes for udp by changing 
   the values in /proc/sys/net/core/rmem_default and rmem_max
 
-
   Unplugging network cable while ethtool -p is running
   ----------------------------------------------------
   In kernel versions 2.5.50 and later (including 2.6 kernel), unplugging 
   the network cable while ethtool -p is running will cause the system to 
   become unresponsive to keyboard commands, except for control-alt-delete.  
   Restarting the system appears to be the only remedy.
-
 
   Cisco Catalyst 4948-10GE port resets may cause switch to shut down ports
   ------------------------------------------------------------------------
@@ -711,7 +690,6 @@ Known Issues/Troubleshooting
   cause all" from the Global Configuration prompt which enables the switch to 
   keep the interfaces up, regardless of errors.
 
-
   Installing Red Hat Enterprise Linux 4.7, 5.1, or 5.2 with an Intel(R) 10 
   Gigabit AT Server Adapter may cause kernel panic
   ----------------------------------------------------------------------------
@@ -724,13 +702,11 @@ Known Issues/Troubleshooting
   that you install the ixgbe-1.3.31.5 driver or newer BEFORE installing the 
   hardware.
 
-
   Rx Page Allocation Errors
   -------------------------
   Page allocation failure. order:0 errors may occur under stress with kernels 
   2.6.25 and above. This is caused by the way the Linux kernel reports this 
   stressed condition.
-
 
   DCB: Generic segmentation offload on causes bandwidth allocation issues
   -----------------------------------------------------------------------
@@ -739,7 +715,6 @@ Known Issues/Troubleshooting
   supports TSO (hardware offload of segmentation) GSO will not be running.  
   The GSO state can be queried with ethtool using ethtool -k ethX.
 
-
   When using 82598-based network connections, ixgbe driver only supports 16 
   queues on a platform with more than 16 cores
   -------------------------------------------------------------------------
@@ -747,7 +722,6 @@ Known Issues/Troubleshooting
   receive queues.
 
   82599-based network connections support up to 64 queues.
-
 
   Disable GRO when routing/bridging
   ---------------------------------
@@ -758,7 +732,6 @@ Known Issues/Troubleshooting
 
       where ethX is the ethernet interface you're trying to modify.
 
-  
   Lower than expected performance on dual port 10GbE devices
   ----------------------------------------------------------
   Some PCI-E x8 slots are actually configured as x4 slots. These slots have 
@@ -769,6 +742,11 @@ Known Issues/Troubleshooting
   slot is required."
   If this error occurs, moving your adapter to a true x8 slot will resolve the 
   issue.
+
+  Ethtool may incorrectly display SFP+ fiber module as Direct Attached cable
+  --------------------------------------------------------------------------
+  Due to kernel limitations, port type can only be correctly displayed on 
+  kernel 2.6.33 or greater.
 
 
 Support
@@ -785,7 +763,6 @@ or the Intel Wired Networking project hosted by Sourceforge at:
 If an issue is identified with the released source code on the supported
 kernel with a supported adapter, email the specific information related
 to the issue to e1000-devel@lists.sf.net
-
 
 License
 =======
@@ -808,7 +785,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 The full GNU General Public License is included in this distribution in
 the file called "COPYING".
-
 
 Trademarks
 ==========

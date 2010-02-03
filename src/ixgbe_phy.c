@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -60,7 +60,7 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 	phy->ops.setup_link = &ixgbe_setup_phy_link_generic;
 	phy->ops.setup_link_speed = &ixgbe_setup_phy_link_speed_generic;
 	phy->ops.check_link = NULL;
-	phy->ops.get_firmware_version = NULL;
+	phy->ops.get_firmware_version = ixgbe_get_phy_firmware_version_generic;
 	phy->ops.read_i2c_byte = &ixgbe_read_i2c_byte_generic;
 	phy->ops.write_i2c_byte = &ixgbe_write_i2c_byte_generic;
 	phy->ops.read_i2c_eeprom = &ixgbe_read_i2c_eeprom_generic;
@@ -68,7 +68,6 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 	phy->ops.i2c_bus_clear = &ixgbe_i2c_bus_clear;
 	phy->ops.identify_sfp = &ixgbe_identify_sfp_module_generic;
 	phy->sfp_type = ixgbe_sfp_type_unknown;
-
 	return 0;
 }
 
@@ -752,11 +751,11 @@ s32 ixgbe_get_phy_firmware_version_tnx(struct ixgbe_hw *hw,
 
 
 /**
- *  ixgbe_get_phy_firmware_version_aq - Gets the PHY Firmware Version
+ *  ixgbe_get_phy_firmware_version_generic - Gets the PHY Firmware Version
  *  @hw: pointer to hardware structure
  *  @firmware_version: pointer to the PHY Firmware Version
  **/
-s32 ixgbe_get_phy_firmware_version_aq(struct ixgbe_hw *hw,
+s32 ixgbe_get_phy_firmware_version_generic(struct ixgbe_hw *hw,
                                        u16 *firmware_version)
 {
 	s32 status = 0;
@@ -1645,3 +1644,5 @@ void ixgbe_i2c_bus_clear(struct ixgbe_hw *hw)
 	/* Put the i2c bus back to default state */
 	ixgbe_i2c_stop(hw);
 }
+
+

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -36,6 +36,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw(struct ixgbe_hw *hw);
 s32 ixgbe_reset_hw(struct ixgbe_hw *hw);
 s32 ixgbe_start_hw(struct ixgbe_hw *hw);
+void ixgbe_enable_relaxed_ordering(struct ixgbe_hw *hw);
 s32 ixgbe_clear_hw_cntrs(struct ixgbe_hw *hw);
 enum ixgbe_media_type ixgbe_get_media_type(struct ixgbe_hw *hw);
 s32 ixgbe_get_mac_addr(struct ixgbe_hw *hw, u8 *mac_addr);
@@ -157,6 +158,8 @@ s32 ixgbe_set_san_mac_addr(struct ixgbe_hw *hw, u8 *san_mac_addr);
 s32 ixgbe_get_device_caps(struct ixgbe_hw *hw, u16 *device_caps);
 s32 ixgbe_acquire_swfw_semaphore(struct ixgbe_hw *hw, u16 mask);
 void ixgbe_release_swfw_semaphore(struct ixgbe_hw *hw, u16 mask);
+s32 ixgbe_get_wwn_prefix(struct ixgbe_hw *hw, u16 *wwnn_prefix,
+                         u16 *wwpn_prefix);
 
 
 #endif /* _IXGBE_API_H_ */

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -298,9 +298,11 @@ int _kc_pci_save_state(struct pci_dev *pdev)
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct adapter_struct *adapter = netdev_priv(netdev);
 	int size = PCI_CONFIG_SPACE_LEN, i;
-	u16 pcie_cap_offset = pci_find_capability(pdev, PCI_CAP_ID_EXP);
-	u16 pcie_link_status;
+	u16 pcie_cap_offset, pcie_link_status;
 
+	WARN_ON(pdev->dev.driver_data == NULL);
+
+	pcie_cap_offset = pci_find_capability(pdev, PCI_CAP_ID_EXP);
 	if (pcie_cap_offset) {
 		if (!pci_read_config_word(pdev,
 		                          pcie_cap_offset + PCIE_LINK_STATUS,
@@ -564,3 +566,16 @@ u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb)
 }
 #endif /* HAVE_NETDEV_SELECT_QUEUE */
 #endif /* < 2.6.30 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33) )
+struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
+                                              unsigned int length)
+{
+	struct sk_buff *skb = netdev_alloc_skb(dev, length + NET_IP_ALIGN);
+
+	if (NET_IP_ALIGN && skb)
+		skb_reserve(skb, NET_IP_ALIGN);
+	return skb;
+}
+#endif /* < 2.6.33 */

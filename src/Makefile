@@ -1,7 +1,7 @@
 ################################################################################
 #
 # Intel 10 Gigabit PCI Express Linux driver
-# Copyright(c) 1999 - 2009 Intel Corporation.
+# Copyright(c) 1999 - 2010 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -32,10 +32,12 @@
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
          ixgbe_82599.c \
+         ixgbe_sriov.c ixgbe_mbx.c \
          ixgbe_dcb.c ixgbe_dcb_82598.c \
          ixgbe_dcb_82599.c \
          ixgbe_phy.c
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
+         ixgbe_sriov.h ixgbe_mbx.h \
          ixgbe_dcb.h \
          ixgbe_phy.h
 ifeq (,$(BUILD_KERNEL))
@@ -69,8 +71,7 @@ ifeq (,$(KSRC))
 endif
 
 ifeq (,$(KSRC))
-  $(warning *** Linux kernel source not found in any of these locations:)
-  $(warning $(KSP))
+  $(warning *** Kernel header files not in any of the expected locations.)
   $(warning *** Install the appropriate kernel development package, e.g.)
   $(error kernel-devel, for building kernel modules and try again)
 else
@@ -81,38 +82,32 @@ else
 endif
 endif
 
-# check for version.h and autoconf.h for running kernel in /boot (SUSE)
-ifneq (,$(wildcard /boot/vmlinuz.version.h))
-  VERSION_FILE := /boot/vmlinuz.version.h
-  CONFIG_FILE  := /boot/vmlinuz.autoconf.h
-  KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | \
-          grep UTS_RELEASE | awk '{ print $$3 }' | sed 's/\"//g')
-  ifeq ($(KVER),$(BUILD_KERNEL))
-    # set up include path to override headers from kernel source
-    x:=$(shell rm -rf include)
-    x:=$(shell mkdir -p include/linux)
-    x:=$(shell cp /boot/vmlinuz.version.h include/linux/version.h)
-    x:=$(shell cp /boot/vmlinuz.autoconf.h include/linux/autoconf.h)
-    EXTRA_CFLAGS += -I./include
-  else
-    ifneq (,$(wildcard $(KOBJ)/include/linux/utsrelease.h))
-      VERSION_FILE := $(KOBJ)/include/linux/utsrelease.h
-    else
-      VERSION_FILE := $(KOBJ)/include/linux/version.h
-    endif
-    CONFIG_FILE  := $(KSRC)/include/linux/autoconf.h
-  endif
-else
-  ifneq (,$(wildcard $(KOBJ)/include/linux/utsrelease.h))
-    VERSION_FILE := $(KOBJ)/include/linux/utsrelease.h
-  else
-    VERSION_FILE := $(KOBJ)/include/linux/version.h
-  endif
-  CONFIG_FILE  := $(KSRC)/include/linux/autoconf.h
+# Version file Search Path
+VSP :=  $(KOBJ)/include/generated/utsrelease.h \
+        $(KOBJ)/include/linux/utsrelease.h \
+        $(KOBJ)/include/linux/version.h \
+        /boot/vmlinuz.version.h
+
+# Config file Search Path
+CSP :=  $(KSRC)/include/generated/autoconf.h \
+        $(KSRC)/include/linux/autoconf.h \
+        /boot/vmlinuz.autoconf.h
+
+# prune the lists down to only files that exist
+test_file = $(shell [ -f $(file) ] && echo $(file))
+VSP := $(foreach file, $(VSP), $(test_file))
+CSP := $(foreach file, $(CSP), $(test_file))
+
+# and use the first valid entry in the Search Paths
+ifeq (,$(VERSION_FILE))
+  VERSION_FILE := $(firstword $(VSP))
+endif
+ifeq (,$(CONFIG_FILE))
+  CONFIG_FILE := $(firstword $(CSP))
 endif
 
 ifeq (,$(wildcard $(VERSION_FILE)))
-  $(error Linux kernel source not configured - missing version.h)
+  $(error Linux kernel source not configured - missing version header file)
 endif
 
 ifeq (,$(wildcard $(CONFIG_FILE)))

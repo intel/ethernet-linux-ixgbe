@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 2.0.44.14
+Version: 2.0.62.4
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -29,6 +29,8 @@ This package contains the Linux driver for the Intel(R) 10GbE PCI Express Family
 %setup
 
 %build
+
+%install
 mkdir -p %{buildroot}
 
 KV=$(uname -r)
@@ -110,8 +112,6 @@ else
 		make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} install
 	fi
 fi
-
-%install
 # Append .new to driver name to avoid conflict with kernel RPM
 cd %{buildroot}
 find lib -name "ixgbe.*o" -exec mv {} {}.new \; \

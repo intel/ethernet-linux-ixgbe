@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -98,6 +98,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82599_KX4_MEZZ:
 		case IXGBE_DEV_ID_82599_XAUI_LOM:
 		case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
+		case IXGBE_DEV_ID_82599_KR:
 		case IXGBE_DEV_ID_82599_SFP:
 		case IXGBE_DEV_ID_82599_SFP_EM:
 		case IXGBE_DEV_ID_82599_CX4:
@@ -155,6 +156,20 @@ s32 ixgbe_start_hw(struct ixgbe_hw *hw)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.start_hw, (hw),
 	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_enable_relaxed_ordering - Enables tx relaxed ordering,
+ *  which is disabled by default in ixgbe_start_hw();
+ *
+ *  @hw: pointer to hardware structure
+ *
+ *   Enable relaxed ordering;
+ **/
+void ixgbe_enable_relaxed_ordering(struct ixgbe_hw *hw)
+{
+	if (hw->mac.ops.enable_relaxed_ordering)
+		hw->mac.ops.enable_relaxed_ordering(hw);
 }
 
 /**
@@ -236,6 +251,23 @@ s32 ixgbe_get_device_caps(struct ixgbe_hw *hw, u16 *device_caps)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.get_device_caps,
 	                       (hw, device_caps), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_get_wwn_prefix - Get alternative WWNN/WWPN prefix from the EEPROM
+ *  @hw: pointer to hardware structure
+ *  @wwnn_prefix: the alternative WWNN prefix
+ *  @wwpn_prefix: the alternative WWPN prefix
+ *
+ *  This function will read the EEPROM from the alternative SAN MAC address
+ *  block to check the support for the alternative WWNN/WWPN prefix support.
+ **/
+s32 ixgbe_get_wwn_prefix(struct ixgbe_hw *hw, u16 *wwnn_prefix,
+                         u16 *wwpn_prefix)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_wwn_prefix,
+	                       (hw, wwnn_prefix, wwpn_prefix),
+	                       IXGBE_NOT_IMPLEMENTED);
 }
 
 /**

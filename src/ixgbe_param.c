@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2009 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -39,6 +39,9 @@
 #define OPTION_UNSET    -1
 #define OPTION_DISABLED 0
 #define OPTION_ENABLED  1
+
+#define STRINGIFY(foo) #foo         /* magic for getting defines into strings */
+#define XSTRINGIFY(bar) STRINGIFY(bar)
 
 /* All parameters are treated the same, as an integer array of values.
  * This macro just reduces the need to repeat the same declaration code
@@ -83,6 +86,8 @@ IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), de
 #define IXGBE_INT_MSI			      1
 #define IXGBE_INT_MSIX			      2
 #define IXGBE_DEFAULT_INT	 IXGBE_INT_MSIX
+
+IXGBE_PARAM(Node, "set the starting node to allocate memory on, default -1");
 
 /* MQ - Multiple Queue enable/disable
  *
@@ -135,7 +140,32 @@ IXGBE_PARAM(DCA, "Disable or enable Direct Cache Access, 0=disabled, 1=descripto
 
 IXGBE_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues, default 1=number of cpus");
 
+/* VMDQ - Virtual Machine Device Queues (VMDQ)
+ *
+ * Valid Range: 1-16
+ *  - 1 Disables VMDQ by allocating only a single queue.
+ *  - 2-16 - enables VMDQ and sets the Desc. Q's to the specified value.
+ *
+ * Default Value: 1
+ */
 
+#define IXGBE_DEFAULT_NUM_VMDQ 8
+
+IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable, 2-16 enable (default=" XSTRINGIFY(IXGBE_DEFAULT_NUM_VMDQ) ")");
+
+#ifdef CONFIG_PCI_IOV
+/* max_vfs - SR I/O Virtualization
+ *
+ * Valid Range: 0-64
+ *  - 0 Disables SR-IOV
+ *  - 1 Enables SR-IOV to default number of VFs enabled
+ *  - 2-64 - enables SR-IOV and sets the number of VFs enabled
+ *
+ * Default Value: 1
+ */
+
+IXGBE_PARAM(max_vfs, "Number of Virtual Functions: 0 = disable (default), 1 = default settings, 2-64 = enable this many VFs");
+#endif
 
 /* Interrupt Throttle Rate (interrupts/sec)
  *
@@ -557,6 +587,124 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 		}
 	}
+#ifdef CONFIG_PCI_IOV
+	{ /* Single Root I/O Virtualization (SR-IOV) */
+		static struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "I/O Virtualization (IOV)",
+			.err  = "defaulting to Disabled",
+			.def  = OPTION_ENABLED,
+			.arg  = { .r = { .min = OPTION_DISABLED,
+					 .max = IXGBE_MAX_VF_FUNCTIONS}}
+		};
+
+#ifdef module_param_array
+		if (num_max_vfs > bd) {
+#endif
+			unsigned int vfs = max_vfs[bd];
+			ixgbe_validate_option(&vfs, &opt);
+			adapter->num_vfs = vfs;
+			if (vfs)
+				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
+			else
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+#ifdef module_param_array
+		} else {
+			if (opt.def == OPTION_DISABLED) {
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+			} else {
+				adapter->num_vfs = 0;
+			}
+		}
+#endif
+		/* Check Interoperability */
+		if (*aflags & IXGBE_FLAG_SRIOV_ENABLED) {
+			if (!(*aflags & IXGBE_FLAG_SRIOV_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "IOV is not supported on this "
+				        "hardware.  Disabling IOV.\n");
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+				adapter->num_vfs = 0;
+			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "IOV is not supported while multiple "
+				        "queues are disabled.  "
+				        "Disabling IOV.\n");
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+				adapter->num_vfs = 0;
+			}
+		}
+		if (*aflags & IXGBE_FLAG_SRIOV_ENABLED)
+			*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
+	}
+#endif /* CONFIG_PCI_IOV */
+	{ /* Virtual Machine Device Queues (VMDQ) */
+		static struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "Virtual Machine Device Queues (VMDQ)",
+			.err  = "defaulting to Disabled",
+#ifdef CONFIG_PCI_IOV
+			.def  = OPTION_DISABLED,
+#else
+			.def  = OPTION_DISABLED,
+#endif
+			.arg  = { .r = { .min = OPTION_DISABLED,
+					 .max = IXGBE_MAX_VMDQ_INDICES
+				}}
+		};
+
+#ifdef module_param_array
+		if (num_VMDQ > bd) {
+#endif
+			unsigned int vmdq = VMDQ[bd];
+			ixgbe_validate_option(&vmdq, &opt);
+			feature[RING_F_VMDQ].indices = vmdq;
+			adapter->flags2 |= IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE;
+			/* zero or one both mean disabled from our driver's
+			 * perspective */
+			if (vmdq > 1)
+				*aflags |= IXGBE_FLAG_VMDQ_ENABLED;
+			else
+				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
+#ifdef module_param_array
+		} else {
+			if (opt.def == OPTION_DISABLED) {
+				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
+			} else {
+				feature[RING_F_VMDQ].indices = IXGBE_DEFAULT_NUM_VMDQ;
+				*aflags |= IXGBE_FLAG_VMDQ_ENABLED;
+			}
+		}
+#endif
+		/* Check Interoperability */
+		if (*aflags & IXGBE_FLAG_VMDQ_ENABLED) {
+			if (!(*aflags & IXGBE_FLAG_VMDQ_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "VMDQ is not supported on this "
+				        "hardware.  Disabling VMDQ.\n");
+				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
+				feature[RING_F_VMDQ].indices = 0;
+			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "VMDQ is not supported while multiple "
+				        "queues are disabled.  "
+				        "Disabling VMDQ.\n");
+				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
+				feature[RING_F_VMDQ].indices = 0;
+			}
+			if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
+				/* for now, disable RSS when using VMDQ mode */
+				*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
+				*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
+			} else if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+				if (feature[RING_F_RSS].indices > 2
+				    && feature[RING_F_VMDQ].indices > 32)
+					feature[RING_F_RSS].indices = 2;
+				else if (feature[RING_F_RSS].indices != 0)
+					feature[RING_F_RSS].indices = 4;
+			}
+		}
+	}
 	{ /* Interrupt Throttling Rate */
 		static struct ixgbe_option opt = {
 			.type = range_option,
@@ -580,28 +728,49 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				 * turn off ITR completely, just set it to an
 				 * insane interrupt rate
 				 */
-				adapter->eitr_param = IXGBE_MAX_INT_RATE;
-				adapter->itr_setting = 0;
+				adapter->rx_eitr_param = IXGBE_MAX_INT_RATE;
+				adapter->rx_itr_setting = 0;
+				adapter->tx_itr_setting = 0;
 				break;
 			case 1:
 				DPRINTK(PROBE, INFO, "dynamic interrupt "
                                         "throttling enabled\n");
-				adapter->eitr_param = 20000;
-				adapter->itr_setting = 1;
+				adapter->rx_eitr_param = 20000;
+				adapter->tx_eitr_param =
+						adapter->rx_eitr_param >> 1;
+				adapter->rx_itr_setting = 1;
+				adapter->tx_itr_setting = 1;
 				break;
 			default:
 				ixgbe_validate_option(&eitr, &opt);
-				adapter->eitr_param = eitr;
+				adapter->rx_eitr_param = eitr;
+				adapter->tx_eitr_param = (eitr >> 1);
 				/* the first bit is used as control */
-				adapter->itr_setting = eitr & ~1;
+				adapter->rx_itr_setting = eitr & ~1;
+				adapter->tx_itr_setting = (eitr >> 1) & ~1;
 				break;
 			}
 #ifdef module_param_array
 		} else {
-			adapter->eitr_param = DEFAULT_ITR;
-			adapter->itr_setting = DEFAULT_ITR;
+			adapter->rx_eitr_param = DEFAULT_ITR;
+			adapter->rx_itr_setting = DEFAULT_ITR & ~1;
+			adapter->tx_eitr_param = (DEFAULT_ITR >> 1);
+			adapter->tx_itr_setting = (DEFAULT_ITR >> 1) & ~1;
 		}
 #endif
+#ifndef IXGBE_NO_HW_RSC
+		/* Check Interoperability */
+		if (adapter->rx_itr_setting == 0 &&
+		    adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE) {
+			/* itr ==0 and RSC are mutually exclusive */
+			adapter->flags2 &= ~IXGBE_FLAG2_RSC_CAPABLE;
+#ifdef NETIF_F_LRO
+			adapter->netdev->features &= ~NETIF_F_LRO;
+#endif
+			DPRINTK(PROBE, INFO,
+			     "InterruptThrottleRate set to 0, disabling RSC\n");
+		}
+#endif /* IXGBE_NO_HW_RSC */
 	}
 #ifndef IXGBE_NO_LLI
 	{ /* Low Latency Interrupt TCP Port*/
@@ -766,6 +935,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				break;
 			case IXGBE_RXBUFMODE_1BUF_ALWAYS:
 				*aflags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
+				break;
 			default:
 				break;
 			}
@@ -956,4 +1126,37 @@ no_fdir_pballoc:
 no_fdir_sample:
 		/* empty code line with semi-colon */ ;
 	}
+	{ /* Node assignment */
+		static struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "Node to start on",
+			.err  = "defaulting to -1",
+#ifdef HAVE_EARLY_VMALLOC_NODE
+			.def  = 0,
+#else
+			.def  = -1,
+#endif
+			.arg  = { .r = { .min = 0,
+					 .max = 0}}
+		};
+		int node_param = opt.def;
+
+		opt.arg.r.max = num_online_nodes();
+		if (opt.arg.r.max)
+			opt.arg.r.max--;
+#ifdef module_param_array
+		if (num_Node > bd) {
+#endif
+			node_param = Node[bd];
+			ixgbe_validate_option(&node_param, &opt);
+
+			if (node_param != OPTION_UNSET) {
+				DPRINTK(PROBE, INFO, "node set to %d\n", node_param);
+			}
+#ifdef module_param_array
+		}
+#endif
+		adapter->node = node_param;
+	}
 }
+
