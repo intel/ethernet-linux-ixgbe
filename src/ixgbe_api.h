@@ -61,6 +61,7 @@ s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw,
                                ixgbe_link_speed speed,
                                bool autoneg,
                                bool autoneg_wait_to_complete);
+void ixgbe_flap_tx_laser(struct ixgbe_hw *hw);
 s32 ixgbe_setup_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
                            bool autoneg, bool autoneg_wait_to_complete);
 s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
@@ -116,6 +117,7 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
                                           u8 queue);
 s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
                                         struct ixgbe_atr_input *input,
+                                        struct ixgbe_atr_input_masks *masks,
                                         u16 soft_id,
                                         u8 queue);
 u16 ixgbe_atr_compute_hash_82599(struct ixgbe_atr_input *input, u32 key);

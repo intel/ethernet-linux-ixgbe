@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-January 20, 2010
+February 8, 2010
 
 Contents
 ========
@@ -115,6 +115,12 @@ Tyco	   1m - Twin-ax cable	                             2032237-2
 Tyco	   3m - Twin-ax cable	                             2032237-4
 Tyco 	   5m - Twin-ax cable	                             2032237-6
 Tyco	   10m - Twin-ax cable	                             1-2032237-1
+
+Laserwire  Active cable - Limiting                           FCBP11OLD1LXX
+Intersil   5m - 32AWG - Active cable - Limiting	             QLX1000CSFP0532
+Intersil   10m - 28AWG - Active cable - Limiting	     QLX1000CSFP1028
+Intersil   15m - 24AWG - Active cable - Limiting	     QLX1000CSFP1524
+
 
 82598-BASED ADAPTERS
 

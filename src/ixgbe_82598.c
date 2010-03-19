@@ -185,6 +185,7 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	/* Link */
 	mac->ops.check_link = &ixgbe_check_mac_link_82598;
 	mac->ops.setup_link = &ixgbe_setup_mac_link_82598;
+	mac->ops.flap_tx_laser = NULL;
 	mac->ops.get_link_capabilities =
 	                       &ixgbe_get_link_capabilities_82598;
 
@@ -431,7 +432,7 @@ s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw, s32 packetbuf_num)
 	 * more details see 82598 Specification update.
 	 */
 	hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
-	if (link_up && link_speed == IXGBE_LINK_SPEED_1GB_FULL) { 
+	if (link_up && link_speed == IXGBE_LINK_SPEED_1GB_FULL) {
 		switch (hw->fc.requested_mode) {
 		case ixgbe_fc_full:
 			hw->fc.requested_mode = ixgbe_fc_tx_pause;

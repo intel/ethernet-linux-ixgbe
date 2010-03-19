@@ -34,7 +34,7 @@
  * maximum number of ports that the driver can manage.
  */
 
-#define IXGBE_MAX_NIC 8
+#define IXGBE_MAX_NIC 32
 
 #define OPTION_UNSET    -1
 #define OPTION_DISABLED 0
@@ -156,15 +156,17 @@ IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable, 2-16 
 #ifdef CONFIG_PCI_IOV
 /* max_vfs - SR I/O Virtualization
  *
- * Valid Range: 0-64
+ * Valid Range: 0-63
  *  - 0 Disables SR-IOV
  *  - 1 Enables SR-IOV to default number of VFs enabled
- *  - 2-64 - enables SR-IOV and sets the number of VFs enabled
+ *  - 2-63 - enables SR-IOV and sets the number of VFs enabled
  *
- * Default Value: 1
+ * Default Value: 0
  */
 
-IXGBE_PARAM(max_vfs, "Number of Virtual Functions: 0 = disable (default), 1 = default settings, 2-64 = enable this many VFs");
+#define MAX_SRIOV_VFS 63
+
+IXGBE_PARAM(max_vfs, "Number of Virtual Functions: 0 = disable (default), 1 = default settings, 2-" XSTRINGIFY(MAX_SRIOV_VFS) " = enable this many VFs");
 #endif
 
 /* Interrupt Throttle Rate (interrupts/sec)
@@ -587,67 +589,12 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 		}
 	}
-#ifdef CONFIG_PCI_IOV
-	{ /* Single Root I/O Virtualization (SR-IOV) */
-		static struct ixgbe_option opt = {
-			.type = range_option,
-			.name = "I/O Virtualization (IOV)",
-			.err  = "defaulting to Disabled",
-			.def  = OPTION_ENABLED,
-			.arg  = { .r = { .min = OPTION_DISABLED,
-					 .max = IXGBE_MAX_VF_FUNCTIONS}}
-		};
-
-#ifdef module_param_array
-		if (num_max_vfs > bd) {
-#endif
-			unsigned int vfs = max_vfs[bd];
-			ixgbe_validate_option(&vfs, &opt);
-			adapter->num_vfs = vfs;
-			if (vfs)
-				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
-			else
-				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
-#ifdef module_param_array
-		} else {
-			if (opt.def == OPTION_DISABLED) {
-				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
-			} else {
-				adapter->num_vfs = 0;
-			}
-		}
-#endif
-		/* Check Interoperability */
-		if (*aflags & IXGBE_FLAG_SRIOV_ENABLED) {
-			if (!(*aflags & IXGBE_FLAG_SRIOV_CAPABLE)) {
-				DPRINTK(PROBE, INFO,
-				        "IOV is not supported on this "
-				        "hardware.  Disabling IOV.\n");
-				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
-				adapter->num_vfs = 0;
-			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
-				DPRINTK(PROBE, INFO,
-				        "IOV is not supported while multiple "
-				        "queues are disabled.  "
-				        "Disabling IOV.\n");
-				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
-				adapter->num_vfs = 0;
-			}
-		}
-		if (*aflags & IXGBE_FLAG_SRIOV_ENABLED)
-			*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
-	}
-#endif /* CONFIG_PCI_IOV */
 	{ /* Virtual Machine Device Queues (VMDQ) */
 		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Virtual Machine Device Queues (VMDQ)",
 			.err  = "defaulting to Disabled",
-#ifdef CONFIG_PCI_IOV
 			.def  = OPTION_DISABLED,
-#else
-			.def  = OPTION_DISABLED,
-#endif
 			.arg  = { .r = { .min = OPTION_DISABLED,
 					 .max = IXGBE_MAX_VMDQ_INDICES
 				}}
@@ -692,19 +639,79 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 				feature[RING_F_VMDQ].indices = 0;
 			}
-			if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
+			switch (adapter->hw.mac.type) {
+			case ixgbe_mac_82598EB:
 				/* for now, disable RSS when using VMDQ mode */
 				*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
 				*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
-			} else if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+				break;
+			case ixgbe_mac_82599EB:
 				if (feature[RING_F_RSS].indices > 2
 				    && feature[RING_F_VMDQ].indices > 32)
 					feature[RING_F_RSS].indices = 2;
 				else if (feature[RING_F_RSS].indices != 0)
 					feature[RING_F_RSS].indices = 4;
+				break;
+			default:
+				break;
 			}
 		}
 	}
+#ifdef CONFIG_PCI_IOV
+	{ /* Single Root I/O Virtualization (SR-IOV) */
+		static struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "I/O Virtualization (IOV)",
+			.err  = "defaulting to Disabled",
+			.def  = OPTION_DISABLED,
+			.arg  = { .r = { .min = OPTION_DISABLED,
+					 .max = IXGBE_MAX_VF_FUNCTIONS}}
+		};
+
+#ifdef module_param_array
+		if (num_max_vfs > bd) {
+#endif
+			unsigned int vfs = max_vfs[bd];
+			ixgbe_validate_option(&vfs, &opt);
+			adapter->num_vfs = vfs;
+			if (vfs)
+				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
+			else
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+#ifdef module_param_array
+		} else {
+			if (opt.def == OPTION_DISABLED) {
+				adapter->num_vfs = 0;
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+			} else {
+				adapter->num_vfs = 8;
+				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
+			}
+		}
+#endif
+
+		/* Check Interoperability */
+		if (*aflags & IXGBE_FLAG_SRIOV_ENABLED) {
+			if (!(*aflags & IXGBE_FLAG_SRIOV_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "IOV is not supported on this "
+				        "hardware.  Disabling IOV.\n");
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+				adapter->num_vfs = 0;
+			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
+				DPRINTK(PROBE, INFO,
+				        "IOV is not supported while multiple "
+				        "queues are disabled.  "
+				        "Disabling IOV.\n");
+				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+				adapter->num_vfs = 0;
+			} else {
+				*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
+				adapter->flags2 &= ~IXGBE_FLAG2_RSC_CAPABLE;
+			}
+		}
+	}
+#endif /* CONFIG_PCI_IOV */
 	{ /* Interrupt Throttling Rate */
 		static struct ixgbe_option opt = {
 			.type = range_option,
@@ -758,19 +765,15 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			adapter->tx_itr_setting = (DEFAULT_ITR >> 1) & ~1;
 		}
 #endif
-#ifndef IXGBE_NO_HW_RSC
 		/* Check Interoperability */
 		if (adapter->rx_itr_setting == 0 &&
 		    adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE) {
 			/* itr ==0 and RSC are mutually exclusive */
 			adapter->flags2 &= ~IXGBE_FLAG2_RSC_CAPABLE;
-#ifdef NETIF_F_LRO
 			adapter->netdev->features &= ~NETIF_F_LRO;
-#endif
 			DPRINTK(PROBE, INFO,
 			     "InterruptThrottleRate set to 0, disabling RSC\n");
 		}
-#endif /* IXGBE_NO_HW_RSC */
 	}
 #ifndef IXGBE_NO_LLI
 	{ /* Low Latency Interrupt TCP Port*/
@@ -985,13 +988,22 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				        "Flow Director hash filtering enabled\n");
 				break;
 			case IXGBE_FDIR_FILTER_PERFECT:
+#ifdef NETIF_F_NTUPLE
 				*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
 				*aflags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 				feature[RING_F_FDIR].indices =
 					IXGBE_MAX_FDIR_INDICES;
-				spin_lock_init(&adapter->fdir_perfect_lock);
 				DPRINTK(PROBE, INFO,
 				        "Flow Director perfect filtering enabled\n");
+#else /* NETIF_F_NTUPLE */
+				DPRINTK(PROBE, INFO, "No ethtool support for "
+				        "Flow Director perfect filtering. "
+				        "Defaulting to hash filtering.\n");
+				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+				feature[RING_F_FDIR].indices =
+					IXGBE_MAX_FDIR_INDICES;
+#endif /* NETIF_F_NTUPLE */
 				break;
 			default:
 				break;

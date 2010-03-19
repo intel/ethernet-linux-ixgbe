@@ -480,6 +480,20 @@ s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 }
 
 /**
+ *  ixgbe_flap_tx_laser - flap Tx laser to start autotry process
+ *  @hw: pointer to hardware structure
+ *
+ *  When the driver changes the link speeds that it can support then 
+ *  flap the tx laser to alert the link partner to start autotry
+ *  process on its end.
+ **/
+void ixgbe_flap_tx_laser(struct ixgbe_hw *hw)
+{
+	if (hw->mac.ops.flap_tx_laser)
+		hw->mac.ops.flap_tx_laser(hw);
+}
+
+/**
  *  ixgbe_setup_link - Set link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed

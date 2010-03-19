@@ -328,8 +328,8 @@ int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
 	return 0;
 }
 #else
-static int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
-			      struct ixgbe_dcb_config *dst_dcb_cfg, int tc_max)
+int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
+		       struct ixgbe_dcb_config *dst_dcb_cfg, int tc_max)
 {
 	struct tc_configuration *src_tc_cfg = NULL;
 	struct tc_configuration *dst_tc_cfg = NULL;
@@ -1381,7 +1381,11 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 
 		if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
 			if (netif_running(netdev))
+#ifdef HAVE_NET_DEVICE_OPS
 				netdev->netdev_ops->ndo_stop(netdev);
+#else
+				netdev->stop(netdev);
+#endif
 			ixgbe_clear_interrupt_scheme(adapter);
 		} else {
 			if (netif_running(netdev))
@@ -1398,22 +1402,37 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	}
 
 	if (adapter->dcb_cfg.pfc_mode_enable) {
-		if ((adapter->hw.mac.type != ixgbe_mac_82598EB) &&
-			(adapter->hw.fc.current_mode != ixgbe_fc_pfc))
-			adapter->last_lfc_mode = adapter->hw.fc.current_mode;
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82599EB:
+			if (adapter->hw.fc.current_mode != ixgbe_fc_pfc)
+				adapter->last_lfc_mode = adapter->hw.fc.current_mode;
+			break;
+		default:
+			break;
+		}
 		adapter->hw.fc.requested_mode = ixgbe_fc_pfc;
 	} else {
-		if (adapter->hw.mac.type != ixgbe_mac_82598EB)
-			adapter->hw.fc.requested_mode = adapter->last_lfc_mode;
-		else
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82598EB:
 			adapter->hw.fc.requested_mode = ixgbe_fc_none;
+			break;
+		case ixgbe_mac_82599EB:
+			adapter->hw.fc.requested_mode = adapter->last_lfc_mode;
+			break;
+		default:
+			break;
+		}
 	}
 
 	if (adapter->dcb_set_bitmap & BIT_RESETLINK) {
 		if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
 			ixgbe_init_interrupt_scheme(adapter);
 			if (netif_running(netdev))
+#ifdef HAVE_NET_DEVICE_OPS
 				netdev->netdev_ops->ndo_open(netdev);
+#else
+				netdev->open(netdev);
+#endif
 		} else {
 			if (netif_running(netdev))
 				ixgbe_up(adapter);
@@ -1528,6 +1547,9 @@ static u8 ixgbe_dcbnl_getcap(struct net_device *netdev, int capid, u8 *cap)
 		case DCB_CAP_ATTR_GSP:
 			*cap = true;
 			break;
+		case DCB_CAP_ATTR_BCN:
+			*cap = false;
+			break;
 		default:
 			rval = -EINVAL;
 			break;
@@ -1547,10 +1569,10 @@ static u8 ixgbe_dcbnl_getnumtcs(struct net_device *netdev, int tcid, u8 *num)
 	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
 		switch (tcid) {
 		case DCB_NUMTCS_ATTR_PG:
-			*num = MAX_TRAFFIC_CLASS;
+			*num = adapter->dcb_cfg.num_tcs.pg_tcs;
 			break;
 		case DCB_NUMTCS_ATTR_PFC:
-			*num = MAX_TRAFFIC_CLASS;
+			*num = adapter->dcb_cfg.num_tcs.pfc_tcs;
 			break;
 		default:
 			rval = -EINVAL;
@@ -1565,7 +1587,26 @@ static u8 ixgbe_dcbnl_getnumtcs(struct net_device *netdev, int tcid, u8 *num)
 
 static u8 ixgbe_dcbnl_setnumtcs(struct net_device *netdev, int tcid, u8 num)
 {
-	return -EINVAL;
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	u8 rval = 0;
+
+	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
+		switch (tcid) {
+		case DCB_NUMTCS_ATTR_PG:
+			adapter->dcb_cfg.num_tcs.pg_tcs = num;
+			break;
+		case DCB_NUMTCS_ATTR_PFC:
+			adapter->dcb_cfg.num_tcs.pfc_tcs = num;
+			break;
+		default:
+			rval = -EINVAL;
+			break;
+		}
+	} else {
+		rval = -EINVAL;
+	}
+
+	return rval;
 }
 
 static u8 ixgbe_dcbnl_getpfcstate(struct net_device *netdev)

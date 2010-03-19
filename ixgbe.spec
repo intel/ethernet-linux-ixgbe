@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 2.0.62.4
+Version: 2.0.72.4
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -121,7 +121,7 @@ find lib -name "ixgbe.*o" -exec mv {} {}.new \; \
 %clean
 rm -rf %{buildroot}
 
-%files -f %{_builddir}/%{name}-%{version}/file.list
+%files -f file.list
 %defattr(-,root,root)
 %{_mandir}/man7/ixgbe.7.gz
 %doc COPYING

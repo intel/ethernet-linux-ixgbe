@@ -63,7 +63,6 @@ int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 	 * addresses */
 	for (i = 0; i < entries; i++) {
 		vfinfo->vf_mc_hashes[i] = hash_list[i];;
-		DPRINTK(PROBE, INFO, "Hash value = 0x%03X\n", hash_list[i]);
 	}
 
 	/* Flush and reset the mta with the new values */
@@ -235,6 +234,8 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		ixgbe_vf_reset_msg(adapter, vf);
 		adapter->vfinfo[vf].clear_to_send = true;
 
+		ixgbe_set_vf_mac(adapter, vf, vf_mac);
+
 		/* reply to reset with ack and vf mac address */
 		msgbuf[0] = IXGBE_VF_RESET | IXGBE_VT_MSGTYPE_ACK;
 		memcpy(addr, vf_mac, IXGBE_ETH_LENGTH_OF_ADDRESS);
@@ -328,4 +329,31 @@ void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 			ixgbe_rcv_ack_from_vf(adapter, vf);
 	}
 }
+
+void ixgbe_disable_tx_rx(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	/* disable transmit and receive for all vfs */
+	IXGBE_WRITE_REG(hw, IXGBE_VFTE(0), 0);
+	IXGBE_WRITE_REG(hw, IXGBE_VFTE(1), 0);
+
+	IXGBE_WRITE_REG(hw, IXGBE_VFRE(0), 0);
+	IXGBE_WRITE_REG(hw, IXGBE_VFRE(1), 0);
+}
+
+void ixgbe_ping_all_vfs(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 ping;
+	int i;
+
+	for (i = 0 ; i < adapter->num_vfs; i++) {
+		ping = IXGBE_PF_CONTROL_MSG;
+		if (adapter->vfinfo[i].clear_to_send)
+			ping |= IXGBE_VT_MSGTYPE_CTS;
+		ixgbe_write_mbx(hw, &ping, 1, i);
+	}
+}
+
 

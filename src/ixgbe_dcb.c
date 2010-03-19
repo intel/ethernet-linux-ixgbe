@@ -59,7 +59,7 @@ s32 ixgbe_dcb_check_config(struct ixgbe_dcb_config *dcb_config)
 	/* First Tx, then Rx */
 	for (i = 0; i < 2; i++) {
 		/* Check each traffic class for rule violation */
-		for (j = 0; j < MAX_TRAFFIC_CLASS; j++) {
+		for (j = 0; j < dcb_config->num_tcs.pg_tcs; j++) {
 			p = &dcb_config->tc_config[j].path[i];
 
 			bw = p->bwg_percent;

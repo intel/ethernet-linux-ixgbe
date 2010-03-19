@@ -31,6 +31,7 @@
 		108e 7b12  Sun Dual 10GbE PCIe 2.0 FEM
 		8086 000d  Ethernet Mezzanine Adapter X520-KX4-2
 	10f8  82599EB 10 Gigabit Dual Port Backplane Connection
+		8086 000c  Ethernet X520 10GbE Dual Port KX4-KR Mezz
 	10f9  82599EB 10 Gigabit CX4 Dual Port Network Connection
 	10fb  82599EB 10 Gigabit Network Connection
 		108e 7b11  Ethernet Server Adapter X520-2

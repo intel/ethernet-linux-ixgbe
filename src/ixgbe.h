@@ -45,11 +45,8 @@
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 #define IXGBE_DCA
 #include <linux/dca.h>
-
 #endif
-
 #include "ixgbe_dcb.h"
-
 
 #include "kcompat.h"
 
@@ -95,11 +92,6 @@
 #define IXGBE_RX_HDR_SIZE IXGBE_RXBUFFER_256
 
 #define MAXIMUM_ETHERNET_VLAN_SIZE (VLAN_ETH_FRAME_LEN + ETH_FCS_LEN)
-
-#if defined(IXGBE_DCB) || defined(IXGBE_RSS) || \
-    defined(IXGBE_VMDQ)
-#define IXGBE_MQ
-#endif
 
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBE_RX_BUFFER_WRITE	16	/* Must be power of 2 */
@@ -196,6 +188,8 @@ struct ixgbe_queue_stats {
 	u64 bytes;
 };
 
+#define netdev_ring(adapter, ring) (adapter->netdev)
+
 struct ixgbe_ring {
 	void *desc;			/* descriptor ring memory */
 	union {
@@ -219,23 +213,19 @@ struct ixgbe_ring {
 	unsigned int total_bytes;
 	unsigned int total_packets;
 
-#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	/* cpu for tx queue */
-	u8 cpu;
-#endif
+	int cpu;
 	u16 work_limit;                /* max work per interrupt */
 	u16 reg_idx;			/* holds the special value that gets the
 					 * hardware register offset associated
 					 * with this ring, which is different
 					 * for DCB and RSS modes */
-	u8 numa_node;
 
 	struct ixgbe_queue_stats stats;
 	unsigned long reinit_state;
-#ifndef IXGBE_NO_HW_RSC
+	int numa_node;
 	u64 rsc_count;                 /* stat for coalesced packets */
 	u64 rsc_flush;
-#endif
 	u32 restart_queue;             /* track tx queue restarts */
 	u32 non_eop_descs;             /* track hardware descriptor chaining */
 	unsigned int size;		/* length in bytes */
@@ -285,9 +275,7 @@ struct ixgbe_q_vector {
 	u8 tx_itr;
 	u8 rx_itr;
 	u32 eitr;
-#ifndef IXGBE_NO_LRO
 	struct ixgbe_lro_list *lrolist;   /* LRO list for queue vector*/
-#endif
 	char name[IFNAMSIZ + 9];
 #ifndef HAVE_NETDEV_NAPI_LIST
 	struct net_device poll_dev;
@@ -430,13 +418,9 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_SRIOV_ENABLED                (u32)(1 << 31)
 
 	u32 flags2;
-#ifndef IXGBE_NO_HW_RSC
 #define IXGBE_FLAG2_RSC_CAPABLE                  (u32)(1)
 #define IXGBE_FLAG2_RSC_ENABLED                  (u32)(1 << 1)
-#endif /* IXGBE_NO_HW_RSC */
-#ifndef IXGBE_NO_LRO
 #define IXGBE_FLAG2_SWLRO_ENABLED                (u32)(1 << 2)
-#endif /* IXGBE_NO_LRO */
 #define IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE        (u32)(1 << 3)
 
 /* default to trying for four seconds */
@@ -491,10 +475,8 @@ struct ixgbe_adapter {
 	u32 atr_sample_rate;
 	spinlock_t fdir_perfect_lock;
 	struct work_struct fdir_reinit_task;
-#ifndef IXGBE_NO_HW_RSC
 	u64 rsc_total_count;
 	u64 rsc_total_flush;
-#endif
 	u32 wol;
 	u16 eeprom_version;
 	bool netdev_registered;
@@ -519,11 +501,9 @@ enum ixbge_state_t {
 	__IXGBE_SFP_MODULE_NOT_FOUND
 };
 
-#ifdef CONFIG_DCB
 extern struct dcbnl_rtnl_ops dcbnl_ops;
 extern int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
 			      struct ixgbe_dcb_config *dst_dcb_cfg, int tc_max);
-#endif
 
 /* needed by ixgbe_main.c */
 extern int ixgbe_validate_mac_addr(u8 *mc_addr);
@@ -553,6 +533,7 @@ extern void ixgbe_alloc_rx_buffers(struct ixgbe_adapter *adapter,
 extern void ixgbe_rx_desc_queue_enable(struct ixgbe_adapter *adapter, int rxr);
 
 extern void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter, int index);
+extern void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter, int index);
 void ixgbe_set_rx_mode(struct net_device *netdev);
 
 #ifdef ETHTOOL_OPS_COMPAT
