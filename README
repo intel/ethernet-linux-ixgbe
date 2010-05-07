@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-February 8, 2010
+April 15, 2010
 
 Contents
 ========
@@ -288,11 +288,11 @@ Default Value: 2
 2 = Optimal mode. Driver will use single buffer mode for non-Jumbo 
     configurations and packet split mode for Jumbo configurations.
 
-InterruptType
+IntMode
 -------------
 Valid Range: 0 - 2 (0 = Legacy Int, 1 = MSI and 2 = MSI-X)
 Default Value: 2
-Interrupt type controls allow load time control over the type of interrupt
+IntMode controls allow load time control over the type of interrupt
 registered for by the driver.  MSI-X is required for multiple queue
 support, and some kernels and combinations of kernel .config options will
 force a lower level of interrupt support.  'cat /proc/interrupts' will show
@@ -398,6 +398,26 @@ affinity.
 
 You can verify that the driver is using Flow Director by looking at the counter
 in ethtool: fdir_miss and fdir_match.
+
+Other Ethtool Commands:
+To enable Flow Director
+	ethtool -K ethX ntuple on
+To add a filter
+	Use -U switch. e.g., ethtool -U ethX flow-type tcp4 src-ip 0x178000a 
+        action 1
+To see the list of filters currently present:
+	ethtool -u ethX
+
+Perfect Filter: Perfect filter is an interface to load the filter table that 
+funnels all flow into queue_0 unless an alternative queue is specified using 
+"action". In that case, any flow that matches the filter criteria will be 
+directed to the appropriate queue. 
+ 
+If the queue is defined as -1, filter will drop matching packets. 
+
+To account for filter matches and misses, there are two stats in ethtool: 
+fdir_match and fdir_miss. In addition, rx_queue_N_packets shows the number of 
+packets processed by the Nth queue.
 
 The following three parameters impact Flow Director.
 
@@ -586,15 +606,6 @@ Additional Configurations
   # sysctl -e net.core.netdev_max_backlog=10000
   net.core.netdev_max_backlog = 10000
 
-  FCoE
-  ----
-  This release of the ixgbe driver contains new code to enable users to use 
-  Fiber Channel over Ethernet (FCoE) and Data Center Bridging (DCB) 
-  functionality that is supported by the 82598-based hardware.  This code has
-  no default effect on the regular driver operation, and configuring DCB and 
-  FCoE is outside the scope of this driver README. Refer to 
-  http://www.open-fcoe.org/ for FCoE project information and contact 
-  e1000-eedc@lists.sourceforge.net for DCB information.
 
 Performance Tuning
 ==================
@@ -670,11 +681,8 @@ Known Issues/Troubleshooting
   UDP Stress Test Dropped Packet Issue
   --------------------------------------
   Under small packets UDP stress test with 10GbE driver, the Linux system
-  may drop UDP packets due to the fullness of socket buffers. You may want
-  to change the driver's Flow Control variables to the minimum value for
-  controlling packet reception.
-
-  Or you can increase the kernel's default buffer sizes for udp by changing 
+  may drop UDP packets due to the fullness of socket buffers. 
+  You can increase the kernel's default buffer sizes for udp by changing 
   the values in /proc/sys/net/core/rmem_default and rmem_max
 
   Unplugging network cable while ethtool -p is running
@@ -774,7 +782,7 @@ License
 =======
 
 Intel 10 Gigabit PCI Express Linux driver.
-Copyright(c) 1999 - 2009 Intel Corporation.
+Copyright(c) 1999 - 2010 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,

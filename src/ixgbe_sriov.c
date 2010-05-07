@@ -48,7 +48,11 @@ int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 			    int entries, u16 *hash_list, u32 vf)
 {
 	struct vf_data_storage *vfinfo = &adapter->vfinfo[vf];
+	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
+	u32 vector_bit;
+	u32 vector_reg;
+	u32 mta_reg;
 
 	/* only so many hash values supported */
 	entries = min(entries, IXGBE_MAX_VF_MC_ENTRIES);
@@ -65,8 +69,14 @@ int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 		vfinfo->vf_mc_hashes[i] = hash_list[i];;
 	}
 
-	/* Flush and reset the mta with the new values */
-	ixgbe_set_rx_mode(adapter->netdev);
+	for (i = 0; i < vfinfo->num_vf_mc_hashes; i++) {
+		vector_reg = (vfinfo->vf_mc_hashes[i] >> 5) & 0x7F;
+		vector_bit = vfinfo->vf_mc_hashes[i] & 0x1F;
+		mta_reg = IXGBE_READ_REG(hw, IXGBE_MTA(vector_reg));
+		mta_reg |= (1 << vector_bit);
+		IXGBE_WRITE_REG(hw, IXGBE_MTA(vector_reg), mta_reg);
+	}
+
 
 	return 0;
 }
@@ -95,20 +105,13 @@ void ixgbe_restore_vf_multicasts(struct ixgbe_adapter *adapter)
 
 int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf)
 {
-	u32 ctrl;
-
-	/* Check if global VLAN already set, if not set it */
-	ctrl = IXGBE_READ_REG(&adapter->hw, IXGBE_VLNCTRL);
-	if (!(ctrl & IXGBE_VLNCTRL_VFE)) {
-		/* enable VLAN tag insert/strip */
-		ctrl |= IXGBE_VLNCTRL_VFE;
-		ctrl &= ~IXGBE_VLNCTRL_CFIEN;
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_VLNCTRL, ctrl);
-	}
-
 	return ixgbe_set_vfta(&adapter->hw, vid, vf, (bool)add);
 }
 
+void ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf)
+{
+	return;
+}
 
 void ixgbe_set_vmolr(struct ixgbe_hw *hw, u32 vf)
 {
@@ -273,7 +276,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		break;
 	case IXGBE_VF_SET_LPE:
 		DPRINTK(PROBE, INFO, "Set LPE msg received from vf %d\n", vf);
-		WARN_ON((msgbuf[0] & 0xFFFF) == IXGBE_VF_SET_LPE);
+		ixgbe_set_vf_lpe(adapter, msgbuf);
 		break;
 	case IXGBE_VF_SET_VLAN:
 		add = (msgbuf[0] & IXGBE_VT_MSGINFO_MASK)

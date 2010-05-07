@@ -1073,8 +1073,10 @@ static inline void _kc_synchronize_irq(void)
 /*****************************************************************************/
 /* 2.6.0 => 2.5.28 */
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) )
-#define get_cpu() 0
-#define put_cpu()
+#undef get_cpu
+#define get_cpu() smp_processor_id()
+#undef put_cpu
+#define put_cpu() do { } while(0)
 #define MODULE_INFO(version, _version)
 #ifndef CONFIG_E1000_DISABLE_PACKET_SPLIT
 #define CONFIG_E1000_DISABLE_PACKET_SPLIT 1
@@ -1471,6 +1473,8 @@ typedef irqreturn_t (*irq_handler_t)(int, void*, struct pt_regs *);
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
 #undef CONFIG_INET_LRO
 #undef CONFIG_INET_LRO_MODULE
+#undef CONFIG_FCOE
+#undef CONFIG_FCOE_MODULE
 #endif
 typedef irqreturn_t (*new_handler_t)(int, void*);
 static inline irqreturn_t _kc_request_irq(unsigned int irq, new_handler_t handler, unsigned long flags, const char *devname, void *dev_id)
@@ -1875,6 +1879,9 @@ extern int _kc_pci_prepare_to_sleep(struct pci_dev *dev);
 #ifndef CONFIG_NR_CPUS
 #define CONFIG_NR_CPUS 1
 #endif /* CONFIG_NR_CPUS */
+#ifndef pcie_aspm_enabled
+#define pcie_aspm_enabled()   (1)
+#endif /* pcie_aspm_enabled */
 #else /* < 2.6.29 */
 #ifdef CONFIG_DCB
 #define HAVE_PFC_MODE_ENABLE
@@ -1883,6 +1890,8 @@ extern int _kc_pci_prepare_to_sleep(struct pci_dev *dev);
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30) )
+#undef CONFIG_FCOE
+#undef CONFIG_FCOE_MODULE
 extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #define skb_tx_hash(n, s) _kc_skb_tx_hash(n, s)
 #define skb_record_rx_queue(a, b) do {} while (0)
@@ -1951,6 +1960,9 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
+#ifndef HAVE_NETDEV_MC_LIST
+#define HAVE_NETDEV_MC_LIST
+#endif
 #ifndef netdev_mc_count
 #define netdev_mc_count(dev) ((dev)->mc_count)
 #endif
@@ -1960,6 +1972,16 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 #ifndef netdev_for_each_mc_addr
 #define netdev_for_each_mc_addr(mclist, dev) \
 	for (mclist = dev->mc_list; mclist; mclist = mclist->next)
+#endif
+#ifndef netdev_uc_count
+#define netdev_uc_count(dev) ((dev)->uc_count)
+#endif
+#ifndef netdev_uc_empty
+#define netdev_uc_empty(dev) (netdev_uc_count(dev) == 0)
+#endif
+#else /* < 2.6.34 */
+#ifndef HAVE_SET_RX_MODE
+#define HAVE_SET_RX_MODE
 #endif
 #endif /* < 2.6.34 */
 #endif /* _KCOMPAT_H_ */

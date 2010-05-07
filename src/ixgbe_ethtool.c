@@ -119,7 +119,9 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
            ((((struct ixgbe_adapter *)netdev_priv(netdev))->num_tx_queues + \
              ((struct ixgbe_adapter *)netdev_priv(netdev))->num_rx_queues) * \
              (sizeof(struct ixgbe_queue_stats) / sizeof(u64)))
-#define IXGBE_VF_STATS_LEN 0
+#define IXGBE_VF_STATS_LEN \
+        ((((struct ixgbe_adapter *)netdev_priv(netdev))->num_vfs) * \
+          (sizeof(struct vf_stats) / sizeof(u64)))
 #define IXGBE_PB_STATS_LEN ( \
 		(((struct ixgbe_adapter *)netdev_priv(netdev))->flags & \
 		 IXGBE_FLAG_DCB_ENABLED) ? \
@@ -1145,6 +1147,18 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 			data[i++] = adapter->stats.pxoffrxc[j];
 		}
 	}
+	stat_count = sizeof(struct vf_stats) / sizeof(u64);
+	for(j = 0; j < adapter->num_vfs; j++) {
+		queue_stat = (u64 *)&adapter->vfinfo[j].vfstats;
+		for (k = 0; k < stat_count; k++) {
+			data[i + k] = queue_stat[k];
+		}
+		queue_stat = (u64 *)&adapter->vfinfo[j].saved_rst_vfstats;
+		for (k = 0; k < stat_count; k++) {
+			data[i + k] += queue_stat[k];
+		}
+		i += k;
+	}
 }
 
 static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
@@ -1190,6 +1204,18 @@ static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 				sprintf(p, "rx_pb_%u_pxoff", i);
 				p += ETH_GSTRING_LEN;
 			}
+		}
+		for (i = 0; i < adapter->num_vfs; i++) {
+			sprintf(p, "VF %d Rx Packets", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "VF %d Rx Bytes", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "VF %d Tx Packets", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "VF %d Tx Bytes", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "VF %d MC Packets", i);
+			p += ETH_GSTRING_LEN;
 		}
 		/* BUG_ON(p - data != IXGBE_STATS_LEN * ETH_GSTRING_LEN); */
 		break;
@@ -2003,6 +2029,25 @@ static void ixgbe_diag_test(struct net_device *netdev,
 		if (ixgbe_link_test(adapter, &data[4]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
+		if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
+			int i;
+			for (i = 0; i < adapter->num_vfs; i++) {
+				if (adapter->vfinfo[i].clear_to_send) {
+					DPRINTK(DRV, WARNING, "Please take "
+						"active VFS offline and "
+						"restart the adapter before "
+						"running NIC diagnostics\n");
+					data[0] = 1;
+					data[1] = 1;
+					data[2] = 1;
+					data[3] = 1;
+					clear_bit(__IXGBE_TESTING,
+						  &adapter->state);
+					goto skip_ol_tests;
+				}
+			}
+		}
+
 		if (if_running)
 			/* indicate we're in test mode */
 			dev_close(netdev);
@@ -2058,6 +2103,7 @@ skip_loopback:
 
 		clear_bit(__IXGBE_TESTING, &adapter->state);
 	}
+skip_ol_tests:
 	msleep_interruptible(4 * 1000);
 }
 
@@ -2220,7 +2266,7 @@ static int ixgbe_get_coalesce(struct net_device *netdev,
  * this function must be called before setting the new value of
  * rx_itr_setting
  */
-static void ixgbe_reenable_rsc(struct ixgbe_adapter *adapter,
+static bool ixgbe_reenable_rsc(struct ixgbe_adapter *adapter,
                                struct ethtool_coalesce *ec)
 {
 	/* check the old value and enable RSC if necessary */
@@ -2230,11 +2276,9 @@ static void ixgbe_reenable_rsc(struct ixgbe_adapter *adapter,
 		adapter->netdev->features |= NETIF_F_LRO;
 		DPRINTK(PROBE, INFO, "rx-usecs set to %d, re-enabling RSC\n",
 		        ec->rx_coalesce_usecs);
-		if (netif_running(adapter->netdev))
-			ixgbe_reinit_locked(adapter);
-		else
-			ixgbe_reset(adapter);
+		return true;
 	}
+	return false;
 }
 
 extern void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);
@@ -2245,6 +2289,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_q_vector *q_vector;
 	int i;
+	bool need_reset = false;
 
 	/* don't accept tx specific changes if we've got mixed RxTx vectors */
 	if (adapter->q_vector[0]->txr_count && adapter->q_vector[0]->rxr_count
@@ -2272,7 +2317,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 			return -EINVAL;
 
 		/* check the old value and enable RSC if necessary */
-		ixgbe_reenable_rsc(adapter, ec);
+		need_reset = ixgbe_reenable_rsc(adapter, ec);
 
 		/* store the value in ints/second */
 		adapter->rx_eitr_param = 1000000/ec->rx_coalesce_usecs;
@@ -2283,7 +2328,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		adapter->rx_itr_setting &= ~1;
 	} else if (ec->rx_coalesce_usecs == 1) {
 		/* check the old value and enable RSC if necessary */
-		ixgbe_reenable_rsc(adapter, ec);
+		need_reset = ixgbe_reenable_rsc(adapter, ec);
 
 		/* 1 means dynamic mode */
 		adapter->rx_eitr_param = 20000;
@@ -2307,12 +2352,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 			netdev->features &= ~NETIF_F_LRO;
 			DPRINTK(PROBE, INFO,
 			        "rx-usecs set to 0, disabling RSC\n");
-
-			if (netif_running(netdev))
-				ixgbe_reinit_locked(adapter);
-			else
-				ixgbe_reset(adapter);
-			return 0;
+			need_reset = true;
 		}
 	}
 
@@ -2362,6 +2402,18 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		q_vector = adapter->q_vector[0];
 		q_vector->eitr = adapter->rx_eitr_param;
 		ixgbe_write_eitr(q_vector);
+	}
+
+	/*
+	 * do reset here at the end to make sure EITR==0 case is handled
+	 * correctly w.r.t stopping tx, and changing TXDCTL.WTHRESH settings
+	 * also locks in RSC enable/disable which requires reset
+	 */
+	if (need_reset) {
+		if (netif_running(netdev))
+			ixgbe_reinit_locked(adapter);
+		else
+			ixgbe_reset(adapter);
 	}
 
 	return 0;

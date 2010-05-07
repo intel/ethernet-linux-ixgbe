@@ -72,7 +72,7 @@
 	MODULE_PARM_DESC(X, desc);
 #endif
 
-/* Interrupt Type
+/* IntMode (Interrupt Mode)
  *
  * Valid Range: 0-2
  *  - 0 - Legacy Interrupt
@@ -81,7 +81,8 @@
  *
  * Default Value: 2
  */
-IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), default 2");
+IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), default IntMode (deprecated)");
+IXGBE_PARAM(IntMode, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), default 2");
 #define IXGBE_INT_LEGACY		      0
 #define IXGBE_INT_MSI			      1
 #define IXGBE_INT_MSIX			      2
@@ -398,11 +399,11 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 
-	{ /* Interrupt Type */
-		unsigned int i_type;
+	{ /* Interrupt Mode */
+		unsigned int int_mode;
 		static struct ixgbe_option opt = {
 			.type = range_option,
-			.name = "Interrupt Type",
+			.name = "Interrupt Mode",
 			.err =
 			  "using default of "__MODULE_STRING(IXGBE_DEFAULT_INT),
 			.def = IXGBE_DEFAULT_INT,
@@ -411,11 +412,13 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 
 #ifdef module_param_array
-		if (num_InterruptType > bd) {
+		if (num_IntMode > bd || num_InterruptType > bd) {
 #endif
-			i_type = InterruptType[bd];
-			ixgbe_validate_option(&i_type, &opt);
-			switch (i_type) {
+			int_mode = IntMode[bd];
+			if (int_mode == OPTION_UNSET)
+				int_mode = InterruptType[bd];
+			ixgbe_validate_option(&int_mode, &opt);
+			switch (int_mode) {
 			case IXGBE_INT_MSIX:
 				if (!(*aflags & IXGBE_FLAG_MSIX_CAPABLE))
 					printk(KERN_INFO
@@ -644,6 +647,8 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				/* for now, disable RSS when using VMDQ mode */
 				*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
 				*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
+				feature[RING_F_VMDQ].indices =
+				          min(feature[RING_F_VMDQ].indices, 16);
 				break;
 			case ixgbe_mac_82599EB:
 				if (feature[RING_F_RSS].indices > 2

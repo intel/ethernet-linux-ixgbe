@@ -57,6 +57,10 @@
 #define IXGBE_I2C_EEPROM_STATUS_FAIL         0x2
 #define IXGBE_I2C_EEPROM_STATUS_IN_PROGRESS  0x3
 
+/* Flow control defines */
+#define IXGBE_TAF_SYM_PAUSE                  0x400
+#define IXGBE_TAF_ASM_PAUSE                  0x800
+
 /* Bit-shift macros */
 #define IXGBE_SFF_VENDOR_OUI_BYTE0_SHIFT    24
 #define IXGBE_SFF_VENDOR_OUI_BYTE1_SHIFT    16
@@ -80,6 +84,8 @@
 #define IXGBE_I2C_T_SU_STO  4
 #define IXGBE_I2C_T_BUF     5
 
+#define IXGBE_TN_LASI_STATUS_REG        0x9005
+#define IXGBE_TN_LASI_STATUS_TEMP_ALARM 0x0008
 
 
 s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw);
@@ -116,6 +122,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw);
 s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
                                         u16 *list_offset,
                                         u16 *data_offset);
+s32 ixgbe_tn_check_overtemp(struct ixgbe_hw *hw);
 s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
                                 u8 dev_addr, u8 *data);
 s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,

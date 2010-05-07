@@ -151,9 +151,6 @@ static s32 ixgbe_poll_for_msg(struct ixgbe_hw *hw, u16 mbx_id)
 		udelay(mbx->udelay);
 	}
 
-	/* if we failed, all future posted messages fail until reset */
-	if (!countdown)
-		mbx->timeout = 0;
 out:
 	return countdown ? 0 : IXGBE_ERR_MBX;
 }
@@ -180,9 +177,6 @@ static s32 ixgbe_poll_for_ack(struct ixgbe_hw *hw, u16 mbx_id)
 		udelay(mbx->udelay);
 	}
 
-	/* if we failed, all future posted messages fail until reset */
-	if (!countdown)
-		mbx->timeout = 0;
 out:
 	return countdown ? 0 : IXGBE_ERR_MBX;
 }

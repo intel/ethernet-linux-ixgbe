@@ -50,20 +50,19 @@ s32 ixgbe_dcb_get_tc_stats_82599(struct ixgbe_hw *hw,
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Transmitted Packets */
 		stats->qptc[tc] += IXGBE_READ_REG(hw, IXGBE_QPTC(tc));
-		/* Transmitted Bytes */
-		stats->qbtc[tc] += IXGBE_READ_REG(hw, IXGBE_QBTC(tc));
+		/* Transmitted Bytes (read low first to prevent missed carry) */
+		stats->qbtc[tc] += IXGBE_READ_REG(hw, IXGBE_QBTC_L(tc));
+		stats->qbtc[tc] +=
+			(((u64)(IXGBE_READ_REG(hw, IXGBE_QBTC_H(tc)))) << 32);
 		/* Received Packets */
 		stats->qprc[tc] += IXGBE_READ_REG(hw, IXGBE_QPRC(tc));
-		/* Received Bytes */
-		stats->qbrc[tc] += IXGBE_READ_REG(hw, IXGBE_QBRC(tc));
+		/* Received Bytes (read low first to prevent missed carry) */
+		stats->qbrc[tc] += IXGBE_READ_REG(hw, IXGBE_QBRC_L(tc));
+		stats->qbrc[tc] +=
+			(((u64)(IXGBE_READ_REG(hw, IXGBE_QBRC_H(tc)))) << 32);
 
-#if 0
-		/* Can we get rid of these??  Consequently, getting rid
-		 * of the tc_stats structure.
-		 */
-		tc_stats_array[up]->in_overflow_discards = 0;
-		tc_stats_array[up]->out_overflow_discards = 0;
-#endif
+		/* Received Dropped Packet */
+		stats->qprdc[tc] += IXGBE_READ_REG(hw, IXGBE_QPRDC(tc));
 	}
 
 	return 0;

@@ -61,6 +61,8 @@ s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw,
                                ixgbe_link_speed speed,
                                bool autoneg,
                                bool autoneg_wait_to_complete);
+void ixgbe_disable_tx_laser(struct ixgbe_hw *hw);
+void ixgbe_enable_tx_laser(struct ixgbe_hw *hw);
 void ixgbe_flap_tx_laser(struct ixgbe_hw *hw);
 s32 ixgbe_setup_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
                            bool autoneg, bool autoneg_wait_to_complete);
@@ -162,6 +164,7 @@ s32 ixgbe_acquire_swfw_semaphore(struct ixgbe_hw *hw, u16 mask);
 void ixgbe_release_swfw_semaphore(struct ixgbe_hw *hw, u16 mask);
 s32 ixgbe_get_wwn_prefix(struct ixgbe_hw *hw, u16 *wwnn_prefix,
                          u16 *wwpn_prefix);
+s32 ixgbe_get_fcoe_boot_status(struct ixgbe_hw *hw, u16 *bs);
 
 
 #endif /* _IXGBE_API_H_ */

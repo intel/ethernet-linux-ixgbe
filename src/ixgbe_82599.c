@@ -35,6 +35,8 @@ s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
                                       ixgbe_link_speed *speed,
                                       bool *autoneg);
 enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw);
+void ixgbe_disable_tx_laser_multispeed_fiber(struct ixgbe_hw *hw);
+void ixgbe_enable_tx_laser_multispeed_fiber(struct ixgbe_hw *hw);
 void ixgbe_flap_tx_laser_multispeed_fiber(struct ixgbe_hw *hw);
 s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
                                      ixgbe_link_speed speed, bool autoneg,
@@ -73,8 +75,14 @@ void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 	if (hw->phy.multispeed_fiber) {
 		/* Set up dual speed SFP+ support */
 		mac->ops.setup_link = &ixgbe_setup_mac_link_multispeed_fiber;
+		mac->ops.disable_tx_laser =
+		                       &ixgbe_disable_tx_laser_multispeed_fiber;
+		mac->ops.enable_tx_laser =
+		                        &ixgbe_enable_tx_laser_multispeed_fiber;
 		mac->ops.flap_tx_laser = &ixgbe_flap_tx_laser_multispeed_fiber;
 	} else {
+		mac->ops.disable_tx_laser = NULL;
+		mac->ops.enable_tx_laser = NULL;
 		mac->ops.flap_tx_laser = NULL;
 		if ((ixgbe_get_media_type(hw) == ixgbe_media_type_backplane) &&
 		     (hw->phy.smart_speed == ixgbe_smart_speed_auto ||
@@ -201,6 +209,7 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 
 	/* MAC */
 	mac->ops.reset_hw = &ixgbe_reset_hw_82599;
+	mac->ops.enable_relaxed_ordering = &ixgbe_enable_relaxed_ordering_82599;
 	mac->ops.get_media_type = &ixgbe_get_media_type_82599;
 	mac->ops.get_supported_physical_layer =
 	                            &ixgbe_get_supported_physical_layer_82599;
@@ -212,6 +221,7 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->ops.set_san_mac_addr = &ixgbe_set_san_mac_addr_generic;
 	mac->ops.get_device_caps = &ixgbe_get_device_caps_82599;
 	mac->ops.get_wwn_prefix = &ixgbe_get_wwn_prefix_generic;
+	mac->ops.get_fcoe_boot_status = &ixgbe_get_fcoe_boot_status_generic;
 
 	/* RAR, Multicast, VLAN */
 	mac->ops.set_vmdq = &ixgbe_set_vmdq_generic;
@@ -421,6 +431,44 @@ s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
 }
 
 /**
+ *  ixgbe_disable_tx_laser_multispeed_fiber - Disable Tx laser
+ *  @hw: pointer to hardware structure
+ *
+ *  The base drivers may require better control over SFP+ module
+ *  PHY states.  This includes selectively shutting down the Tx
+ *  laser on the PHY, effectively halting physical link.
+ **/
+void ixgbe_disable_tx_laser_multispeed_fiber(struct ixgbe_hw *hw)
+{
+	u32 esdp_reg = IXGBE_READ_REG(hw, IXGBE_ESDP);
+
+	/* Disable tx laser; allow 100us to go dark per spec */
+	esdp_reg |= IXGBE_ESDP_SDP3;
+	IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
+	IXGBE_WRITE_FLUSH(hw);
+	udelay(100);
+}
+
+/**
+ *  ixgbe_enable_tx_laser_multispeed_fiber - Enable Tx laser
+ *  @hw: pointer to hardware structure
+ *
+ *  The base drivers may require better control over SFP+ module
+ *  PHY states.  This includes selectively turning on the Tx
+ *  laser on the PHY, effectively starting physical link.
+ **/
+void ixgbe_enable_tx_laser_multispeed_fiber(struct ixgbe_hw *hw)
+{
+	u32 esdp_reg = IXGBE_READ_REG(hw, IXGBE_ESDP);
+
+	/* Enable tx laser; allow 100ms to light up */
+	esdp_reg &= ~IXGBE_ESDP_SDP3;
+	IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
+	IXGBE_WRITE_FLUSH(hw);
+	msleep(100);
+}
+
+/**
  *  ixgbe_flap_tx_laser_multispeed_fiber - Flap Tx laser
  *  @hw: pointer to hardware structure
  *
@@ -434,21 +482,9 @@ s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
  **/
 void ixgbe_flap_tx_laser_multispeed_fiber(struct ixgbe_hw *hw)
 {
-	u32 esdp_reg = IXGBE_READ_REG(hw, IXGBE_ESDP);
-
 	if (hw->mac.autotry_restart) {
-		/* Disable tx laser; allow 100us to go dark per spec */
-		esdp_reg |= IXGBE_ESDP_SDP3;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
-		IXGBE_WRITE_FLUSH(hw);
-		udelay(100);
-
-		/* Enable tx laser; allow 100ms to light up */
-		esdp_reg &= ~IXGBE_ESDP_SDP3;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
-		IXGBE_WRITE_FLUSH(hw);
-		msleep(100);
-
+		ixgbe_disable_tx_laser_multispeed_fiber(hw);
+		ixgbe_enable_tx_laser_multispeed_fiber(hw);
 		hw->mac.autotry_restart = false;
 	}
 }
@@ -614,7 +650,7 @@ s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
 				     bool autoneg_wait_to_complete)
 {
 	s32 status = 0;
-	ixgbe_link_speed link_speed;
+	ixgbe_link_speed link_speed = IXGBE_LINK_SPEED_UNKNOWN;
 	s32 i, j;
 	bool link_up = false;
 	u32 autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
@@ -705,6 +741,9 @@ s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
 					    autoneg_wait_to_complete);
 
 out:
+	if (link_up && (link_speed == IXGBE_LINK_SPEED_1GB_FULL))
+		hw_dbg(hw, "Smartspeed has downgraded the link speed "
+		"from the maximum advertised\n");
 	return status;
 }
 

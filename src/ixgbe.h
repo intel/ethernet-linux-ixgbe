@@ -50,6 +50,10 @@
 
 #include "kcompat.h"
 
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+#define IXGBE_FCOE
+#include "ixgbe_fcoe.h"
+#endif /* CONFIG_FCOE or CONFIG_FCOE_MODULE */
 
 #include "ixgbe_api.h"
 
@@ -115,6 +119,36 @@
 #define IXGBE_MAX_VFTA_ENTRIES          128
 #define MAX_EMULATION_MAC_ADDRS         16
 
+#define UPDATE_VF_COUNTER_32bit(reg, last_counter, counter)	\
+	{							\
+		u32 current_counter = IXGBE_READ_REG(hw, reg);	\
+		if (current_counter < last_counter)		\
+			counter += 0x100000000LL;		\
+		last_counter = current_counter;			\
+		counter &= 0xFFFFFFFF00000000LL;		\
+		counter |= current_counter;			\
+	}
+
+#define UPDATE_VF_COUNTER_36bit(reg_lsb, reg_msb, last_counter, counter) \
+	{								 \
+		u64 current_counter_lsb = IXGBE_READ_REG(hw, reg_lsb);	 \
+		u64 current_counter_msb = IXGBE_READ_REG(hw, reg_msb);	 \
+		u64 current_counter = (current_counter_msb << 32) |      \
+			current_counter_lsb;                             \
+		if (current_counter < last_counter)			 \
+			counter += 0x1000000000LL;			 \
+		last_counter = current_counter;				 \
+		counter &= 0xFFFFFFF000000000LL;			 \
+		counter |= current_counter;				 \
+	}
+
+struct vf_stats {
+	u64 gprc;
+	u64 gorc;
+	u64 gptc;
+	u64 gotc;
+	u64 mprc;
+};
 
 struct vf_data_storage {
 	unsigned char vf_mac_addresses[ETH_ALEN];
@@ -123,6 +157,9 @@ struct vf_data_storage {
 	u16 default_vf_vlan_id;
 	u16 vlans_enabled;
 	bool clear_to_send;
+	struct vf_stats vfstats;
+	struct vf_stats last_vfstats;
+	struct vf_stats saved_rst_vfstats;
 	int rar;
 };
 
@@ -422,6 +459,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RSC_ENABLED                  (u32)(1 << 1)
 #define IXGBE_FLAG2_SWLRO_ENABLED                (u32)(1 << 2)
 #define IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE        (u32)(1 << 3)
+#define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE          (u32)(1 << 5)
 
 /* default to trying for four seconds */
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
@@ -484,6 +522,8 @@ struct ixgbe_adapter {
 #ifdef IXGBE_TCP_TIMER
 	char tcp_timer_name[IFNAMSIZ + 9];
 #endif
+	struct work_struct check_overtemp_task;
+	u32 interrupt_event;
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
 	unsigned int num_vfs;

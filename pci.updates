@@ -53,3 +53,4 @@
 		8086 000b  Ethernet X520 10GbE Dual Port KX4 Mezz
 	1517  82599EB 10 Gigabit KR2 Network Connection
 		1137 006a  Cisco UCS CNA M61KR-I Intel Converged Network Adapter
+	151c  82599EB 10 Gigabit TN Network Connection

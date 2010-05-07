@@ -137,7 +137,9 @@ err_config:
  * It should be called only after the rules are checked by
  * ixgbe_dcb_check_config().
  */
-s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
+s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
+                                   struct ixgbe_dcb_config *dcb_config,
+                                   u32 max_frame_size,
                                    u8 direction)
 {
 	struct tc_bw_alloc *p;
@@ -145,6 +147,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
 	/* Initialization values default for Tx settings */
 	u32 credit_refill       = 0;
 	u32 credit_max          = 0;
+	u32 minimal_credit_max  = 0;
 	u16 link_percentage     = 0;
 	u8  bw_percent          = 0;
 	u8  i;
@@ -180,8 +183,15 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
 		 * of a TC is too small, the maximum credit may not be
 		 * enough to send out a jumbo frame in data plane arbitration.
 		 */
-		if (credit_max && (credit_max < MINIMUM_CREDIT_FOR_JUMBO))
-			credit_max = MINIMUM_CREDIT_FOR_JUMBO;
+
+		if (credit_max) {
+			minimal_credit_max = (max_frame_size +
+			                      (DCB_CREDIT_QUANTUM - 1)) /
+			                      DCB_CREDIT_QUANTUM;
+
+			if (credit_max < minimal_credit_max)
+				credit_max = minimal_credit_max;
+		}
 
 		if (direction == DCB_TX_CONFIG) {
 			/*
@@ -190,7 +200,8 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_dcb_config *dcb_config,
 			 * credit may not be enough to send out a TSO
 			 * packet in descriptor plane arbitration.
 			 */
-			if (credit_max && (credit_max < MINIMUM_CREDIT_FOR_TSO))
+			if (credit_max && (credit_max < MINIMUM_CREDIT_FOR_TSO)
+			    && (hw->mac.type == ixgbe_mac_82598EB))
 				credit_max = MINIMUM_CREDIT_FOR_TSO;
 
 			dcb_config->tc_config[i].desc_credits_max =

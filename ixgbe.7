@@ -78,7 +78,7 @@ received in header buffer and payload will be received in data buffer.
 2. = Optimal mode. Driver will use single buffer mode for non-Jumbo 
 configurations and packet split mode for Jumbo configurations.
 .LP
-.B InterruptType
+.B IntMode
 .IP
 .B Valid Range: 
 0-2 0 = Legacy Int, 1 = MSI and 2 = MSIX
@@ -86,7 +86,7 @@ configurations and packet split mode for Jumbo configurations.
 .B Default Value: 
 2
 .IP
-Interrupt type controls allow load time control over the type of interrupt
+IntMode controls allow load time control over the type of interrupt
 registered for by the driver.  MSI-X is required for multiple queue
 support, and some kernels and combinations of kernel .config options will
 force a lower level of interrupt support.  'cat /proc/interrupts' will show

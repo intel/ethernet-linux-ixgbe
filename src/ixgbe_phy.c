@@ -68,6 +68,7 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 	phy->ops.i2c_bus_clear = &ixgbe_i2c_bus_clear;
 	phy->ops.identify_sfp = &ixgbe_identify_sfp_module_generic;
 	phy->sfp_type = ixgbe_sfp_type_unknown;
+	phy->ops.check_overtemp = &ixgbe_tn_check_overtemp;
 	return 0;
 }
 
@@ -212,6 +213,12 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 
 	if (status != 0 || hw->phy.type == ixgbe_phy_none)
 		goto out;
+
+	if (!hw->phy.reset_if_overtemp &&
+	    (IXGBE_ERR_OVERTEMP == hw->phy.ops.check_overtemp(hw))) {
+		/* Don't reset PHY if it's shut down due to overtemp. */
+		goto out;
+	}
 
 	/*
 	 * Perform soft PHY reset to the PHY_XS.
@@ -1681,4 +1688,29 @@ void ixgbe_i2c_bus_clear(struct ixgbe_hw *hw)
 	ixgbe_i2c_stop(hw);
 }
 
+/**
+ *  ixgbe_check_overtemp - Checks if an overtemp occured.
+ *  @hw: pointer to hardware structure
+ *
+ *  Checks if the LASI temp alarm status was triggered due to overtemp
+ **/
+s32 ixgbe_tn_check_overtemp(struct ixgbe_hw *hw)
+{
+	s32 status = 0;
+	u16 phy_data = 0;
+
+	if (hw->device_id != IXGBE_DEV_ID_82599_T3_LOM)
+		goto out;
+
+	/* Check that the LASI temp alarm status was triggered */
+	hw->phy.ops.read_reg(hw, IXGBE_TN_LASI_STATUS_REG,
+			     IXGBE_MDIO_PMA_PMD_DEV_TYPE, &phy_data);
+
+	if (!(phy_data & IXGBE_TN_LASI_STATUS_TEMP_ALARM))
+		goto out;
+
+	status = IXGBE_ERR_OVERTEMP;
+out:
+	return status;
+}
 
