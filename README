@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-April 15, 2010
+May 6, 2010
 
 Contents
 ========
@@ -374,9 +374,8 @@ Default Value: 0 (disabled)
 
 Flow Control
 ------------
-Flow Control looks at packets and assigns them into buckets. Flow Control is 
-enabled by default. If you want to disable a flow control capable link partner,
-use Ethtool:
+Flow Control is enabled by default. If you want to disable a flow control- 
+capable link partner, use Ethtool:
 
      ethtool -A eth? autoneg off rx off tx off
 
@@ -522,8 +521,8 @@ Additional Configurations
   Ethtool
   -------
   The driver utilizes the ethtool interface for driver configuration and
-  diagnostics, as well as displaying statistical information.  Ethtool
-  version 3.0 or later is required for this functionality.
+  diagnostics, as well as displaying statistical information. The latest 
+  Ethtool version is required for this functionality.
 
   The latest release of ethtool can be found from
   http://sourceforge.net/projects/gkernel.
@@ -683,7 +682,7 @@ Known Issues/Troubleshooting
   Under small packets UDP stress test with 10GbE driver, the Linux system
   may drop UDP packets due to the fullness of socket buffers. 
   You can increase the kernel's default buffer sizes for udp by changing 
-  the values in /proc/sys/net/core/rmem_default and rmem_max
+  the values in /proc/sys/net/core/rmem_default and rmem_max.
 
   Unplugging network cable while ethtool -p is running
   ----------------------------------------------------

@@ -194,7 +194,6 @@ endif
 FCOE := $(shell grep -wE 'CONFIG_FCOE|CONFIG_FCOE_MODULE' $(CONFIG_FILE) | \
 	awk '{print $$3}')
 ifeq ($(FCOE), 1)
-  CFILES += ixgbe_sysfs.c
   CFILES += ixgbe_fcoe.c
   HFILES += ixgbe_fcoe.h
 endif

@@ -940,6 +940,8 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		  * 6   SFP_SR/LR_CORE1 - 82599-specific
 		  * 7   SFP_act_lmt_DA_CORE0 - 82599-specific
 		  * 8   SFP_act_lmt_DA_CORE1 - 82599-specific
+		  * 9   SFP_1g_cu_CORE0 - 82599-specific
+		  * 10  SFP_1g_cu_CORE1 - 82599-specific
 		  */
 		if (hw->mac.type == ixgbe_mac_82598EB) {
 			if (cable_tech & IXGBE_SFF_DA_PASSIVE_CABLE)
@@ -982,6 +984,13 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 				else
 					hw->phy.sfp_type =
 					              ixgbe_sfp_type_srlr_core1;
+			} else if (comp_codes_1g & IXGBE_SFF_1GBASET_CAPABLE) {
+				if (hw->bus.lan_id == 0)
+					hw->phy.sfp_type =
+						ixgbe_sfp_type_1g_cu_core0;
+				else
+					hw->phy.sfp_type =
+						ixgbe_sfp_type_1g_cu_core1;
 			} else {
 				hw->phy.sfp_type = ixgbe_sfp_type_unknown;
 			}
@@ -1054,8 +1063,10 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 			goto out;
 		}
 
-		/* 1G SFP modules are not supported */
-		if (comp_codes_10g == 0) {
+		/* Verify supporteed 1G SFP modules */
+		if (comp_codes_10g == 0 && 
+		    !(hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1 || 
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0)) {
 			hw->phy.type = ixgbe_phy_sfp_unsupported;
 			status = IXGBE_ERR_SFP_NOT_SUPPORTED;
 			goto out;
@@ -1068,7 +1079,9 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		}
 
 		ixgbe_get_device_caps(hw, &enforce_sfp);
-		if (!(enforce_sfp & IXGBE_DEVICE_CAPS_ALLOW_ANY_SFP)) {
+		if (!(enforce_sfp & IXGBE_DEVICE_CAPS_ALLOW_ANY_SFP) &&
+		    !((hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0) ||
+		      (hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1))) {
 			/* Make sure we're a supported PHY type */
 			if (hw->phy.type == ixgbe_phy_sfp_intel) {
 				status = 0;
@@ -1112,10 +1125,15 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 	    (hw->phy.sfp_type == ixgbe_sfp_type_da_cu))
 		return IXGBE_ERR_SFP_NOT_SUPPORTED;
 
-	/* Limiting active cables must be initialized as SR modules */
-	if (sfp_type == ixgbe_sfp_type_da_act_lmt_core0)
+	/*
+	 * Limiting active cables and 1G Phys must be initialized as 
+	 * SR modules 
+	 */
+	if (sfp_type == ixgbe_sfp_type_da_act_lmt_core0 ||
+	    sfp_type == ixgbe_sfp_type_1g_cu_core0)
 		sfp_type = ixgbe_sfp_type_srlr_core0;
-	else if (sfp_type == ixgbe_sfp_type_da_act_lmt_core1)
+	else if (sfp_type == ixgbe_sfp_type_da_act_lmt_core1 ||
+		 sfp_type == ixgbe_sfp_type_1g_cu_core1)
 		sfp_type = ixgbe_sfp_type_srlr_core1;
 
 	/* Read offset to PHY init contents */

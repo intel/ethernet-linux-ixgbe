@@ -160,7 +160,9 @@ struct vf_data_storage {
 	struct vf_stats vfstats;
 	struct vf_stats last_vfstats;
 	struct vf_stats saved_rst_vfstats;
-	int rar;
+	bool pf_set_mac;
+	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
+	u16 pf_qos;
 };
 
 #ifndef IXGBE_NO_LRO
@@ -275,6 +277,9 @@ enum ixgbe_ring_f_enum {
 	RING_F_VMDQ,
 	RING_F_RSS,
 	RING_F_FDIR,
+#ifdef IXGBE_FCOE
+	RING_F_FCOE,
+#endif /* IXGBE_FCOE */
 	RING_F_ARRAY_SIZE      /* must be last in enum set */
 };
 
@@ -282,13 +287,19 @@ enum ixgbe_ring_f_enum {
 #define IXGBE_MAX_RSS_INDICES  16
 #define IXGBE_MAX_VMDQ_INDICES 64
 #define IXGBE_MAX_FDIR_INDICES 64
+#ifdef IXGBE_FCOE
+#define IXGBE_MAX_FCOE_INDICES 8
+#define MAX_RX_QUEUES (IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
+#define MAX_TX_QUEUES (IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
+#else
+#define MAX_RX_QUEUES IXGBE_MAX_FDIR_INDICES
+#define MAX_TX_QUEUES IXGBE_MAX_FDIR_INDICES
+#endif /* IXGBE_FCOE */
 struct ixgbe_ring_feature {
 	int indices;
 	int mask;
 };
 
-#define MAX_RX_QUEUES 128
-#define MAX_TX_QUEUES 128
 
 #define MAX_RX_PACKET_BUFFERS ((adapter->flags & IXGBE_FLAG_DCB_ENABLED) \
                                ? 8 : 1)
@@ -340,6 +351,10 @@ struct ixgbe_q_vector {
 	(&(((struct ixgbe_adv_tx_context_desc *)((R).desc))[i]))
 
 #define IXGBE_MAX_JUMBO_FRAME_SIZE        16128
+#ifdef IXGBE_FCOE
+/* use 3K as the baby jumbo frame size for FCoE */
+#define IXGBE_FCOE_JUMBO_FRAME_SIZE       3072
+#endif /* IXGBE_FCOE */
 
 #ifdef IXGBE_TCP_TIMER
 #define TCP_TIMER_VECTOR 1
@@ -451,6 +466,10 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_IN_SFP_MOD_TASK              (u32)(1 << 25)
 #define IXGBE_FLAG_FDIR_HASH_CAPABLE            (u32)(1 << 26)
 #define IXGBE_FLAG_FDIR_PERFECT_CAPABLE         (u32)(1 << 27)
+#ifdef IXGBE_FCOE
+#define IXGBE_FLAG_FCOE_CAPABLE                 (u32)(1 << 28)
+#define IXGBE_FLAG_FCOE_ENABLED                 (u32)(1 << 29)
+#endif /* IXGBE_FCOE */
 #define IXGBE_FLAG_SRIOV_CAPABLE                (u32)(1 << 30)
 #define IXGBE_FLAG_SRIOV_ENABLED                (u32)(1 << 31)
 
@@ -460,6 +479,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_SWLRO_ENABLED                (u32)(1 << 2)
 #define IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE        (u32)(1 << 3)
 #define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE          (u32)(1 << 5)
+#define IXGBE_FLAG2_IN_TEMP_SENSOR_TASK          (u32)(1 << 6)
 
 /* default to trying for four seconds */
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
@@ -513,6 +533,9 @@ struct ixgbe_adapter {
 	u32 atr_sample_rate;
 	spinlock_t fdir_perfect_lock;
 	struct work_struct fdir_reinit_task;
+#ifdef IXGBE_FCOE
+	struct ixgbe_fcoe fcoe;
+#endif /* IXGBE_FCOE */
 	u64 rsc_total_count;
 	u64 rsc_total_flush;
 	u32 wol;
@@ -584,6 +607,32 @@ extern int ixgbe_dcb_netlink_register(void);
 extern int ixgbe_dcb_netlink_unregister(void);
 
 
+#ifdef IXGBE_FCOE
+extern void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter);
+extern int ixgbe_fso(struct ixgbe_adapter *adapter,
+                     struct ixgbe_ring *tx_ring, struct sk_buff *skb,
+                     u32 tx_flags, u8 *hdr_len);
+extern void ixgbe_cleanup_fcoe(struct ixgbe_adapter *adapter);
+extern int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
+                          union ixgbe_adv_rx_desc *rx_desc,
+                          struct sk_buff *skb);
+extern int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
+                              struct scatterlist *sgl, unsigned int sgc);
+extern int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid);
+#ifdef HAVE_NETDEV_OPS_FCOE_ENABLE
+extern int ixgbe_fcoe_enable(struct net_device *netdev);
+extern int ixgbe_fcoe_disable(struct net_device *netdev);
+#endif /* HAVE_NETDEV_OPS_FCOE_ENABLE */
+#ifdef CONFIG_DCB
+#ifdef HAVE_DCBNL_OPS_GETAPP
+extern u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter);
+extern u8 ixgbe_fcoe_setapp(struct ixgbe_adapter *adapter, u8 up);
+#endif /* HAVE_DCBNL_OPS_GETAPP */
+#endif /* CONFIG_DCB */
+#ifdef HAVE_NETDEV_OPS_FCOE_GETWWN
+extern int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type);
+#endif
+#endif /* IXGBE_FCOE */
 
 
 #endif /* _IXGBE_H_ */

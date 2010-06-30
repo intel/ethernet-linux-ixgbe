@@ -54,3 +54,7 @@
 	1517  82599EB 10 Gigabit KR2 Network Connection
 		1137 006a  Cisco UCS CNA M61KR-I Intel Converged Network Adapter
 	151c  82599EB 10 Gigabit TN Network Connection
+		108e 7b13  Sun Dual 10GBASE-T LP
+		8086 a02c  Ethernet Server Adapter X520-T2
+		8086 a03c  Ethernet Server Adapter X520-T2
+		8086 a21c  Ethernet Server Adapter X520-T2

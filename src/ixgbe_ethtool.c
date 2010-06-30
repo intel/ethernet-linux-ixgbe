@@ -111,8 +111,19 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	{"hw_rsc_aggregated", IXGBE_STAT(rsc_total_count)},
 	{"hw_rsc_flushed", IXGBE_STAT(rsc_total_flush)},
 	{"rx_flm", IXGBE_STAT(flm)},
+#ifdef HAVE_TX_MQ	
 	{"fdir_match", IXGBE_STAT(stats.fdirmatch)},
 	{"fdir_miss", IXGBE_STAT(stats.fdirmiss)},
+#endif /* HAVE_TX_MQ */	
+#ifdef IXGBE_FCOE
+	{"fcoe_bad_fccrc", IXGBE_STAT(stats.fccrc)},
+	{"fcoe_last_errors", IXGBE_STAT(stats.fclast)},
+	{"rx_fcoe_dropped", IXGBE_STAT(stats.fcoerpdc)},
+	{"rx_fcoe_packets", IXGBE_STAT(stats.fcoeprc)},
+	{"rx_fcoe_dwords", IXGBE_STAT(stats.fcoedwrc)},
+	{"tx_fcoe_packets", IXGBE_STAT(stats.fcoeptc)},
+	{"tx_fcoe_dwords", IXGBE_STAT(stats.fcoedwtc)},
+#endif /* IXGBE_FCOE */
 };
 
 #define IXGBE_QUEUE_STATS_LEN \
@@ -130,10 +141,6 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 		  sizeof(((struct ixgbe_adapter *)0)->stats.pxoffrxc) + \
 		  sizeof(((struct ixgbe_adapter *)0)->stats.pxofftxc)) \
 		 / sizeof(u64) : 0)
-#ifndef IXGBE_DCA
-#undef IXGBE_PB_STATS_LEN
-#define IXGBE_PB_STATS_LEN 0
-#endif
 #define IXGBE_STATS_LEN (IXGBE_GLOBAL_STATS_LEN + IXGBE_PB_STATS_LEN + IXGBE_QUEUE_STATS_LEN + IXGBE_VF_STATS_LEN)
 #define IXGBE_GLOBAL_STATS_LEN	ARRAY_SIZE(ixgbe_gstrings_stats)
 #endif /* ETHTOOL_GSTATS */
@@ -195,6 +202,16 @@ static int ixgbe_get_settings(struct net_device *netdev,
 					     ADVERTISED_FIBRE);
 			ecmd->port = PORT_FIBRE;
 			ecmd->autoneg = AUTONEG_DISABLE;
+		} else if ((hw->device_id == IXGBE_DEV_ID_82599_COMBO_BACKPLANE) ||
+			   (hw->device_id == IXGBE_DEV_ID_82599_KX4_MEZZ)) {
+			ecmd->supported |= (SUPPORTED_1000baseT_Full |
+					    SUPPORTED_Autoneg | 
+					    SUPPORTED_FIBRE);
+			ecmd->advertising = (ADVERTISED_10000baseT_Full |
+					     ADVERTISED_1000baseT_Full |
+					     ADVERTISED_Autoneg |
+					     ADVERTISED_FIBRE);
+			ecmd->port = PORT_FIBRE;
 		} else {
 			ecmd->supported |= (SUPPORTED_1000baseT_Full |
 					    SUPPORTED_FIBRE);
@@ -244,6 +261,13 @@ static int ixgbe_get_settings(struct net_device *netdev,
 			break;
 		case ixgbe_sfp_type_not_present:
 			ecmd->port = PORT_NONE;
+			break;
+		case ixgbe_sfp_type_1g_cu_core0:
+		case ixgbe_sfp_type_1g_cu_core1:
+			ecmd->port = PORT_TP;
+			ecmd->supported = SUPPORTED_TP;
+			ecmd->advertising = (ADVERTISED_1000baseT_Full |
+				ADVERTISED_TP);
 			break;
 		case ixgbe_sfp_type_unknown:
 		default:
@@ -464,7 +488,6 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 		netdev->features |= NETIF_F_TSO6;
 #endif
 	} else {
-		netif_tx_stop_all_queues(netdev);
 		netdev->features &= ~NETIF_F_TSO;
 #ifdef NETIF_F_TSO6
 		netdev->features &= ~NETIF_F_TSO6;
@@ -490,7 +513,6 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 		}
 #endif
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
-		netif_tx_start_all_queues(netdev);
 	}
 	return 0;
 }
@@ -1604,8 +1626,8 @@ static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 			struct ixgbe_tx_buffer *buf =
 					&(tx_ring->tx_buffer_info[i]);
 			if (buf->dma) {
-				pci_unmap_single(pdev, buf->dma, buf->length,
-				                 PCI_DMA_TODEVICE);
+				dma_unmap_single(pci_dev_to_dev(pdev), buf->dma,
+						 buf->length, DMA_TO_DEVICE);
 				buf->dma = 0;
 			}
 			if (buf->skb)
@@ -1618,9 +1640,9 @@ static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 			struct ixgbe_rx_buffer *buf =
 					&(rx_ring->rx_buffer_info[i]);
 			if (buf->dma) {
-				pci_unmap_single(pdev, buf->dma,
+				dma_unmap_single(pci_dev_to_dev(pdev), buf->dma,
 						 IXGBE_RXBUFFER_2048,
-						 PCI_DMA_FROMDEVICE);
+						 DMA_FROM_DEVICE);
 				buf->dma = 0;
 			}
 			if (buf->skb)
@@ -1629,13 +1651,13 @@ static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 	}
 
 	if (tx_ring->desc) {
-		pci_free_consistent(pdev, tx_ring->size, tx_ring->desc,
-		                    tx_ring->dma);
+		dma_free_coherent(pci_dev_to_dev(pdev), tx_ring->size,
+				  tx_ring->desc, tx_ring->dma);
 		tx_ring->desc = NULL;
 	}
 	if (rx_ring->desc) {
-		pci_free_consistent(pdev, rx_ring->size, rx_ring->desc,
-		                    rx_ring->dma);
+		dma_free_coherent(pci_dev_to_dev(pdev), rx_ring->size,
+				  rx_ring->desc, rx_ring->dma);
 		rx_ring->desc = NULL;
 	}
 
@@ -1670,8 +1692,10 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 
 	tx_ring->size = tx_ring->count * sizeof(union ixgbe_adv_tx_desc);
 	tx_ring->size = ALIGN(tx_ring->size, 4096);
-	if (!(tx_ring->desc = pci_alloc_consistent(pdev, tx_ring->size,
-						   &tx_ring->dma))) {
+	if (!(tx_ring->desc = dma_alloc_coherent(pci_dev_to_dev(pdev),
+						 tx_ring->size,
+						 &tx_ring->dma,
+						 GFP_KERNEL))) {
 		ret_val = 2;
 		goto err_nomem;
 	}
@@ -1717,7 +1741,8 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 		tx_ring->tx_buffer_info[i].skb = skb;
 		tx_ring->tx_buffer_info[i].length = skb->len;
 		tx_ring->tx_buffer_info[i].dma =
-			pci_map_single(pdev, skb->data, skb->len, PCI_DMA_TODEVICE);
+			dma_map_single(pci_dev_to_dev(pdev), skb->data,
+				       skb->len, DMA_TO_DEVICE);
 		desc->read.buffer_addr = cpu_to_le64(tx_ring->tx_buffer_info[i].dma);
 		desc->read.cmd_type_len = cpu_to_le32(skb->len);
 		desc->read.cmd_type_len |= cpu_to_le32(IXGBE_TXD_CMD_EOP |
@@ -1749,8 +1774,8 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 
 	rx_ring->size = rx_ring->count * sizeof(union ixgbe_adv_rx_desc);
 	rx_ring->size = ALIGN(rx_ring->size, 4096);
-	if (!(rx_ring->desc = pci_alloc_consistent(pdev, rx_ring->size,
-						   &rx_ring->dma))) {
+	if (!(rx_ring->desc = dma_alloc_coherent(pci_dev_to_dev(pdev), rx_ring->size,
+						 &rx_ring->dma, GFP_KERNEL))) {
 		ret_val = 5;
 		goto err_nomem;
 	}
@@ -1821,8 +1846,8 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 		skb_reserve(skb, NET_IP_ALIGN);
 		rx_ring->rx_buffer_info[i].skb = skb;
 		rx_ring->rx_buffer_info[i].dma =
-			pci_map_single(pdev, skb->data, IXGBE_RXBUFFER_2048,
-			               PCI_DMA_FROMDEVICE);
+			dma_map_single(pci_dev_to_dev(pdev), skb->data,
+				       IXGBE_RXBUFFER_2048, DMA_FROM_DEVICE);
 		rx_desc->read.pkt_addr =
 				cpu_to_le64(rx_ring->rx_buffer_info[i].dma);
 		memset(skb->data, 0x00, skb->len);
@@ -1943,10 +1968,10 @@ static int ixgbe_run_loopback_test(struct ixgbe_adapter *adapter)
 			ixgbe_create_lbtest_frame(
 					tx_ring->tx_buffer_info[k].skb,
 					1024);
-			pci_dma_sync_single_for_device(pdev,
+			dma_sync_single_for_device(pci_dev_to_dev(pdev),
 				tx_ring->tx_buffer_info[k].dma,
 				tx_ring->tx_buffer_info[k].length,
-				PCI_DMA_TODEVICE);
+				DMA_TO_DEVICE);
 			if (unlikely(++k == tx_ring->count))
 				k = 0;
 		}
@@ -1957,10 +1982,10 @@ static int ixgbe_run_loopback_test(struct ixgbe_adapter *adapter)
 		good_cnt = 0;
 		do {
 			/* receive the sent packets */
-			pci_dma_sync_single_for_cpu(pdev,
+			dma_sync_single_for_cpu(pci_dev_to_dev(pdev),
 					rx_ring->rx_buffer_info[l].dma,
 					IXGBE_RXBUFFER_2048,
-					PCI_DMA_FROMDEVICE);
+					DMA_FROM_DEVICE);
 			ret_val = ixgbe_check_lbtest_frame(
 					rx_ring->rx_buffer_info[l].skb, 1024);
 			if (!ret_val)
@@ -2451,9 +2476,13 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 		}
 	}
 #ifndef IXGBE_NO_LRO
-	/* cast both to bool and verify if they are set the same */
-	if ((!!(data & ETH_FLAG_LRO)) !=
-	    (!!(adapter->flags2 & IXGBE_FLAG2_SWLRO_ENABLED)))
+	/*
+	 * Cast both to bool and verify if they are set the same
+	 * and don't set LRO if RSC enabled.
+	 */
+	if (((!!(data & ETH_FLAG_LRO)) !=
+	     (!!(adapter->flags2 & IXGBE_FLAG2_SWLRO_ENABLED))) &&
+	    (!(adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)))
 		adapter->flags2 ^= IXGBE_FLAG2_SWLRO_ENABLED;
 
 #endif /* IXGBE_NO_LRO */

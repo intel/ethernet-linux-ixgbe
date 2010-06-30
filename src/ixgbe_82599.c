@@ -265,6 +265,14 @@ s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
 	s32 status = 0;
 	u32 autoc = 0;
 
+	/* Check if 1G SFP module. */
+	if (hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0 ||
+	    hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1) {
+		*speed = IXGBE_LINK_SPEED_1GB_FULL;
+		*negotiation = true;
+		goto out;
+	}
+
 	/*
 	 * Determine link capabilities based on the stored value of AUTOC,
 	 * which represents EEPROM defaults.  If AUTOC value has not
@@ -791,8 +799,8 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 		orig_autoc = autoc;
 
 	if (link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR ||
-	         link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR_1G_AN ||
-	         link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR_SGMII) {
+	    link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR_1G_AN ||
+	    link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR_SGMII) {
 		/* Set KX4/KX/KR support according to speed requested */
 		autoc &= ~(IXGBE_AUTOC_KX4_KX_SUPP_MASK | IXGBE_AUTOC_KR_SUPP);
 		if (speed & IXGBE_LINK_SPEED_10GB_FULL)
@@ -2157,6 +2165,7 @@ u32 ixgbe_get_supported_physical_layer_82599(struct ixgbe_hw *hw)
 	u32 pma_pmd_1g = autoc & IXGBE_AUTOC_1G_PMA_PMD_MASK;
 	u16 ext_ability = 0;
 	u8 comp_codes_10g = 0;
+	u8 comp_codes_1g = 0;
 
 	hw->phy.ops.identify(hw);
 
@@ -2238,11 +2247,15 @@ sfp_check:
 	case ixgbe_phy_sfp_intel:
 	case ixgbe_phy_sfp_unknown:
 		hw->phy.ops.read_i2c_eeprom(hw,
+		      IXGBE_SFF_1GBE_COMP_CODES, &comp_codes_1g);
+		hw->phy.ops.read_i2c_eeprom(hw,
 		      IXGBE_SFF_10GBE_COMP_CODES, &comp_codes_10g);
 		if (comp_codes_10g & IXGBE_SFF_10GBASESR_CAPABLE)
 			physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_SR;
 		else if (comp_codes_10g & IXGBE_SFF_10GBASELR_CAPABLE)
 			physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_LR;
+		else if (comp_codes_1g & IXGBE_SFF_1GBASET_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_1000BASE_T;
 		break;
 	default:
 		break;

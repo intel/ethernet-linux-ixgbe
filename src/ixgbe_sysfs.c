@@ -27,4 +27,54 @@
 
 #include "ixgbe.h"
 
+#ifdef IXGBE_FCOE
+#include <linux/sysfs.h>
+#include <linux/device.h>
+#include <linux/netdevice.h>
+
+/* Ethernet payload size for FCoE to be able to carry full sized FC Frames
+ * 14 byte FCoE header + 24 byte FC header + 2112 max payload + 4 byte CRC
+ * 	+ 4 byte FCoE trailing encapsulation = 2158
+ * This is the Ethernet payload, replacing the default of 1500, and does
+ * not include Ethernet headers, VLAN tags, or Ethernet CRC.
+ */
+#define IXGBE_FCOE_MTU	2158
+
+static ssize_t ixgbe_show_fcoe_mtu(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", IXGBE_FCOE_MTU);
+}
+
+static struct device_attribute ixgbe_attrs[] = {
+	__ATTR(fcoe-mtu, S_IRUGO, ixgbe_show_fcoe_mtu, NULL),
+};
+
+int ixgbe_sysfs_create(struct ixgbe_adapter *adapter)
+{
+	struct net_device *netdev = adapter->netdev;
+	int err;
+	int i;
+
+	for (i = 0 ; i < ARRAY_SIZE(ixgbe_attrs); i++) {
+		err = device_create_file(&netdev->dev, &ixgbe_attrs[i]);
+		if (err)
+			goto fail;
+	}
+	return 0;
+
+fail:
+	while (i-- >= 0)
+		device_remove_file(&netdev->dev, &ixgbe_attrs[i]);
+	return err;
+}
+
+void ixgbe_sysfs_remove(struct ixgbe_adapter *adapter)
+{
+	struct net_device *netdev = adapter->netdev;
+	int i;
+
+	for (i = 0 ; i < ARRAY_SIZE(ixgbe_attrs); i++)
+		device_remove_file(&netdev->dev, &ixgbe_attrs[i]);
+}
+#endif /* IXGBE_FCOE */
 

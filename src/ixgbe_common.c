@@ -875,7 +875,9 @@ static void ixgbe_release_eeprom_semaphore(struct ixgbe_hw *hw)
 
 	swsm = IXGBE_READ_REG(hw, IXGBE_SWSM);
 
-	/* Release both semaphores by writing 0 to the bits SWESMBI and SMBI */
+	/* Release both semaphores by writing 0 to the bits SWESMBI
+	 * and SMBI
+	 */
 	swsm &= ~(IXGBE_SWSM_SWESMBI | IXGBE_SWSM_SMBI);
 	IXGBE_WRITE_REG(hw, IXGBE_SWSM, swsm);
 	IXGBE_WRITE_FLUSH(hw);
@@ -1534,7 +1536,6 @@ void ixgbe_set_mta(struct ixgbe_hw *hw, u8 *mc_addr)
 	u32 vector;
 	u32 vector_bit;
 	u32 vector_reg;
-	u32 mta_reg;
 
 	hw->addr_ctrl.mta_in_use++;
 
@@ -1552,9 +1553,7 @@ void ixgbe_set_mta(struct ixgbe_hw *hw, u8 *mc_addr)
 	 */
 	vector_reg = (vector >> 5) & 0x7F;
 	vector_bit = vector & 0x1F;
-	mta_reg = IXGBE_READ_REG(hw, IXGBE_MTA(vector_reg));
-	mta_reg |= (1 << vector_bit);
-	IXGBE_WRITE_REG(hw, IXGBE_MTA(vector_reg), mta_reg);
+	hw->mac.mta_shadow[vector_reg] |= (1 << vector_bit);
 }
 
 /**
@@ -1582,18 +1581,21 @@ s32 ixgbe_update_mc_addr_list_generic(struct ixgbe_hw *hw, u8 *mc_addr_list,
 	hw->addr_ctrl.num_mc_addrs = mc_addr_count;
 	hw->addr_ctrl.mta_in_use = 0;
 
-	/* Clear the MTA */
+	/* Clear mta_shadow */
 	hw_dbg(hw, " Clearing MTA\n");
-	for (i = 0; i < hw->mac.mcft_size; i++)
-		IXGBE_WRITE_REG(hw, IXGBE_MTA(i), 0);
+	memset(&hw->mac.mta_shadow, 0, sizeof(hw->mac.mta_shadow));
 
-	/* Add the new addresses */
+	/* Update mta_shadow */
 	for (i = 0; i < mc_addr_count; i++) {
 		hw_dbg(hw, " Adding the multicast addresses:\n");
 		ixgbe_set_mta(hw, next(hw, &mc_addr_list, &vmdq));
 	}
 
 	/* Enable mta */
+	for (i = 0; i < hw->mac.mcft_size; i++)
+		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_MTA(0), i,
+				      hw->mac.mta_shadow[i]);
+
 	if (hw->addr_ctrl.mta_in_use > 0)
 		IXGBE_WRITE_REG(hw, IXGBE_MCSTCTRL,
 		                IXGBE_MCSTCTRL_MFE | hw->mac.mc_filter_type);
@@ -2939,8 +2941,11 @@ s32 ixgbe_check_mac_link_generic(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 	else if ((links_reg & IXGBE_LINKS_SPEED_82599) ==
 	         IXGBE_LINKS_SPEED_1G_82599)
 		*speed = IXGBE_LINK_SPEED_1GB_FULL;
-	else
+	else if ((links_reg & IXGBE_LINKS_SPEED_82599) ==
+	         IXGBE_LINKS_SPEED_100_82599)
 		*speed = IXGBE_LINK_SPEED_100_FULL;
+	else
+		*speed = IXGBE_LINK_SPEED_UNKNOWN;
 
 	/* if link is down, zero out the current_mode */
 	if (*link_up == false) {

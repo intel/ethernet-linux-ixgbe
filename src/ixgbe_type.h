@@ -226,6 +226,7 @@
 #define IXGBE_MTQC      0x08120
 #define IXGBE_VLVF(_i)  (0x0F100 + ((_i) * 4))  /* 64 of these (0-63) */
 #define IXGBE_VLVFB(_i) (0x0F200 + ((_i) * 4))  /* 128 of these (0-127) */
+#define IXGBE_VMVIR(_i) (0x08000 + ((_i) * 4))  /* 64 of these (0-63) */
 #define IXGBE_VT_CTL    0x051B0
 #define IXGBE_VFRE(_i)  (0x051E0 + ((_i) * 4))
 #define IXGBE_VFTE(_i)  (0x08110 + ((_i) * 4))
@@ -1386,6 +1387,9 @@
 #define IXGBE_VLVF_VIEN         0x80000000  /* filter is valid */
 #define IXGBE_VLVF_ENTRIES      64
 #define IXGBE_VLVF_VLANID_MASK  0x00000FFF
+/* Per VF Port VLAN insertion rules */
+#define IXGBE_VMVIR_VLANA_DEFAULT 0x40000000 /* Always use default VLAN */
+#define IXGBE_VMVIR_VLANA_NEVER   0x80000000 /* Never insert VLAN tag */
 
 #define IXGBE_ETHERNET_IEEE_VLAN_TYPE 0x8100  /* 802.1q protocol */
 
@@ -2404,6 +2408,8 @@ enum ixgbe_sfp_type {
 	ixgbe_sfp_type_srlr_core1 = 6,
 	ixgbe_sfp_type_da_act_lmt_core0 = 7,
 	ixgbe_sfp_type_da_act_lmt_core1 = 8,
+	ixgbe_sfp_type_1g_cu_core0 = 9,
+	ixgbe_sfp_type_1g_cu_core1 = 10,
 	ixgbe_sfp_type_not_present = 0xFFFE,
 	ixgbe_sfp_type_unknown = 0xFFFF
 };
@@ -2690,6 +2696,8 @@ struct ixgbe_mac_info {
 	u16                             wwnn_prefix;
 	/* prefix for World Wide Port Name (WWPN) */
 	u16                             wwpn_prefix;
+#define IXGBE_MAX_MTA			128	
+	u32				mta_shadow[IXGBE_MAX_MTA];
 	s32                             mc_filter_type;
 	u32                             mcft_size;
 	u32                             vft_size;

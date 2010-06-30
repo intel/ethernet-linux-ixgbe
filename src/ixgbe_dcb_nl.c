@@ -851,7 +851,7 @@ static void ixgbe_dcbnl_set_pg_bwg_cfg_tx(struct net_device *netdev, int bwg_id,
 
 	if (adapter->temp_dcb_cfg.bw_percentage[0][bwg_id] !=
 	    adapter->dcb_cfg.bw_percentage[0][bwg_id]) {
-		adapter->dcb_set_bitmap |= BIT_PG_RX;
+		adapter->dcb_set_bitmap |= BIT_PG_TX;
 		adapter->dcb_set_bitmap |= BIT_RESETLINK;
 	}
 }
@@ -1372,6 +1372,11 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	if (!adapter->dcb_set_bitmap)
 		return DCB_NO_HW_CHG;
 
+	ret = ixgbe_copy_dcb_cfg(&adapter->temp_dcb_cfg, &adapter->dcb_cfg,
+				 adapter->ring_feature[RING_F_DCB].indices);
+	if (ret)
+		return DCB_NO_HW_CHG;
+
 	/* Only take down the adapter if the configuration change
 	 * requires a reset.
 	*/
@@ -1391,14 +1396,6 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 			if (netif_running(netdev))
 				ixgbe_down(adapter);
 		}
-	}
-
-	ret = ixgbe_copy_dcb_cfg(&adapter->temp_dcb_cfg, &adapter->dcb_cfg,
-				 adapter->ring_feature[RING_F_DCB].indices);
-	if (ret) {
-		if (adapter->dcb_set_bitmap & BIT_RESETLINK)
-			clear_bit(__IXGBE_RESETTING, &adapter->state);
-		return DCB_NO_HW_CHG;
 	}
 
 	if (adapter->dcb_cfg.pfc_mode_enable) {
@@ -1644,6 +1641,10 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
 
 	switch (idtype) {
 	case DCB_APP_IDTYPE_ETHTYPE:
+#ifdef IXGBE_FCOE
+		if (id == ETH_P_FCOE)
+			rval = ixgbe_fcoe_getapp(netdev_priv(netdev));
+#endif
 		break;
 	case DCB_APP_IDTYPE_PORTNUM:
 		break;
@@ -1669,6 +1670,22 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 
 	switch (idtype) {
 	case DCB_APP_IDTYPE_ETHTYPE:
+#ifdef IXGBE_FCOE
+		if (id == ETH_P_FCOE) {
+			u8 tc;
+			struct ixgbe_adapter *adapter;
+
+			adapter = netdev_priv(netdev);
+			tc = adapter->fcoe.tc;
+			rval = ixgbe_fcoe_setapp(adapter, up);
+			if ((!rval) && (tc != adapter->fcoe.tc) &&
+			    (adapter->flags & IXGBE_FLAG_DCB_ENABLED) &&
+			    (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)) {
+				adapter->dcb_set_bitmap |= BIT_APP_UPCHG;
+				adapter->dcb_set_bitmap |= BIT_RESETLINK;
+			}
+		}
+#endif
 		break;
 	case DCB_APP_IDTYPE_PORTNUM:
 		break;

@@ -265,6 +265,25 @@ found_middle:
 #endif /* 2.6.0 => 2.4.6 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,4) )
+int _kc_scnprintf(char * buf, size_t size, const char *fmt, ...)
+{
+	va_list args;
+	int i;
+
+	va_start(args, fmt);
+	i = vsnprintf(buf, size, fmt, args);
+	va_end(args);
+	return (i >= size) ? (size - 1) : i;
+}
+#endif /* < 2.6.4 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,10) )
+DECLARE_BITMAP(_kcompat_node_online_map, MAX_NUMNODES) = {1};
+#endif /* < 2.6.10 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14) )
 void *_kc_kzalloc(size_t size, int flags)
 {
@@ -274,22 +293,6 @@ void *_kc_kzalloc(size_t size, int flags)
 	return ret;
 }
 #endif /* <= 2.6.13 */
-
-/*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18) )
-struct sk_buff *_kc_netdev_alloc_skb(struct net_device *dev,
-                                     unsigned int length)
-{
-	/* 16 == NET_PAD_SKB */
-	struct sk_buff *skb;
-	skb = alloc_skb(length + 16, GFP_ATOMIC);
-	if (likely(skb != NULL)) {
-		skb_reserve(skb, 16);
-		skb->dev = dev;
-	}
-	return skb;
-}
-#endif /* <= 2.6.17 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19) )
@@ -376,8 +379,123 @@ void _kc_free_netdev(struct net_device *netdev)
 #endif /* <= 2.6.18 */
 
 /*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23) )
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22) )
+/* hexdump code taken from lib/hexdump.c */
+void _kc_hex_dump_to_buffer(const void *buf, size_t len, int rowsize,
+			int groupsize, char *linebuf, size_t linebuflen,
+			bool ascii)
+{
+	const u8 *ptr = buf;
+	u8 ch;
+	int j, lx = 0;
+	int ascii_column;
 
+	if (rowsize != 16 && rowsize != 32)
+		rowsize = 16;
+
+	if (!len)
+		goto nil;
+	if (len > rowsize)		/* limit to one line at a time */
+		len = rowsize;
+	if ((len % groupsize) != 0)	/* no mixed size output */
+		groupsize = 1;
+
+	switch (groupsize) {
+	case 8: {
+		const u64 *ptr8 = buf;
+		int ngroups = len / groupsize;
+
+		for (j = 0; j < ngroups; j++)
+			lx += scnprintf(linebuf + lx, linebuflen - lx,
+				"%s%16.16llx", j ? " " : "",
+				(unsigned long long)*(ptr8 + j));
+		ascii_column = 17 * ngroups + 2;
+		break;
+	}
+
+	case 4: {
+		const u32 *ptr4 = buf;
+		int ngroups = len / groupsize;
+
+		for (j = 0; j < ngroups; j++)
+			lx += scnprintf(linebuf + lx, linebuflen - lx,
+				"%s%8.8x", j ? " " : "", *(ptr4 + j));
+		ascii_column = 9 * ngroups + 2;
+		break;
+	}
+
+	case 2: {
+		const u16 *ptr2 = buf;
+		int ngroups = len / groupsize;
+
+		for (j = 0; j < ngroups; j++)
+			lx += scnprintf(linebuf + lx, linebuflen - lx,
+				"%s%4.4x", j ? " " : "", *(ptr2 + j));
+		ascii_column = 5 * ngroups + 2;
+		break;
+	}
+
+	default:
+		for (j = 0; (j < len) && (lx + 3) <= linebuflen; j++) {
+			ch = ptr[j];
+			linebuf[lx++] = hex_asc(ch >> 4);
+			linebuf[lx++] = hex_asc(ch & 0x0f);
+			linebuf[lx++] = ' ';
+		}
+		if (j)
+			lx--;
+
+		ascii_column = 3 * rowsize + 2;
+		break;
+	}
+	if (!ascii)
+		goto nil;
+
+	while (lx < (linebuflen - 1) && lx < (ascii_column - 1))
+		linebuf[lx++] = ' ';
+	for (j = 0; (j < len) && (lx + 2) < linebuflen; j++)
+		linebuf[lx++] = (isascii(ptr[j]) && isprint(ptr[j])) ? ptr[j]
+				: '.';
+nil:
+	linebuf[lx++] = '\0';
+}
+
+void _kc_print_hex_dump(const char *level,
+			const char *prefix_str, int prefix_type,
+			int rowsize, int groupsize,
+			const void *buf, size_t len, bool ascii)
+{
+	const u8 *ptr = buf;
+	int i, linelen, remaining = len;
+	unsigned char linebuf[200];
+
+	if (rowsize != 16 && rowsize != 32)
+		rowsize = 16;
+
+	for (i = 0; i < len; i += rowsize) {
+		linelen = min(remaining, rowsize);
+		remaining -= rowsize;
+		_kc_hex_dump_to_buffer(ptr + i, linelen, rowsize, groupsize,
+				linebuf, sizeof(linebuf), ascii);
+
+		switch (prefix_type) {
+		case DUMP_PREFIX_ADDRESS:
+			printk("%s%s%*p: %s\n", level, prefix_str,
+				(int)(2 * sizeof(void *)), ptr + i, linebuf);
+			break;
+		case DUMP_PREFIX_OFFSET:
+			printk("%s%s%.8x: %s\n", level, prefix_str, i, linebuf);
+			break;
+		default:
+			printk("%s%s%s\n", level, prefix_str, linebuf);
+			break;
+		}
+	}
+}
+#endif /* < 2.6.22 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23) )
 int ixgbe_dcb_netlink_register()
 {
 	return 0;
@@ -576,14 +694,18 @@ u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb)
 #endif /* < 2.6.30 */
 
 /*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33) )
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33) ) || defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
 struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
                                               unsigned int length)
 {
-	struct sk_buff *skb = netdev_alloc_skb(dev, length + NET_IP_ALIGN);
+	struct sk_buff *skb;
 
-	if (NET_IP_ALIGN && skb)
-		skb_reserve(skb, NET_IP_ALIGN);
+	skb = alloc_skb(length + NET_SKB_PAD + NET_IP_ALIGN, GFP_ATOMIC);
+	if (skb) {
+		if (NET_IP_ALIGN + NET_SKB_PAD)
+			skb_reserve(skb, NET_IP_ALIGN + NET_SKB_PAD);
+		skb->dev = dev;
+	}
 	return skb;
 }
-#endif /* < 2.6.33 */
+#endif /* < 2.6.33 || defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) */

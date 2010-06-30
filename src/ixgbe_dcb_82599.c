@@ -105,32 +105,47 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
                                           struct ixgbe_dcb_config *dcb_config)
 {
 	s32 ret_val = 0;
-	u32 value = IXGBE_RXPBSIZE_64KB;
+	u32 rxpktsize = IXGBE_RXPBSIZE_MAX;
+	u32 maxtxpktsize = IXGBE_TXPBSIZE_MAX;
+	u32 txpktsize;
+	int num_tcs;
 	u8  i = 0;
 
+	num_tcs = dcb_config->num_tcs.pg_tcs;
 	/* Setup Rx packet buffer sizes */
-	switch (dcb_config->rx_pba_cfg) {
-	case pba_80_48:
-		/* Setup the first four at 80KB */
-		value = IXGBE_RXPBSIZE_80KB;
-		for (; i < 4; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
-		/* Setup the last four at 48KB...don't re-init i */
-		value = IXGBE_RXPBSIZE_48KB;
-		/* Fall Through */
-	case pba_equal:
-	default:
-		for (; i < IXGBE_MAX_PACKET_BUFFERS; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
+	if (dcb_config->rx_pba_cfg == pba_80_48) {
+		/*
+		 * Setup first 4 TC at 80KB
+		 * divide remaining buffer equally in other TCs.
+		 */
+		for (i = 0; i < 4; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
+			                IXGBE_RXPBSIZE_80KB);
+		rxpktsize -= (IXGBE_RXPBSIZE_80KB * 4);
+		for (; i < MAX_TRAFFIC_CLASS; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize/4);
+	} else {
+		/* Setup rx buffer equally in number of TC */
+		for (i = 0; i < num_tcs; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
+			                rxpktsize/num_tcs);
+		/* Setup remainig TCs to zero buffer size*/
+		for (; i < MAX_TRAFFIC_CLASS; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
+	}
 
-		/* Setup Tx packet buffer sizes */
-		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
-			IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i),
-			                IXGBE_TXPBSIZE_20KB);
-			IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i),
-			                IXGBE_TXPBTHRESH_DCB);
-		}
-		break;
+	/* Setup Tx packet buffer and threshold equally for all TCs */
+	txpktsize = maxtxpktsize/num_tcs;
+	for (i = 0; i < num_tcs; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), txpktsize);
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i),
+		                ((txpktsize  / 1024) - IXGBE_TXPKT_SIZE_MAX));
+	}
+
+	/* Setup remainig TCs to zero buffer size*/
+	for (; i < MAX_TRAFFIC_CLASS; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), 0);
 	}
 
 	return ret_val;
@@ -151,6 +166,7 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw,
 	u32    credit_refill = 0;
 	u32    credit_max    = 0;
 	u8     i             = 0;
+	u8     j;
 
 	/*
 	 * Disable the arbiter before changing parameters
@@ -159,14 +175,24 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw,
 	reg = IXGBE_RTRPCS_RRM | IXGBE_RTRPCS_RAC | IXGBE_RTRPCS_ARBDIS;
 	IXGBE_WRITE_REG(hw, IXGBE_RTRPCS, reg);
 
-	/* Map all traffic classes to their UP, 1 to 1 */
+	/*
+	 * map all UPs to TCs. up_to_tc_bitmap for each TC has corresponding
+	 * bits sets for the UPs that needs to be mappped to that TC.
+	 * e.g if priorities 6 and 7 are to be mapped to a TC then the
+	 * up_to_tc_bitmap value for that TC will be 11000000 in binary.
+	 */
 	reg = 0;
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++)
-		reg |= (i << (i * IXGBE_RTRUP2TC_UP_SHIFT));
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		p = &dcb_config->tc_config[i].path[DCB_RX_CONFIG];
+		for (j = 0; j < MAX_USER_PRIORITY; j++) {
+			if (p->up_to_tc_bitmap & (1 << j))
+				reg |= (i << (j * IXGBE_RTRUP2TC_UP_SHIFT));
+		}
+	}
 	IXGBE_WRITE_REG(hw, IXGBE_RTRUP2TC, reg);
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
 		p = &dcb_config->tc_config[i].path[DCB_RX_CONFIG];
 
 		credit_refill = p->data_credits_refill;
@@ -212,7 +238,7 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw,
 	}
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
 		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
 		max_credits = dcb_config->tc_config[i].desc_credits_max;
 		reg = max_credits << IXGBE_RTTDT2C_MCL_SHIFT;
@@ -250,7 +276,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
 {
 	struct tc_bw_alloc *p;
 	u32 reg;
-	u8 i;
+	u8 i, j;
 
 	/*
 	 * Disable the arbiter before changing parameters
@@ -261,14 +287,23 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
 	      IXGBE_RTTPCS_ARBDIS;
 	IXGBE_WRITE_REG(hw, IXGBE_RTTPCS, reg);
 
-	/* Map all traffic classes to their UP, 1 to 1 */
+	/*
+	 * map all UPs to TCs. up_to_tc_bitmap for each TC has corresponding
+	 * bits sets for the UPs that needs to be mappped to that TC.
+	 * e.g if priorities 6 and 7 are to be mapped to a TC then the
+	 * up_to_tc_bitmap value for that TC will be 11000000 in binary.
+	 */
 	reg = 0;
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++)
-		reg |= (i << (i * IXGBE_RTTUP2TC_UP_SHIFT));
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
+		for (j = 0; j < MAX_USER_PRIORITY; j++)
+			if (p->up_to_tc_bitmap & (1 << j))
+				reg |= (i << (j * IXGBE_RTTUP2TC_UP_SHIFT));
+	}
 	IXGBE_WRITE_REG(hw, IXGBE_RTTUP2TC, reg);
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
 		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
 		reg = p->data_credits_refill;
 		reg |= (u32)(p->data_credits_max) << IXGBE_RTTPT2C_MCL_SHIFT;
@@ -308,18 +343,14 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
 
 	/* If PFC is disabled globally then fall back to LFC. */
 	if (!dcb_config->pfc_mode_enable) {
-		for (i = 0; i < MAX_TRAFFIC_CLASS; i++)
+		for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++)
 			hw->mac.ops.fc_enable(hw, i);
 		goto out;
 	}
 
 	/* Configure PFC Tx thresholds per TC */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		if (dcb_config->rx_pba_cfg == pba_equal)
-			rx_pba_size = IXGBE_RXPBSIZE_64KB;
-		else
-			rx_pba_size = (i < 4) ? IXGBE_RXPBSIZE_80KB
-			                      : IXGBE_RXPBSIZE_48KB;
+	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
+		rx_pba_size = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
 
 		reg = ((rx_pba_size >> 5) & 0xFFE0);
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
@@ -419,7 +450,8 @@ s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw)
  *
  * Configure general DCB parameters.
  */
-s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw)
+s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
+                           struct ixgbe_dcb_config *dcb_config)
 {
 	u32 reg;
 	u32 q;
@@ -446,10 +478,18 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw)
 		/* Unsupported value, assume stale data, overwrite no RSS */
 		reg = (reg & ~IXGBE_MRQC_MRQE_MASK) | IXGBE_MRQC_RT8TCEN;
 	}
+	if (dcb_config->num_tcs.pg_tcs == 4) {
+		/* Enable DCB for Rx with 4 TCs and VT Mode*/
+		reg = (reg & ~IXGBE_MRQC_MRQE_MASK) | IXGBE_MRQC_VMDQRT4TCEN;
+	}
 	IXGBE_WRITE_REG(hw, IXGBE_MRQC, reg);
 
 	/* Enable DCB for Tx with 8 TCs */
-	reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_8TC_8TQ;
+	if (dcb_config->num_tcs.pg_tcs == 8)
+		reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_8TC_8TQ;
+	else /* Enable DCB for Tx with 4 TCs and VT Mode*/
+		reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_VT_ENA
+					| IXGBE_MTQC_4TC_4TQ;
 	IXGBE_WRITE_REG(hw, IXGBE_MTQC, reg);
 
 	/* Disable drop for all queues */
@@ -477,7 +517,7 @@ s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw,
 {
 
 	ixgbe_dcb_config_packet_buffers_82599(hw, dcb_config);
-	ixgbe_dcb_config_82599(hw);
+	ixgbe_dcb_config_82599(hw, dcb_config);
 	ixgbe_dcb_config_rx_arbiter_82599(hw, dcb_config);
 	ixgbe_dcb_config_tx_desc_arbiter_82599(hw, dcb_config);
 	ixgbe_dcb_config_tx_data_arbiter_82599(hw, dcb_config);

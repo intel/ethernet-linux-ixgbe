@@ -258,6 +258,7 @@ IXGBE_PARAM(RxBufferMode, "0=1 descriptor per packet,\n"
 #define IXGBE_RXBUFMODE_OPTIMAL				2
 #define IXGBE_DEFAULT_RXBUFMODE	  IXGBE_RXBUFMODE_OPTIMAL
 
+#ifdef HAVE_TX_MQ
 /* Flow Director filtering mode
  *
  * Valid Range: 0-2  0 = off, 1 = Hashing (ATR), and 2 = perfect filters
@@ -303,7 +304,18 @@ IXGBE_PARAM(AtrSampleRate, "Software ATR Tx packet sample rate");
 #define IXGBE_MIN_ATR_SAMPLE_RATE	  1
 #define IXGBE_ATR_SAMPLE_RATE_OFF	  0
 #define IXGBE_DEFAULT_ATR_SAMPLE_RATE	 20
-
+#endif /* HAVE_TX_MQ */
+#ifdef IXGBE_FCOE
+/* FCoE - Fibre Channel over Ethernet Offload  Enable/Disable
+ *
+ * Valid Range: 0, 1
+ *  - 0 - disables FCoE Offload
+ *  - 1 - enables FCoE Offload
+ *
+ * Default Value: 1
+ */
+IXGBE_PARAM(FCoE, "Disable or enable FCoE Offload, default 1");
+#endif /* IXGBE_FCOE */
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
@@ -444,8 +456,21 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 #ifdef module_param_array
 		} else {
-			*aflags |= IXGBE_FLAG_MSIX_CAPABLE;
-			*aflags |= IXGBE_FLAG_MSI_CAPABLE;
+			/* default settings */
+			if (opt.def == IXGBE_INT_MSIX &&
+			    *aflags & IXGBE_FLAG_MSIX_CAPABLE) {
+				*aflags |= IXGBE_FLAG_MSIX_CAPABLE;
+				*aflags |= IXGBE_FLAG_MSI_CAPABLE;
+			} else if (opt.def == IXGBE_INT_MSI &&
+			    *aflags & IXGBE_FLAG_MSI_CAPABLE) {
+				*aflags &= ~IXGBE_FLAG_MSIX_CAPABLE;
+				*aflags |= IXGBE_FLAG_MSI_CAPABLE;
+				*aflags &= ~IXGBE_FLAG_DCB_CAPABLE;
+			} else {
+				*aflags &= ~IXGBE_FLAG_MSIX_CAPABLE;
+				*aflags &= ~IXGBE_FLAG_MSI_CAPABLE;
+				*aflags &= ~IXGBE_FLAG_DCB_CAPABLE;
+			}
 		}
 #endif
 	}
@@ -689,7 +714,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				adapter->num_vfs = 0;
 				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
 			} else {
-				adapter->num_vfs = 8;
+				adapter->num_vfs = opt.def;
 				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
 			}
 		}
@@ -954,6 +979,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 #endif
 	}
+#ifdef HAVE_TX_MQ
 	{ /* Flow Director filtering mode */
 		unsigned int fdir_filter_mode;
 		static struct ixgbe_option opt = {
@@ -970,14 +996,8 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 			goto no_flow_director;
-#ifdef module_param_array
 		if (num_FdirMode > bd) {
-#endif
-#ifdef HAVE_TX_MQ
 			fdir_filter_mode = FdirMode[bd];
-#else
-			fdir_filter_mode = IXGBE_FDIR_FILTER_OFF;
-#endif /* HAVE_TX_MQ */
 			ixgbe_validate_option(&fdir_filter_mode, &opt);
 
 			switch (fdir_filter_mode) {
@@ -1013,20 +1033,19 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			default:
 				break;
 			}
-#ifdef module_param_array
 		} else {
-#ifdef HAVE_TX_MQ
-			*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			feature[RING_F_FDIR].indices = IXGBE_MAX_FDIR_INDICES;
-			DPRINTK(PROBE, INFO,
-			        "Flow Director hash filtering enabled\n");
-#else
-			*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-			feature[RING_F_FDIR].indices = 0;
-			DPRINTK(PROBE, INFO,
-			        "Flow Director hash filtering disabled\n");
-#endif /* HAVE_TX_MQ */
+			if (opt.def == IXGBE_FDIR_FILTER_OFF) {
+				*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+				feature[RING_F_FDIR].indices = 0;
+				DPRINTK(PROBE, INFO,
+					"Flow Director hash filtering disabled\n");
+			} else {
+				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+				feature[RING_F_FDIR].indices = IXGBE_MAX_FDIR_INDICES;
+				DPRINTK(PROBE, INFO,
+					"Flow Director hash filtering enabled\n");
+			}
 		}
 		/* Check interoperability */
 		if ((*aflags & IXGBE_FLAG_FDIR_HASH_CAPABLE) ||
@@ -1040,7 +1059,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 			}
 		}
-#endif
 no_flow_director:
 		/* empty code line with semi-colon */ ;
 	}
@@ -1061,9 +1079,7 @@ no_flow_director:
 		    (!(*aflags & (IXGBE_FLAG_FDIR_HASH_CAPABLE |
 		                  IXGBE_FLAG_FDIR_PERFECT_CAPABLE))))
 			goto no_fdir_pballoc;
-#ifdef module_param_array
 		if (num_FdirPballoc > bd) {
-#endif
 			fdir_pballoc_mode = FdirPballoc[bd];
 			ixgbe_validate_option(&fdir_pballoc_mode, &opt);
 			switch (fdir_pballoc_mode) {
@@ -1085,15 +1101,11 @@ no_flow_director:
 			DPRINTK(PROBE, INFO,
 			        "Flow Director allocated %s of packet buffer\n",
 			        pstring);
-
-#ifdef module_param_array
 		} else {
 			adapter->fdir_pballoc = opt.def;
 			DPRINTK(PROBE, INFO,
 			     "Flow Director allocated 64kB of packet buffer\n");
-
 		}
-#endif
 no_fdir_pballoc:
 		/* empty code line with semi-colon */ ;
 	}
@@ -1117,9 +1129,7 @@ no_fdir_pballoc:
 		/* no sample rate for perfect filtering */
 		if (*aflags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)
 			goto no_fdir_sample;
-#ifdef module_param_array
 		if (num_AtrSampleRate > bd) {
-#endif
 			/* Only enable the sample rate if hashing (ATR) is on */
 			if (*aflags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
 				adapter->atr_sample_rate = AtrSampleRate[bd];
@@ -1130,7 +1140,6 @@ no_fdir_pballoc:
 				DPRINTK(PROBE, INFO, "%s %d\n", atr_string,
 				        adapter->atr_sample_rate);
 			}
-#ifdef module_param_array
 		} else {
 			/* Only enable the sample rate if hashing (ATR) is on */
 			if (*aflags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
@@ -1139,28 +1148,73 @@ no_fdir_pballoc:
 			DPRINTK(PROBE, INFO, "%s default of %d\n", atr_string,
 			        adapter->atr_sample_rate);
 		}
-#endif
 no_fdir_sample:
 		/* empty code line with semi-colon */ ;
 	}
+#endif /* HAVE_TX_MQ */
+#ifdef IXGBE_FCOE
+	{
+		*aflags &= ~IXGBE_FLAG_FCOE_CAPABLE;
+
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82599EB: {
+			struct ixgbe_option opt = {
+				.type = enable_option,
+				.name = "Enabled/Disable FCoE offload",
+				.err = "defaulting to Enabled",
+				.def = OPTION_ENABLED
+			};
+#ifdef module_param_array
+			if (num_FCoE > bd) {
+#endif
+				unsigned int fcoe = FCoE[bd];
+
+				ixgbe_validate_option(&fcoe, &opt);
+				if (fcoe)
+					*aflags |= IXGBE_FLAG_FCOE_CAPABLE;
+#ifdef module_param_array
+			} else {
+				if (opt.def == OPTION_ENABLED)
+					*aflags |= IXGBE_FLAG_FCOE_CAPABLE;
+			}
+#endif
+#ifdef CONFIG_PCI_IOV
+			if (*aflags & IXGBE_FLAG_SRIOV_ENABLED)
+				*aflags &= ~IXGBE_FLAG_FCOE_CAPABLE;
+#endif
+			DPRINTK(PROBE, INFO, "FCoE Offload feature %sabled\n",
+				(*aflags & IXGBE_FLAG_FCOE_CAPABLE) ?
+				"en" : "dis");
+		}
+			break;
+		default:
+			break;
+		}
+	}
+#endif /* IXGBE_FCOE */
 	{ /* Node assignment */
 		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Node to start on",
-			.err  = "defaulting to -1",
 #ifdef HAVE_EARLY_VMALLOC_NODE
+			.err  = "defaulting to 0",
 			.def  = 0,
 #else
+			.err  = "defaulting to -1",
 			.def  = -1,
 #endif
 			.arg  = { .r = { .min = 0,
-					 .max = 0}}
+					 .max = (MAX_NUMNODES - 1)}}
 		};
 		int node_param = opt.def;
 
-		opt.arg.r.max = num_online_nodes();
-		if (opt.arg.r.max)
-			opt.arg.r.max--;
+		/* if the default was zero then we need to set the
+		 * default value to an online node, which is not
+		 * necessarily zero, and the constant initializer
+		 * above can't take first_online_node */
+		if (node_param == 0)
+			/* must set opt.def for validate */
+			opt.def = node_param = first_online_node;
 #ifdef module_param_array
 		if (num_Node > bd) {
 #endif
@@ -1173,6 +1227,14 @@ no_fdir_sample:
 #ifdef module_param_array
 		}
 #endif
+		/* check sanity of the value */
+		if (node_param != -1 && !node_online(node_param)) {
+			DPRINTK(PROBE, INFO,
+			        "ignoring node set to invalid value %d\n",
+			        node_param);
+			node_param = opt.def;
+		}
+			
 		adapter->node = node_param;
 	}
 }
