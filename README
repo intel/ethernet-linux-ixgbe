@@ -761,6 +761,24 @@ Known Issues/Troubleshooting
   Due to kernel limitations, port type can only be correctly displayed on 
   kernel 2.6.33 or greater.
 
+  Under Redhat 5.4 - System May Crash when Closing Guest OS Window after 
+  Loading/Unloading Physical Function (PF) Driver
+  -------------------------------------------------------------------------
+  Do not remove the ixgbe driver from Dom0 while Virtual Functions (VFs) are 
+  assigned to guests. VFs must first use the xm "pci-detach" command to 
+  hot-plug the VF device out of the VM it is assigned to or else shut down the
+  VM.
+
+  Unloading Physical Function (PF) Driver Causes System Reboots When VM is
+  Running and VF is Loaded on the VM
+  -----------------------------------------------------------------------------
+  Do not unload the PF driver (ixgbe) while VFs are assigned to guests.
+
+  Running ethtool -t ethX command causes break between PF and test client
+  -----------------------------------------------------------------------
+  When there are active VFs, "ethtool -t" will only run the link test.  The
+  driver will also log in syslog that VFs should be shut down to run a full
+  diags test.
 
 Support
 =======

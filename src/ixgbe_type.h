@@ -1534,6 +1534,7 @@
 #define IXGBE_ANLP1_PAUSE               0x0C00
 #define IXGBE_ANLP1_SYM_PAUSE           0x0400
 #define IXGBE_ANLP1_ASM_PAUSE           0x0800
+#define IXGBE_ANLP1_AN_STATE_MASK       0x000F0000
 
 /* SW Semaphore Register bitmasks */
 #define IXGBE_SWSM_SMBI 0x00000001 /* Driver Semaphore bit */
@@ -2814,6 +2815,7 @@ struct ixgbe_hw {
 #define IXGBE_ERR_FC_NOT_NEGOTIATED             -27
 #define IXGBE_ERR_FC_NOT_SUPPORTED              -28
 #define IXGBE_ERR_FLOW_CONTROL                  -29
+#define IXGBE_ERR_SFP_SETUP_NOT_COMPLETE        -30
 #define IXGBE_NOT_IMPLEMENTED                   0x7FFFFFFF
 
 #define UNREFERENCED_2PARAMETER(_p, _q) (_p); (_q);
