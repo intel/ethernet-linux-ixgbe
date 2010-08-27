@@ -1534,7 +1534,7 @@
 #define IXGBE_ANLP1_PAUSE               0x0C00
 #define IXGBE_ANLP1_SYM_PAUSE           0x0400
 #define IXGBE_ANLP1_ASM_PAUSE           0x0800
-#define IXGBE_ANLP1_AN_STATE_MASK       0x000F0000
+#define IXGBE_ANLP1_AN_STATE_MASK       0x000f0000
 
 /* SW Semaphore Register bitmasks */
 #define IXGBE_SWSM_SMBI 0x00000001 /* Driver Semaphore bit */
@@ -1573,6 +1573,7 @@
 #define IXGBE_EEPROM_OPCODE_BITS           8
 
 /* Checksum and EEPROM pointers */
+#define IXGBE_PBANUM_PTR_GUARD  0xFAFA
 #define IXGBE_EEPROM_CHECKSUM   0x3F
 #define IXGBE_EEPROM_SUM        0xBABA
 #define IXGBE_PCIE_ANALOG_PTR   0x03
@@ -2704,6 +2705,7 @@ struct ixgbe_mac_info {
 	u32                             vft_size;
 	u32                             num_rar_entries;
 	u32                             rar_highwater;
+	u32                             rx_pb_size;
 	u32                             max_tx_queues;
 	u32                             max_rx_queues;
 	u32                             max_msix_vectors;
@@ -2816,6 +2818,8 @@ struct ixgbe_hw {
 #define IXGBE_ERR_FC_NOT_SUPPORTED              -28
 #define IXGBE_ERR_FLOW_CONTROL                  -29
 #define IXGBE_ERR_SFP_SETUP_NOT_COMPLETE        -30
+#define IXGBE_ERR_PBA_SECTION                   -31
+#define IXGBE_ERR_INVALID_ARGUMENT              -32
 #define IXGBE_NOT_IMPLEMENTED                   0x7FFFFFFF
 
 #define UNREFERENCED_2PARAMETER(_p, _q) (_p); (_q);

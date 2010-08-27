@@ -147,7 +147,8 @@ init_phy_ops_out:
 s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 {
 	s32 ret_val = 0;
-	u32 reg_anlp1, i = 0;
+	u32 reg_anlp1 = 0;
+	u32 i = 0;
 	u16 list_offset, data_offset, data_value;
 
 	if (hw->phy.sfp_type != ixgbe_sfp_type_unknown) {
@@ -180,13 +181,12 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 		msleep(hw->eeprom.semaphore_delay);
 
 		/* Now restart DSP by setting Restart_AN and clearing LMS */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC,
-		                ((IXGBE_READ_REG(hw, IXGBE_AUTOC) &
-		                 ~IXGBE_AUTOC_LMS_MASK) |
-                                  IXGBE_AUTOC_AN_RESTART));
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, ((IXGBE_READ_REG(hw,
+		                IXGBE_AUTOC) & ~IXGBE_AUTOC_LMS_MASK) |
+		                IXGBE_AUTOC_AN_RESTART));
 
-	       	/* Wait for AN to leave state 0 */
-       		for (i = 0; i < 10; i++) {
+		/* Wait for AN to leave state 0 */
+		for (i = 0; i < 10; i++) {
 			msleep(4);
 			reg_anlp1 = IXGBE_READ_REG(hw, IXGBE_ANLP1);
 			if (reg_anlp1 & IXGBE_ANLP1_AN_STATE_MASK)
@@ -199,11 +199,9 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 		}
 
 		/* Restart DSP by setting Restart_AN and return to SFI mode */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC,
-		                (IXGBE_READ_REG(hw, IXGBE_AUTOC) |
-		                 IXGBE_AUTOC_LMS_10G_SERIAL |
-		                 IXGBE_AUTOC_AN_RESTART));
-
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, (IXGBE_READ_REG(hw,
+		                IXGBE_AUTOC) | IXGBE_AUTOC_LMS_10G_SERIAL |
+		                IXGBE_AUTOC_AN_RESTART));
 	}
 
 setup_sfp_out:
@@ -265,6 +263,7 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->mcft_size        = 128;
 	mac->vft_size         = 128;
 	mac->num_rar_entries  = 128;
+	mac->rx_pb_size       = 512;
 	mac->max_tx_queues    = 128;
 	mac->max_rx_queues    = 128;
 	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_generic(hw);
@@ -405,6 +404,9 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 		break;
 	case IXGBE_DEV_ID_82599_CX4:
 		media_type = ixgbe_media_type_cx4;
+		break;
+	case IXGBE_DEV_ID_82599_T3_LOM:
+		media_type = ixgbe_media_type_copper;
 		break;
 	default:
 		media_type = ixgbe_media_type_unknown;

@@ -565,18 +565,19 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_RSS > bd) {
 #endif
-			switch (rss) {
-			case 1:
+			if (rss != OPTION_ENABLED)
+				ixgbe_validate_option(&rss, &opt);
+			/*
+			 * we cannot use an else since validate option may
+			 * have changed the state of RSS
+			 */
+			if (rss == OPTION_ENABLED) {
 				/*
 				 * Base it off num_online_cpus() with
 				 * a hardware limit cap.
 				 */
 				rss = min(IXGBE_MAX_RSS_INDICES,
 				          (int)num_online_cpus());
-				break;
-			default:
-				ixgbe_validate_option(&rss, &opt);
-				break;
 			}
 			feature[RING_F_RSS].indices = rss;
 			if (rss)
@@ -667,24 +668,14 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 				feature[RING_F_VMDQ].indices = 0;
 			}
-			switch (adapter->hw.mac.type) {
-			case ixgbe_mac_82598EB:
-				/* for now, disable RSS when using VMDQ mode */
-				*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
-				*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
+
+			if  (adapter->hw.mac.type == ixgbe_mac_82598EB)
 				feature[RING_F_VMDQ].indices =
 				          min(feature[RING_F_VMDQ].indices, 16);
-				break;
-			case ixgbe_mac_82599EB:
-				if (feature[RING_F_RSS].indices > 2
-				    && feature[RING_F_VMDQ].indices > 32)
-					feature[RING_F_RSS].indices = 2;
-				else if (feature[RING_F_RSS].indices != 0)
-					feature[RING_F_RSS].indices = 4;
-				break;
-			default:
-				break;
-			}
+
+			/* Disable RSS when using VMDQ mode */
+			*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
+			*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
 		}
 	}
 #ifdef CONFIG_PCI_IOV
@@ -1219,7 +1210,7 @@ no_fdir_sample:
 		if (num_Node > bd) {
 #endif
 			node_param = Node[bd];
-			ixgbe_validate_option(&node_param, &opt);
+			ixgbe_validate_option((uint *)&node_param, &opt);
 
 			if (node_param != OPTION_UNSET) {
 				DPRINTK(PROBE, INFO, "node set to %d\n", node_param);
@@ -1234,7 +1225,7 @@ no_fdir_sample:
 			        node_param);
 			node_param = opt.def;
 		}
-			
+
 		adapter->node = node_param;
 	}
 }

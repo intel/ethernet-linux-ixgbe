@@ -288,6 +288,80 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 	return 0;
 }
 
+
+/**
+ *  ixgbe_read_pba_string_generic - Reads part number string from EEPROM
+ *  @hw: pointer to hardware structure
+ *  @pba_num: stores the part number string from the EEPROM
+ *  @pba_num_size: part number string buffer length
+ *
+ *  Reads the part number string from the EEPROM.
+ *  Returns expected buffer size in pba_num_size if passed in buffer was too
+ *  small.
+ **/
+s32 ixgbe_read_pba_string_generic(struct ixgbe_hw *hw, u8 *pba_num,
+                                  u32 *pba_num_size)
+{
+	s32 ret_val;
+	u32 required_pba_num_size;
+	u16 data;
+	u16 pointer;
+	u16 offset;
+	u16 length;
+
+	if (pba_num_size == NULL) {
+		hw_dbg(hw, "PBA string buffer size was null\n");
+		return IXGBE_ERR_INVALID_ARGUMENT;
+	}
+
+	ret_val = hw->eeprom.ops.read(hw, IXGBE_PBANUM0_PTR, &data);
+	if (ret_val) {
+		hw_dbg(hw, "NVM Read Error\n");
+		return ret_val;
+	} else if (data != IXGBE_PBANUM_PTR_GUARD) {
+		hw_dbg(hw, "NVM PBA number is not stored as string\n");
+		return IXGBE_NOT_IMPLEMENTED;
+	}
+
+	ret_val = hw->eeprom.ops.read(hw, IXGBE_PBANUM1_PTR, &pointer);
+	if (ret_val) {
+		hw_dbg(hw, "NVM Read Error\n");
+		return ret_val;
+	}
+
+	ret_val = hw->eeprom.ops.read(hw, pointer, &length);
+	if (ret_val) {
+		hw_dbg(hw, "NVM Read Error\n");
+		return ret_val;
+	}
+
+	if (length == 0xFFFF || length == 0) {
+		hw_dbg(hw, "NVM PBA number section invalid length\n");
+		return IXGBE_ERR_PBA_SECTION;
+	}
+	required_pba_num_size = (((u32)length - 1) * 2) + 1;
+
+	/* check if pba_num buffer is big enough */
+	if ((pba_num == NULL) || (*pba_num_size < required_pba_num_size)) {
+		hw_dbg(hw, "PBA string buffer too small\n");
+		*pba_num_size = required_pba_num_size;
+		return IXGBE_ERR_NO_SPACE;
+	}
+
+	for (offset = 1; offset < length; offset++) {
+		ret_val = hw->eeprom.ops.read(hw, pointer + offset, &data);
+		if (ret_val) {
+			hw_dbg(hw, "NVM Read Error\n");
+			return ret_val;
+		}
+		pba_num[(offset - 1) * 2] = (u8)(data >> 8);
+		pba_num[((offset - 1) * 2) + 1] = (u8)(data & 0xFF);
+	}
+	pba_num[(length - 1) * 2] = '\0';
+
+	return 0;
+}
+
 /**
  *  ixgbe_read_pba_num_generic - Reads part number from EEPROM
  *  @hw: pointer to hardware structure
@@ -304,6 +378,9 @@ s32 ixgbe_read_pba_num_generic(struct ixgbe_hw *hw, u32 *pba_num)
 	if (ret_val) {
 		hw_dbg(hw, "NVM Read Error\n");
 		return ret_val;
+	} else if (data == IXGBE_PBANUM_PTR_GUARD) {
+		hw_dbg(hw, "NVM Not supported\n");
+		return IXGBE_NOT_IMPLEMENTED;
 	}
 	*pba_num = (u32)(data << 16);
 

@@ -894,8 +894,6 @@ struct mii_ioctl_data;
 #define mii_ethtool_sset _kc_mii_ethtool_sset
 #undef mii_check_link
 #define mii_check_link _kc_mii_check_link
-#undef generic_mii_ioctl
-#define generic_mii_ioctl _kc_generic_mii_ioctl
 extern int _kc_mii_link_ok (struct mii_if_info *mii);
 extern int _kc_mii_nway_restart (struct mii_if_info *mii);
 extern int _kc_mii_ethtool_gset(struct mii_if_info *mii,
@@ -903,9 +901,13 @@ extern int _kc_mii_ethtool_gset(struct mii_if_info *mii,
 extern int _kc_mii_ethtool_sset(struct mii_if_info *mii,
                                 struct ethtool_cmd *ecmd);
 extern void _kc_mii_check_link (struct mii_if_info *mii);
+#if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,4,6) )
+#undef generic_mii_ioctl
+#define generic_mii_ioctl _kc_generic_mii_ioctl
 extern int _kc_generic_mii_ioctl(struct mii_if_info *mii_if,
                                  struct mii_ioctl_data *mii_data, int cmd,
                                  unsigned int *duplex_changed);
+#endif /* > 2.4.6 */
 
 
 struct _kc_pci_dev_ext {
@@ -1091,6 +1093,7 @@ void _kc_mii_check_link (struct mii_if_info *mii)
 		netif_carrier_off(mii->dev);
 }
 
+#if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,4,6) )
 int _kc_generic_mii_ioctl(struct mii_if_info *mii_if,
                           struct mii_ioctl_data *mii_data, int cmd,
                           unsigned int *duplex_chg_out)
@@ -1165,4 +1168,5 @@ int _kc_generic_mii_ioctl(struct mii_if_info *mii_if,
 
 	return rc;
 }
+#endif /* > 2.4.6 */
 

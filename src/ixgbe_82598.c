@@ -175,6 +175,7 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	mac->mcft_size       = 128;
 	mac->vft_size        = 128;
 	mac->num_rar_entries = 16;
+	mac->rx_pb_size      = 512;
 	mac->max_tx_queues   = 32;
 	mac->max_rx_queues   = 64;
 	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_82598(hw);

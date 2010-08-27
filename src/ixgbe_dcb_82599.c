@@ -105,7 +105,7 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
                                           struct ixgbe_dcb_config *dcb_config)
 {
 	s32 ret_val = 0;
-	u32 rxpktsize = IXGBE_RXPBSIZE_MAX;
+	u32 rxpktsize;
 	u32 maxtxpktsize = IXGBE_TXPBSIZE_MAX;
 	u32 txpktsize;
 	int num_tcs;
@@ -115,24 +115,35 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
 	/* Setup Rx packet buffer sizes */
 	if (dcb_config->rx_pba_cfg == pba_80_48) {
 		/*
-		 * Setup first 4 TC at 80KB
-		 * divide remaining buffer equally in other TCs.
+		 * This really means configure the first half of the TCs
+		 * (Traffic Classes) to use 5/8 of the Rx packet buffer
+		 * space.  To determine the size of the buffer for each TC,
+		 * multiply the size of the entire packet buffer by 5/8
+		 * then divide by half of the number of TCs.
 		 */
-		for (i = 0; i < 4; i++)
+		rxpktsize = (hw->mac.rx_pb_size * 5 / 8) / (num_tcs / 2);
+		for (i = 0; i < (num_tcs / 2); i++)
 			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
-			                IXGBE_RXPBSIZE_80KB);
-		rxpktsize -= (IXGBE_RXPBSIZE_80KB * 4);
-		for (; i < MAX_TRAFFIC_CLASS; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize/4);
+			                rxpktsize << IXGBE_RXPBSIZE_SHIFT);
+
+		/*
+		 * The second half of the TCs use the remaining 3/8
+		 * of the Rx packet buffer space.
+		 */
+		rxpktsize = (hw->mac.rx_pb_size * 3 / 8) / (num_tcs / 2);
+		for (; i < num_tcs; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
+			                rxpktsize << IXGBE_RXPBSIZE_SHIFT);
 	} else {
-		/* Setup rx buffer equally in number of TC */
+		/* Divide the Rx packet buffer evenly among the TCs */
+		rxpktsize = hw->mac.rx_pb_size / num_tcs;
 		for (i = 0; i < num_tcs; i++)
 			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
-			                rxpktsize/num_tcs);
-		/* Setup remainig TCs to zero buffer size*/
-		for (; i < MAX_TRAFFIC_CLASS; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
+			                rxpktsize << IXGBE_RXPBSIZE_SHIFT);
 	}
+	/* Setup remainig TCs, if any, to zero buffer size*/
+	for (; i < MAX_TRAFFIC_CLASS; i++)
+		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
 
 	/* Setup Tx packet buffer and threshold equally for all TCs */
 	txpktsize = maxtxpktsize/num_tcs;
@@ -142,7 +153,7 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
 		                ((txpktsize  / 1024) - IXGBE_TXPKT_SIZE_MAX));
 	}
 
-	/* Setup remainig TCs to zero buffer size*/
+	/* Setup remainig TCs, if any, to zero buffer size*/
 	for (; i < MAX_TRAFFIC_CLASS; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), 0);
@@ -384,7 +395,7 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
 	 */
 	reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
 	reg &= ~IXGBE_MFLCN_RFCE;
-	reg |= IXGBE_MFLCN_RPFCE;
+	reg |= IXGBE_MFLCN_RPFCE | IXGBE_MFLCN_DPF;
 	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
 out:
 	return 0;

@@ -335,6 +335,21 @@ s32 ixgbe_stop_adapter(struct ixgbe_hw *hw)
 }
 
 /**
+ *  ixgbe_read_pba_string - Reads part number string from EEPROM
+ *  @hw: pointer to hardware structure
+ *  @pba_num: stores the part number string from the EEPROM
+ *  @pba_num_size: part number string buffer length
+ *
+ *  Reads the part number string from the EEPROM.
+ *  Returns expected buffer size in pba_num_size if passed in buffer was too
+ *  small.
+ **/
+s32 ixgbe_read_pba_string(struct ixgbe_hw *hw, u8 *pba_num, u32 *pba_num_size)
+{
+	return ixgbe_read_pba_string_generic(hw, pba_num, pba_num_size);
+}
+
+/**
  *  ixgbe_read_pba_num - Reads part number from EEPROM
  *  @hw: pointer to hardware structure
  *  @pba_num: stores the part number from the EEPROM

@@ -45,6 +45,7 @@ u32 ixgbe_get_num_of_tx_queues(struct ixgbe_hw *hw);
 u32 ixgbe_get_num_of_rx_queues(struct ixgbe_hw *hw);
 s32 ixgbe_stop_adapter(struct ixgbe_hw *hw);
 s32 ixgbe_read_pba_num(struct ixgbe_hw *hw, u32 *pba_num);
+s32 ixgbe_read_pba_string(struct ixgbe_hw *hw, u8 *pba_num, u32 *pba_num_size);
 
 s32 ixgbe_identify_phy(struct ixgbe_hw *hw);
 s32 ixgbe_reset_phy(struct ixgbe_hw *hw);

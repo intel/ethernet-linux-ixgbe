@@ -117,9 +117,9 @@ Tyco 	   5m - Twin-ax cable	                             2032237-6
 Tyco	   10m - Twin-ax cable	                             1-2032237-1
 
 Laserwire  Active cable - Limiting                           FCBP11OLD1LXX
-Intersil   5m - 32AWG - Active cable - Limiting	             QLX1000CSFP0532
-Intersil   10m - 28AWG - Active cable - Limiting	     QLX1000CSFP1028
-Intersil   15m - 24AWG - Active cable - Limiting	     QLX1000CSFP1524
+Intersil   5m - 32AWG - Active cable - Limiting              QLX1000CSFP0532
+Intersil   10m - 28AWG - Active cable - Limiting             QLX1000CSFP1028
+Intersil   15m - 24AWG - Active cable - Limiting             QLX1000CSFP1524
 
 
 82598-BASED ADAPTERS
@@ -374,8 +374,14 @@ Default Value: 0 (disabled)
 
 Flow Control
 ------------
-Flow Control is enabled by default. If you want to disable a flow control- 
-capable link partner, use Ethtool:
+Ethernet Flow Control (IEEE 802.3x) can be configured with ethtool to enable
+receiving and transmitting pause frames for ixgbe. When tx is enabled, PAUSE 
+frames are generated when the receive packet buffer crosses a predefined 
+threshold.  When rx is enabled, the transmit unit will halt for the time delay
+specified when a PAUSE frame is received.
+
+Flow Control is enabled by default. If you want to disable a flow control 
+capable link partner, use ethtool:
 
      ethtool -A eth? autoneg off rx off tx off
 
@@ -779,6 +785,17 @@ Known Issues/Troubleshooting
   When there are active VFs, "ethtool -t" will only run the link test.  The
   driver will also log in syslog that VFs should be shut down to run a full
   diags test.
+
+  SLES10 SP3 random system panic when reloading driver
+  ---------------------------------------------------
+  This is a known SLES-10 SP3 issue. After requesting interrupts for MSI-X 
+  vectors, system may panic. 
+
+  Currently the only known workaround is to build the drivers with 
+  CFLAGS_EXTRA=-DDISABLE_PCI_MSI if the driver need to be loaded/unloaded.
+  Otherwise the driver can be loaded once and will be safe, but unloading it 
+  will lead to the issue.
+
 
 Support
 =======

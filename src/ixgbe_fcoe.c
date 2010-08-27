@@ -191,7 +191,7 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	}
 
 	/* alloc the udl from our ddp pool */
-	ddp->udl = pci_pool_alloc(fcoe->pool, GFP_KERNEL, &ddp->udp);
+	ddp->udl = pci_pool_alloc(fcoe->pool, GFP_ATOMIC, &ddp->udp);
 	if (!ddp->udl) {
 		DPRINTK(DRV, ERR, "failed allocated ddp context\n");
 		goto out_noddp_unmap;
@@ -318,8 +318,6 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	else
 		fh = (struct fc_frame_header *)(skb->data +
 			sizeof(struct fcoe_hdr));
-
-
 	fctl = ntoh24(fh->fh_f_ctl);
 	if (fctl & FC_FC_EX_CTX)
 		xid =  be16_to_cpu(fh->fh_ox_id);
@@ -362,7 +360,6 @@ ddp_out:
 
 /**
  * ixgbe_fso - ixgbe FCoE Sequence Offload (FSO)
- * @adapter: ixgbe adapter
  * @tx_ring: tx desc ring
  * @skb: associated skb
  * @tx_flags: tx flags
@@ -372,52 +369,45 @@ ddp_out:
  *
  * Returns : 0 indicates no FSO, > 0 for FSO, < 0 for error
  */
-int ixgbe_fso(struct ixgbe_adapter *adapter,
-              struct ixgbe_ring *tx_ring, struct sk_buff *skb,
+int ixgbe_fso(struct ixgbe_ring *tx_ring, struct sk_buff *skb,
               u32 tx_flags, u8 *hdr_len)
 {
-	u8 sof, eof;
-	u32 vlan_macip_lens;
-	u32 fcoe_sof_eof;
-	u32 type_tucmd;
-	u32 mss_l4len_idx;
-	int mss = 0;
-	unsigned int i;
-	struct ixgbe_tx_buffer *tx_buffer_info;
-	struct ixgbe_adv_tx_context_desc *context_desc;
 	struct fc_frame_header *fh;
+	u32 vlan_macip_lens;
+	u32 fcoe_sof_eof = 0;
+	u32 mss_l4len_idx;
+	u8 sof, eof;
 
 #ifdef NETIF_F_FSO
-	if (skb_is_gso(skb) && (skb_shinfo(skb)->gso_type != SKB_GSO_FCOE)) {
-		DPRINTK(DRV, ERR, "Wrong gso type %d:expecting SKB_GSO_FCOE\n",
+	if (skb_is_gso(skb) && skb_shinfo(skb)->gso_type != SKB_GSO_FCOE) {
+		dev_err(tx_ring->dev, "Wrong gso type %d:expecting SKB_GSO_FCOE\n",
 			skb_shinfo(skb)->gso_type);
 		return -EINVAL;
 	}
-#endif
 
+#endif
 	/* resets the header to point fcoe/fc */
 	skb_set_network_header(skb, skb->mac_len);
 	skb_set_transport_header(skb, skb->mac_len +
 				 sizeof(struct fcoe_hdr));
 
 	/* sets up SOF and ORIS */
-	fcoe_sof_eof = 0;
 	sof = ((struct fcoe_hdr *)skb_network_header(skb))->fcoe_sof;
 	switch (sof) {
 	case FC_SOF_I2:
-		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_ORIS;
+		fcoe_sof_eof = IXGBE_ADVTXD_FCOEF_ORIS;
 		break;
 	case FC_SOF_I3:
-		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_SOF;
-		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_ORIS;
+		fcoe_sof_eof = IXGBE_ADVTXD_FCOEF_SOF |
+			       IXGBE_ADVTXD_FCOEF_ORIS;
 		break;
 	case FC_SOF_N2:
 		break;
 	case FC_SOF_N3:
-		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_SOF;
+		fcoe_sof_eof = IXGBE_ADVTXD_FCOEF_SOF;
 		break;
 	default:
-		DPRINTK(DRV, WARNING, "unknown sof = 0x%x\n", sof);
+		dev_warn(tx_ring->dev, "unknown sof = 0x%x\n", sof);
 		return -EINVAL;
 	}
 
@@ -430,12 +420,11 @@ int ixgbe_fso(struct ixgbe_adapter *adapter,
 		break;
 	case FC_EOF_T:
 		/* lso needs ORIE */
-		if (skb_is_gso(skb)) {
-			fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_EOF_N;
-			fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_ORIE;
-		} else {
+		if (skb_is_gso(skb))
+			fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_EOF_N |
+					IXGBE_ADVTXD_FCOEF_ORIE;
+		else
 			fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_EOF_T;
-		}
 		break;
 	case FC_EOF_NI:
 		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_EOF_NI;
@@ -444,7 +433,7 @@ int ixgbe_fso(struct ixgbe_adapter *adapter,
 		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_EOF_A;
 		break;
 	default:
-		DPRINTK(DRV, WARNING, "unknown eof = 0x%x\n", eof);
+		dev_warn(tx_ring->dev, "unknown eof = 0x%x\n", eof);
 		return -EINVAL;
 	}
 
@@ -453,43 +442,28 @@ int ixgbe_fso(struct ixgbe_adapter *adapter,
 	if (fh->fh_f_ctl[2] & FC_FC_REL_OFF)
 		fcoe_sof_eof |= IXGBE_ADVTXD_FCOEF_PARINC;
 
-	/* hdr_len includes fc_hdr if FCoE lso is enabled */
+	/* include trailer in headlen as it is replicated per frame */
 	*hdr_len = sizeof(struct fcoe_crc_eof);
-	if (skb_is_gso(skb))
-		*hdr_len += (skb_transport_offset(skb) +
-			     sizeof(struct fc_frame_header));
-	/* vlan_macip_lens: HEADLEN, MACLEN, VLAN tag */
-	vlan_macip_lens = (skb_transport_offset(skb) +
-			  sizeof(struct fc_frame_header));
-	vlan_macip_lens |= ((skb_transport_offset(skb) - 4)
-			   << IXGBE_ADVTXD_MACLEN_SHIFT);
-	vlan_macip_lens |= (tx_flags & IXGBE_TX_FLAGS_VLAN_MASK);
 
-	/* type_tycmd and mss: set TUCMD.FCoE to enable offload */
-	type_tucmd = IXGBE_TXD_CMD_DEXT | IXGBE_ADVTXD_DTYP_CTXT |
-		     IXGBE_ADVTXT_TUCMD_FCOE;
+	/* hdr_len includes fc_hdr if FCoE lso is enabled */
 	if (skb_is_gso(skb))
-		mss = skb_shinfo(skb)->gso_size;
+		*hdr_len += skb_transport_offset(skb) +
+			    sizeof(struct fc_frame_header); 
+
 	/* mss_l4len_id: use 1 for FSO as TSO, no need for L4LEN */
-	mss_l4len_idx = (mss << IXGBE_ADVTXD_MSS_SHIFT) |
-			(1 << IXGBE_ADVTXD_IDX_SHIFT);
+	mss_l4len_idx = skb_shinfo(skb)->gso_size << IXGBE_ADVTXD_MSS_SHIFT;
+	mss_l4len_idx |= 1 << IXGBE_ADVTXD_IDX_SHIFT;
+
+	/* vlan_macip_lens: HEADLEN, MACLEN, VLAN tag */
+	vlan_macip_lens = skb_transport_offset(skb) +
+			  sizeof(struct fc_frame_header);
+	vlan_macip_lens |= (skb_transport_offset(skb) - 4)
+			   << IXGBE_ADVTXD_MACLEN_SHIFT;
+	vlan_macip_lens |= tx_flags & IXGBE_TX_FLAGS_VLAN_MASK;
 
 	/* write context desc */
-	i = tx_ring->next_to_use;
-	context_desc = IXGBE_TX_CTXTDESC_ADV(*tx_ring, i);
-	context_desc->vlan_macip_lens	= cpu_to_le32(vlan_macip_lens);
-	context_desc->seqnum_seed	= cpu_to_le32(fcoe_sof_eof);
-	context_desc->type_tucmd_mlhl	= cpu_to_le32(type_tucmd);
-	context_desc->mss_l4len_idx	= cpu_to_le32(mss_l4len_idx);
-
-	tx_buffer_info = &tx_ring->tx_buffer_info[i];
-	tx_buffer_info->time_stamp = jiffies;
-	tx_buffer_info->next_to_watch = i;
-
-	i++;
-	if (i == tx_ring->count)
-		i = 0;
-	tx_ring->next_to_use = i;
+	ixgbe_tx_ctxtdesc(tx_ring, vlan_macip_lens, fcoe_sof_eof,
+			  IXGBE_ADVTXT_TUCMD_FCOE, mss_l4len_idx);
 
 	return skb_is_gso(skb);
 }
@@ -529,6 +503,9 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 	/* Enable L2 eth type filter for FCoE */
 	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FCOE),
 			(ETH_P_FCOE | IXGBE_ETQF_FCOE | IXGBE_ETQF_FILTER_EN));
+	/* Enable L2 eth type filter for FIP */
+	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FIP),
+			(ETH_P_FIP | IXGBE_ETQF_FILTER_EN));
 	if (adapter->ring_feature[RING_F_FCOE].indices) {
 		/* Use multiple rx queues for FCoE by redirection table */
 		for (i = 0; i < IXGBE_FCRETA_SIZE; i++) {
@@ -611,10 +588,14 @@ int ixgbe_fcoe_enable(struct net_device *netdev)
 {
 	int rc = -EINVAL;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 
 
-	if (!(adapter->flags & IXGBE_FLAG_FCOE_CAPABLE) ||
-	     (adapter->flags & IXGBE_FLAG_FCOE_ENABLED))
+	if (!(adapter->flags & IXGBE_FLAG_FCOE_CAPABLE))
+		goto out_enable;
+
+	atomic_inc(&fcoe->refcnt);
+	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
 		goto out_enable;
 
 	DPRINTK(DRV, INFO, "Enabling FCoE offload features.\n");
@@ -628,9 +609,6 @@ int ixgbe_fcoe_enable(struct net_device *netdev)
 	netdev->features |= NETIF_F_FCOE_CRC;
 	netdev->features |= NETIF_F_FSO;
 	netdev->features |= NETIF_F_FCOE_MTU;
-	netdev->vlan_features |= NETIF_F_FCOE_CRC;
-	netdev->vlan_features |= NETIF_F_FSO;
-	netdev->vlan_features |= NETIF_F_FCOE_MTU;
 	netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX - 1;
 
 	ixgbe_init_interrupt_scheme(adapter);
@@ -656,31 +634,30 @@ int ixgbe_fcoe_disable(struct net_device *netdev)
 {
 	int rc = -EINVAL;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 
 	if (!(adapter->flags & IXGBE_FLAG_FCOE_CAPABLE) ||
 	    !(adapter->flags & IXGBE_FLAG_FCOE_ENABLED))
 		goto out_disable;
 
+	if (!atomic_dec_and_test(&fcoe->refcnt))
+		goto out_disable;
+
 	DPRINTK(DRV, INFO, "Disabling FCoE offload features.\n");
+	netdev->features &= ~NETIF_F_FCOE_CRC;
+	netdev->features &= ~NETIF_F_FSO;
+	netdev->features &= ~NETIF_F_FCOE_MTU;
+	netdev->fcoe_ddp_xid = 0;
+	netdev_features_change(netdev);
+
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_stop(netdev);
 
 	ixgbe_clear_interrupt_scheme(adapter);
-
 	adapter->flags &= ~IXGBE_FLAG_FCOE_ENABLED;
 	adapter->ring_feature[RING_F_FCOE].indices = 0;
-	netdev->features &= ~NETIF_F_FCOE_CRC;
-	netdev->features &= ~NETIF_F_FSO;
-	netdev->features &= ~NETIF_F_FCOE_MTU;
-	netdev->vlan_features &= ~NETIF_F_FCOE_CRC;
-	netdev->vlan_features &= ~NETIF_F_FSO;
-	netdev->vlan_features &= ~NETIF_F_FCOE_MTU;
-	netdev->fcoe_ddp_xid = 0;
-
 	ixgbe_cleanup_fcoe(adapter);
-
 	ixgbe_init_interrupt_scheme(adapter);
-	netdev_features_change(netdev);
 
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_open(netdev);
@@ -705,19 +682,7 @@ out_disable:
  */
 u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter)
 {
-	int i;
-	u8 tc;
-	u32 up2tc;
-
-	up2tc = IXGBE_READ_REG(&adapter->hw, IXGBE_RTTUP2TC);
-	for (i = 0; i < MAX_USER_PRIORITY; i++) {
-		tc = (u8)(up2tc >> (i * IXGBE_RTTUP2TC_UP_SHIFT));
-		tc &= (MAX_TRAFFIC_CLASS - 1);
-		if (adapter->fcoe.tc == tc)
-			return 1 << i;
-	}
-
-	return 0;
+	return 1 << adapter->fcoe.up;
 }
 
 /**
@@ -744,6 +709,7 @@ u8 ixgbe_fcoe_setapp(struct ixgbe_adapter *adapter, u8 up)
 				up2tc >>= (i * IXGBE_RTTUP2TC_UP_SHIFT);
 				up2tc &= (MAX_TRAFFIC_CLASS - 1);
 				adapter->fcoe.tc = (u8)up2tc;
+				adapter->fcoe.up = i;
 				return 0;
 			}
 		}

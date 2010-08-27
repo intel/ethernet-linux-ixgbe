@@ -221,7 +221,15 @@ struct msix_entry {
 #endif
 
 #ifndef NETIF_F_LRO
-#define NETIF_F_LRO 0
+#define NETIF_F_LRO (1 << 15)
+#endif
+
+#ifndef ETH_FLAG_LRO
+#define ETH_FLAG_LRO (1 << 15)
+#endif
+
+#ifndef ETH_FLAG_NTUPLE
+#define ETH_FLAG_NTUPLE 0
 #endif
 
 #ifndef IPPROTO_SCTP
@@ -257,10 +265,29 @@ enum {
 	NETIF_MSG_WOL		= 0x4000,
 };
 
-#else
+#define netif_msg_drv(p)	((p)->msg_enable & NETIF_MSG_DRV)
+#define netif_msg_probe(p)	((p)->msg_enable & NETIF_MSG_PROBE)
+#define netif_msg_link(p)	((p)->msg_enable & NETIF_MSG_LINK)
+#define netif_msg_timer(p)	((p)->msg_enable & NETIF_MSG_TIMER)
+#define netif_msg_ifdown(p)	((p)->msg_enable & NETIF_MSG_IFDOWN)
+#define netif_msg_ifup(p)	((p)->msg_enable & NETIF_MSG_IFUP)
+#define netif_msg_rx_err(p)	((p)->msg_enable & NETIF_MSG_RX_ERR)
+#define netif_msg_tx_err(p)	((p)->msg_enable & NETIF_MSG_TX_ERR)
+#define netif_msg_tx_queued(p)	((p)->msg_enable & NETIF_MSG_TX_QUEUED)
+#define netif_msg_intr(p)	((p)->msg_enable & NETIF_MSG_INTR)
+#define netif_msg_tx_done(p)	((p)->msg_enable & NETIF_MSG_TX_DONE)
+#define netif_msg_rx_status(p)	((p)->msg_enable & NETIF_MSG_RX_STATUS)
+#define netif_msg_pktdata(p)	((p)->msg_enable & NETIF_MSG_PKTDATA)
+#else /* HAVE_NETIF_MSG */
 #define NETIF_MSG_HW	0x2000
 #define NETIF_MSG_WOL	0x4000
 #endif /* HAVE_NETIF_MSG */
+#ifndef netif_msg_hw
+#define netif_msg_hw(p)		((p)->msg_enable & NETIF_MSG_HW)
+#endif
+#ifndef netif_msg_wol
+#define netif_msg_wol(p)	((p)->msg_enable & NETIF_MSG_WOL)
+#endif
 
 #ifndef MII_RESV1
 #define MII_RESV1		0x17		/* Reserved...		*/
@@ -279,6 +306,10 @@ enum {
 #define PCI_DEVICE(vend,dev) \
 	.vendor = (vend), .device = (dev), \
 	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID
+#endif
+
+#ifndef node_online
+#define node_online(node) ((node) == 0)
 #endif
 
 #ifndef num_online_cpus
@@ -347,6 +378,11 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 #define NET_SKB_PAD L1_CACHE_BYTES
 #define netdev_alloc_skb_ip_align(n, l) _kc_netdev_alloc_skb_ip_align(n, l)
 #endif /* CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS */
+
+/* taken from 2.6.24 definition in linux/kernel.h */
+#ifndef IS_ALIGNED
+#define IS_ALIGNED(x,a)         (((x) % ((typeof(x))(a))) == 0)
+#endif
 
 /*****************************************************************************/
 /* Installations with ethtool version without eeprom, adapter id, or statistics
@@ -434,6 +470,18 @@ struct ethtool_value {
 #ifndef ETHTOOL_GLINK
 #define ETHTOOL_GLINK 0xa
 #endif /* ETHTOOL_GLINK */
+
+#ifndef ETHTOOL_GWOL
+#define ETHTOOL_GWOL 0x5
+#define ETHTOOL_SWOL 0x6
+#define SOPASS_MAX      6
+struct ethtool_wolinfo {
+	u32 cmd;
+	u32 supported;
+	u32 wolopts;
+	u8 sopass[SOPASS_MAX]; /* SecureOn(tm) password */
+};
+#endif /* ETHTOOL_GWOL */
 
 #ifndef ETHTOOL_GREGS
 #define ETHTOOL_GREGS		0x00000004 /* Get NIC registers */
@@ -838,6 +886,23 @@ extern void _kc_pci_disable_device(struct pci_dev *pdev);
 		pos = n, n = pos->next)
 #endif
 
+#ifndef ____cacheline_aligned_in_smp
+#ifdef CONFIG_SMP
+#define ____cacheline_aligned_in_smp ____cacheline_aligned
+#else
+#define ____cacheline_aligned_in_smp
+#endif /* CONFIG_SMP */
+#endif
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,4,8) )
+extern int _kc_snprintf(char * buf, size_t size, const char *fmt, ...);
+#define snprintf(buf, size, fmt, args...) _kc_snprintf(buf, size, fmt, ##args)
+extern int _kc_vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
+#define vsnprintf(buf, size, fmt, args) _kc_vsnprintf(buf, size, fmt, args)
+#else /* 2.4.8 => 2.4.9 */
+extern int snprintf(char * buf, size_t size, const char *fmt, ...);
+extern int vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
+#endif
 #endif /* 2.4.10 -> 2.4.6 */
 
 
@@ -1196,10 +1261,6 @@ extern void _kc_skb_fill_page_desc(struct sk_buff *skb, int i, struct page *page
 #define page_count(p) atomic_read(&(p)->count)
 #endif
 
-#ifndef node_online
-#define node_online(node) ((node) == 0)
-#endif
-
 #ifdef MAX_NUMNODES
 #undef MAX_NUMNODES
 #endif
@@ -1217,6 +1278,16 @@ extern unsigned long _kc_find_next_bit(const unsigned long *addr,
                                        unsigned long offset);
 #define find_first_bit(addr, size) find_next_bit((addr), (size), 0)
 
+
+#ifndef netdev_name
+static inline const char *_kc_netdev_name(const struct net_device *dev)
+{
+	if (strchr(dev->name, '%'))
+		return "(unregistered net_device)";
+	return dev->name;
+}
+#define netdev_name(netdev)	_kc_netdev_name(netdev)
+#endif /* netdev_name */
 #endif /* 2.6.0 => 2.5.28 */
 
 /*****************************************************************************/
@@ -1242,7 +1313,7 @@ static inline int _kc_pci_dma_mapping_error(dma_addr_t dma_addr)
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,4) )
 extern int _kc_scnprintf(char * buf, size_t size, const char *fmt, ...);
-#define scnprintf(buf, size, fmt, ...) _kc_scnprintf(buf, size, fmt, ...)
+#define scnprintf(buf, size, fmt, args...) _kc_scnprintf(buf, size, fmt, ##args)
 #endif /* < 2.6.4 */
 
 /*****************************************************************************/
@@ -1359,6 +1430,16 @@ static inline struct vlan_ethhdr *vlan_eth_hdr(const struct sk_buff *skb)
 {
 	return (struct vlan_ethhdr *)skb->mac.raw;
 }
+
+/* Wake-On-Lan options. */
+#define WAKE_PHY		(1 << 0)
+#define WAKE_UCAST		(1 << 1)
+#define WAKE_MCAST		(1 << 2)
+#define WAKE_BCAST		(1 << 3)
+#define WAKE_ARP		(1 << 4)
+#define WAKE_MAGIC		(1 << 5)
+#define WAKE_MAGICSECURE	(1 << 6) /* only meaningful if WAKE_MAGIC */
+
 #endif /* < 2.6.9 */
 
 /*****************************************************************************/
@@ -1454,10 +1535,6 @@ static inline unsigned long _kc_usecs_to_jiffies(const unsigned int m)
 extern void *_kc_kzalloc(size_t size, int flags);
 #endif
 
-#ifndef vmalloc_node
-#define vmalloc_node(a,b) vmalloc(a)
-#endif /* vmalloc_node*/
-
 /* Generic MII registers. */
 #define MII_ESTATUS	    0x0f	/* Extended Status */
 /* Basic mode status register. */
@@ -1469,6 +1546,10 @@ extern void *_kc_kzalloc(size_t size, int flags);
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15) )
+#ifndef vmalloc_node
+#define vmalloc_node(a,b) vmalloc(a)
+#endif /* vmalloc_node*/
+
 #define setup_timer(_timer, _function, _data) \
 do { \
 	(_timer)->function = _function; \
@@ -1744,6 +1825,10 @@ extern void _kc_print_hex_dump(const char *level, const char *prefix_str,
 #define netif_subqueue_stopped(_a, _b) 0
 #ifndef PTR_ALIGN
 #define PTR_ALIGN(p, a)         ((typeof(p))ALIGN((unsigned long)(p), (a)))
+#endif
+
+#ifndef CONFIG_PM_SLEEP
+#define CONFIG_PM_SLEEP	CONFIG_PM
 #endif
 #endif /* < 2.6.23 */
 
@@ -2097,6 +2182,9 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #ifndef pm_runtime_enable
 #define pm_runtime_enable(dev)	do {} while (0)
 #endif
+#ifndef pm_runtime_get_noresume
+#define pm_runtime_get_noresume(dev)	do {} while (0)
+#endif
 #else /* < 2.6.32 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_ENABLE
@@ -2161,41 +2249,62 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 #endif
 
 /* netdev logging taken from include/linux/netdevice.h */
-#ifndef netdev_notice
-static inline const char *netdev_name(const struct net_device *dev)
+#ifndef netdev_name
+static inline const char *_kc_netdev_name(const struct net_device *dev)
 {
 	if (dev->reg_state != NETREG_REGISTERED)
 		return "(unregistered net_device)";
 	return dev->name;
 }
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
-#define netdev_printk(level, netdev, format, args...) {		\
+#define netdev_name(netdev)	_kc_netdev_name(netdev)
+#endif /* netdev_name */
+
+#undef netdev_printk
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) )
+#define netdev_printk(level, netdev, format, args...)		\
+do {								\
+	struct adapter_struct *kc_adapter = netdev_priv(netdev);\
+	struct pci_dev *pdev = kc_adapter->pdev;		\
+	printk("%s %s: " format, level, pci_name(pdev),		\
+	       ##args);						\
+} while(0)
+#elif ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
+#define netdev_printk(level, netdev, format, args...)		\
+do {								\
 	struct adapter_struct *kc_adapter = netdev_priv(netdev);\
 	struct pci_dev *pdev = kc_adapter->pdev;		\
 	struct device *dev = pci_dev_to_dev(pdev);		\
 	dev_printk(level, dev->parent, "%s: " format,		\
 		   netdev_name(netdev), ##args);		\
-}
-#else /* < 2.6.21 < 2.6.34 */
+} while(0)
+#else /* 2.6.21 => 2.6.34 */
 #define netdev_printk(level, netdev, format, args...)		\
 	dev_printk(level, (netdev)->dev.parent,			\
 		   "%s: " format,				\
 		   netdev_name(netdev), ##args)
-#endif /* < 2.6.21 < 2.6.34 */
+#endif /* <2.6.0 <2.6.21 <2.6.34 */
+#undef netdev_emerg
 #define netdev_emerg(dev, format, args...)			\
 	netdev_printk(KERN_EMERG, dev, format, ##args)
+#undef netdev_alert
 #define netdev_alert(dev, format, args...)			\
 	netdev_printk(KERN_ALERT, dev, format, ##args)
+#undef netdev_crit
 #define netdev_crit(dev, format, args...)			\
 	netdev_printk(KERN_CRIT, dev, format, ##args)
+#undef netdev_err
 #define netdev_err(dev, format, args...)			\
 	netdev_printk(KERN_ERR, dev, format, ##args)
+#undef netdev_warn
 #define netdev_warn(dev, format, args...)			\
 	netdev_printk(KERN_WARNING, dev, format, ##args)
+#undef netdev_notice
 #define netdev_notice(dev, format, args...)			\
 	netdev_printk(KERN_NOTICE, dev, format, ##args)
+#undef netdev_info
 #define netdev_info(dev, format, args...)			\
 	netdev_printk(KERN_INFO, dev, format, ##args)
+#undef netdev_dbg
 #if defined(DEBUG)
 #define netdev_dbg(__dev, format, args...)			\
 	netdev_printk(KERN_DEBUG, __dev, format, ##args)
@@ -2213,9 +2322,15 @@ do {								\
 	0;							\
 })
 #endif /* DEBUG */
-#endif /* netdev_notice */
 
+#if !defined(CONFIG_PM_OPS) && defined(CONFIG_PM_SLEEP)
+#define CONFIG_PM_OPS
+#endif
+#ifdef SET_SYSTEM_SLEEP_PM_OPS
+#define HAVE_SYSTEM_SLEEP_PM_OPS
+#endif
 #else /* < 2.6.34 */
+#define HAVE_SYSTEM_SLEEP_PM_OPS
 #ifndef HAVE_SET_RX_MODE
 #define HAVE_SET_RX_MODE
 #endif
@@ -2227,4 +2342,12 @@ do {								\
 #else /* < 2.6.35 */
 #define HAVE_PM_QOS_REQUEST_LIST
 #endif /* < 2.6.35 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36) )
+extern int _kc_ethtool_op_set_flags(struct net_device *, u32, u32);
+#define ethtool_op_set_flags _kc_ethtool_op_set_flags
+#else /* < 2.6.36 */
+#define HAVE_PM_QOS_REQUEST_ACTIVE
+#endif /* < 2.6.36 */
 #endif /* _KCOMPAT_H_ */
