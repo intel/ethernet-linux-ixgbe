@@ -254,6 +254,8 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->ops.clear_vfta = &ixgbe_clear_vfta_generic;
 	mac->ops.init_uta_tables = &ixgbe_init_uta_tables_generic;
 	mac->ops.setup_sfp = &ixgbe_setup_sfp_modules_82599;
+	mac->ops.set_mac_anti_spoofing = &ixgbe_set_mac_anti_spoofing;
+	mac->ops.set_vlan_anti_spoofing = &ixgbe_set_vlan_anti_spoofing;
 
 	/* Link */
 	mac->ops.get_link_capabilities = &ixgbe_get_link_capabilities_82599;
@@ -394,11 +396,13 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_KX4_MEZZ:
 	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
 	case IXGBE_DEV_ID_82599_KR:
+	case IXGBE_DEV_ID_82599_BACKPLANE_FCOE:
 	case IXGBE_DEV_ID_82599_XAUI_LOM:
 		/* Default device ID is mezzanine card KX/KX4 */
 		media_type = ixgbe_media_type_backplane;
 		break;
 	case IXGBE_DEV_ID_82599_SFP:
+	case IXGBE_DEV_ID_82599_SFP_FCOE:
 	case IXGBE_DEV_ID_82599_SFP_EM:
 		media_type = ixgbe_media_type_fiber;
 		break;
@@ -419,6 +423,7 @@ out:
 /**
  *  ixgbe_start_mac_link_82599 - Setup MAC link settings
  *  @hw: pointer to hardware structure
+ *  @autoneg_wait_to_complete: true when waiting for completion is needed
  *
  *  Configures link settings based on values in the ixgbe_hw struct.
  *  Restarts the link.  Performs autonegotiation if needed.
@@ -441,8 +446,8 @@ s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
 		if ((autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
 		     IXGBE_AUTOC_LMS_KX4_KX_KR ||
 		    (autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
-		     IXGBE_AUTOC_LMS_KX4_KX_KR_1G_AN
-		    || (autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
+		     IXGBE_AUTOC_LMS_KX4_KX_KR_1G_AN ||
+		    (autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
 		     IXGBE_AUTOC_LMS_KX4_KX_KR_SGMII) {
 			links_reg = 0; /* Just in case Autoneg time = 0 */
 			for (i = 0; i < IXGBE_AUTO_NEG_TIME; i++) {
@@ -537,7 +542,7 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
                                      bool autoneg_wait_to_complete)
 {
 	s32 status = 0;
-	ixgbe_link_speed link_speed;
+	ixgbe_link_speed link_speed = IXGBE_LINK_SPEED_UNKNOWN;
 	ixgbe_link_speed highest_link_speed = IXGBE_LINK_SPEED_UNKNOWN;
 	u32 speedcnt = 0;
 	u32 esdp_reg = IXGBE_READ_REG(hw, IXGBE_ESDP);
@@ -576,9 +581,10 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
 		/* Allow module to change analog characteristics (1G->10G) */
 		msleep(40);
 
-		status = ixgbe_setup_mac_link_82599(
-			hw, IXGBE_LINK_SPEED_10GB_FULL, autoneg,
-			autoneg_wait_to_complete);
+		status = ixgbe_setup_mac_link_82599(hw,
+						IXGBE_LINK_SPEED_10GB_FULL,
+						autoneg,
+						autoneg_wait_to_complete);
 		if (status != 0)
 			return status;
 
@@ -627,9 +633,10 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
 		/* Allow module to change analog characteristics (10G->1G) */
 		msleep(40);
 
-		status = ixgbe_setup_mac_link_82599(
-			hw, IXGBE_LINK_SPEED_1GB_FULL, autoneg,
-			autoneg_wait_to_complete);
+		status = ixgbe_setup_mac_link_82599(hw,
+						    IXGBE_LINK_SPEED_1GB_FULL,
+						    autoneg,
+						    autoneg_wait_to_complete);
 		if (status != 0)
 			return status;
 
@@ -838,8 +845,8 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 		if (speed & IXGBE_LINK_SPEED_1GB_FULL)
 			autoc |= IXGBE_AUTOC_KX_SUPP;
 	} else if ((pma_pmd_1g == IXGBE_AUTOC_1G_SFI) &&
-	         (link_mode == IXGBE_AUTOC_LMS_1G_LINK_NO_AN ||
-	          link_mode == IXGBE_AUTOC_LMS_1G_AN)) {
+	           (link_mode == IXGBE_AUTOC_LMS_1G_LINK_NO_AN ||
+	            link_mode == IXGBE_AUTOC_LMS_1G_AN)) {
 		/* Switch from 1G SFI to 10G SFI if requested */
 		if ((speed == IXGBE_LINK_SPEED_10GB_FULL) &&
 		    (pma_pmd_10g_serial == IXGBE_AUTOC2_10G_SFI)) {
@@ -847,7 +854,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 			autoc |= IXGBE_AUTOC_LMS_10G_SERIAL;
 		}
 	} else if ((pma_pmd_10g_serial == IXGBE_AUTOC2_10G_SFI) &&
-	         (link_mode == IXGBE_AUTOC_LMS_10G_SERIAL)) {
+	           (link_mode == IXGBE_AUTOC_LMS_10G_SERIAL)) {
 		/* Switch from 10G SFI to 1G SFI if requested */
 		if ((speed == IXGBE_LINK_SPEED_1GB_FULL) &&
 		    (pma_pmd_1g == IXGBE_AUTOC_1G_SFI)) {
@@ -860,7 +867,6 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 	}
 
 	if (autoc != start_autoc) {
-
 		/* Restart link */
 		autoc |= IXGBE_AUTOC_AN_RESTART;
 		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc);
@@ -918,6 +924,7 @@ static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw,
 
 	return status;
 }
+
 /**
  *  ixgbe_reset_hw_82599 - Perform hardware reset
  *  @hw: pointer to hardware structure
@@ -1025,7 +1032,7 @@ mac_reset_top:
 		}
 	}
 
-       /* Store the permanent mac address */
+	/* Store the permanent mac address */
 	hw->mac.ops.get_mac_addr(hw, hw->mac.perm_addr);
 
 	/*
@@ -1046,7 +1053,7 @@ mac_reset_top:
 
 		/* Reserve the last RAR for the SAN MAC address */
 		hw->mac.num_rar_entries--;
-       }
+	}
 
 	/* Store the alternative WWNN/WWPN prefix */
 	hw->mac.ops.get_wwn_prefix(hw, &hw->mac.wwnn_prefix,
@@ -1189,10 +1196,8 @@ s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 pballoc)
 
 
 	/* Prime the keys for hashing */
-	IXGBE_WRITE_REG(hw, IXGBE_FDIRHKEY,
-	                IXGBE_HTONL(IXGBE_ATR_BUCKET_HASH_KEY));
-	IXGBE_WRITE_REG(hw, IXGBE_FDIRSKEY,
-	                IXGBE_HTONL(IXGBE_ATR_SIGNATURE_HASH_KEY));
+	IXGBE_WRITE_REG(hw, IXGBE_FDIRHKEY, IXGBE_ATR_BUCKET_HASH_KEY);
+	IXGBE_WRITE_REG(hw, IXGBE_FDIRSKEY, IXGBE_ATR_SIGNATURE_HASH_KEY);
 
 	/*
 	 * Poll init-done after we write the register.  Estimated times:
@@ -1237,7 +1242,6 @@ s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 pballoc)
 	 * must be reduced.  The new value is the current size minus
 	 * flow director memory usage size.
 	 */
-
 	pbsize = (1 << (IXGBE_FDIR_PBALLOC_SIZE_SHIFT + pballoc));
 	IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(0),
 	    (IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(0)) - pbsize));
@@ -1283,10 +1287,8 @@ s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 pballoc)
 	fdirctrl |= (0x6 << IXGBE_FDIRCTRL_FLEX_SHIFT);
 
 	/* Prime the keys for hashing */
-	IXGBE_WRITE_REG(hw, IXGBE_FDIRHKEY,
-	                IXGBE_HTONL(IXGBE_ATR_BUCKET_HASH_KEY));
-	IXGBE_WRITE_REG(hw, IXGBE_FDIRSKEY,
-	                IXGBE_HTONL(IXGBE_ATR_SIGNATURE_HASH_KEY));
+	IXGBE_WRITE_REG(hw, IXGBE_FDIRHKEY, IXGBE_ATR_BUCKET_HASH_KEY);
+	IXGBE_WRITE_REG(hw, IXGBE_FDIRSKEY,IXGBE_ATR_SIGNATURE_HASH_KEY);
 
 	/*
 	 * Poll init-done after we write the register.  Estimated times:
@@ -1319,13 +1321,13 @@ s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 pballoc)
 	return 0;
 }
 
-
 /**
  *  ixgbe_atr_compute_hash_82599 - Compute the hashes for SW ATR
  *  @stream: input bitstream to compute the hash on
  *  @key: 32-bit hash key
  **/
-u16 ixgbe_atr_compute_hash_82599(struct ixgbe_atr_input *atr_input, u32 key)
+u16 ixgbe_atr_compute_hash_82599(union ixgbe_atr_input *atr_input,
+				 u32 key)
 {
 	/*
 	 * The algorithm is as follows:
@@ -1345,100 +1347,333 @@ u16 ixgbe_atr_compute_hash_82599(struct ixgbe_atr_input *atr_input, u32 key)
 	 *    To simplify for programming, the algorithm is implemented
 	 *    in software this way:
 	 *
-	 *    Key[31:0], Stream[335:0]
+	 *    key[31:0], hi_hash_dword[31:0], lo_hash_dword[31:0], hash[15:0]
 	 *
-	 *    tmp_key[11 * 32 - 1:0] = 11{Key[31:0] = key concatenated 11 times
-	 *    int_key[350:0] = tmp_key[351:1]
-	 *    int_stream[365:0] = Stream[14:0] | Stream[335:0] | Stream[335:321]
+	 *    lo_hash_dword[31:0] = Stream[31:0];
+	 *    hi_hash_dword[31:0] = Stream[31:0];
 	 *
-	 *    hash[15:0] = 0;
-	 *    for (i = 0; i < 351; i++) {
-	 *        if (int_key[i])
-	 *            hash ^= int_stream[(i + 15):i];
-	 *    }
+	 *    for (i = 32; i < 320; i+=32)
+	 *        hi_hash_dword[31:0] ^= Stream[(i+31):i];
+	 *
+	 *    hi_hash_dword[31:0]  ^= Stream[351:320];
+	 *    lo_hash_dword[31:16] ^= Stream[351:336];
+	 *    ho_hash_dword[15:0]  ^= Stream[351:336];
+	 *
+	 *    lo_hash_dword[31:16] ^= hi_hash_dword[15:0];
+	 *    lo_hash_dword[15:0]  ^= hi_hash_dword[31:16];
+	 *
+	 *    if(key[0])
+	 *        hash[15:0] ^= Stream[31:16];
+	 *
+	 *    for (i = 0; i < 16; i++) {
+	 *        if (key[i + 16])
+	 *            hash[15:0] ^= hi_hash_dword[(i+15):i];
+	 *        if (key[i])
+	 *            hash[15:0] ^= lo_hash_dword[(i+15):i];
+	 *    }    
+	 *
 	 */
+	u32 hi_hash_dword, lo_hash_dword;
+	u16 hash_result = 0;
+	u8  i;
 
-	union {
-		u64    fill[6];
-		u32    key[11];
-		u8     key_stream[44];
-	} tmp_key;
+	hi_hash_dword = lo_hash_dword = (u32)atr_input->dword_stream[0];
 
-	u8   *stream = (u8 *)atr_input;
-	u8   int_key[44];      /* upper-most bit unused */
-	u8   hash_str[46];     /* upper-most 2 bits unused */
-	u16  hash_result = 0;
-	int  i, j, k, h;
+	/* combine hash dword stream to create hash dword */
+	for (i = 1; i < 10; i++)
+		hi_hash_dword  ^= (u32)atr_input->dword_stream[i];
+
+	hi_hash_dword ^= (u32)atr_input->dword_stream[10];
+	lo_hash_dword ^= (u32)atr_input->dword_stream[10] &
+			 IXGBE_HTONL(0x0000FFFF);
 
 	/*
-	 * Initialize the fill member to prevent warnings
-	 * on some compilers
+	 * This test determines the endianess of the system and the effect of
+	 * the shift.  Most complilers should just select one of the two
+	 * statements and drop the other.
 	 */
-	 tmp_key.fill[0] = 0;
+	if (IXGBE_HTONL(0x0000FFFF) << 16)
+		hi_hash_dword ^= (u32)atr_input->dword_stream[10] << 16;
+	else
+		hi_hash_dword ^= (u32)atr_input->dword_stream[10] >> 16;
 
-	/* First load the temporary key stream */
-	for (i = 0; i < 6; i++) {
-		u64 fillkey = ((u64)key << 32) | key;
-		tmp_key.fill[i] = fillkey;
+	lo_hash_dword ^= (hi_hash_dword >> 16) | (hi_hash_dword << 16);
+
+	/* hash was stored in big-endian, now convert it to CPU specific */
+	hi_hash_dword = IXGBE_NTOHL((__be32)hi_hash_dword);
+	lo_hash_dword = IXGBE_NTOHL((__be32)lo_hash_dword);
+
+	if (key & 0x00010000)
+		hash_result ^= hi_hash_dword;
+	/*
+	 * bit flip vlan from hash result if hash key has bit 0 set, the
+	 * reason for doing this is because the hash generation shouldn't
+	 * start until bit 1 in the stream so we need to cancel out a vlan
+	 * if it was added starting at bit 0.
+	 */
+	if (key & 0x0001) {
+		hash_result ^= IXGBE_NTOHL(atr_input->dword_stream[0]);
+		hash_result ^= lo_hash_dword;
 	}
 
-	/*
-	 * Set the interim key for the hashing.  Bit 352 is unused, so we must
-	 * shift and compensate when building the key.
-	 */
-
-	int_key[0] = tmp_key.key_stream[0] >> 1;
-	for (i = 1, j = 0; i < 44; i++) {
-		unsigned int this_key = tmp_key.key_stream[j] << 7;
-		j++;
-		int_key[i] = (u8)(this_key | (tmp_key.key_stream[j] >> 1));
-	}
-
-	/*
-	 * Set the interim bit string for the hashing.  Bits 368 and 367 are
-	 * unused, so shift and compensate when building the string.
-	 */
-	hash_str[0] = (stream[40] & 0x7f) >> 1;
-	for (i = 1, j = 40; i < 46; i++) {
-		unsigned int this_str = stream[j] << 7;
-		j++;
-		if (j > 41)
-			j = 0;
-		hash_str[i] = (u8)(this_str | (stream[j] >> 1));
-	}
-
-	/*
-	 * Now compute the hash.  i is the index into hash_str, j is into our
-	 * key stream, k is counting the number of bits, and h interates within
-	 * each byte.
-	 */
-	for (i = 45, j = 43, k = 0; k < 351 && i >= 2 && j >= 0; i--, j--) {
-		for (h = 0; h < 8 && k < 351; h++, k++) {
-			if (int_key[j] & (1 << h)) {
-				/*
-				 * Key bit is set, XOR in the current 16-bit
-				 * string.  Example of processing:
-				 *    h = 0,
-				 *      tmp = (hash_str[i - 2] & 0 << 16) |
-				 *            (hash_str[i - 1] & 0xff << 8) |
-				 *            (hash_str[i] & 0xff >> 0)
-				 *      So tmp = hash_str[15 + k:k], since the
-				 *      i + 2 clause rolls off the 16-bit value
-				 *    h = 7,
-				 *      tmp = (hash_str[i - 2] & 0x7f << 9) |
-				 *            (hash_str[i - 1] & 0xff << 1) |
-				 *            (hash_str[i] & 0x80 >> 7)
-				 */
-				int tmp = (hash_str[i] >> h);
-				tmp |= (hash_str[i - 1] << (8 - h));
-				tmp |= (int)(hash_str[i - 2] & ((1 << h) - 1))
-				             << (16 - h);
-				hash_result ^= (u16)tmp;
-			}
-		}
+	/* process the remaining bits in the key */
+	for (i = 1; i < 16; i++) {
+		if (key & (0x00010000 << i))
+			hash_result ^= hi_hash_dword >> i;
+		if (key & (0x0001 << i))
+			hash_result ^= lo_hash_dword >> i;
 	}
 
 	return hash_result;
+}
+
+/**
+ *  ixgbe_atr_compute_sig_hashes_82599 - Compute the signature hashes
+ *  @stream: input bitstream to compute the hash on
+ *  @bucket_ptr: location to place the resultant bucket hash
+ *  @sig_ptr: location to place the resultant signature hash
+ *
+ *  This function is almost identical to the function above but contains
+ *  several optomizations such as unwinding all of the loops, letting the
+ *  compiler work out all of the conditional ifs since the keys are static
+ *  defines, and computing two keys at once since the hashed dword stream
+ *  will be the same for both keys.
+ **/
+void ixgbe_atr_compute_sig_hashes_82599(union ixgbe_atr_input *atr_input,
+					       u16 *bucket_ptr, u16 *sig_ptr)
+{
+	u32 hi_hash_dword, lo_hash_dword;
+	u16 bucket_hash = 0, sig_hash = 0;
+
+	hi_hash_dword = lo_hash_dword = (u32)atr_input->dword_stream[0];
+
+	hi_hash_dword ^= (u32)atr_input->dword_stream[1];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[2];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[3];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[4];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[5];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[6];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[7];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[8];
+	hi_hash_dword ^= (u32)atr_input->dword_stream[9];
+
+	hi_hash_dword ^= (u32)atr_input->dword_stream[10];
+	lo_hash_dword ^= (u32)atr_input->dword_stream[10] &
+			 IXGBE_HTONL(0x0000FFFF);
+
+	/*
+	 * This test determines the endianess of the system and the effect of
+	 * the shift.  Most complilers should just select one of the two
+	 * statements and drop the other.
+	 */
+	if (IXGBE_HTONL(0x0000FFFF) << 16)
+		hi_hash_dword ^= (u32)atr_input->dword_stream[10] << 16;
+	else
+		hi_hash_dword ^= (u32)atr_input->dword_stream[10] >> 16;
+
+	lo_hash_dword ^= (hi_hash_dword >> 16) | (hi_hash_dword << 16);
+
+	/* hash was stored in big-endian, now convert it to CPU specific */
+	hi_hash_dword = IXGBE_NTOHL((__be32)hi_hash_dword);
+	lo_hash_dword = IXGBE_NTOHL((__be32)lo_hash_dword);
+
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00010000)
+	bucket_hash ^= hi_hash_dword;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00010000)
+	sig_hash ^= hi_hash_dword;
+#endif
+	/* bit flip vlan from hash result if hash key starts at bit 0 */
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0001)
+	bucket_hash ^= IXGBE_NTOHL(atr_input->dword_stream[0]) & 0x0000FFFF;
+	bucket_hash ^= lo_hash_dword;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0001)
+	sig_hash ^= IXGBE_NTOHL(atr_input->dword_stream[0]) & 0x0000FFFF;
+	sig_hash ^= lo_hash_dword;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00020000)
+	bucket_hash ^= hi_hash_dword >> 1;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00020000)
+	sig_hash ^= hi_hash_dword >> 1;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0002)
+	bucket_hash ^= lo_hash_dword >> 1;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0002)
+	sig_hash ^= lo_hash_dword >> 1;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00040000)
+	bucket_hash ^= hi_hash_dword >> 2;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00040000)
+	sig_hash ^= hi_hash_dword>> 2;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0004)
+	bucket_hash ^= lo_hash_dword >> 2;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0004)
+	sig_hash ^= lo_hash_dword>> 2;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00080000)
+	bucket_hash ^= hi_hash_dword >> 3;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00080000)
+	sig_hash ^= hi_hash_dword >> 3;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0008)
+	bucket_hash ^= lo_hash_dword >> 3;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0008)
+	sig_hash ^= lo_hash_dword >> 3;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00100000)
+	bucket_hash ^= hi_hash_dword >> 4;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00100000)
+	sig_hash ^= hi_hash_dword >> 4;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0010)
+	bucket_hash ^= lo_hash_dword >> 4;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0010)
+	sig_hash ^= lo_hash_dword >> 4;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00200000)
+	bucket_hash ^= hi_hash_dword >> 5;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00200000)
+	sig_hash ^= hi_hash_dword >> 5;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0020)
+	bucket_hash ^= lo_hash_dword >> 5;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0020)
+	sig_hash ^= lo_hash_dword >> 5;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00400000)
+	bucket_hash ^= hi_hash_dword >> 6;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00400000)
+	sig_hash ^= hi_hash_dword >> 6;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0040)
+	bucket_hash ^= lo_hash_dword >> 6;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0040)
+	sig_hash ^= lo_hash_dword >> 6;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x00800000)
+	bucket_hash ^= hi_hash_dword >> 7;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x00800000)
+	sig_hash ^= hi_hash_dword >> 7;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0080)
+	bucket_hash ^= lo_hash_dword >> 7;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0080)
+	sig_hash ^= lo_hash_dword >> 7;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x01000000)
+	bucket_hash ^= hi_hash_dword >> 8;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x01000000)
+	sig_hash ^= hi_hash_dword >> 8;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0100)
+	bucket_hash ^= lo_hash_dword >> 8;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0100)
+	sig_hash ^= lo_hash_dword >> 8;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x02000000)
+	bucket_hash ^= hi_hash_dword >> 9;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x02000000)
+	sig_hash ^= hi_hash_dword >> 9;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0200)
+	bucket_hash ^= lo_hash_dword >> 9;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0200)
+	sig_hash ^= lo_hash_dword >> 9;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x04000000)
+	bucket_hash ^= hi_hash_dword >> 10;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x04000000)
+	sig_hash ^= hi_hash_dword >> 10;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0400)
+	bucket_hash ^= lo_hash_dword >> 10;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0400)
+	sig_hash ^= lo_hash_dword >> 10;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x08000000)
+	bucket_hash ^= hi_hash_dword >> 11;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x08000000)
+	sig_hash ^= hi_hash_dword >> 11;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x0800)
+	bucket_hash ^= lo_hash_dword >> 11;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x0800)
+	sig_hash ^= lo_hash_dword >> 11;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x10000000)
+	bucket_hash ^= hi_hash_dword >> 12;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x10000000)
+	sig_hash ^= hi_hash_dword >> 12;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x1000)
+	bucket_hash ^= lo_hash_dword >> 12;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x1000)
+	sig_hash ^= lo_hash_dword >> 12;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x20000000)
+	bucket_hash ^= hi_hash_dword >> 13;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x20000000)
+	sig_hash ^= hi_hash_dword >> 13;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x2000)
+	bucket_hash ^= lo_hash_dword >> 13;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x2000)
+	sig_hash ^= lo_hash_dword >> 13;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x40000000)
+	bucket_hash ^= hi_hash_dword >> 14;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x40000000)
+	sig_hash ^= hi_hash_dword > 14;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x4000)
+	bucket_hash ^= lo_hash_dword >> 14;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x4000)
+	sig_hash ^= lo_hash_dword > 14;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x80000000)
+	bucket_hash ^= hi_hash_dword >> 15;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x80000000)
+	sig_hash ^= hi_hash_dword >> 15;
+#endif
+#if (IXGBE_ATR_BUCKET_HASH_KEY & 0x8000)
+	bucket_hash ^= lo_hash_dword >> 15;
+#endif
+#if (IXGBE_ATR_SIGNATURE_HASH_KEY & 0x8000)
+	sig_hash ^= lo_hash_dword >> 15;
+#endif
+	*bucket_ptr = bucket_hash;
+	*sig_ptr = sig_hash;
 }
 
 /**
@@ -1446,10 +1681,9 @@ u16 ixgbe_atr_compute_hash_82599(struct ixgbe_atr_input *atr_input, u32 key)
  *  @input: input stream to modify
  *  @vlan: the VLAN id to load
  **/
-s32 ixgbe_atr_set_vlan_id_82599(struct ixgbe_atr_input *input, u16 vlan)
+s32 ixgbe_atr_set_vlan_id_82599(union ixgbe_atr_input *input, __be16 vlan)
 {
-	input->byte_stream[IXGBE_ATR_VLAN_OFFSET + 1] = vlan >> 8;
-	input->byte_stream[IXGBE_ATR_VLAN_OFFSET] = vlan & 0xff;
+	input->formatted.vlan_id = vlan;
 
 	return 0;
 }
@@ -1459,14 +1693,9 @@ s32 ixgbe_atr_set_vlan_id_82599(struct ixgbe_atr_input *input, u16 vlan)
  *  @input: input stream to modify
  *  @src_addr: the IP address to load
  **/
-s32 ixgbe_atr_set_src_ipv4_82599(struct ixgbe_atr_input *input, u32 src_addr)
+s32 ixgbe_atr_set_src_ipv4_82599(union ixgbe_atr_input *input, __be32 src_addr)
 {
-	input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET + 3] = src_addr >> 24;
-	input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET + 2] =
-	                                               (src_addr >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET + 1] =
-	                                                (src_addr >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET] = src_addr & 0xff;
+	input->formatted.src_ip0 = src_addr;
 
 	return 0;
 }
@@ -1476,14 +1705,9 @@ s32 ixgbe_atr_set_src_ipv4_82599(struct ixgbe_atr_input *input, u32 src_addr)
  *  @input: input stream to modify
  *  @dst_addr: the IP address to load
  **/
-s32 ixgbe_atr_set_dst_ipv4_82599(struct ixgbe_atr_input *input, u32 dst_addr)
+s32 ixgbe_atr_set_dst_ipv4_82599(union ixgbe_atr_input *input, __be32 dst_addr)
 {
-	input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET + 3] = dst_addr >> 24;
-	input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET + 2] =
-	                                               (dst_addr >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET + 1] =
-	                                                (dst_addr >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET] = dst_addr & 0xff;
+	input->formatted.dst_ip0 = dst_addr;
 
 	return 0;
 }
@@ -1491,42 +1715,19 @@ s32 ixgbe_atr_set_dst_ipv4_82599(struct ixgbe_atr_input *input, u32 dst_addr)
 /**
  *  ixgbe_atr_set_src_ipv6_82599 - Sets the source IPv6 address
  *  @input: input stream to modify
- *  @src_addr_1: the first 4 bytes of the IP address to load
- *  @src_addr_2: the second 4 bytes of the IP address to load
- *  @src_addr_3: the third 4 bytes of the IP address to load
- *  @src_addr_4: the fourth 4 bytes of the IP address to load
+ *  @src_addr_0: the first 4 bytes of the IP address to load
+ *  @src_addr_1: the second 4 bytes of the IP address to load
+ *  @src_addr_2: the third 4 bytes of the IP address to load
+ *  @src_addr_3: the fourth 4 bytes of the IP address to load
  **/
-s32 ixgbe_atr_set_src_ipv6_82599(struct ixgbe_atr_input *input,
-                                 u32 src_addr_1, u32 src_addr_2,
-                                 u32 src_addr_3, u32 src_addr_4)
+s32 ixgbe_atr_set_src_ipv6_82599(union ixgbe_atr_input *input,
+                                 __be32 src_addr_0, __be32 src_addr_1,
+                                 __be32 src_addr_2, __be32 src_addr_3)
 {
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET] = src_addr_4 & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 1] =
-	                                               (src_addr_4 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 2] =
-	                                              (src_addr_4 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 3] = src_addr_4 >> 24;
-
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 4] = src_addr_3 & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 5] =
-	                                               (src_addr_3 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 6] =
-	                                              (src_addr_3 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 7] = src_addr_3 >> 24;
-
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 8] = src_addr_2 & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 9] =
-	                                               (src_addr_2 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 10] =
-	                                              (src_addr_2 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 11] = src_addr_2 >> 24;
-
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 12] = src_addr_1 & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 13] =
-	                                               (src_addr_1 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 14] =
-	                                              (src_addr_1 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 15] = src_addr_1 >> 24;
+	input->formatted.src_ip3 = src_addr_3;
+	input->formatted.src_ip2 = src_addr_2;
+	input->formatted.src_ip1 = src_addr_1;
+	input->formatted.src_ip0 = src_addr_0;
 
 	return 0;
 }
@@ -1534,42 +1735,19 @@ s32 ixgbe_atr_set_src_ipv6_82599(struct ixgbe_atr_input *input,
 /**
  *  ixgbe_atr_set_dst_ipv6_82599 - Sets the destination IPv6 address
  *  @input: input stream to modify
- *  @dst_addr_1: the first 4 bytes of the IP address to load
- *  @dst_addr_2: the second 4 bytes of the IP address to load
- *  @dst_addr_3: the third 4 bytes of the IP address to load
- *  @dst_addr_4: the fourth 4 bytes of the IP address to load
+ *  @dst_addr_0: the first 4 bytes of the IP address to load
+ *  @dst_addr_1: the second 4 bytes of the IP address to load
+ *  @dst_addr_2: the third 4 bytes of the IP address to load
+ *  @dst_addr_3: the fourth 4 bytes of the IP address to load
  **/
-s32 ixgbe_atr_set_dst_ipv6_82599(struct ixgbe_atr_input *input,
-                                 u32 dst_addr_1, u32 dst_addr_2,
-                                 u32 dst_addr_3, u32 dst_addr_4)
+s32 ixgbe_atr_set_dst_ipv6_82599(union ixgbe_atr_input *input,
+                                 __be32 dst_addr_0, __be32 dst_addr_1,
+                                 __be32 dst_addr_2, __be32 dst_addr_3)
 {
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET] = dst_addr_4 & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 1] =
-	                                               (dst_addr_4 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 2] =
-	                                              (dst_addr_4 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 3] = dst_addr_4 >> 24;
-
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 4] = dst_addr_3 & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 5] =
-	                                               (dst_addr_3 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 6] =
-	                                              (dst_addr_3 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 7] = dst_addr_3 >> 24;
-
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 8] = dst_addr_2 & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 9] =
-	                                               (dst_addr_2 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 10] =
-	                                              (dst_addr_2 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 11] = dst_addr_2 >> 24;
-
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 12] = dst_addr_1 & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 13] =
-	                                               (dst_addr_1 >> 8) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 14] =
-	                                              (dst_addr_1 >> 16) & 0xff;
-	input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 15] = dst_addr_1 >> 24;
+	input->formatted.dst_ip3 = dst_addr_3;
+	input->formatted.dst_ip2 = dst_addr_2;
+	input->formatted.dst_ip1 = dst_addr_1;
+	input->formatted.dst_ip0 = dst_addr_0;
 
 	return 0;
 }
@@ -1579,10 +1757,9 @@ s32 ixgbe_atr_set_dst_ipv6_82599(struct ixgbe_atr_input *input,
  *  @input: input stream to modify
  *  @src_port: the source port to load
  **/
-s32 ixgbe_atr_set_src_port_82599(struct ixgbe_atr_input *input, u16 src_port)
+s32 ixgbe_atr_set_src_port_82599(union ixgbe_atr_input *input, __be16 src_port)
 {
-	input->byte_stream[IXGBE_ATR_SRC_PORT_OFFSET + 1] = src_port >> 8;
-	input->byte_stream[IXGBE_ATR_SRC_PORT_OFFSET] = src_port & 0xff;
+	input->formatted.src_port = src_port;
 
 	return 0;
 }
@@ -1592,10 +1769,9 @@ s32 ixgbe_atr_set_src_port_82599(struct ixgbe_atr_input *input, u16 src_port)
  *  @input: input stream to modify
  *  @dst_port: the destination port to load
  **/
-s32 ixgbe_atr_set_dst_port_82599(struct ixgbe_atr_input *input, u16 dst_port)
+s32 ixgbe_atr_set_dst_port_82599(union ixgbe_atr_input *input, __be16 dst_port)
 {
-	input->byte_stream[IXGBE_ATR_DST_PORT_OFFSET + 1] = dst_port >> 8;
-	input->byte_stream[IXGBE_ATR_DST_PORT_OFFSET] = dst_port & 0xff;
+	input->formatted.dst_port = dst_port;
 
 	return 0;
 }
@@ -1605,10 +1781,9 @@ s32 ixgbe_atr_set_dst_port_82599(struct ixgbe_atr_input *input, u16 dst_port)
  *  @input: input stream to modify
  *  @flex_bytes: the flexible bytes to load
  **/
-s32 ixgbe_atr_set_flex_byte_82599(struct ixgbe_atr_input *input, u16 flex_byte)
+s32 ixgbe_atr_set_flex_byte_82599(union ixgbe_atr_input *input, __be16 flex_bytes)
 {
-	input->byte_stream[IXGBE_ATR_FLEX_BYTE_OFFSET + 1] = flex_byte >> 8;
-	input->byte_stream[IXGBE_ATR_FLEX_BYTE_OFFSET] = flex_byte & 0xff;
+	input->formatted.flex_bytes = flex_bytes;
 
 	return 0;
 }
@@ -1618,9 +1793,9 @@ s32 ixgbe_atr_set_flex_byte_82599(struct ixgbe_atr_input *input, u16 flex_byte)
  *  @input: input stream to modify
  *  @vm_pool: the Virtual Machine pool to load
  **/
-s32 ixgbe_atr_set_vm_pool_82599(struct ixgbe_atr_input *input, u8 vm_pool)
+s32 ixgbe_atr_set_vm_pool_82599(union ixgbe_atr_input *input, u8 vm_pool)
 {
-	input->byte_stream[IXGBE_ATR_VM_POOL_OFFSET] = vm_pool;
+	input->formatted.vm_pool = vm_pool;
 
 	return 0;
 }
@@ -1630,9 +1805,9 @@ s32 ixgbe_atr_set_vm_pool_82599(struct ixgbe_atr_input *input, u8 vm_pool)
  *  @input: input stream to modify
  *  @l4type: the layer 4 type value to load
  **/
-s32 ixgbe_atr_set_l4type_82599(struct ixgbe_atr_input *input, u8 l4type)
+s32 ixgbe_atr_set_l4type_82599(union ixgbe_atr_input *input, u8 l4type)
 {
-	input->byte_stream[IXGBE_ATR_L4TYPE_OFFSET] = l4type;
+	input->formatted.l4type = l4type;
 
 	return 0;
 }
@@ -1642,10 +1817,9 @@ s32 ixgbe_atr_set_l4type_82599(struct ixgbe_atr_input *input, u8 l4type)
  *  @input: input stream to search
  *  @vlan: the VLAN id to load
  **/
-s32 ixgbe_atr_get_vlan_id_82599(struct ixgbe_atr_input *input, u16 *vlan)
+s32 ixgbe_atr_get_vlan_id_82599(union ixgbe_atr_input *input, __be16 *vlan)
 {
-	*vlan = input->byte_stream[IXGBE_ATR_VLAN_OFFSET];
-	*vlan |= input->byte_stream[IXGBE_ATR_VLAN_OFFSET + 1] << 8;
+	*vlan = input->formatted.vlan_id;
 
 	return 0;
 }
@@ -1655,12 +1829,9 @@ s32 ixgbe_atr_get_vlan_id_82599(struct ixgbe_atr_input *input, u16 *vlan)
  *  @input: input stream to search
  *  @src_addr: the IP address to load
  **/
-s32 ixgbe_atr_get_src_ipv4_82599(struct ixgbe_atr_input *input, u32 *src_addr)
+s32 ixgbe_atr_get_src_ipv4_82599(union ixgbe_atr_input *input, __be32 *src_addr)
 {
-	*src_addr = input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET];
-	*src_addr |= input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET + 1] << 8;
-	*src_addr |= input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET + 2] << 16;
-	*src_addr |= input->byte_stream[IXGBE_ATR_SRC_IPV4_OFFSET + 3] << 24;
+	*src_addr = input->formatted.src_ip0;
 
 	return 0;
 }
@@ -1670,12 +1841,9 @@ s32 ixgbe_atr_get_src_ipv4_82599(struct ixgbe_atr_input *input, u32 *src_addr)
  *  @input: input stream to search
  *  @dst_addr: the IP address to load
  **/
-s32 ixgbe_atr_get_dst_ipv4_82599(struct ixgbe_atr_input *input, u32 *dst_addr)
+s32 ixgbe_atr_get_dst_ipv4_82599(union ixgbe_atr_input *input, __be32 *dst_addr)
 {
-	*dst_addr = input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET];
-	*dst_addr |= input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET + 1] << 8;
-	*dst_addr |= input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET + 2] << 16;
-	*dst_addr |= input->byte_stream[IXGBE_ATR_DST_IPV4_OFFSET + 3] << 24;
+	*dst_addr = input->formatted.dst_ip0;
 
 	return 0;
 }
@@ -1683,34 +1851,19 @@ s32 ixgbe_atr_get_dst_ipv4_82599(struct ixgbe_atr_input *input, u32 *dst_addr)
 /**
  *  ixgbe_atr_get_src_ipv6_82599 - Gets the source IPv6 address
  *  @input: input stream to search
- *  @src_addr_1: the first 4 bytes of the IP address to load
- *  @src_addr_2: the second 4 bytes of the IP address to load
- *  @src_addr_3: the third 4 bytes of the IP address to load
- *  @src_addr_4: the fourth 4 bytes of the IP address to load
+ *  @src_addr_0: the first 4 bytes of the IP address to load
+ *  @src_addr_1: the second 4 bytes of the IP address to load
+ *  @src_addr_2: the third 4 bytes of the IP address to load
+ *  @src_addr_3: the fourth 4 bytes of the IP address to load
  **/
-s32 ixgbe_atr_get_src_ipv6_82599(struct ixgbe_atr_input *input,
-                                 u32 *src_addr_1, u32 *src_addr_2,
-                                 u32 *src_addr_3, u32 *src_addr_4)
+s32 ixgbe_atr_get_src_ipv6_82599(union ixgbe_atr_input *input,
+                                 __be32 *src_addr_0, __be32 *src_addr_1,
+                                 __be32 *src_addr_2, __be32 *src_addr_3)
 {
-	*src_addr_1 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 12];
-	*src_addr_1 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 13] << 8;
-	*src_addr_1 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 14] << 16;
-	*src_addr_1 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 15] << 24;
-
-	*src_addr_2 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 8];
-	*src_addr_2 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 9] << 8;
-	*src_addr_2 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 10] << 16;
-	*src_addr_2 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 11] << 24;
-
-	*src_addr_3 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 4];
-	*src_addr_3 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 5] << 8;
-	*src_addr_3 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 6] << 16;
-	*src_addr_3 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 7] << 24;
-
-	*src_addr_4 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET];
-	*src_addr_4 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 1] << 8;
-	*src_addr_4 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 2] << 16;
-	*src_addr_4 = input->byte_stream[IXGBE_ATR_SRC_IPV6_OFFSET + 3] << 24;
+	*src_addr_3 = input->formatted.src_ip3;
+	*src_addr_2 = input->formatted.src_ip2;
+	*src_addr_1 = input->formatted.src_ip1;
+	*src_addr_0 = input->formatted.src_ip0;
 
 	return 0;
 }
@@ -1718,34 +1871,19 @@ s32 ixgbe_atr_get_src_ipv6_82599(struct ixgbe_atr_input *input,
 /**
  *  ixgbe_atr_get_dst_ipv6_82599 - Gets the destination IPv6 address
  *  @input: input stream to search
- *  @dst_addr_1: the first 4 bytes of the IP address to load
- *  @dst_addr_2: the second 4 bytes of the IP address to load
- *  @dst_addr_3: the third 4 bytes of the IP address to load
- *  @dst_addr_4: the fourth 4 bytes of the IP address to load
+ *  @dst_addr_0: the first 4 bytes of the IP address to load
+ *  @dst_addr_1: the second 4 bytes of the IP address to load
+ *  @dst_addr_2: the third 4 bytes of the IP address to load
+ *  @dst_addr_3: the fourth 4 bytes of the IP address to load
  **/
-s32 ixgbe_atr_get_dst_ipv6_82599(struct ixgbe_atr_input *input,
-                                 u32 *dst_addr_1, u32 *dst_addr_2,
-                                 u32 *dst_addr_3, u32 *dst_addr_4)
+s32 ixgbe_atr_get_dst_ipv6_82599(union ixgbe_atr_input *input,
+                                 __be32 *dst_addr_0, __be32 *dst_addr_1,
+                                 __be32 *dst_addr_2, __be32 *dst_addr_3)
 {
-	*dst_addr_1 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 12];
-	*dst_addr_1 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 13] << 8;
-	*dst_addr_1 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 14] << 16;
-	*dst_addr_1 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 15] << 24;
-
-	*dst_addr_2 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 8];
-	*dst_addr_2 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 9] << 8;
-	*dst_addr_2 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 10] << 16;
-	*dst_addr_2 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 11] << 24;
-
-	*dst_addr_3 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 4];
-	*dst_addr_3 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 5] << 8;
-	*dst_addr_3 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 6] << 16;
-	*dst_addr_3 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 7] << 24;
-
-	*dst_addr_4 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET];
-	*dst_addr_4 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 1] << 8;
-	*dst_addr_4 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 2] << 16;
-	*dst_addr_4 = input->byte_stream[IXGBE_ATR_DST_IPV6_OFFSET + 3] << 24;
+	*dst_addr_3 = input->formatted.dst_ip3;
+	*dst_addr_2 = input->formatted.dst_ip2;
+	*dst_addr_1 = input->formatted.dst_ip1;
+	*dst_addr_0 = input->formatted.dst_ip0;
 
 	return 0;
 }
@@ -1760,10 +1898,9 @@ s32 ixgbe_atr_get_dst_ipv6_82599(struct ixgbe_atr_input *input,
  *  endianness when retrieving the data.  This can be confusing since the
  *  internal hash engine expects it to be big-endian.
  **/
-s32 ixgbe_atr_get_src_port_82599(struct ixgbe_atr_input *input, u16 *src_port)
+s32 ixgbe_atr_get_src_port_82599(union ixgbe_atr_input *input, __be16 *src_port)
 {
-	*src_port = input->byte_stream[IXGBE_ATR_SRC_PORT_OFFSET] << 8;
-	*src_port |= input->byte_stream[IXGBE_ATR_SRC_PORT_OFFSET + 1];
+	*src_port = input->formatted.src_port;
 
 	return 0;
 }
@@ -1778,10 +1915,9 @@ s32 ixgbe_atr_get_src_port_82599(struct ixgbe_atr_input *input, u16 *src_port)
  *  endianness when retrieving the data.  This can be confusing since the
  *  internal hash engine expects it to be big-endian.
  **/
-s32 ixgbe_atr_get_dst_port_82599(struct ixgbe_atr_input *input, u16 *dst_port)
+s32 ixgbe_atr_get_dst_port_82599(union ixgbe_atr_input *input, __be16 *dst_port)
 {
-	*dst_port = input->byte_stream[IXGBE_ATR_DST_PORT_OFFSET] << 8;
-	*dst_port |= input->byte_stream[IXGBE_ATR_DST_PORT_OFFSET + 1];
+	*dst_port = input->formatted.dst_port;
 
 	return 0;
 }
@@ -1791,10 +1927,9 @@ s32 ixgbe_atr_get_dst_port_82599(struct ixgbe_atr_input *input, u16 *dst_port)
  *  @input: input stream to modify
  *  @flex_bytes: the flexible bytes to load
  **/
-s32 ixgbe_atr_get_flex_byte_82599(struct ixgbe_atr_input *input, u16 *flex_byte)
+s32 ixgbe_atr_get_flex_byte_82599(union ixgbe_atr_input *input, __be16 *flex_bytes)
 {
-	*flex_byte = input->byte_stream[IXGBE_ATR_FLEX_BYTE_OFFSET];
-	*flex_byte |= input->byte_stream[IXGBE_ATR_FLEX_BYTE_OFFSET + 1] << 8;
+	*flex_bytes = input->formatted.flex_bytes;
 
 	return 0;
 }
@@ -1804,9 +1939,9 @@ s32 ixgbe_atr_get_flex_byte_82599(struct ixgbe_atr_input *input, u16 *flex_byte)
  *  @input: input stream to modify
  *  @vm_pool: the Virtual Machine pool to load
  **/
-s32 ixgbe_atr_get_vm_pool_82599(struct ixgbe_atr_input *input, u8 *vm_pool)
+s32 ixgbe_atr_get_vm_pool_82599(union ixgbe_atr_input *input, u8 *vm_pool)
 {
-	*vm_pool = input->byte_stream[IXGBE_ATR_VM_POOL_OFFSET];
+	*vm_pool = input->formatted.vm_pool;
 
 	return 0;
 }
@@ -1816,9 +1951,9 @@ s32 ixgbe_atr_get_vm_pool_82599(struct ixgbe_atr_input *input, u8 *vm_pool)
  *  @input: input stream to modify
  *  @l4type: the layer 4 type value to load
  **/
-s32 ixgbe_atr_get_l4type_82599(struct ixgbe_atr_input *input, u8 *l4type)
+s32 ixgbe_atr_get_l4type_82599(union ixgbe_atr_input *input, u8 *l4type)
 {
-	*l4type = input->byte_stream[IXGBE_ATR_L4TYPE_OFFSET];
+	*l4type = input->formatted.l4type;
 
 	return 0;
 }
@@ -1830,23 +1965,19 @@ s32 ixgbe_atr_get_l4type_82599(struct ixgbe_atr_input *input, u8 *l4type)
  *  @queue: queue index to direct traffic to
  **/
 s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
-                                          struct ixgbe_atr_input *input,
+                                          union ixgbe_atr_input *input,
                                           u8 queue)
 {
 	u64  fdirhashcmd;
 	u64  fdircmd;
 	u32  fdirhash;
-	u16  bucket_hash, sig_hash;
+	u16  bucket_hash = 0, sig_hash = 0;
 	u8   l4type;
 
-	bucket_hash = ixgbe_atr_compute_hash_82599(input,
-	                                           IXGBE_ATR_BUCKET_HASH_KEY);
+	ixgbe_atr_compute_sig_hashes_82599(input, &bucket_hash, &sig_hash);
 
 	/* bucket_hash is only 15 bits */
 	bucket_hash &= IXGBE_ATR_HASH_MASK;
-
-	sig_hash = ixgbe_atr_compute_hash_82599(input,
-	                                        IXGBE_ATR_SIGNATURE_HASH_KEY);
 
 	/* Get the l4type in order to program FDIRCMD properly */
 	/* lowest 2 bits are FDIRCMD.L4TYPE, third lowest bit is FDIRCMD.IPV6 */
@@ -1856,7 +1987,7 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 	 * The lower 32-bits of fdirhashcmd is for FDIRHASH, the upper 32-bits
 	 * is for FDIRCMD.  Then do a 64-bit register write from FDIRHASH.
 	 */
-	fdirhash = sig_hash << IXGBE_FDIRHASH_SIG_SW_INDEX_SHIFT | bucket_hash;
+	fdirhash = (sig_hash << IXGBE_FDIRHASH_SIG_SW_INDEX_SHIFT) | bucket_hash;
 
 	fdircmd = (IXGBE_FDIRCMD_CMD_ADD_FLOW | IXGBE_FDIRCMD_FILTER_UPDATE |
 	           IXGBE_FDIRCMD_LAST | IXGBE_FDIRCMD_QUEUE_EN);
@@ -1900,7 +2031,7 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
  *  hardware writes must be protected from one another.
  **/
 s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
-                                      struct ixgbe_atr_input *input,
+                                      union ixgbe_atr_input *input,
                                       struct ixgbe_atr_input_masks *input_masks,
                                       u16 soft_id, u8 queue)
 {
@@ -1936,7 +2067,7 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 	}
 
 	bucket_hash = ixgbe_atr_compute_hash_82599(input,
-	                                           IXGBE_ATR_BUCKET_HASH_KEY);
+						   IXGBE_ATR_BUCKET_HASH_KEY);
 
 	/* bucket_hash is only 15 bits */
 	bucket_hash &= IXGBE_ATR_HASH_MASK;
@@ -1971,10 +2102,10 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 	ixgbe_atr_get_dst_ipv4_82599(input, &dst_ipv4);
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRIPDA, dst_ipv4);
 
-	IXGBE_WRITE_REG(hw, IXGBE_FDIRVLAN, (vlan_id |
+	IXGBE_WRITE_REG(hw, IXGBE_FDIRVLAN, (IXGBE_NTOHS(vlan_id) |
 	                            (flex_bytes << IXGBE_FDIRVLAN_FLEX_SHIFT)));
-	IXGBE_WRITE_REG(hw, IXGBE_FDIRPORT, (src_port |
-	              (dst_port << IXGBE_FDIRPORT_DESTINATION_SHIFT)));
+	IXGBE_WRITE_REG(hw, IXGBE_FDIRPORT, (IXGBE_NTOHS(src_port) |
+	          (IXGBE_NTOHS(dst_port) << IXGBE_FDIRPORT_DESTINATION_SHIFT)));
 
 	/*
 	 * Program the relevant mask registers.  If src/dst_port or src/dst_addr

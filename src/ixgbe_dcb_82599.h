@@ -97,6 +97,9 @@
 #define IXGBE_TXPBTHRESH_DCB    0xA        /* THRESH value for DCB mode */
 #define IXGBE_TXPKT_SIZE_MAX    0xA        /* Max Tx Packet size  */
 
+/* SECTXMINIFG DCB */
+#define IXGBE_SECTX_DCB         0x00001F00 /* DCB TX Buffer SEC IFG */
+
 
 /* DCB hardware-specific driver APIs */
 

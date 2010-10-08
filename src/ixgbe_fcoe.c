@@ -314,7 +314,7 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 
 	if (eth_hdr(skb)->h_proto == htons(ETH_P_8021Q))
 		fh = (struct fc_frame_header *)(skb->data +
-			sizeof(struct vlan_hdr) + sizeof(struct fcoe_hdr));
+			VLAN_HLEN + sizeof(struct fcoe_hdr));
 	else
 		fh = (struct fc_frame_header *)(skb->data +
 			sizeof(struct fcoe_hdr));

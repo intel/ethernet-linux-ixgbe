@@ -183,7 +183,6 @@ s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw, struct ixgbe_dcb_config *config);
 /* DCB definitions for credit calculation */
 #define DCB_CREDIT_QUANTUM      64
 #define MAX_CREDIT_REFILL       200   /* 200 * 64B = 12800B */
-#define MINIMUM_CREDIT_REFILL   2     /* 2 * 64B = 128B */
 #define DCB_MAX_TSO_SIZE        (32 * 1024) /* MAX TSO packet size supported
                                              * in DCB mode */
 /* 513 for 32KB TSO packet */

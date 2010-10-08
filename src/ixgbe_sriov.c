@@ -150,7 +150,8 @@ inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
 				  adapter->vfinfo[vf].pf_vlan, vf);
 		ixgbe_set_vmvir(adapter,
 				(adapter->vfinfo[vf].pf_vlan |
-				 (adapter->vfinfo[vf].pf_qos << 13)), vf);
+				 (adapter->vfinfo[vf].pf_qos << 
+				  VLAN_PRIO_SHIFT)), vf);
 		ixgbe_set_vmolr(hw, vf, false);
 	} else {
 		ixgbe_set_vmvir(adapter, 0, vf);
@@ -220,6 +221,10 @@ inline void ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	reg = IXGBE_READ_REG(hw, IXGBE_VFRE(reg_offset));
 	reg |= (reg | (1 << vf_shift));
 	IXGBE_WRITE_REG(hw, IXGBE_VFRE(reg_offset), reg);
+
+	reg = IXGBE_READ_REG(hw, IXGBE_VMECM(reg_offset));
+	reg |= (1 << vf_shift);
+	IXGBE_WRITE_REG(hw, IXGBE_VMECM(reg_offset), reg);
 
 	ixgbe_vf_reset_event(adapter, vf);
 }
@@ -382,7 +387,6 @@ void ixgbe_ping_all_vfs(struct ixgbe_adapter *adapter)
 	}
 }
 
-
 #ifdef HAVE_IPLINK_VF_CONFIG
 int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 {
@@ -406,6 +410,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 {
 	int err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
 
 	if ((vf >= adapter->num_vfs) || (vlan > 4095) || (qos > 7))
 		return -EINVAL;
@@ -413,8 +418,8 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 		err = ixgbe_set_vf_vlan(adapter, true, vlan, vf);
 		if (err)
 			goto out;
-		ixgbe_set_vmvir(adapter, vlan | (qos << 13), vf);
-		ixgbe_set_vmolr(&adapter->hw, vf, false);
+		ixgbe_set_vmvir(adapter, vlan | (qos << VLAN_PRIO_SHIFT), vf);
+		ixgbe_set_vmolr(hw, vf, false);
 		adapter->vfinfo[vf].pf_vlan = vlan;
 		adapter->vfinfo[vf].pf_qos = qos;
 		dev_info(&adapter->pdev->dev,
@@ -431,7 +436,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 		err = ixgbe_set_vf_vlan(adapter, false,
 					adapter->vfinfo[vf].pf_vlan, vf);
 		ixgbe_set_vmvir(adapter, vlan, vf);
-		ixgbe_set_vmolr(&adapter->hw, vf, true);
+		ixgbe_set_vmolr(hw, vf, true);
 		adapter->vfinfo[vf].pf_vlan = 0;
 		adapter->vfinfo[vf].pf_qos = 0;
        }
@@ -458,4 +463,3 @@ int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 	return 0;
 }
 #endif
-

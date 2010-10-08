@@ -45,7 +45,7 @@
 /* Bitmasks */
 #define IXGBE_SFF_DA_PASSIVE_CABLE           0x4
 #define IXGBE_SFF_DA_ACTIVE_CABLE            0x8
-#define IXGBE_SFF_DA_SPEC_ACTIVE_LIMITING   0x4
+#define IXGBE_SFF_DA_SPEC_ACTIVE_LIMITING    0x4
 #define IXGBE_SFF_1GBASESX_CAPABLE           0x1
 #define IXGBE_SFF_1GBASELX_CAPABLE           0x2
 #define IXGBE_SFF_1GBASET_CAPABLE            0x8
@@ -87,7 +87,6 @@
 
 #define IXGBE_TN_LASI_STATUS_REG        0x9005
 #define IXGBE_TN_LASI_STATUS_TEMP_ALARM 0x0008
-
 
 s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw);
 bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr);

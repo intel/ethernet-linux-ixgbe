@@ -1058,6 +1058,35 @@ struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 }
 #endif /* < 2.6.33 || defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) */
 
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
+#ifdef HAVE_TX_MQ
+#ifndef CONFIG_NETDEVICES_MULTIQUEUE
+void _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
+{
+	unsigned int real_num = dev->real_num_tx_queues;
+	struct Qdisc *qdisc;
+	int i;
+
+	if (unlikely(txq > dev->num_tx_queues))
+		;
+	else if (txq > real_num)
+		dev->real_num_tx_queues = txq;
+	else if ( txq < real_num) {
+		dev->real_num_tx_queues = txq;
+		for (i = txq; i < dev->num_tx_queues; i++) {
+			qdisc = netdev_get_tx_queue(dev, i)->qdisc;
+			if (qdisc) {
+				spin_lock_bh(qdisc_lock(qdisc));	
+				qdisc_reset(qdisc);
+				spin_unlock_bh(qdisc_lock(qdisc));
+			}
+		}
+	}
+}
+#endif /* CONFIG_NETDEVICES_MULTIQUEUE */
+#endif /* HAVE_TX_MQ */
+#endif /* < 2.6.35 */
+
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36) )
 int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)

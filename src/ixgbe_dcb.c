@@ -139,15 +139,16 @@ err_config:
  */
 s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
                                    struct ixgbe_dcb_config *dcb_config,
-                                   u32 max_frame_size,
-                                   u8 direction)
+                                   u32 max_frame, u8 direction)
 {
 	struct tc_bw_alloc *p;
 	s32 ret_val = 0;
 	/* Initialization values default for Tx settings */
 	u32 credit_refill       = 0;
 	u32 credit_max          = 0;
-	u32 minimal_credit_max  = 0;
+	u32 min_credit          = 0;
+	u32 min_percent         = 100;
+	u16 min_multiplier      = 0;
 	u16 link_percentage     = 0;
 	u8  bw_percent          = 0;
 	u8  i;
@@ -156,6 +157,31 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 		ret_val = DCB_ERR_CONFIG;
 		goto out;
 	}
+
+	min_credit = ((max_frame / 2) + DCB_CREDIT_QUANTUM - 1) /
+	             DCB_CREDIT_QUANTUM;
+
+	/* Find smallest link percentage */
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		p = &dcb_config->tc_config[i].path[direction];
+		bw_percent = dcb_config->bw_percentage[direction][p->bwg_id];
+		link_percentage = p->bwg_percent;
+
+		link_percentage = (link_percentage * bw_percent) / 100;
+
+		if (link_percentage && link_percentage < min_percent)
+			min_percent = link_percentage;
+	}
+
+	/*
+	 * The ratio between traffic classes will control the bandwidth
+	 * percentages seen on the wire. To calculate this ratio we use
+	 * a multiplier. It is required that the refill credits must be
+	 * larger than the max frame size so here we find the smallest
+	 * multiplier that will allow all bandwidth percentages to be
+	 * greater than the max frame size.
+	 */
+	min_multiplier = (min_credit / min_percent) + 1;
 
 	/* Find out the link percentage for each TC first */
 	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
@@ -172,7 +198,8 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 		p->link_percent = (u8)link_percentage;
 
 		/* Calculate credit refill and save it */
-		credit_refill = link_percentage * MINIMUM_CREDIT_REFILL;
+		credit_refill = min(link_percentage * min_multiplier,
+		                    MAX_CREDIT_REFILL);
 		p->data_credits_refill = (u16)credit_refill;
 
 		/* Calculate maximum credit for the TC */
@@ -183,15 +210,8 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 		 * of a TC is too small, the maximum credit may not be
 		 * enough to send out a jumbo frame in data plane arbitration.
 		 */
-
-		if (credit_max) {
-			minimal_credit_max = (max_frame_size +
-			                      (DCB_CREDIT_QUANTUM - 1)) /
-			                      DCB_CREDIT_QUANTUM;
-
-			if (credit_max < minimal_credit_max)
-				credit_max = minimal_credit_max;
-		}
+		if (credit_max && credit_max < min_credit)
+			credit_max = min_credit;
 
 		if (direction == DCB_TX_CONFIG) {
 			/*
@@ -226,11 +246,18 @@ out:
 s32 ixgbe_dcb_get_tc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
                            u8 tc_count)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_get_tc_stats_82598(hw, stats, tc_count);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_get_tc_stats_82599(hw, stats, tc_count);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -245,11 +272,18 @@ s32 ixgbe_dcb_get_tc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
 s32 ixgbe_dcb_get_pfc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
                             u8 tc_count)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_get_pfc_stats_82598(hw, stats, tc_count);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_get_pfc_stats_82599(hw, stats, tc_count);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -263,11 +297,18 @@ s32 ixgbe_dcb_get_pfc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
 s32 ixgbe_dcb_config_rx_arbiter(struct ixgbe_hw *hw,
                                 struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_config_rx_arbiter_82598(hw, dcb_config);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_config_rx_arbiter_82599(hw, dcb_config);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -281,11 +322,18 @@ s32 ixgbe_dcb_config_rx_arbiter(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_tx_desc_arbiter(struct ixgbe_hw *hw,
                                      struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_config_tx_desc_arbiter_82598(hw, dcb_config);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_config_tx_desc_arbiter_82599(hw, dcb_config);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -299,11 +347,18 @@ s32 ixgbe_dcb_config_tx_desc_arbiter(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_tx_data_arbiter(struct ixgbe_hw *hw,
                                      struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_config_tx_data_arbiter_82598(hw, dcb_config);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_config_tx_data_arbiter_82599(hw, dcb_config);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -317,11 +372,18 @@ s32 ixgbe_dcb_config_tx_data_arbiter(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_pfc(struct ixgbe_hw *hw,
                          struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_config_pfc_82598(hw, dcb_config);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_config_pfc_82599(hw, dcb_config);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -334,11 +396,18 @@ s32 ixgbe_dcb_config_pfc(struct ixgbe_hw *hw,
  */
 s32 ixgbe_dcb_config_tc_stats(struct ixgbe_hw *hw)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_config_tc_stats_82598(hw);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_config_tc_stats_82599(hw);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }
 
@@ -352,10 +421,17 @@ s32 ixgbe_dcb_config_tc_stats(struct ixgbe_hw *hw)
 s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw,
                         struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret = 0;
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	s32 ret = IXGBE_NOT_IMPLEMENTED;
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
 		ret = ixgbe_dcb_hw_config_82598(hw, dcb_config);
-	else if (hw->mac.type >= ixgbe_mac_82599EB)
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		ret = ixgbe_dcb_hw_config_82599(hw, dcb_config);
+		break;
+	default:
+		break;
+	}
 	return ret;
 }

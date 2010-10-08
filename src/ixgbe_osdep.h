@@ -102,6 +102,7 @@ extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 #define IXGBE_WRITE_PCIE_WORD ixgbe_write_pci_cfg_word
 #define IXGBE_EEPROM_GRANT_ATTEMPS 100
 #define IXGBE_HTONL(_i) htonl(_i)
-#define IXGBE_HTONS(_i) htons(_i)
+#define IXGBE_NTOHL(_i) ntohl(_i)
+#define IXGBE_NTOHS(_i) ntohs(_i)
 
 #endif /* _IXGBE_OSDEP_H_ */

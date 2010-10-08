@@ -224,14 +224,6 @@ struct msix_entry {
 #define NETIF_F_LRO (1 << 15)
 #endif
 
-#ifndef ETH_FLAG_LRO
-#define ETH_FLAG_LRO (1 << 15)
-#endif
-
-#ifndef ETH_FLAG_NTUPLE
-#define ETH_FLAG_NTUPLE 0
-#endif
-
 #ifndef IPPROTO_SCTP
 #define IPPROTO_SCTP 132
 #endif
@@ -382,6 +374,23 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 /* taken from 2.6.24 definition in linux/kernel.h */
 #ifndef IS_ALIGNED
 #define IS_ALIGNED(x,a)         (((x) % ((typeof(x))(a))) == 0)
+#endif
+
+#ifndef NETIF_F_HW_VLAN_TX
+struct _kc_vlan_ethhdr {
+	unsigned char	h_dest[ETH_ALEN];
+	unsigned char	h_source[ETH_ALEN];
+	__be16		h_vlan_proto;
+	__be16		h_vlan_TCI;
+	__be16		h_vlan_encapsulated_proto;
+};
+#define vlan_ethhdr _kc_vlan_ethhdr
+#define vlan_tx_tag_present(_skb) 0
+#define vlan_tx_tag_get(_skb) 0
+#endif
+
+#ifndef VLAN_PRIO_SHIFT
+#define VLAN_PRIO_SHIFT 13
 #endif
 
 /*****************************************************************************/
@@ -1741,8 +1750,13 @@ do { \
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
 #define to_net_dev(class) container_of(class, struct net_device, class_dev)
 #define NETDEV_CLASS_DEV
+#if (!(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,5)))
 #define vlan_group_get_device(vg, id) (vg->vlan_devices[id])
-#define vlan_group_set_device(vg, id, dev) if (vg) vg->vlan_devices[id] = dev;
+#define vlan_group_set_device(vg, id, dev)		\
+	do {						\
+		if (vg) vg->vlan_devices[id] = dev;	\
+	} while (0)
+#endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,5)) */
 #define pci_channel_offline(pdev) (pdev->error_state && \
 	pdev->error_state != pci_channel_io_normal)
 #define pci_request_selected_regions(pdev, bars, name) \
@@ -1834,6 +1848,10 @@ extern void _kc_print_hex_dump(const char *level, const char *prefix_str,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
+#ifndef ETH_FLAG_LRO
+#define ETH_FLAG_LRO (1 << 15)
+#endif
+
 /* if GRO is supported then the napi struct must already exist */
 #ifndef NETIF_F_GRO
 /* NAPI API changes in 2.6.24 break everything */
@@ -2220,6 +2238,10 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
+#ifndef ETH_FLAG_NTUPLE
+#define ETH_FLAG_NTUPLE 0
+#endif
+
 #ifndef netdev_mc_count
 #define netdev_mc_count(dev) ((dev)->mc_count)
 #endif
@@ -2274,7 +2296,7 @@ do {								\
 	struct adapter_struct *kc_adapter = netdev_priv(netdev);\
 	struct pci_dev *pdev = kc_adapter->pdev;		\
 	struct device *dev = pci_dev_to_dev(pdev);		\
-	dev_printk(level, dev->parent, "%s: " format,		\
+	dev_printk(level, dev, "%s: " format,			\
 		   netdev_name(netdev), ##args);		\
 } while(0)
 #else /* 2.6.21 => 2.6.34 */
@@ -2339,8 +2361,23 @@ do {								\
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
+#ifdef HAVE_TX_MQ
+#include <net/sch_generic.h>
+#ifndef CONFIG_NETDEVICES_MULTIQUEUE
+void _kc_netif_set_real_num_tx_queues(struct net_device *, unsigned int);
+#define netif_set_real_num_tx_queues  _kc_netif_set_real_num_tx_queues
+#else /* CONFIG_NETDEVICES_MULTI_QUEUE */
+#define netif_set_real_num_tx_queues(_netdev, _count) \
+	do { \
+		(_netdev)->egress_subqueue_count = _count; \
+	} while (0)
+#endif /* CONFIG_NETDEVICES_MULTI_QUEUE */
+#else
+#define netif_set_real_num_tx_queues(_netdev, _count) do {} while(0)
+#endif /* HAVE_TX_MQ */
 #else /* < 2.6.35 */
 #define HAVE_PM_QOS_REQUEST_LIST
+#define HAVE_IRQ_AFFINITY_HINT
 #endif /* < 2.6.35 */
 
 /*****************************************************************************/
@@ -2349,5 +2386,6 @@ extern int _kc_ethtool_op_set_flags(struct net_device *, u32, u32);
 #define ethtool_op_set_flags _kc_ethtool_op_set_flags
 #else /* < 2.6.36 */
 #define HAVE_PM_QOS_REQUEST_ACTIVE
+#define HAVE_8021P_SUPPORT
 #endif /* < 2.6.36 */
 #endif /* _KCOMPAT_H_ */

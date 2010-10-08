@@ -34,6 +34,9 @@
 
 #include <linux/pci.h>
 #include <linux/netdevice.h>
+#ifdef HAVE_IRQ_AFFINITY_HINT
+#include <linux/cpumask.h>
+#endif /* HAVE_IRQ_AFFINITY_HINT */
 #include <linux/vmalloc.h>
 
 #ifdef SIOCETHTOOL
@@ -74,10 +77,8 @@
 
 
 /* flow control */
-#define IXGBE_DEFAULT_FCRTL		0x10000
 #define IXGBE_MIN_FCRTL			   0x40
 #define IXGBE_MAX_FCRTL			0x7FF80
-#define IXGBE_DEFAULT_FCRTH		0x20000
 #define IXGBE_MIN_FCRTH			  0x600
 #define IXGBE_MAX_FCRTH			0x7FFF0
 #define IXGBE_DEFAULT_FCPAUSE		 0xFFFF
@@ -102,18 +103,17 @@
 
 #define MAXIMUM_ETHERNET_VLAN_SIZE (VLAN_ETH_FRAME_LEN + ETH_FCS_LEN)
 
-/* Maxium string size for the PBA string from the eeprom */
-#define IXGBE_PBA_LEN	20
-
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBE_RX_BUFFER_WRITE	16	/* Must be power of 2 */
 
 #define IXGBE_TX_FLAGS_CSUM		(u32)(1)
-#define IXGBE_TX_FLAGS_VLAN		(u32)(1 << 1)
-#define IXGBE_TX_FLAGS_TSO		(u32)(1 << 2)
-#define IXGBE_TX_FLAGS_IPV4		(u32)(1 << 3)
-#define IXGBE_TX_FLAGS_FCOE		(u32)(1 << 4)
-#define IXGBE_TX_FLAGS_FSO		(u32)(1 << 5)
+#define IXGBE_TX_FLAGS_HW_VLAN		(u32)(1 << 1)
+#define IXGBE_TX_FLAGS_SW_VLAN		(u32)(1 << 2)
+#define IXGBE_TX_FLAGS_TSO		(u32)(1 << 3)
+#define IXGBE_TX_FLAGS_IPV4		(u32)(1 << 4)
+#define IXGBE_TX_FLAGS_FCOE		(u32)(1 << 5)
+#define IXGBE_TX_FLAGS_FSO		(u32)(1 << 6)
+#define IXGBE_TX_FLAGS_TXSW		(u32)(1 << 7)
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0xe0000000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT  29
@@ -241,6 +241,8 @@ struct ixgbe_queue_stats {
 struct ixgbe_tx_queue_stats {
 	u64 restart_queue;
 	u64 tx_busy;
+	u64 completed;
+	u64 tx_done_old;
 };
 
 struct ixgbe_rx_queue_stats {
@@ -254,6 +256,7 @@ struct ixgbe_rx_queue_stats {
 enum ixbge_ring_state_t {
 	__IXGBE_TX_FDIR_INIT_DONE,
 	__IXGBE_TX_DETECT_HANG,
+	__IXGBE_HANG_CHECK_ARMED,
 	__IXGBE_RX_PS_ENABLED,
 	__IXGBE_RX_RSC_ENABLED,
 #ifndef IXGBE_NO_LRO
@@ -273,8 +276,12 @@ enum ixbge_ring_state_t {
 	set_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
 #define clear_check_for_tx_hang(ring) \
 	clear_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
+#ifndef IXGBE_NO_HW_RSC
 #define ring_is_rsc_enabled(ring) \
 	test_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+#else
+#define ring_is_rsc_enabled(ring) false
+#endif
 #define set_ring_rsc_enabled(ring) \
 	set_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
 #define clear_ring_rsc_enabled(ring) \
@@ -385,6 +392,9 @@ struct ixgbe_q_vector {
 #ifndef HAVE_NETDEV_NAPI_LIST
 	struct net_device poll_dev;
 #endif
+#ifdef HAVE_IRQ_AFFINITY_HINT
+	cpumask_var_t affinity_mask;
+#endif
 } ____cacheline_internodealigned_in_smp;
 
 
@@ -413,11 +423,7 @@ struct ixgbe_q_vector {
 #define IXGBE_FCOE_JUMBO_FRAME_SIZE       3072
 #endif /* IXGBE_FCOE */
 
-#ifdef IXGBE_TCP_TIMER
-#define TCP_TIMER_VECTOR 1
-#else
 #define TCP_TIMER_VECTOR 0
-#endif
 #define OTHER_VECTOR 1
 #define NON_Q_VECTORS (OTHER_VECTOR + TCP_TIMER_VECTOR)
 
@@ -440,12 +446,11 @@ struct ixgbe_q_vector {
 
 /* board specific private data structure */
 struct ixgbe_adapter {
-	struct timer_list watchdog_timer;
+	struct timer_list service_timer;
 #ifdef NETIF_F_HW_VLAN_TX
 	struct vlan_group *vlgrp;
 #endif
 	u16 bd_number;
-	struct work_struct reset_task;
 	struct ixgbe_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
 	struct ixgbe_dcb_config dcb_cfg;
 	struct ixgbe_dcb_config temp_dcb_cfg;
@@ -481,10 +486,6 @@ struct ixgbe_adapter {
 	int max_msix_q_vectors;         /* true count of q_vectors for device */
 	struct ixgbe_ring_feature ring_feature[RING_F_ARRAY_SIZE];
 	struct msix_entry *msix_entries;
-#ifdef IXGBE_TCP_TIMER
-	irqreturn_t (*msix_handlers[MAX_MSIX_COUNT])(int irq, void *data,
-	                                             struct pt_regs *regs);
-#endif
 
 	u32 alloc_rx_page_failed;
 	u32 alloc_rx_buff_failed;
@@ -517,8 +518,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_VMDQ_ENABLED                 (u32)(1 << 19)
 #define IXGBE_FLAG_FAN_FAIL_CAPABLE             (u32)(1 << 20)
 #define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 22)
-#define IXGBE_FLAG_IN_SFP_LINK_TASK             (u32)(1 << 24)
-#define IXGBE_FLAG_IN_SFP_MOD_TASK              (u32)(1 << 25)
+#define IXGBE_FLAG_NEED_LINK_CONFIG             (u32)(1 << 24)
 #define IXGBE_FLAG_FDIR_HASH_CAPABLE            (u32)(1 << 26)
 #define IXGBE_FLAG_FDIR_PERFECT_CAPABLE         (u32)(1 << 27)
 #ifdef IXGBE_FCOE
@@ -529,11 +529,21 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_SRIOV_ENABLED                (u32)(1 << 31)
 
 	u32 flags2;
+#ifndef IXGBE_NO_HW_RSC
 #define IXGBE_FLAG2_RSC_CAPABLE                  (u32)(1)
 #define IXGBE_FLAG2_RSC_ENABLED                  (u32)(1 << 1)
+#else
+#define IXGBE_FLAG2_RSC_CAPABLE                  0
+#define IXGBE_FLAG2_RSC_ENABLED                  0
+#endif
 #define IXGBE_FLAG2_SWLRO_ENABLED                (u32)(1 << 2)
 #define IXGBE_FLAG2_VMDQ_DEFAULT_OVERRIDE        (u32)(1 << 3)
 #define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE          (u32)(1 << 5)
+#define IXGBE_FLAG2_TEMP_SENSOR_EVENT            (u32)(1 << 6)
+#define IXGBE_FLAG2_SEARCH_FOR_SFP               (u32)(1 << 7)
+#define IXGBE_FLAG2_SFP_NEEDS_RESET              (u32)(1 << 8)
+#define IXGBE_FLAG2_RESET_REQUESTED              (u32)(1 << 9)
+#define IXGBE_FLAG2_FDIR_REQUIRES_REINIT         (u32)(1 << 10)
 
 /* default to trying for four seconds */
 #define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
@@ -541,7 +551,9 @@ struct ixgbe_adapter {
 	/* OS defined structs */
 	struct net_device *netdev;
 	struct pci_dev *pdev;
+#ifndef HAVE_NETDEV_STATS_IN_NETDEV
 	struct net_device_stats net_stats;
+#endif
 #ifndef IXGBE_NO_LRO
 	struct ixgbe_lro_stats lro_stats;
 #endif
@@ -577,16 +589,11 @@ struct ixgbe_adapter {
 	bool link_up;
 	unsigned long link_check_timeout;
 
-	struct work_struct watchdog_task;
-	struct work_struct sfp_task;
-	struct timer_list sfp_timer;
-	struct work_struct multispeed_fiber_task;
-	struct work_struct sfp_config_module_task;
+	struct work_struct service_task;
 	u64 flm;
 	u32 fdir_pballoc;
 	u32 atr_sample_rate;
 	spinlock_t fdir_perfect_lock;
-	struct work_struct fdir_reinit_task;
 #ifdef IXGBE_FCOE
 	struct ixgbe_fcoe fcoe;
 #endif /* IXGBE_FCOE */
@@ -596,10 +603,6 @@ struct ixgbe_adapter {
 	u16 eeprom_version;
 	bool netdev_registered;
 	char lsc_int_name[IFNAMSIZ + 9];
-#ifdef IXGBE_TCP_TIMER
-	char tcp_timer_name[IFNAMSIZ + 9];
-#endif
-	struct work_struct check_overtemp_task;
 	u32 interrupt_event;
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
@@ -615,7 +618,8 @@ enum ixbge_state_t {
 	__IXGBE_TESTING,
 	__IXGBE_RESETTING,
 	__IXGBE_DOWN,
-	__IXGBE_SFP_MODULE_NOT_FOUND
+	__IXGBE_SERVICE_SCHED,
+	__IXGBE_IN_SFP_INIT,
 };
 
 struct ixgbe_rsc_cb {
@@ -628,6 +632,8 @@ struct ixgbe_rsc_cb {
 extern struct dcbnl_rtnl_ops dcbnl_ops;
 extern int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
 			      struct ixgbe_dcb_config *dst_dcb_cfg, int tc_max);
+
+extern u8 ixgbe_dcb_txq_to_tc(struct ixgbe_adapter *adapter, u8 index);
 
 /* needed by ixgbe_main.c */
 extern int ixgbe_validate_mac_addr(u8 *mc_addr);
@@ -660,7 +666,7 @@ extern void ixgbe_unmap_and_free_tx_resource(struct ixgbe_ring *,
                                              struct ixgbe_tx_buffer *);
 extern void ixgbe_alloc_rx_buffers(struct ixgbe_ring *, u16);
 extern void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter, struct ixgbe_ring *);
-extern void clear_rscctl(struct ixgbe_adapter *adapter, struct ixgbe_ring *);
+extern void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter, struct ixgbe_ring *);
 extern void ixgbe_set_rx_mode(struct net_device *netdev);
 extern void ixgbe_tx_ctxtdesc(struct ixgbe_ring *, u32, u32, u32, u32);
 extern void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);

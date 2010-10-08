@@ -99,13 +99,27 @@ different values for each type of interrupt.
 .br
 .B Default Value: 8000
 .IP
-Interrupt Throttle Rate (interrupts/sec). The ITR parameter controls how many interrupts each interrupt vector can
-generate per second.  On MQ/RSS enabled kernels with MSI-X interrupts this means that each RX vector can generate 
-(by default) 8000 interrupts per second and each TX vector can generate (by default) 4000 interrupts per second.
-Dynamic mode attempts to moderate interrupts per vector while maintaining
-very low latency.  This can sometimes cause extra CPU utilization when in
-dynamic mode.  If planning on deploying ixgbe in a latency sensitive
-environment please consider this parameter.
+Interrupt Throttle Rate (interrupts/sec)
+.br
+The ITR parameter controls how many interrupts each interrupt vector can
+generate per second.  On MQ/RSS enabled kernels with MSI-X interrupts this
+means that each RX vector can generate (by default) 8000 interrupts per second
+and each TX vector can generate (by default) 4000 interrupts per second.
+Increasing ITR lowers latency at the cost of increased CPU utilization, though
+it may help throughput in some circumstances.
+.br
+1 = Dynamic mode attempts to moderate interrupts per vector while maintaining
+very low latency.  This can sometimes cause extra CPU utilization.  If planning
+on deploying ixgbe in a latency sensitive environment please consider this
+parameter.
+.br
+0 = Setting InterruptThrottleRate to 0 turns off any interrupt moderation and 
+may improve small packet latency, but is generally not suitable for bulk 
+throughput traffic due to the increased cpu utilization of the higher interrupt
+rate. Please note that on 82599-based adapters, disabling InterruptThrottleRate
+will also result in the driver disabling HW RSC. On 82598-based adapters, 
+disabling InterruptThrottleRate will also result in disabling LRO (Large Receive
+Offloads). 
 .LP
 .B LLIPort
 .IP

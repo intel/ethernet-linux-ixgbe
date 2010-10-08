@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-May 6, 2010
+September 10, 2010
 
 Contents
 ========
@@ -93,8 +93,8 @@ LR Modules
 Intel 	    DUAL RATE 1G/10G SFP+ LR (bailed)                FTLX1471D3BCV-IT	
 Intel	    DUAL RATE 1G/10G SFP+ LR (bailed)                AFCT-701SDZ-IN2
 
-The following is a list of 3rd party SFP+ modules and direct attach cables that
-have received some testing. Not all modules are applicable to all devices.
+The following is a list of 3rd party SFP+ modules that have received some 
+testing. Not all modules are applicable to all devices.
 
 Supplier   Type                                              Part Numbers
 
@@ -106,20 +106,11 @@ Finisar    DUAL RATE 1G/10G SFP+ SR (No Bail)	             FTLX8571D3QCV-IT
 Avago	   DUAL RATE 1G/10G SFP+ SR (No Bail)	             AFBR-703SDZ-IN1	
 Finisar	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             FTLX1471D3QCV-IT
 Avago	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             AFCT-701SDZ-IN1
+Finistar   1000BASE-T SFP                                    FCLF8522P2BTL
+Avago      1000BASE-T SFP                                    ABCU-5710RZ
 		
-Molex	   1m - Twin-ax cable	                             74752-1101
-Molex	   3m - Twin-ax cable	                             74752-2301
-Molex	   5m - Twin-ax cable	                             74752-3501
-Molex	   10m - Twin-ax cable	                             74752-9004
-Tyco	   1m - Twin-ax cable	                             2032237-2
-Tyco	   3m - Twin-ax cable	                             2032237-4
-Tyco 	   5m - Twin-ax cable	                             2032237-6
-Tyco	   10m - Twin-ax cable	                             1-2032237-1
-
-Laserwire  Active cable - Limiting                           FCBP11OLD1LXX
-Intersil   5m - 32AWG - Active cable - Limiting              QLX1000CSFP0532
-Intersil   10m - 28AWG - Active cable - Limiting             QLX1000CSFP1028
-Intersil   15m - 24AWG - Active cable - Limiting             QLX1000CSFP1524
+82599-based adapters support all passive and active limiting direct attach 
+cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
 
 
 82598-BASED ADAPTERS
@@ -142,14 +133,11 @@ Supplier   Type                                              Part Numbers
 Finisar    SFP+ SR bailed, 10g single rate                   FTLX8571D3BCL
 Avago      SFP+ SR bailed, 10g single rate                   AFBR-700SDZ
 Finisar    SFP+ LR bailed, 10g single rate                   FTLX1471D3BCL
-Molex      1m - Twin-ax cable                                74752-1101
-Molex      3m - Twin-ax cable                                74752-2301
-Molex      5m - Twin-ax cable                                74752-3501
-Molex      10m - Twin-ax cable                               74752-9004
-Tyco       1m - Twin-ax cable                                2032237-2
-Tyco       3m - Twin-ax cable                                2032237-4
-Tyco       5m - Twin-ax cable                                2032237-6
-Tyco       10m - Twin-ax cable                               1-2032237-1		
+
+82598-based adapters support all passive direct attach cables that comply 
+with SFF-8431 v4.1 and SFF-8472 v10.4 specifications. Active direct attach 
+cables are not supported.
+	
 
 Third party optic modules and cables referred to above are listed only for the 
 purpose of highlighting third party specifications and potential compatibility, 
@@ -313,10 +301,13 @@ it may help throughput in some circumstances.
 very low latency.  This can sometimes cause extra CPU utilization.  If planning
 on deploying ixgbe in a latency sensitive environment please consider this
 parameter.
-0 = Setting InterruptThrottleRate to 0 turns off any interrupt moderation and
+0 = Setting InterruptThrottleRate to 0 turns off any interrupt moderation and 
 may improve small packet latency, but is generally not suitable for bulk 
 throughput traffic due to the increased cpu utilization of the higher interrupt
-rate.
+rate. Please note that on 82599-based adapters, disabling InterruptThrottleRate
+will also result in the driver disabling HW RSC. On 82598-based adapters, 
+disabling InterruptThrottleRate will also result in disabling LRO (Large Receive
+Offloads).
 
 LLI (Low Latency Interrupts)
 ---------------------------- 
@@ -611,7 +602,20 @@ Additional Configurations
   # sysctl -e net.core.netdev_max_backlog=10000
   net.core.netdev_max_backlog = 10000
 
+  MAC and VLAN anti-spoofing feature
+  ----------------------------------
+  When a malicious driver attempts to send a spoofed packet, it is dropped by 
+  the hardware and not transmitted.  An interrupt is sent to the PF driver 
+  notifying it of the spoof attempt.
 
+  When a spoofed packet is detected the PF driver will send the following 
+  message to the system log (displayed by  the "dmesg" command):
+
+  Spoof event(s) detected on VF (n)
+
+  Where n=the VF that attempted to do the spoofing.
+
+   
 Performance Tuning
 ==================
 

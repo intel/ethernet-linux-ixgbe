@@ -786,15 +786,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			adapter->tx_itr_setting = (DEFAULT_ITR >> 1) & ~1;
 		}
 #endif
-		/* Check Interoperability */
-		if (adapter->rx_itr_setting == 0 &&
-		    adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE) {
-			/* itr ==0 and RSC are mutually exclusive */
-			adapter->flags2 &= ~IXGBE_FLAG2_RSC_CAPABLE;
-			adapter->netdev->features &= ~NETIF_F_LRO;
-			DPRINTK(PROBE, INFO,
-			     "InterruptThrottleRate set to 0, disabling RSC\n");
-		}
 	}
 #ifndef IXGBE_NO_LLI
 	{ /* Low Latency Interrupt TCP Port*/
@@ -1148,6 +1139,7 @@ no_fdir_sample:
 		*aflags &= ~IXGBE_FLAG_FCOE_CAPABLE;
 
 		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_X540:
 		case ixgbe_mac_82599EB: {
 			struct ixgbe_option opt = {
 				.type = enable_option,

@@ -362,14 +362,16 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
 	/* Configure PFC Tx thresholds per TC */
 	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
 		rx_pba_size = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
+		rx_pba_size >>= IXGBE_RXPBSIZE_SHIFT;
 
-		reg = ((rx_pba_size >> 5) & 0xFFE0);
+		reg = (rx_pba_size - hw->fc.low_water) << 10;
+
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
 		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx)
 			reg |= IXGBE_FCRTL_XONE;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), reg);
 
-		reg = ((rx_pba_size >> 2) & 0xFFE0);
+		reg = (rx_pba_size - hw->fc.high_water) << 10;
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
 		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx)
 			reg |= IXGBE_FCRTH_FCEN;
@@ -512,6 +514,11 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 	reg = IXGBE_READ_REG(hw, IXGBE_RTTDCS);
 	reg &= ~IXGBE_RTTDCS_ARBDIS;
 	IXGBE_WRITE_REG(hw, IXGBE_RTTDCS, reg);
+
+	/* Enable Security TX Buffer IFG for DCB */
+	reg = IXGBE_READ_REG(hw, IXGBE_SECTXMINIFG);
+	reg |= IXGBE_SECTX_DCB;
+	IXGBE_WRITE_REG(hw, IXGBE_SECTXMINIFG, reg);
 
 	return 0;
 }

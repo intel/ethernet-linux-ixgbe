@@ -64,3 +64,11 @@
 		8086 a02c  Ethernet Server Adapter X520-T2
 		8086 a03c  Ethernet Server Adapter X520-T2
 		8086 a21c  Ethernet Server Adapter X520-T2
+	1528  X540 10 Gigabit Network Connection
+		8086 0001  Ethernet Server Adapter X540-T2
+		8086 0002  Ethernet Server Adapter X540-T1
+		8086 001a  Ethernet Server Adapter X540-T2
+		8086 00a2  Ethernet Server Adapter X540-T1
+		8086 5003  Ethernet Server Adapter X540-T2
+	1529  82599EF 10 Gigabit Dual Port Network Connection with FCoE
+	152A  82599EF 10 Gigabit Dual Port Backplane Connection with FCoE

@@ -1401,6 +1401,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	if (adapter->dcb_cfg.pfc_mode_enable) {
 		switch (adapter->hw.mac.type) {
 		case ixgbe_mac_82599EB:
+		case ixgbe_mac_X540:
 			if (adapter->hw.fc.current_mode != ixgbe_fc_pfc)
 				adapter->last_lfc_mode = adapter->hw.fc.current_mode;
 			break;
@@ -1414,6 +1415,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 			adapter->hw.fc.requested_mode = ixgbe_fc_none;
 			break;
 		case ixgbe_mac_82599EB:
+		case ixgbe_mac_X540:
 			adapter->hw.fc.requested_mode = adapter->last_lfc_mode;
 			break;
 		default:

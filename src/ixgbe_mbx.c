@@ -325,6 +325,8 @@ static s32 ixgbe_check_for_rst_pf(struct ixgbe_hw *hw, u16 vf_number)
 
 	if (hw->mac.type == ixgbe_mac_82599EB)
 		vflre = IXGBE_READ_REG(hw, IXGBE_VFLRE(reg_offset));
+	else if (hw->mac.type == ixgbe_mac_X540)
+		vflre = IXGBE_READ_REG(hw, IXGBE_VFLREC(reg_offset));
 
 	if (vflre & (1 << vf_shift)) {
 		ret_val = 0;
@@ -443,7 +445,8 @@ void ixgbe_init_mbx_params_pf(struct ixgbe_hw *hw)
 {
 	struct ixgbe_mbx_info *mbx = &hw->mbx;
 
-	if (hw->mac.type != ixgbe_mac_82599EB)
+	if (hw->mac.type != ixgbe_mac_82599EB &&
+	    hw->mac.type != ixgbe_mac_X540)
 		return;
 
 	mbx->timeout = 0;
