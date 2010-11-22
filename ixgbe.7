@@ -38,6 +38,10 @@ The following optional parameters are used by entering them on the command line 
 .IP
 RSS also effects the number of transmit queues allocated on 2.6.23 and
 newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file.
+.IP
+NOTE: The RSS parameter has no effect on 82599-based adapters unless the 
+FdirMode parameter is simultaneously used to disable Flow Director. See 
+Intel(R) Ethernet Flow Director section in readme for more detail.
 .LP
 .B MQ - Multi Queue
 .IP

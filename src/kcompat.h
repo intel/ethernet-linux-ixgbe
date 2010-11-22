@@ -2018,7 +2018,14 @@ extern void _kc_pci_disable_link_state(struct pci_dev *dev, int state);
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27) )
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15) )
-#if (((LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)) && defined(CONFIG_PM)) || ((LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)) && defined(CONFIG_PM_SLEEP)))
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)) && defined(CONFIG_PM))
+#define ANCIENT_PM 1
+#elif ((LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,23)) && \
+       (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)) && \
+       defined(CONFIG_PM_SLEEP))
+#define NEWER_PM 1
+#endif
+#if defined(ANCIENT_PM) || defined(NEWER_PM)
 #undef device_set_wakeup_enable
 #define device_set_wakeup_enable(dev, val) \
 	do { \
