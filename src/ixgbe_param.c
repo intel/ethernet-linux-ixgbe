@@ -294,13 +294,13 @@ IXGBE_PARAM(FdirPballoc, "Flow Director packet buffer allocation level:\n"
 
 /* Software ATR packet sample rate
  *
- * Valid Range: 0-100  0 = off, 1-100 = rate of Tx packet inspection
+ * Valid Range: 0-255  0 = off, 1-255 = rate of Tx packet inspection
  *
  * Default Value: 20
  */
 IXGBE_PARAM(AtrSampleRate, "Software ATR Tx packet sample rate");
 
-#define IXGBE_MAX_ATR_SAMPLE_RATE	100
+#define IXGBE_MAX_ATR_SAMPLE_RATE       255
 #define IXGBE_MIN_ATR_SAMPLE_RATE	  1
 #define IXGBE_ATR_SAMPLE_RATE_OFF	  0
 #define IXGBE_DEFAULT_ATR_SAMPLE_RATE	 20

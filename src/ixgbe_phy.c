@@ -904,7 +904,9 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 	                                     IXGBE_SFF_IDENTIFIER,
 	                                     &identifier);
 
-	if (status == IXGBE_ERR_SFP_NOT_PRESENT || status == IXGBE_ERR_I2C)
+	if (status == IXGBE_ERR_SWFW_SYNC ||
+	    status == IXGBE_ERR_I2C ||
+	    status == IXGBE_ERR_SFP_NOT_PRESENT)
 		goto err_read_i2c_eeprom;
 
 	/* LAN ID is needed for sfp_type determination */
@@ -918,20 +920,26 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		                                     IXGBE_SFF_1GBE_COMP_CODES,
 		                                     &comp_codes_1g);
 
-		if (status == IXGBE_ERR_SFP_NOT_PRESENT || status == IXGBE_ERR_I2C)
+		if (status == IXGBE_ERR_SWFW_SYNC ||
+		    status == IXGBE_ERR_I2C ||
+		    status == IXGBE_ERR_SFP_NOT_PRESENT)
 			goto err_read_i2c_eeprom;
 
 		status = hw->phy.ops.read_i2c_eeprom(hw,
 		                                     IXGBE_SFF_10GBE_COMP_CODES,
 		                                     &comp_codes_10g);
 
-		if (status == IXGBE_ERR_SFP_NOT_PRESENT || status == IXGBE_ERR_I2C)
+		if (status == IXGBE_ERR_SWFW_SYNC ||
+		    status == IXGBE_ERR_I2C ||
+		    status == IXGBE_ERR_SFP_NOT_PRESENT)
 			goto err_read_i2c_eeprom;
 		status = hw->phy.ops.read_i2c_eeprom(hw,
 		                                     IXGBE_SFF_CABLE_TECHNOLOGY,
 		                                     &cable_tech);
 
-		if (status == IXGBE_ERR_SFP_NOT_PRESENT || status == IXGBE_ERR_I2C)
+		if (status == IXGBE_ERR_SWFW_SYNC ||
+		    status == IXGBE_ERR_I2C ||
+		    status == IXGBE_ERR_SFP_NOT_PRESENT)
 			goto err_read_i2c_eeprom;
 
 		 /* ID Module
@@ -1020,28 +1028,28 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 			                            IXGBE_SFF_VENDOR_OUI_BYTE0,
 			                            &oui_bytes[0]);
 
-			if (status == IXGBE_ERR_SFP_NOT_PRESENT ||
-			    status == IXGBE_ERR_I2C) {
+			if (status == IXGBE_ERR_SWFW_SYNC ||
+			    status == IXGBE_ERR_I2C ||
+			    status == IXGBE_ERR_SFP_NOT_PRESENT)
 				goto err_read_i2c_eeprom;
-			}
 
 			status = hw->phy.ops.read_i2c_eeprom(hw,
 			                            IXGBE_SFF_VENDOR_OUI_BYTE1,
 			                            &oui_bytes[1]);
 
-			if (status == IXGBE_ERR_SFP_NOT_PRESENT ||
-			    status == IXGBE_ERR_I2C) {
+			if (status == IXGBE_ERR_SWFW_SYNC ||
+			    status == IXGBE_ERR_I2C ||
+			    status == IXGBE_ERR_SFP_NOT_PRESENT)
 				goto err_read_i2c_eeprom;
-			}
 
 			status = hw->phy.ops.read_i2c_eeprom(hw,
 			                            IXGBE_SFF_VENDOR_OUI_BYTE2,
 			                            &oui_bytes[2]);
 
-			if (status == IXGBE_ERR_SFP_NOT_PRESENT ||
-			    status == IXGBE_ERR_I2C) {
+			if (status == IXGBE_ERR_SWFW_SYNC ||
+			    status == IXGBE_ERR_I2C ||
+			    status == IXGBE_ERR_SFP_NOT_PRESENT)
 				goto err_read_i2c_eeprom;
-			}
 
 			vendor_oui =
 			  ((oui_bytes[0] << IXGBE_SFF_VENDOR_OUI_BYTE0_SHIFT) |

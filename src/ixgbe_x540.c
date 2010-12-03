@@ -103,6 +103,8 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.set_vfta = &ixgbe_set_vfta_generic;
 	mac->ops.clear_vfta = &ixgbe_clear_vfta_generic;
 	mac->ops.init_uta_tables = &ixgbe_init_uta_tables_generic;
+	mac->ops.set_mac_anti_spoofing = &ixgbe_set_mac_anti_spoofing;
+	mac->ops.set_vlan_anti_spoofing = &ixgbe_set_vlan_anti_spoofing;
 
 	/* Link */
 	mac->ops.get_link_capabilities = &ixgbe_get_copper_link_capabilities_generic;

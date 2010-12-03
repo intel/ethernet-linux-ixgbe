@@ -36,9 +36,6 @@
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include <linux/ipv6.h>
-#ifdef NETIF_F_HW_VLAN_TX
-#include <linux/if_vlan.h>
-#endif
 
 #include "ixgbe.h"
 
@@ -53,6 +50,7 @@ int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 	u32 vector_bit;
 	u32 vector_reg;
 	u32 mta_reg;
+	u32 vmolr = IXGBE_READ_REG(hw, IXGBE_VMOLR(vf));
 
 	/* only so many hash values supported */
 	entries = min(entries, IXGBE_MAX_VF_MC_ENTRIES);
@@ -76,6 +74,8 @@ int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 		mta_reg |= (1 << vector_bit);
 		IXGBE_WRITE_REG(hw, IXGBE_MTA(vector_reg), mta_reg);
 	}
+	vmolr |= IXGBE_VMOLR_ROMPE;
+	IXGBE_WRITE_REG(hw, IXGBE_VMOLR(vf), vmolr);
 
 	return 0;
 }
@@ -238,6 +238,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 	int entries;
 	u16 *hash_list;
 	int add, vid;
+	u8 *new_mac;
 
 	retval = ixgbe_read_mbx(hw, msgbuf, mbx_size, vf);
 
@@ -255,7 +256,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 
 	if (msgbuf[0] == IXGBE_VF_RESET) {
 		unsigned char *vf_mac = adapter->vfinfo[vf].vf_mac_addresses;
-		u8 *new_mac = (u8 *)(&msgbuf[1]);
+		new_mac = (u8 *)(&msgbuf[1]);
 		adapter->vfinfo[vf].clear_to_send = false;
 		ixgbe_vf_reset_msg(adapter, vf);
 		adapter->vfinfo[vf].clear_to_send = true;
@@ -286,13 +287,19 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 
 	switch ((msgbuf[0] & 0xFFFF)) {
 	case IXGBE_VF_SET_MAC_ADDR:
-		DPRINTK(PROBE, INFO, "Set MAC msg received from vf %d\n", vf);
-		{
-			u8 *new_mac = ((u8 *)(&msgbuf[1]));
-			if (is_valid_ether_addr(new_mac))
-				ixgbe_set_vf_mac(adapter, vf, new_mac);
-			else
-				retval = -1;
+		new_mac = ((u8 *)(&msgbuf[1]));
+		if (is_valid_ether_addr(new_mac) &&
+		    !adapter->vfinfo[vf].pf_set_mac) {
+			ixgbe_set_vf_mac(adapter, vf, new_mac);
+			DPRINTK(PROBE, INFO,
+				"Set MAC msg received from VF %d\n", vf);
+		} else if (memcmp(adapter->vfinfo[vf].vf_mac_addresses,
+				  new_mac, ETH_ALEN)) {
+			DPRINTK(PROBE, INFO,
+				"VF %d attempted to override administratively "
+				"set MAC address\nReload the VF driver to "
+				"resume operations\n", vf);
+			retval = -1;
 		}
 		break;
 	case IXGBE_VF_SET_MULTICAST:
@@ -310,7 +317,15 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		add = (msgbuf[0] & IXGBE_VT_MSGINFO_MASK)
 					>> IXGBE_VT_MSGINFO_SHIFT;
 		vid = (msgbuf[1] & IXGBE_VLVF_VLANID_MASK);
-		retval = ixgbe_set_vf_vlan(adapter, add, vid, vf);
+		if (adapter->vfinfo[vf].pf_vlan) {
+			DPRINTK(PROBE, INFO,
+				"VF %d attempted to override administratively "
+				"set VLAN configuration\nReload the VF driver "
+				"to resume operations\n", vf);
+			retval = -1;
+		} else {
+			retval = ixgbe_set_vf_vlan(adapter, add, vid, vf);
+		}
 		break;
 	default:
 		DPRINTK(PROBE, ERR, "Unhandled Msg %8.8x\n", msgbuf[0]);
@@ -420,6 +435,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 			goto out;
 		ixgbe_set_vmvir(adapter, vlan | (qos << VLAN_PRIO_SHIFT), vf);
 		ixgbe_set_vmolr(hw, vf, false);
+		hw->mac.ops.set_vlan_anti_spoofing(hw, true, vf);
 		adapter->vfinfo[vf].pf_vlan = vlan;
 		adapter->vfinfo[vf].pf_qos = qos;
 		dev_info(&adapter->pdev->dev,
@@ -437,6 +453,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 					adapter->vfinfo[vf].pf_vlan, vf);
 		ixgbe_set_vmvir(adapter, vlan, vf);
 		ixgbe_set_vmolr(hw, vf, true);
+		hw->mac.ops.set_vlan_anti_spoofing(hw, false, vf);
 		adapter->vfinfo[vf].pf_vlan = 0;
 		adapter->vfinfo[vf].pf_qos = 0;
        }

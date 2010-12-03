@@ -367,11 +367,14 @@ static enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw)
 	enum ixgbe_media_type media_type;
 
 	/* Detect if there is a copper PHY attached. */
-	if (hw->phy.type == ixgbe_phy_cu_unknown ||
-	    hw->phy.type == ixgbe_phy_tn ||
-	    hw->phy.type == ixgbe_phy_aq) {
+	switch (hw->phy.type) {
+	case ixgbe_phy_cu_unknown:
+	case ixgbe_phy_tn:
+	case ixgbe_phy_aq:
 		media_type = ixgbe_media_type_copper;
 		goto out;
+	default:
+		break;
 	}
 
 	/* Media type for I82598 is based on device ID */
@@ -527,7 +530,7 @@ s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw, s32 packetbuf_num)
 		reg = (rx_pba_size - hw->fc.low_water) << 6;
 		if (hw->fc.send_xon)
 			reg |= IXGBE_FCRTL_XONE;
-			
+
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTL(packetbuf_num), reg);
 
 		reg = (rx_pba_size - hw->fc.high_water) << 6;
@@ -1188,8 +1191,10 @@ u32 ixgbe_get_supported_physical_layer_82598(struct ixgbe_hw *hw)
 
 	/* Copper PHY must be checked before AUTOC LMS to determine correct
 	 * physical layer because 10GBase-T PHYs use LMS = KX4/KX */
-	if (hw->phy.type == ixgbe_phy_tn ||
-	    hw->phy.type == ixgbe_phy_cu_unknown) {
+	switch (hw->phy.type) {
+	case ixgbe_phy_tn:
+	case ixgbe_phy_aq:
+	case ixgbe_phy_cu_unknown:
 		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_EXT_ABILITY,
 		IXGBE_MDIO_PMA_PMD_DEV_TYPE, &ext_ability);
 		if (ext_ability & IXGBE_MDIO_PHY_10GBASET_ABILITY)
@@ -1199,6 +1204,8 @@ u32 ixgbe_get_supported_physical_layer_82598(struct ixgbe_hw *hw)
 		if (ext_ability & IXGBE_MDIO_PHY_100BASETX_ABILITY)
 			physical_layer |= IXGBE_PHYSICAL_LAYER_100BASE_TX;
 		goto out;
+	default:
+		break;
 	}
 
 	switch (autoc & IXGBE_AUTOC_LMS_MASK) {

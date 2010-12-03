@@ -23,11 +23,26 @@
 
 set_affinity()
 {
-    MASK=$((1<<$VEC))
-    printf "%s mask=%X for /proc/irq/%d/smp_affinity\n" $DEV $MASK $IRQ
-    printf "%X" $MASK > /proc/irq/$IRQ/smp_affinity
-    #echo $DEV mask=$MASK for /proc/irq/$IRQ/smp_affinity
-    #echo $MASK > /proc/irq/$IRQ/smp_affinity
+	if [ $VEC -ge 32 ]
+	then
+		MASK_FILL=""
+		MASK_ZERO="00000000"
+		let "IDX = $VEC / 32"
+		for ((i=1; i<=$IDX;i++))
+		do
+			MASK_FILL="${MASK_FILL},${MASK_ZERO}"
+		done
+
+		let "VEC -= 32 * $IDX"
+		MASK_TMP=$((1<<$VEC))
+		MASK=`printf "%X%s" $MASK_TMP $MASK_FILL`
+	else
+		MASK_TMP=$((1<<$VEC))
+		MASK=`printf "%X" $MASK_TMP`
+	fi
+
+    printf "%s mask=%s for /proc/irq/%d/smp_affinity\n" $DEV $MASK $IRQ
+    printf "%s" $MASK > /proc/irq/$IRQ/smp_affinity
 }
 
 if [ "$1" = "" ] ; then
@@ -63,7 +78,6 @@ do
      if [ "$MAX" == "0" ] ; then
        echo no $DIR vectors found on $DEV
        continue
-       #exit 1
      fi
      for VEC in `seq 0 1 $MAX`
      do

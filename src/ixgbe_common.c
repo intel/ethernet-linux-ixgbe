@@ -3183,6 +3183,7 @@ static s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
 {
 
 	switch (hw->device_id) {
+	case IXGBE_DEV_ID_X540:
 	case IXGBE_DEV_ID_X540T:
 		return 0;
 	case IXGBE_DEV_ID_82599_T3_LOM:
@@ -3212,7 +3213,7 @@ void ixgbe_set_mac_anti_spoofing(struct ixgbe_hw *hw, bool enable, int pf)
 	if (enable)
 		pfvfspoof = IXGBE_SPOOF_MACAS_MASK;
 
-	/* 
+	/*
 	 * PFVFSPOOF register array is size 8 with 8 bits assigned to
 	 * MAC anti-spoof enables in each register array element.
 	 */
@@ -3223,7 +3224,7 @@ void ixgbe_set_mac_anti_spoofing(struct ixgbe_hw *hw, bool enable, int pf)
 	if (!enable)
 		return;
 
-	/* 
+	/*
 	 * The PF should be allowed to spoof so that it can support
 	 * emulation mode NICs.  Reset the bit assigned to the PF
 	 */

@@ -52,6 +52,7 @@
 #include <linux/mii.h>
 #include <asm/io.h>
 
+#ifndef ESX35
 /* NAPI enable/disable flags here */
 /* enable NAPI for ixgbe by default */
 #undef CONFIG_IXGBE_NAPI
@@ -68,6 +69,7 @@
 #ifdef IXGBE_NO_NAPI
 #undef NAPI
 #endif /* IXGBE_NO_NAPI */
+#endif /* ESX35 */
 
 #define adapter_struct ixgbe_adapter
 #define adapter_q_vector ixgbe_q_vector
@@ -114,6 +116,8 @@ struct msix_entry {
 #define PMSG_SUSPEND 3
 #endif
 
+#ifdef ESX35
+#endif /* ESX35 */
 /* generic boolean compatibility */
 #undef TRUE
 #undef FALSE
@@ -312,6 +316,9 @@ enum {
 #define numa_node_id() 0
 #endif
 
+#ifdef ESX35
+#define smp_num_cpus 1
+#endif
 
 #ifndef _LINUX_RANDOM_H
 #include <linux/random.h>
@@ -385,6 +392,11 @@ struct _kc_vlan_ethhdr {
 	__be16		h_vlan_encapsulated_proto;
 };
 #define vlan_ethhdr _kc_vlan_ethhdr
+struct _kc_vlan_hdr {
+	__be16		h_vlan_TCI;
+	__be16		h_vlan_encapsulated_proto;
+};
+#define vlan_hdr _kc_vlan_hdr
 #define vlan_tx_tag_present(_skb) 0
 #define vlan_tx_tag_get(_skb) 0
 #endif
@@ -727,14 +739,34 @@ struct _kc_ethtool_pauseparam {
 #define RHEL_RELEASE_CODE 0
 #endif
 #ifndef RHEL_RELEASE_VERSION
-#define RHEL_RELEASE_VERSION(a,b) 0
+#define RHEL_RELEASE_VERSION(a,b) (((a) << 8) + (b))
 #endif
 #ifndef AX_RELEASE_CODE
 #define AX_RELEASE_CODE 0
 #endif
 #ifndef AX_RELEASE_VERSION
-#define AX_RELEASE_VERSION(a,b) 0
+#define AX_RELEASE_VERSION(a,b) (((a) << 8) + (b))
 #endif
+
+/* SuSE version macro is the same as Linux kernel verison */
+#ifndef SLE_VERSION
+#define SLE_VERSION(a,b,c) KERNEL_VERSION(a,b,c)
+#endif
+#ifndef SLE_VERSION_CODE
+#ifdef CONFIG_SUSE_KERNEL
+/* SLES11 GA is 2.6.27 based */
+#if ( LINUX_VERSION_CODE == KERNEL_VERSION(2,6,27) )
+#define SLE_VERSION_CODE SLE_VERSION(11,0,0)
+#elif ( LINUX_VERSION_CODE == KERNEL_VERSION(2,6,32) )
+/* SLES11 SP1 is 2.6.32 based */
+#define SLE_VERSION_CODE SLE_VERSION(11,1,0)
+#else
+#define SLE_VERSION_CODE 0
+#endif
+#else /* CONFIG_SUSE_KERNEL */
+#define SLE_VERSION_CODE 0
+#endif /* CONFIG_SUSE_KERNEL */
+#endif /* SLE_VERSION_CODE */
 
 /*****************************************************************************/
 /* 2.4.3 => 2.4.0 */
@@ -1449,6 +1481,24 @@ static inline struct vlan_ethhdr *vlan_eth_hdr(const struct sk_buff *skb)
 #define WAKE_MAGIC		(1 << 5)
 #define WAKE_MAGICSECURE	(1 << 6) /* only meaningful if WAKE_MAGIC */
 
+#define skb_header_pointer _kc_skb_header_pointer
+static inline void *_kc_skb_header_pointer(const struct sk_buff *skb,
+					    int offset, int len, void *buffer)
+{
+	int hlen = skb_headlen(skb);
+
+	if (hlen - offset >= len)
+		return skb->data + offset;
+
+#ifdef MAX_SKB_FRAGS
+	if (skb_copy_bits(skb, offset, buffer, len) < 0)
+		return NULL;
+
+	return buffer;
+#else
+	return NULL;
+#endif
+}
 #endif /* < 2.6.9 */
 
 /*****************************************************************************/
@@ -1660,10 +1710,14 @@ static inline int _kc_skb_is_gso(const struct sk_buff *skb)
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 #endif
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0) )
-#if (!(( RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(4,4) ) && ( RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,0) ) || ( RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,0) ) || (AX_RELEASE_CODE > AX_RELEASE_VERSION(3,0))))
+#if (!((RHEL_RELEASE_CODE && \
+        ((RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(4,4) && \
+          RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,0)) || \
+         (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,0)))) || \
+       (AX_RELEASE_CODE && AX_RELEASE_CODE > AX_RELEASE_VERSION(3,0))))
 typedef irqreturn_t (*irq_handler_t)(int, void*, struct pt_regs *);
 #endif
-#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
+#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
 #undef CONFIG_INET_LRO
 #undef CONFIG_INET_LRO_MODULE
 #undef CONFIG_FCOE
@@ -1750,7 +1804,7 @@ do { \
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
 #define to_net_dev(class) container_of(class, struct net_device, class_dev)
 #define NETDEV_CLASS_DEV
-#if (!(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,5)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,5)))
 #define vlan_group_get_device(vg, id) (vg->vlan_devices[id])
 #define vlan_group_set_device(vg, id, dev)		\
 	do {						\
@@ -1808,7 +1862,7 @@ static inline struct udphdr *_udp_hdr(const struct sk_buff *skb)
 #endif
 #define cpu_to_be16(x) __constant_htons(x)
 
-#if (!(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,1)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(5,1)))
 enum {
 	DUMP_PREFIX_NONE,
 	DUMP_PREFIX_ADDRESS,
@@ -1831,7 +1885,6 @@ extern void _kc_print_hex_dump(const char *level, const char *prefix_str,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22) )
-#undef ETHTOOL_GPERMADDR
 #endif /* > 2.6.22 */
 
 /*****************************************************************************/
@@ -1844,6 +1897,10 @@ extern void _kc_print_hex_dump(const char *level, const char *prefix_str,
 #ifndef CONFIG_PM_SLEEP
 #define CONFIG_PM_SLEEP	CONFIG_PM
 #endif
+
+#if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,6,13) )
+#define HAVE_ETHTOOL_GET_PERM_ADDR
+#endif /* 2.6.14 through 2.6.22 */
 #endif /* < 2.6.23 */
 
 /*****************************************************************************/
@@ -2234,6 +2291,15 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 #ifndef pci_pcie_cap
 #define pci_pcie_cap(pdev) pci_find_capability(pdev, PCI_CAP_ID_EXP)
 #endif
+/* Features back-ported to RHEL6 or SLES11 SP1 after 2.6.32 */
+#if ( (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) || \
+      (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,1,0)) )
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+#ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
+#define HAVE_NETDEV_OPS_FCOE_GETWWN
+#endif
+#endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
+#endif /* RHEL6 or SLES11 SP1 */
 #else /* < 2.6.33 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
@@ -2246,7 +2312,7 @@ extern struct sk_buff *_kc_netdev_alloc_skb_ip_align(struct net_device *dev,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
 #ifndef ETH_FLAG_NTUPLE
-#define ETH_FLAG_NTUPLE 0
+#define ETH_FLAG_NTUPLE (1 << 27)
 #endif
 
 #ifndef netdev_mc_count
@@ -2395,4 +2461,17 @@ extern int _kc_ethtool_op_set_flags(struct net_device *, u32, u32);
 #define HAVE_PM_QOS_REQUEST_ACTIVE
 #define HAVE_8021P_SUPPORT
 #endif /* < 2.6.36 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37) )
+#ifndef VLAN_N_VID
+#define VLAN_N_VID	VLAN_GROUP_ARRAY_LEN
+#endif /* VLAN_N_VID */
+
+static inline void _kc_skb_checksum_none_assert(struct sk_buff *skb)
+{
+	WARN_ON(skb->ip_summed != CHECKSUM_NONE);
+}
+#define skb_checksum_none_assert(skb) _kc_skb_checksum_none_assert(skb)
+#endif /* < 2.6.37 */
 #endif /* _KCOMPAT_H_ */

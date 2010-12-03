@@ -111,6 +111,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82599_T3_LOM:
 			hw->mac.type = ixgbe_mac_82599EB;
 			break;
+		case IXGBE_DEV_ID_X540:
 		case IXGBE_DEV_ID_X540T:
 			hw->mac.type = ixgbe_mac_X540;
 			break;
@@ -380,9 +381,7 @@ s32 ixgbe_identify_phy(struct ixgbe_hw *hw)
 	s32 status = 0;
 
 	if (hw->phy.type == ixgbe_phy_unknown) {
-		status = ixgbe_call_func(hw,
-		                         hw->phy.ops.identify,
-		                         (hw),
+		status = ixgbe_call_func(hw, hw->phy.ops.identify, (hw),
 		                         IXGBE_NOT_IMPLEMENTED);
 	}
 

@@ -447,17 +447,22 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 			netdev->stop(netdev);
 #endif
 		ixgbe_clear_interrupt_scheme(adapter);
-		if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82598EB:
 			adapter->last_lfc_mode = adapter->hw.fc.current_mode;
 			adapter->hw.fc.requested_mode = ixgbe_fc_none;
-		}
-		adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
-		if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+			break;
+		case ixgbe_mac_82599EB:
+		case ixgbe_mac_X540:
 			DPRINTK(DRV, INFO, "DCB enabled, "
-			        "disabling Flow Director\n");
+                                "disabling Flow Director\n");
 			adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
 			adapter->flags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+			break;
+		default:
+			break;
 		}
+		adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
 		adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
 		ixgbe_init_interrupt_scheme(adapter);
 		if (netif_running(netdev))
@@ -481,8 +486,14 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 			adapter->dcb_cfg.pfc_mode_enable = false;
 			adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
 			adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
-			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+			switch (adapter->hw.mac.type) {
+			case ixgbe_mac_82599EB:
+			case ixgbe_mac_X540:
 				adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+				break;
+			default:
+				break;
+			}
 			ixgbe_init_interrupt_scheme(adapter);
 			if (netif_running(netdev))
 #ifdef HAVE_NET_DEVICE_OPS
@@ -726,9 +737,14 @@ static void ixgbe_dcbnl_get_perm_hw_addr(struct net_device *netdev,
 	for (i = 0; i < netdev->addr_len; i++)
 		perm_addr[i] = adapter->hw.mac.perm_addr[i];
 
-	if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		for (j = 0; j < netdev->addr_len; j++, i++)
 			perm_addr[i] = adapter->hw.mac.san_addr[j];
+		break;
+	default:
+		break;
 	}
 }
 #else
@@ -1367,6 +1383,7 @@ err_out:
 static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	bool do_reset;
 	int ret;
 
 	if (!adapter->dcb_set_bitmap)
@@ -1380,7 +1397,9 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	/* Only take down the adapter if the configuration change
 	 * requires a reset.
 	*/
-	if (adapter->dcb_set_bitmap & BIT_RESETLINK) {
+	do_reset = adapter->dcb_set_bitmap & (BIT_RESETLINK | BIT_APP_UPCHG);
+
+	if (do_reset) {
 		while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
 			msleep(1);
 
@@ -1423,7 +1442,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		}
 	}
 
-	if (adapter->dcb_set_bitmap & BIT_RESETLINK) {
+	if (do_reset) {
 		if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
 			ixgbe_init_interrupt_scheme(adapter);
 			if (netif_running(netdev))
@@ -1449,7 +1468,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	if (adapter->dcb_cfg.pfc_mode_enable)
 		adapter->hw.fc.current_mode = ixgbe_fc_pfc;
 
-	if (adapter->dcb_set_bitmap & BIT_RESETLINK)
+	if (do_reset)
 		clear_bit(__IXGBE_RESETTING, &adapter->state);
 	adapter->dcb_set_bitmap = 0x00;
 	return ret;
@@ -1674,18 +1693,33 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 	case DCB_APP_IDTYPE_ETHTYPE:
 #ifdef IXGBE_FCOE
 		if (id == ETH_P_FCOE) {
-			u8 tc;
-			struct ixgbe_adapter *adapter;
+			u8 old_tc, reg_idx;
+			struct ixgbe_adapter *adapter = netdev_priv(netdev);
+			struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 
-			adapter = netdev_priv(netdev);
-			tc = adapter->fcoe.tc;
 			rval = ixgbe_fcoe_setapp(adapter, up);
-			if ((!rval) && (tc != adapter->fcoe.tc) &&
-			    (adapter->flags & IXGBE_FLAG_DCB_ENABLED) &&
-			    (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)) {
+
+			if (rval ||
+			   !(adapter->flags & IXGBE_FLAG_DCB_ENABLED) || 
+			   !(adapter->flags & IXGBE_FLAG_FCOE_ENABLED))
+				break;
+
+			/* Get current programmed tc */
+			reg_idx = adapter->tx_ring[fcoe->tc]->reg_idx + 1;
+			old_tc = ixgbe_dcb_txq_to_tc(adapter, reg_idx);
+
+			/* The FCoE application priority may be changed multiple
+			 * times in quick sucession with switches that build up
+			 * TLVs. To avoid creating uneeded device resets this
+			 * checks the actual HW configuration and clears
+			 * BIT_APP_UPCHG if a HW configuration change is not
+			 * need
+			 */
+
+			if (old_tc == adapter->fcoe.tc)
+				adapter->dcb_set_bitmap &= ~BIT_APP_UPCHG;
+			else
 				adapter->dcb_set_bitmap |= BIT_APP_UPCHG;
-				adapter->dcb_set_bitmap |= BIT_RESETLINK;
-			}
 		}
 #endif
 		break;

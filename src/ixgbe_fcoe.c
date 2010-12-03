@@ -41,25 +41,6 @@
 #include <scsi/libfcoe.h>
 
 /**
- * ixgbe_rx_is_fcoe - check the rx desc for incoming pkt type
- * @rx_desc: advanced rx descriptor
- *
- * Returns : true if it is FCoE pkt
- */
-static inline bool ixgbe_rx_is_fcoe(union ixgbe_adv_rx_desc *rx_desc)
-{
-	u16 p;
-
-	p = le16_to_cpu(rx_desc->wb.lower.lo_dword.hs_rss.pkt_info);
-	if (p & IXGBE_RXDADV_PKTTYPE_ETQF) {
-		p &= IXGBE_RXDADV_PKTTYPE_ETQF_MASK;
-		p >>= IXGBE_RXDADV_PKTTYPE_ETQF_SHIFT;
-		return p == IXGBE_ETQF_FILTER_FCOE;
-	}
-	return false;
-}
-
-/**
  * ixgbe_fcoe_clear_ddp - clear the given ddp context
  * @ddp - ptr to the ixgbe_fcoe_ddp
  *
@@ -69,7 +50,7 @@ static inline bool ixgbe_rx_is_fcoe(union ixgbe_adv_rx_desc *rx_desc)
 static inline void ixgbe_fcoe_clear_ddp(struct ixgbe_fcoe_ddp *ddp)
 {
 	ddp->len = 0;
-	ddp->err = 0;
+	ddp->err = 1;
 	ddp->udl = NULL;
 	ddp->udp = 0UL;
 	ddp->sgl = NULL;
@@ -93,6 +74,7 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 	struct ixgbe_fcoe *fcoe;
 	struct ixgbe_adapter *adapter;
 	struct ixgbe_fcoe_ddp *ddp;
+	u32 fcbuff;
 
 	if (!netdev)
 		goto out_ddp_put;
@@ -116,7 +98,14 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCBUFF, 0);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCDMARW,
 				(xid | IXGBE_FCDMARW_WE));
+
+		/* guaranteed to be invalidated after 100us */
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCDMARW,
+				(xid | IXGBE_FCDMARW_RE));
+		fcbuff = IXGBE_READ_REG(&adapter->hw, IXGBE_FCBUFF);
 		spin_unlock_bh(&fcoe->lock);
+		if (fcbuff & IXGBE_FCBUFF_VALID)
+			udelay(100);
 	}
 	if (ddp->sgl)
 		pci_unmap_sg(adapter->pdev, ddp->sgl, ddp->sgc,
@@ -168,6 +157,11 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 		DPRINTK(DRV, WARNING, "xid=0x%x out-of-range\n", xid);
 		return 0;
 	}
+
+	/* no DDP if we are already down or resetting */
+	if (test_bit(__IXGBE_DOWN, &adapter->state) ||
+	    test_bit(__IXGBE_RESETTING, &adapter->state))
+		return 0;
 
 	fcoe = &adapter->fcoe;
 	if (!fcoe->pool) {
@@ -292,66 +286,67 @@ out_noddp_unmap:
  */
 int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		   union ixgbe_adv_rx_desc *rx_desc,
-		   struct sk_buff *skb)
+		   struct sk_buff *skb,
+		   u32 staterr)
 {
-	u16 xid;
-	u32 fctl;
-	u32 sterr, fceofe, fcerr, fcstat;
-	int rc = -EINVAL;
-	struct ixgbe_fcoe *fcoe;
+	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 	struct ixgbe_fcoe_ddp *ddp;
 	struct fc_frame_header *fh;
+	int rc = -EINVAL;
+	u32 fcerr = staterr & IXGBE_RXDADV_ERR_FCERR;
+	u32 ddp_err;
+	u16 xid;
 
-	if (!ixgbe_rx_is_fcoe(rx_desc))
-		goto ddp_out;
+	skb->ip_summed = (fcerr == IXGBE_FCERR_BADCRC) ? CHECKSUM_NONE :
+							 CHECKSUM_UNNECESSARY;
 
-	skb->ip_summed = CHECKSUM_UNNECESSARY;
-	sterr = le32_to_cpu(rx_desc->wb.upper.status_error);
-	fcerr = (sterr & IXGBE_RXDADV_ERR_FCERR);
-	fceofe = (sterr & IXGBE_RXDADV_ERR_FCEOFE);
-	if (fcerr == IXGBE_FCERR_BADCRC)
-		skb->ip_summed = CHECKSUM_NONE;
+	fh = (struct fc_frame_header *)(skb->data + sizeof(struct fcoe_hdr));
 
-	if (eth_hdr(skb)->h_proto == htons(ETH_P_8021Q))
-		fh = (struct fc_frame_header *)(skb->data +
-			VLAN_HLEN + sizeof(struct fcoe_hdr));
+	if (skb->protocol == htons(ETH_P_8021Q))
+		fh = (struct fc_frame_header *)((char *)fh + VLAN_HLEN);
+
+	if (ntoh24(fh->fh_f_ctl) & FC_FC_EX_CTX)
+		xid =  ntohs(fh->fh_ox_id);
 	else
-		fh = (struct fc_frame_header *)(skb->data +
-			sizeof(struct fcoe_hdr));
-	fctl = ntoh24(fh->fh_f_ctl);
-	if (fctl & FC_FC_EX_CTX)
-		xid =  be16_to_cpu(fh->fh_ox_id);
-	else
-		xid =  be16_to_cpu(fh->fh_rx_id);
+		xid =  ntohs(fh->fh_rx_id);
 
 	if (xid >= IXGBE_FCOE_DDP_MAX)
 		goto ddp_out;
 
-	fcoe = &adapter->fcoe;
 	ddp = &fcoe->ddp[xid];
 	if (!ddp->udl)
 		goto ddp_out;
 
-	ddp->err = (fcerr | fceofe);
-	if (ddp->err)
+	ddp_err = staterr & (IXGBE_RXDADV_ERR_FCEOFE | IXGBE_RXDADV_ERR_FCERR);
+	ddp->err = ddp_err;
+	if (ddp_err)
 		goto ddp_out;
 
-	fcstat = (sterr & IXGBE_RXDADV_STAT_FCSTAT);
-	if (fcstat) {
+	switch (staterr & IXGBE_RXDADV_STAT_FCSTAT) {
+	/* return 0 to bypass going to ULD for DDPed data */
+	case IXGBE_RXDADV_STAT_FCSTAT_DDP:
 		/* update length of DDPed data */
 		ddp->len = le32_to_cpu(rx_desc->wb.lower.hi_dword.rss);
-		/* unmap the sg list when FCP_RSP is received */
-		if (fcstat == IXGBE_RXDADV_STAT_FCSTAT_FCPRSP) {
-			pci_unmap_sg(adapter->pdev, ddp->sgl,
-				     ddp->sgc, DMA_FROM_DEVICE);
-			ddp->sgl = NULL;
-			ddp->sgc = 0;
-		}
-		/* return 0 to bypass going to ULD for DDPed data */
-		if (fcstat == IXGBE_RXDADV_STAT_FCSTAT_DDP)
-			rc = 0;
-		else if (ddp->len)
+		rc = 0;
+		break;
+	/* unmap the sg list when FCPRSP is received */
+	case IXGBE_RXDADV_STAT_FCSTAT_FCPRSP:
+		pci_unmap_sg(adapter->pdev, ddp->sgl,
+			     ddp->sgc, DMA_FROM_DEVICE);
+		ddp->sgl = NULL;
+		ddp->sgc = 0;
+		/* fall through */
+	/* if DDP length is present pass it through to ULD */
+	case IXGBE_RXDADV_STAT_FCSTAT_NODDP:
+		/* update length of DDPed data */
+		ddp->len = le32_to_cpu(rx_desc->wb.lower.hi_dword.rss);
+		if (rx_desc->wb.lower.hi_dword.rss)
 			rc = ddp->len;
+		break;
+	/* no match will return as an error */
+	case IXGBE_RXDADV_STAT_FCSTAT_NOMTCH:
+	default:
+		break;
 	}
 
 ddp_out:
@@ -445,10 +440,10 @@ int ixgbe_fso(struct ixgbe_ring *tx_ring, struct sk_buff *skb,
 	/* include trailer in headlen as it is replicated per frame */
 	*hdr_len = sizeof(struct fcoe_crc_eof);
 
-	/* hdr_len includes fc_hdr if FCoE lso is enabled */
+	/* hdr_len includes fc_hdr if FCoE LSO is enabled */
 	if (skb_is_gso(skb))
 		*hdr_len += skb_transport_offset(skb) +
-			    sizeof(struct fc_frame_header); 
+			    sizeof(struct fc_frame_header);
 
 	/* mss_l4len_id: use 1 for FSO as TSO, no need for L4LEN */
 	mss_l4len_idx = skb_shinfo(skb)->gso_size << IXGBE_ADVTXD_MSS_SHIFT;

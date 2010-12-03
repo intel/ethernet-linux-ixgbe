@@ -60,6 +60,7 @@
 #define IXGBE_DEV_ID_82599_SFP_EM        0x1507
 #define IXGBE_DEV_ID_82599_XAUI_LOM      0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM        0x151C
+#define IXGBE_DEV_ID_X540       0x1512
 #define IXGBE_DEV_ID_X540T      0x1528
 
 /* General Registers */
@@ -2132,6 +2133,7 @@ enum ixgbe_fdir_pballoc_type {
 #define IXGBE_FDIRCMD_LAST                      0x00000800
 #define IXGBE_FDIRCMD_COLLISION                 0x00001000
 #define IXGBE_FDIRCMD_QUEUE_EN                  0x00008000
+#define IXGBE_FDIRCMD_FLOW_TYPE_SHIFT           5
 #define IXGBE_FDIRCMD_RX_QUEUE_SHIFT            16
 #define IXGBE_FDIRCMD_VT_POOL_SHIFT             24
 #define IXGBE_FDIR_INIT_DONE_POLL               10
@@ -2321,24 +2323,23 @@ typedef u32 ixgbe_physical_layer;
 #define IXGBE_ATR_BUCKET_HASH_KEY    0x3DAD14E2
 #define IXGBE_ATR_SIGNATURE_HASH_KEY 0x174D3614
 
-/* Software ATR input stream offsets and masks */
-#define IXGBE_ATR_VLAN_OFFSET       0
-#define IXGBE_ATR_SRC_IPV6_OFFSET   2
-#define IXGBE_ATR_SRC_IPV4_OFFSET  14
-#define IXGBE_ATR_DST_IPV6_OFFSET  18
-#define IXGBE_ATR_DST_IPV4_OFFSET  30
-#define IXGBE_ATR_SRC_PORT_OFFSET  34
-#define IXGBE_ATR_DST_PORT_OFFSET  36
-#define IXGBE_ATR_FLEX_BYTE_OFFSET 38
-#define IXGBE_ATR_VM_POOL_OFFSET   40
-#define IXGBE_ATR_L4TYPE_OFFSET    41
-
+/* Software ATR input stream values and masks */
+#define IXGBE_ATR_HASH_MASK     0x7fff
 #define IXGBE_ATR_L4TYPE_MASK      0x3
-#define IXGBE_ATR_L4TYPE_IPV6_MASK 0x4
 #define IXGBE_ATR_L4TYPE_UDP       0x1
 #define IXGBE_ATR_L4TYPE_TCP       0x2
 #define IXGBE_ATR_L4TYPE_SCTP      0x3
-#define IXGBE_ATR_HASH_MASK     0x7fff
+#define IXGBE_ATR_L4TYPE_IPV6_MASK 0x4
+enum ixgbe_atr_flow_type {
+	IXGBE_ATR_FLOW_TYPE_IPV4   = 0x0,
+	IXGBE_ATR_FLOW_TYPE_UDPV4  = 0x1,
+	IXGBE_ATR_FLOW_TYPE_TCPV4  = 0x2,
+	IXGBE_ATR_FLOW_TYPE_SCTPV4 = 0x3,
+	IXGBE_ATR_FLOW_TYPE_IPV6   = 0x4,
+	IXGBE_ATR_FLOW_TYPE_UDPV6  = 0x5,
+	IXGBE_ATR_FLOW_TYPE_TCPV6  = 0x6,
+	IXGBE_ATR_FLOW_TYPE_SCTPV6 = 0x7,
+};
 
 /* Flow Director ATR input struct. */
 union ixgbe_atr_input {
@@ -2352,35 +2353,30 @@ union ixgbe_atr_input {
 	 * dst_port   - 2 bytes
 	 * flex_bytes - 2 bytes
 	 * vm_pool    - 1 byte
-	 * l4type     - 1 byte
+	 * flow_type  - 1 byte
 	 */
 	struct {
 		__be16 rsvd0;
 		__be16 vlan_id;
-		__be32 src_ip3;
-		__be32 src_ip2;
-		__be32 src_ip1;
-		__be32 src_ip0;
-		__be32 dst_ip3;
-		__be32 dst_ip2;
-		__be32 dst_ip1;
-		__be32 dst_ip0;
+		__be32 dst_ip[4];
+		__be32 src_ip[4];
 		__be16 src_port;
 		__be16 dst_port;
 		__be16 flex_bytes;
-		u8  vm_pool;
-		u8  l4type;
+		u8     vm_pool;
+		u8     flow_type;
 	} formatted;
 	__be32 dword_stream[11];
 };
 
 struct ixgbe_atr_input_masks {
-	u32 src_ip_mask;
-	u32 dst_ip_mask;
-	u16 src_port_mask;
-	u16 dst_port_mask;
-	u16 vlan_id_mask;
-	u16 data_mask;
+	__be16 rsvd0;
+	__be16 vlan_id_mask;
+	__be32 dst_ip_mask[4];
+	__be32 src_ip_mask[4];
+	__be16 src_port_mask;
+	__be16 dst_port_mask;
+	__be16 flex_mask;
 };
 
 /*
@@ -2743,7 +2739,7 @@ struct ixgbe_mac_info {
 	u16                             wwnn_prefix;
 	/* prefix for World Wide Port Name (WWPN) */
 	u16                             wwpn_prefix;
-#define IXGBE_MAX_MTA			128	
+#define IXGBE_MAX_MTA			128
 	u32				mta_shadow[IXGBE_MAX_MTA];
 	s32                             mc_filter_type;
 	u32                             mcft_size;
