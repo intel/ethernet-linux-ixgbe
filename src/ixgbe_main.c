@@ -68,7 +68,7 @@ static const char ixgbe_driver_string[] =
 
 #define FPGA
 
-#define DRV_VERSION "3.1.15" DRIVERNAPI DRV_HW_PERF FPGA
+#define DRV_VERSION "3.1.17" DRIVERNAPI DRV_HW_PERF FPGA
 const char ixgbe_driver_version[] = DRV_VERSION;
 static char ixgbe_copyright[] = "Copyright (c) 1999-2010 Intel Corporation.";
 /* ixgbe_pci_tbl - PCI Device ID Table
@@ -4270,7 +4270,7 @@ static int ixgbe_up_complete(struct ixgbe_adapter *adapter)
 	/* enable the optics */
 	if ((hw->phy.multispeed_fiber) ||
 	    ((hw->phy.type == ixgbe_media_type_fiber) &&
-	     (hw->mac.type = ixgbe_mac_82599EB)))
+	     (hw->mac.type == ixgbe_mac_82599EB)))
 		ixgbe_enable_tx_laser(hw);
 
 	clear_bit(__IXGBE_DOWN, &adapter->state);
@@ -4595,7 +4595,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	/* power down the optics */
 	if ((hw->phy.multispeed_fiber) ||
 	    ((hw->phy.type == ixgbe_media_type_fiber) &&
-	     (hw->mac.type = ixgbe_mac_82599EB)))
+	     (hw->mac.type == ixgbe_mac_82599EB)))
 		ixgbe_disable_tx_laser(hw);
 
 	ixgbe_clean_all_tx_rings(adapter);
@@ -8289,7 +8289,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	/* power down the optics */
 	if ((hw->phy.multispeed_fiber) ||
 	    ((hw->phy.type == ixgbe_media_type_fiber) &&
-	     (hw->mac.type = ixgbe_mac_82599EB)))
+	     (hw->mac.type == ixgbe_mac_82599EB)))
 		ixgbe_disable_tx_laser(hw);
 
 	setup_timer(&adapter->service_timer, &ixgbe_service_timer,
