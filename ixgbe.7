@@ -74,13 +74,15 @@ DCA this parameter allows load-time control of the feature.
 0-2
 .br
 .B Default Value: 
-2
+2 (82598-based adapters); 0 (82599-based adapters)
 .IP
 0 = Driver will use single buffer for Rx packets.
 1 = Driver will use packet split mode for Rx. Packet header will be 
 received in header buffer and payload will be received in data buffer.
 2. = Optimal mode. Driver will use single buffer mode for non-Jumbo 
 configurations and packet split mode for Jumbo configurations.
+.IP
+NOTE: HeaderDataSplit is not supported in 82599-based adapters.
 .LP
 .B IntMode
 .IP
@@ -225,7 +227,18 @@ your system
 1: turns this option off
 .IP
 The Node parameter will allow you to pick which NUMA node you want to have 
-the adapter allocate memory on. 
+the adapter allocate memory on.
+.IP
+.B L2LBen
+.IP
+.B Valid Range: 
+0 = disable, 1 = enable
+.br
+.B Default Value:
+1 (enable)
+.IP
+This parameter controls the internal switch (L2 loopback between pf and vf).
+By default the switch is enabled.
 .LP
 .SH JUMBO FRAMES
 The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabled by changing the MTU to a value larger than the default of 1500. Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:

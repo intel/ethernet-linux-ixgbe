@@ -53,6 +53,10 @@
 
 #include "kcompat.h"
 
+#ifdef HAVE_SCTP
+#include <linux/sctp.h>
+#endif
+
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #define IXGBE_FCOE
 #include "ixgbe_fcoe.h"
@@ -128,6 +132,12 @@
 #define IXGBE_MAX_VF_FUNCTIONS          64
 #define IXGBE_MAX_VFTA_ENTRIES          128
 #define MAX_EMULATION_MAC_ADDRS         16
+
+#ifdef CONFIG_PCI_IOV
+#define VMDQ_P(p)   ((p) + adapter->num_vfs)
+#else
+#define VMDQ_P(p)   (p)
+#endif
 
 #define UPDATE_VF_COUNTER_32bit(reg, last_counter, counter)	\
 	{							\
@@ -373,6 +383,14 @@ struct ixgbe_ring_feature {
 	int mask;
 };
 
+struct ixgbe_ring_container {
+	struct ixgbe_ring *ring;	/* pointer to linked list of rings */
+	unsigned int total_bytes;	/* total bytes processed this int */
+	unsigned int total_packets;	/* total packets processed this int */
+	u16 work_limit;			/* total work allowed per interrupt */
+	u8 count;			/* total number of rings in vector */
+	u8 itr;				/* current ITR setting for ring */
+};
 
 #define MAX_RX_PACKET_BUFFERS ((adapter->flags & IXGBE_FLAG_DCB_ENABLED) \
                                ? 8 : 1)
@@ -390,24 +408,9 @@ struct ixgbe_q_vector {
 #ifdef CONFIG_IXGBE_NAPI
 	struct napi_struct napi;
 #endif
-	struct ixgbe_ring *rx_ring;
-	struct ixgbe_ring *tx_ring;
-	u8 rxr_count;     /* Rx ring count assigned to this vector */
-	u8 txr_count;     /* Tx ring count assigned to this vector */
-
-	u8 rx_itr;
-	u8 tx_itr;
+	struct ixgbe_ring_container rx, tx;
 
 	u32 eitr;
-
-	u16 rx_work_limit;                /* max RX work per interrupt */
-	u16 tx_work_limit;                /* max TX work per interrupt */
-
-	unsigned int total_rx_bytes;
-	unsigned int total_rx_packets;
-
-	unsigned int total_tx_bytes;
-	unsigned int total_tx_packets;
 
 	struct ixgbe_lro_list *lrolist;   /* LRO list for queue vector*/
 	char name[IFNAMSIZ + 9];
@@ -428,9 +431,13 @@ struct ixgbe_q_vector {
 	((_eitr) ? (1000000000 / ((_eitr) * 256)) : 8)
 #define EITR_REG_TO_INTS_PER_SEC EITR_INTS_PER_SEC_TO_REG
 
-#define IXGBE_DESC_UNUSED(R) \
-	((((R)->next_to_clean > (R)->next_to_use) ? 0 : (R)->count) + \
-	(R)->next_to_clean - (R)->next_to_use - 1)
+static inline u16 ixgbe_desc_unused(struct ixgbe_ring *ring)
+{
+	u16 ntc = ring->next_to_clean;
+	u16 ntu = ring->next_to_use;
+
+	return ((ntc > ntu) ? 0 : ring->count) + ntc - ntu - 1;
+}
 
 #define IXGBE_RX_DESC_ADV(R, i)	    \
 	(&(((union ixgbe_adv_rx_desc *)((R)->desc))[i]))
@@ -466,53 +473,15 @@ struct ixgbe_q_vector {
 #define MIN_MSIX_Q_VECTORS 1 
 #define MIN_MSIX_COUNT (MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
 
+/* default to trying for four seconds */
+#define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
+
 /* board specific private data structure */
 struct ixgbe_adapter {
-	struct timer_list service_timer;
+	unsigned long state;
 #ifdef NETIF_F_HW_VLAN_TX
 	struct vlan_group *vlgrp;
 #endif
-	u16 bd_number;
-	struct ixgbe_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
-	struct ixgbe_dcb_config dcb_cfg;
-	struct ixgbe_dcb_config temp_dcb_cfg;
-	u8 dcb_set_bitmap;
-	enum ixgbe_fc_mode last_lfc_mode;
-
-	/* Interrupt Throttle Rate */
-	u32 rx_itr_setting;
-	u32 tx_itr_setting;
-
-	/* Work limits */
-	u16 rx_work_limit;
-	u16 tx_work_limit;
-
-	/* TX */
-	struct ixgbe_ring *tx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
-	int num_tx_queues;
-	u32 tx_timeout_count;
-
-	u64 restart_queue;
-	u64 lsc_int;
-
-	/* RX */
-	struct ixgbe_ring *rx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
-	int num_rx_queues;
-	int num_rx_pools;               /* == num_rx_queues in 82598 */
-	int num_rx_queues_per_pool;	/* 1 if 82598, can be many if 82599 */
-	u64 hw_csum_rx_error;
-	u64 hw_rx_no_dma_resources;
-	u64 non_eop_descs;
-#ifndef CONFIG_IXGBE_NAPI
-	u64 rx_dropped_backlog;		/* count drops from rx intr handler */
-#endif
-	int num_msix_vectors;
-	int max_msix_q_vectors;         /* true count of q_vectors for device */
-	struct ixgbe_ring_feature ring_feature[RING_F_ARRAY_SIZE];
-	struct msix_entry *msix_entries;
-
-	u32 alloc_rx_page_failed;
-	u32 alloc_rx_buff_failed;
 
 	/* Some features need tri-state capability,
 	 * thus the additional *_CAPABLE flags.
@@ -569,8 +538,48 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RESET_REQUESTED              (u32)(1 << 9)
 #define IXGBE_FLAG2_FDIR_REQUIRES_REINIT         (u32)(1 << 10)
 
-/* default to trying for four seconds */
-#define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
+	struct timer_list service_timer;
+	u16 bd_number;
+	struct ixgbe_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
+	struct ixgbe_dcb_config dcb_cfg;
+	struct ixgbe_dcb_config temp_dcb_cfg;
+	u8 dcb_set_bitmap;
+	enum ixgbe_fc_mode last_lfc_mode;
+
+	/* Interrupt Throttle Rate */
+	u32 rx_itr_setting;
+	u32 tx_itr_setting;
+
+	/* Work limits */
+	u16 rx_work_limit;
+	u16 tx_work_limit;
+
+	/* TX */
+	struct ixgbe_ring *tx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
+	int num_tx_queues;
+	u32 tx_timeout_count;
+
+	u64 restart_queue;
+	u64 lsc_int;
+
+	/* RX */
+	struct ixgbe_ring *rx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
+	int num_rx_queues;
+	int num_rx_pools;               /* == num_rx_queues in 82598 */
+	int num_rx_queues_per_pool;	/* 1 if 82598, can be many if 82599 */
+	u64 hw_csum_rx_error;
+	u64 hw_rx_no_dma_resources;
+	u64 non_eop_descs;
+#ifndef CONFIG_IXGBE_NAPI
+	u64 rx_dropped_backlog;		/* count drops from rx intr handler */
+#endif
+	int num_msix_vectors;
+	int max_msix_q_vectors;         /* true count of q_vectors for device */
+	struct ixgbe_ring_feature ring_feature[RING_F_ARRAY_SIZE];
+	struct msix_entry *msix_entries;
+
+	u32 alloc_rx_page_failed;
+	u32 alloc_rx_buff_failed;
 
 	/* OS defined structs */
 	struct net_device *netdev;
@@ -603,7 +612,6 @@ struct ixgbe_adapter {
 	u32 rx_eitr_param;
 	u32 tx_eitr_param;
 
-	unsigned long state;
 	u32 *config_space;
 	u64 tx_busy;
 	unsigned int tx_ring_count;
@@ -633,6 +641,7 @@ struct ixgbe_adapter {
 	unsigned int num_vfs;
 	bool repl_enable;
 	bool l2switch_enable;
+	bool l2loopback_enable;
 	struct vf_data_storage *vfinfo;
 	int node;
 	unsigned long fdir_overflow; /* number of times ATR was backed off */

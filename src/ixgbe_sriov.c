@@ -115,6 +115,29 @@ int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf)
 
 void ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf)
 {
+	struct ixgbe_hw *hw = &adapter->hw;
+	int new_mtu = msgbuf[1];
+	u32 max_frs;
+	int max_frame = new_mtu + ETH_HLEN + ETH_FCS_LEN;
+
+	/* Only X540 supports jumbo frames in IOV mode */
+	if (adapter->hw.mac.type != ixgbe_mac_X540)
+		return;
+
+	/* MTU < 68 is an error and causes problems on some kernels */
+	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE)) {
+		DPRINTK(DRV, ERR, "VF mtu %d out of range\n", new_mtu);
+		return;
+	}
+
+	max_frs = (IXGBE_READ_REG(hw, IXGBE_MAXFRS) &
+		   IXGBE_MHADD_MFS_MASK) >> IXGBE_MHADD_MFS_SHIFT;
+	if (max_frs < new_mtu) {
+		max_frs = new_mtu << IXGBE_MHADD_MFS_SHIFT;
+		IXGBE_WRITE_REG(hw, IXGBE_MAXFRS, max_frs);
+	}
+
+	DPRINTK(DRV, INFO, "VF requests change max MTU to %d\n", new_mtu);
 }
 
 void ixgbe_set_vmolr(struct ixgbe_hw *hw, u32 vf, bool aupe)
@@ -427,7 +450,8 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	if ((vf >= adapter->num_vfs) || (vlan > 4095) || (qos > 7))
+	/* VLAN IDs accepted range 0-4094 */
+	if ((vf >= adapter->num_vfs) || (vlan > VLAN_VID_MASK-1) || (qos > 7))
 		return -EINVAL;
 	if (vlan || qos) {
 		err = ixgbe_set_vf_vlan(adapter, true, vlan, vf);
@@ -460,6 +484,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
        return err;
 }
+
 
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate)
 {

@@ -186,8 +186,17 @@ static int ixgbe_get_settings(struct net_device *netdev,
 	    (hw->phy.multispeed_fiber)) {
 		ecmd->supported |= (SUPPORTED_1000baseT_Full |
 		                    SUPPORTED_Autoneg);
+	switch (hw->mac.type) {
+	case ixgbe_mac_X540:
+		ecmd->supported |= SUPPORTED_100baseT_Full;
+		break;
+	default:
+		break;
+	}
 
 		ecmd->advertising = ADVERTISED_Autoneg;
+		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
+			ecmd->advertising |= ADVERTISED_100baseT_Full;
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL)
 			ecmd->advertising |= ADVERTISED_10000baseT_Full;
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
@@ -201,6 +210,14 @@ static int ixgbe_get_settings(struct net_device *netdev,
 					   ADVERTISED_10000baseT_Full)))
 			ecmd->advertising |= (ADVERTISED_10000baseT_Full |
 					      ADVERTISED_1000baseT_Full);
+		switch (hw->mac.type) {
+		case ixgbe_mac_X540:
+			if (!(ecmd->advertising & (ADVERTISED_100baseT_Full)))
+				ecmd->advertising |= (ADVERTISED_100baseT_Full);
+			break;
+		default:
+			break;
+		}
 
 		if (hw->phy.media_type == ixgbe_media_type_copper) {
 			ecmd->supported |= SUPPORTED_TP;
@@ -318,8 +335,19 @@ static int ixgbe_get_settings(struct net_device *netdev,
 	}
 
 	if (link_up) {
-		ecmd->speed = (link_speed == IXGBE_LINK_SPEED_10GB_FULL) ?
-		               SPEED_10000 : SPEED_1000;
+		switch (link_speed) {
+		case IXGBE_LINK_SPEED_10GB_FULL:
+			ecmd->speed = SPEED_10000;
+			break;
+		case IXGBE_LINK_SPEED_1GB_FULL:
+			ecmd->speed = SPEED_1000;
+			break;
+		case IXGBE_LINK_SPEED_100_FULL:
+			ecmd->speed = SPEED_100;
+			break;
+		default:
+			break;
+		}
 		ecmd->duplex = DUPLEX_FULL;
 	} else {
 		ecmd->speed = -1;
@@ -972,9 +1000,10 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	char firmware_version[32];
 
-	strncpy(drvinfo->driver, ixgbe_driver_name, sizeof(drvinfo->driver));
+	strncpy(drvinfo->driver, ixgbe_driver_name,
+	        sizeof(drvinfo->driver) - 1);
 	strncpy(drvinfo->version, ixgbe_driver_version,
-	        sizeof(drvinfo->version));
+	        sizeof(drvinfo->version) - 1);
 
 	snprintf(firmware_version, sizeof(firmware_version), "%d.%d-%d",
 	         (adapter->eeprom_version & 0xF000) >> 12,
@@ -982,9 +1011,9 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 	         adapter->eeprom_version & 0x000F);
 
 	strncpy(drvinfo->fw_version, firmware_version,
-	        sizeof(drvinfo->fw_version));
+	        sizeof(drvinfo->fw_version) -1);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev),
-	        sizeof(drvinfo->bus_info));
+	        sizeof(drvinfo->bus_info) - 1);
 	drvinfo->n_stats = IXGBE_STATS_LEN;
 	drvinfo->testinfo_len = IXGBE_TEST_LEN;
 	drvinfo->regdump_len = ixgbe_get_regs_len(netdev);
@@ -2183,7 +2212,7 @@ static int ixgbe_get_coalesce(struct net_device *netdev,
 	}
 
 	/* if in mixed tx/rx queues per vector mode, report only rx settings */
-	if (adapter->q_vector[0]->txr_count && adapter->q_vector[0]->rxr_count)
+	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count)
 		return 0;
 
 	/* only valid if in constant ITR mode */
@@ -2249,7 +2278,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	bool need_reset = false;
 
 	/* don't accept tx specific changes if we've got mixed RxTx vectors */
-	if (adapter->q_vector[0]->txr_count && adapter->q_vector[0]->rxr_count
+	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count
 	    && ec->tx_coalesce_usecs)
 		return -EINVAL;
 
@@ -2329,10 +2358,10 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	for (i = 0; i < num_vectors; i++) {
 		q_vector = adapter->q_vector[i];
 #ifndef CONFIG_IXGBE_NAPI
-		q_vector->tx_work_limit = adapter->tx_work_limit;
-		q_vector->rx_work_limit = adapter->rx_work_limit;
+		q_vector->tx.work_limit = adapter->tx_work_limit;
+		q_vector->rx.work_limit = adapter->rx_work_limit;
 #endif /* CONFIG_IXGBE_NAPI */
-		if (q_vector->txr_count && !q_vector->rxr_count)
+		if (q_vector->tx.count && !q_vector->rx.count)
 			/* tx only */
 			q_vector->eitr = adapter->tx_eitr_param;
 		else
@@ -2363,7 +2392,8 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 	bool need_reset = false;
 	int rc;
 
-	rc = ethtool_op_set_flags(netdev, data, ETH_FLAG_LRO | ETH_FLAG_NTUPLE);
+	rc = ethtool_op_set_flags(netdev, data, ETH_FLAG_LRO | ETH_FLAG_NTUPLE |
+					ETH_FLAG_RXVLAN | ETH_FLAG_TXVLAN);
 	if (rc)
 		return rc;
 
@@ -2494,39 +2524,37 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 	}
 
 	/* copy vlan tag minus the CFI bit */
-	if ((fs->vlan_tag & 0xEFFF) || (fs->vlan_tag_mask & 0xEFFF)) {
+	if (fs->vlan_tag || fs->vlan_tag_mask) {
 		input_struct.formatted.vlan_id = htons(fs->vlan_tag & 0xEFFF);
-		if (!fs->vlan_tag_mask) {
-			input_masks.vlan_id_mask = htons(0xEFFF);
-		} else {
-			switch (fs->vlan_tag_mask & 0xEFFF) {
-			/* all of these are valid vlan-mask values */
-			case 0xEFFF:
-			case 0xE000:
-			case 0x0FFF:
-			case 0x0000:
-				input_masks.vlan_id_mask =
-					htons(fs->vlan_tag_mask);
-				break;
-			/* exit with error if vlan-mask is invalid */
-			default:
-				DPRINTK(DRV, ERR, "Partial VLAN ID or "
-					"priority mask in vlan-mask is not "
-					"supported by hardware\n");
-				return -1;
-			}
+		input_masks.vlan_id_mask = htons(~fs->vlan_tag_mask & 0xEFFF);
+		switch (fs->vlan_tag_mask & 0xEFFF) {
+		/* all of these are valid vlan-mask values */
+		case 0xEFFF:
+		case 0xE000:
+		case 0x0FFF:
+		case 0x0000:
+			break;
+		/* exit with error if vlan-mask is invalid */
+		default:
+			DPRINTK(DRV, ERR, "Partial VLAN ID or "
+				"priority mask in vlan-mask is not "
+				"supported by hardware\n");
+			return -1;
 		}
 	}
 
 	/* make sure we only use the first 2 bytes of user data */
-	if ((fs->data & 0xFFFF) || (fs->data_mask & 0xFFFF)) {
+	if (fs->data || fs->data_mask) {
 		input_struct.formatted.flex_bytes = htons(fs->data & 0xFFFF);
-		if (!fs->data_mask) {
-			input_masks.flex_mask = 0xFFFF;
-		} else if (!(~fs->data_mask & 0xFFFF)) {
-			input_masks.flex_mask = 0xFFFF;
-		} else {
-			DPRINTK(DRV, ERR, "Partial user-def-mask is not "
+		input_masks.flex_mask = htons(~fs->data_mask & 0xFFFF);
+		switch (fs->data_mask & 0xFFFF) {
+		/* all of these are valid flex_byte values */
+		case 0xFFFF:
+		case 0x0000:
+			break;
+		/* exit with error if flex_mask is invalid */
+		default:
+			DPRINTK(DRV, ERR, "Partial flex_byte mask is not "
 				"supported by hardware\n");
 			return -1;
 		}
@@ -2537,39 +2565,24 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 	 *
 	 * These assignments are based on the following logic
 	 * If neither input or mask are set assume value is masked out.
-	 * If input is set, but mask is not mask should default to accept all.
-	 * If input is not set, but mask is set then mask likely results in 0.
-	 * If input is set and mask is set then assign both.
+	 * If either are set then assign both.
 	 */
 	if (fs->h_u.tcp_ip4_spec.ip4src || fs->m_u.tcp_ip4_spec.ip4src) {
 		input_struct.formatted.src_ip[0] = fs->h_u.tcp_ip4_spec.ip4src;
-		if (!fs->m_u.tcp_ip4_spec.ip4src)
-			input_masks.src_ip_mask[0] = 0xFFFFFFFF;
-		else
-			input_masks.src_ip_mask[0] =
-				fs->m_u.tcp_ip4_spec.ip4src;
+		input_masks.src_ip_mask[0] = ~fs->m_u.tcp_ip4_spec.ip4src;
 	}
+
 	if (fs->h_u.tcp_ip4_spec.ip4dst || fs->m_u.tcp_ip4_spec.ip4dst) {
 		input_struct.formatted.dst_ip[0] = fs->h_u.tcp_ip4_spec.ip4dst;
-		if (!fs->m_u.tcp_ip4_spec.ip4dst)
-			input_masks.dst_ip_mask[0] = 0xFFFFFFFF;
-		else
-			input_masks.dst_ip_mask[0] =
-				fs->m_u.tcp_ip4_spec.ip4dst;
+		input_masks.dst_ip_mask[0] = fs->m_u.tcp_ip4_spec.ip4dst;
 	}
 	if (fs->h_u.tcp_ip4_spec.psrc || fs->m_u.tcp_ip4_spec.psrc) {
 		input_struct.formatted.src_port = fs->h_u.tcp_ip4_spec.psrc;
-		if (!fs->m_u.tcp_ip4_spec.psrc)
-			input_masks.src_port_mask = 0xFFFF;
-		else
-			input_masks.src_port_mask = fs->m_u.tcp_ip4_spec.psrc;
+		input_masks.src_port_mask = ~fs->m_u.tcp_ip4_spec.psrc;
 	}
 	if (fs->h_u.tcp_ip4_spec.pdst || fs->m_u.tcp_ip4_spec.pdst) {
 		input_struct.formatted.dst_port = fs->h_u.tcp_ip4_spec.pdst;
-		if (!fs->m_u.tcp_ip4_spec.pdst)
-			input_masks.dst_port_mask = 0xFFFF;
-		else
-			input_masks.dst_port_mask = fs->m_u.tcp_ip4_spec.pdst;
+		input_masks.dst_port_mask = ~fs->m_u.tcp_ip4_spec.pdst;
 	}
 
 	/* determine if we need to drop or route the packet */

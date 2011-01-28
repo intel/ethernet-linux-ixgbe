@@ -165,6 +165,45 @@ s32 ixgbe_start_hw_generic(struct ixgbe_hw *hw)
 }
 
 /**
+ *  ixgbe_start_hw_gen2 - Init sequence for common device family
+ *  @hw: pointer to hw structure
+ *
+ * Performs the init sequence common to the second generation
+ * of 10 GbE devices.
+ * Devices in the second generation:
+ *     82599
+ *     X540
+ **/
+s32 ixgbe_start_hw_gen2(struct ixgbe_hw *hw)
+{
+	u32 i;
+	u32 regval;
+
+	/* Clear the rate limiters */
+	for (i = 0; i < hw->mac.max_tx_queues; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, i);
+		IXGBE_WRITE_REG(hw, IXGBE_RTTBCNRC, 0);
+	}
+	IXGBE_WRITE_FLUSH(hw);
+
+	/* Disable relaxed ordering */
+	for (i = 0; i < hw->mac.max_tx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+		regval &= ~IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), regval);
+	}
+
+	for (i = 0; i < hw->mac.max_rx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
+		regval &= ~(IXGBE_DCA_RXCTRL_DESC_WRO_EN |
+					IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
+	}
+
+	return 0;
+}
+
+/**
  *  ixgbe_init_hw_generic - Generic hardware initialization
  *  @hw: pointer to hardware structure
  *
@@ -282,6 +321,15 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 			IXGBE_READ_REG(hw, IXGBE_QBRC(i));
 			IXGBE_READ_REG(hw, IXGBE_QBTC(i));
 		}
+	}
+
+	if (hw->mac.type == ixgbe_mac_X540) {
+		if (hw->phy.id == 0)
+			ixgbe_identify_phy(hw);
+		hw->phy.ops.read_reg(hw, 0x3, IXGBE_PCRC8ECL, &i);
+		hw->phy.ops.read_reg(hw, 0x3, IXGBE_PCRC8ECH, &i);
+		hw->phy.ops.read_reg(hw, 0x3, IXGBE_LDPCECL, &i);
+		hw->phy.ops.read_reg(hw, 0x3, IXGBE_LDPCECH, &i);
 	}
 
 	return 0;
@@ -849,6 +897,47 @@ s32 ixgbe_read_eerd_generic(struct ixgbe_hw *hw, u16 offset, u16 *data)
 		         IXGBE_EEPROM_RW_REG_DATA);
 	else
 		hw_dbg(hw, "Eeprom read timed out\n");
+
+out:
+	return status;
+}
+
+/**
+ *  ixgbe_write_eewr_generic - Write EEPROM word using EEWR
+ *  @hw: pointer to hardware structure
+ *  @offset: offset of  word in the EEPROM to write
+ *  @data: word write to the EEPROM
+ *
+ *  Write a 16 bit word to the EEPROM using the EEWR register.
+ **/
+s32 ixgbe_write_eewr_generic(struct ixgbe_hw *hw, u16 offset, u16 data)
+{
+	u32 eewr;
+	s32 status;
+
+	hw->eeprom.ops.init_params(hw);
+
+	if (offset >= hw->eeprom.word_size) {
+		status = IXGBE_ERR_EEPROM;
+		goto out;
+	}
+
+	eewr = (offset << IXGBE_EEPROM_RW_ADDR_SHIFT) |
+	       (data << IXGBE_EEPROM_RW_REG_DATA) | IXGBE_EEPROM_RW_REG_START;
+
+	status = ixgbe_poll_eerd_eewr_done(hw, IXGBE_NVM_POLL_WRITE);
+	if (status != 0) {
+		hw_dbg(hw, "Eeprom write EEWR timed out\n");
+		goto out;
+	}
+
+	IXGBE_WRITE_REG(hw, IXGBE_EEWR, eewr);
+
+	status = ixgbe_poll_eerd_eewr_done(hw, IXGBE_NVM_POLL_WRITE);
+	if (status != 0) {
+		hw_dbg(hw, "Eeprom write EEWR timed out\n");
+		goto out;
+	}
 
 out:
 	return status;
@@ -1498,6 +1587,9 @@ s32 ixgbe_init_rx_addrs_generic(struct ixgbe_hw *hw)
 		          hw->mac.addr[4], hw->mac.addr[5]);
 
 		hw->mac.ops.set_rar(hw, 0, hw->mac.addr, 0, IXGBE_RAH_AV);
+
+		/* clear VMDq pool/queue selection for RAR 0 */
+		hw->mac.ops.clear_vmdq(hw, 0, IXGBE_CLEAR_VMDQ_ALL);
 	}
 	hw->addr_ctrl.overflow_promisc = 0;
 
@@ -2269,19 +2361,26 @@ s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num)
 		break;
 	}
 
-	IXGBE_WRITE_REG(hw, IXGBE_PCS1GANA, reg);
-	reg = IXGBE_READ_REG(hw, IXGBE_PCS1GLCTL);
+	if (hw->mac.type != ixgbe_mac_X540) {
+		/*
+		 * Enable auto-negotiation between the MAC & PHY;
+		 * the MAC will advertise clause 37 flow control.
+		 */
+		IXGBE_WRITE_REG(hw, IXGBE_PCS1GANA, reg);
+		reg = IXGBE_READ_REG(hw, IXGBE_PCS1GLCTL);
 
-	/* Disable AN timeout */
-	if (hw->fc.strict_ieee)
-		reg &= ~IXGBE_PCS1GLCTL_AN_1G_TIMEOUT_EN;
+		/* Disable AN timeout */
+		if (hw->fc.strict_ieee)
+			reg &= ~IXGBE_PCS1GLCTL_AN_1G_TIMEOUT_EN;
 
-	IXGBE_WRITE_REG(hw, IXGBE_PCS1GLCTL, reg);
-	hw_dbg(hw, "Set up FC; PCS1GLCTL = 0x%08X\n", reg);
+		IXGBE_WRITE_REG(hw, IXGBE_PCS1GLCTL, reg);
+		hw_dbg(hw, "Set up FC; PCS1GLCTL = 0x%08X\n", reg);
+	}
 
 	/*
-	 * AUTOC restart handles negotiation of 1G and 10G. There is
-	 * no need to set the PCS1GCTL register.
+	 * AUTOC restart handles negotiation of 1G and 10G on backplane
+	 * and copper. There is no need to set the PCS1GCTL register.
+	 *
 	 */
 	if (hw->phy.media_type == ixgbe_media_type_backplane) {
 		reg_bp |= IXGBE_AUTOC_AN_RESTART;
@@ -2333,7 +2432,7 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 
 	for (i = 0; i < IXGBE_PCI_MASTER_DISABLE_TIMEOUT; i++) {
 		if (!(IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_GIO))
-			goto out;
+			goto check_device_status;
 		udelay(100);
 	}
 
@@ -2341,12 +2440,10 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 	status = IXGBE_ERR_MASTER_REQUESTS_PENDING;
 
 	/*
-	 * The GIO Master Disable bit didn't clear.  There are multiple reasons
-	 * for this listed in the datasheet 5.2.5.3.2 Master Disable, and they
-	 * all require a double reset to recover from.  Before proceeding, we
-	 * first wait a little more to try to ensure that, at a minimum, the
-	 * PCIe block has no transactions pending.
+	 * Before proceeding, make sure that the PCIe block does not have
+	 * transactions pending.
 	 */
+check_device_status:
 	for (i = 0; i < IXGBE_PCI_MASTER_DISABLE_TIMEOUT; i++) {
 		if (!(IXGBE_READ_PCIE_WORD(hw, IXGBE_PCI_DEVICE_STATUS) &
 			IXGBE_PCI_DEVICE_STATUS_TRANSACTION_PENDING))
@@ -2356,6 +2453,8 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 
 	if (i == IXGBE_PCI_MASTER_DISABLE_TIMEOUT)
 		hw_dbg(hw, "PCIe transaction pending bit also did not clear.\n");
+	else
+		goto out;
 
 	/*
 	 * Two consecutive resets are required via CTRL.RST per datasheet
@@ -3255,4 +3354,45 @@ void ixgbe_set_vlan_anti_spoofing(struct ixgbe_hw *hw, bool enable, int vf)
 	else
 		pfvfspoof &= ~(1 << vf_target_shift);
 	IXGBE_WRITE_REG(hw, IXGBE_PFVFSPOOF(vf_target_reg), pfvfspoof);
+}
+
+/**
+ *  ixgbe_get_device_caps_generic - Get additional device capabilities
+ *  @hw: pointer to hardware structure
+ *  @device_caps: the EEPROM word with the extra device capabilities
+ *
+ *  This function will read the EEPROM location for the device capabilities,
+ *  and return the word through device_caps.
+ **/
+s32 ixgbe_get_device_caps_generic(struct ixgbe_hw *hw, u16 *device_caps)
+{
+	hw->eeprom.ops.read(hw, IXGBE_DEVICE_CAPS, device_caps);
+
+	return 0;
+}
+
+/**
+ *  ixgbe_enable_relaxed_ordering_gen2 - Enable relaxed ordering
+ *  @hw: pointer to hardware structure
+ *
+ **/
+void ixgbe_enable_relaxed_ordering_gen2(struct ixgbe_hw *hw)
+{
+	u32 regval;
+	u32 i;
+
+	/* Enable relaxed ordering */
+	for (i = 0; i < hw->mac.max_tx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+		regval |= IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), regval);
+	}
+
+	for (i = 0; i < hw->mac.max_rx_queues; i++) {
+		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
+		regval |= (IXGBE_DCA_RXCTRL_DESC_WRO_EN |
+		           IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
+		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
+	}
+
 }

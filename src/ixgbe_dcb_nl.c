@@ -1226,11 +1226,12 @@ static int ixgbe_dcb_pgrx_gcfg(struct sk_buff *skb, struct genl_info *info)
 static void ixgbe_dcbnl_set_pfc_cfg(struct net_device *netdev, int priority,
 				    u8 setting)
 {
+	u8 tc = priority;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	adapter->temp_dcb_cfg.tc_config[priority].dcb_pfc = setting;
-	if (adapter->temp_dcb_cfg.tc_config[priority].dcb_pfc !=
-	    adapter->dcb_cfg.tc_config[priority].dcb_pfc) {
+	adapter->temp_dcb_cfg.tc_config[tc].dcb_pfc = setting;
+	if (adapter->temp_dcb_cfg.tc_config[tc].dcb_pfc !=
+	    adapter->dcb_cfg.tc_config[tc].dcb_pfc) {
 		adapter->dcb_set_bitmap |= BIT_PFC;
 	}
 }
@@ -1238,9 +1239,10 @@ static void ixgbe_dcbnl_set_pfc_cfg(struct net_device *netdev, int priority,
 static void ixgbe_dcbnl_get_pfc_cfg(struct net_device *netdev, int priority,
 				    u8 *setting)
 {
+	u8 tc = priority;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	*setting = adapter->dcb_cfg.tc_config[priority].dcb_pfc;
+	*setting = adapter->dcb_cfg.tc_config[tc].dcb_pfc;
 }
 #else
 static int ixgbe_dcb_spfccfg(struct sk_buff *skb, struct genl_info *info)
@@ -1694,8 +1696,8 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 #ifdef IXGBE_FCOE
 		if (id == ETH_P_FCOE) {
 			u8 old_tc, reg_idx;
+			int fcoe_m;
 			struct ixgbe_adapter *adapter = netdev_priv(netdev);
-			struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 
 			rval = ixgbe_fcoe_setapp(adapter, up);
 
@@ -1705,7 +1707,8 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 				break;
 
 			/* Get current programmed tc */
-			reg_idx = adapter->tx_ring[fcoe->tc]->reg_idx + 1;
+			fcoe_m = adapter->ring_feature[RING_F_FCOE].mask;
+			reg_idx = adapter->tx_ring[fcoe_m]->reg_idx + 1;
 			old_tc = ixgbe_dcb_txq_to_tc(adapter, reg_idx);
 
 			/* The FCoE application priority may be changed multiple

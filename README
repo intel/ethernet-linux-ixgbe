@@ -278,12 +278,14 @@ DCA this parameter allows load-time control of the feature.
 RxBufferMode
 ------------
 Valid Range: 0 - 2
-Default Value: 2
+Default Value: 2 (82598-based adapters); 0 (82599-based adapters)
 0 = Driver will use single buffer for Rx packets.
 1 = Driver will use packet split mode for Rx. Packet header will be 
     received in header buffer and payload will be received in data buffer.
 2 = Optimal mode. Driver will use single buffer mode for non-Jumbo 
     configurations and packet split mode for Jumbo configurations.
+
+NOTE: HeaderDataSplit is not supported in 82599-based adapters.
 
 IntMode
 -------------
@@ -484,6 +486,14 @@ system configuration, number of slots, etc. it’s impossible to predict in all
 cases where the positions would be on the command line and the user
 will have to specify zero in those positions occupied by an 82598 port.
 
+L2LBen
+------
+Valid Range: 0 = disable, 1 = enable (default)
+Default Value: 1
+
+  This parameter controls the internal switch (L2 loopback between pf and vf).
+  By default the switch is enabled.
+
 Additional Configurations
 =========================
 
@@ -639,10 +649,9 @@ For known hardware and troubleshooting issues, refer to the following website.
 
     http://support.intel.com/support/go/network/adapter/home.htm
 
-Select the link for your adapter. The adapter's page lists many issues. For a
-complete list of hardware issues download your adapter's user guide and read 
-the Release Notes. 
-
+Either select the link for your adapter or perform a search for the adapter 
+number. The adapter's page lists many issues. For a complete list of hardware
+issues download your adapter's user guide and read the Release Notes.  
 
   NOTE: After installing the driver, if your Intel Network Connection is not 
   working, verify in the "In This Release" section of the readme that you have 

@@ -236,6 +236,25 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	/* only the last buffer may have non-full bufflen */
 	lastsize = thisoff + thislen;
 
+	/*
+	 * lastsize can not be PAGE_SIZE.
+	 * If it is then adding another buffer with lastsize = 1.
+	 * Since lastsize is 1 there will be no HW access to this buffer.
+	 */
+	if (lastsize == PAGE_SIZE) {
+		if (j == (IXGBE_BUFFCNT_MAX - 1)) {
+			DPRINTK(DRV, ERR, "xid=%x:%d,%d,%d:addr=%llx "
+				"not enough descriptors only since lastsize"
+				" is PAGE_SIZE\n",
+				xid, i, j, dmacount, (u64)addr);
+			goto out_noddp_free;
+		}
+
+		ddp->udl[j+1] = ddp->udl[j];
+		j++;
+		lastsize = 1;
+	}
+
 	fcbuff = (IXGBE_FCBUFF_4KB << IXGBE_FCBUFF_BUFFSIZE_SHIFT);
 	fcbuff |= ((j & 0xff) << IXGBE_FCBUFF_BUFFCNT_SHIFT);
 	fcbuff |= (firstoff << IXGBE_FCBUFF_OFFSET_SHIFT);

@@ -168,6 +168,23 @@ IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable, 2-16 
 #define MAX_SRIOV_VFS 63
 
 IXGBE_PARAM(max_vfs, "Number of Virtual Functions: 0 = disable (default), 1 = default settings, 2-" XSTRINGIFY(MAX_SRIOV_VFS) " = enable this many VFs");
+
+/* L2LBen - L2 Loopback enable
+ *
+ * Valid Range: 0-1
+ *  - 0 Disables L2 loopback
+ *  - 1 Enables L2 loopback
+ *
+ * Default Value: 1
+ */
+/*
+ *Note:
+ *=====
+ * This is a temporary solution to enable SR-IOV features testing with
+ * external switches. As soon as an integrated VEB management interface
+ * becomes available this feature will be removed.
+*/
+IXGBE_PARAM(L2LBen, "L2 Loopback Enable: 0 = disable, 1 = enable (default)");
 #endif
 
 /* Interrupt Throttle Rate (interrupts/sec)
@@ -579,7 +596,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				rss = min(IXGBE_MAX_RSS_INDICES,
 				          (int)num_online_cpus());
 			}
-			feature[RING_F_RSS].indices = rss;
+			feature[RING_F_RSS].indices = rss ? : 1;
 			if (rss)
 				*aflags |= IXGBE_FLAG_RSS_ENABLED;
 			else
@@ -731,6 +748,32 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				adapter->flags2 &= ~IXGBE_FLAG2_RSC_CAPABLE;
 			}
 		}
+	}
+	{ /* L2 Loopback Enable in SR-IOV mode */
+		static struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "L2 Loopback Enable",
+			.err  = "defaulting to Enable",
+			.def  = OPTION_ENABLED,
+			.arg  = { .r = { .min = OPTION_DISABLED,
+					 .max = OPTION_ENABLED}}
+		};
+
+#ifdef module_param_array
+		if (num_L2LBen > bd) {
+#endif
+			unsigned int l2LBen = L2LBen[bd];
+			ixgbe_validate_option(&l2LBen, &opt);
+			adapter->l2loopback_enable = l2LBen;
+#ifdef module_param_array
+		} else {
+			if (opt.def == OPTION_DISABLED) {
+				adapter->l2loopback_enable = 0;
+			} else {
+				adapter->l2loopback_enable = opt.def;
+			}
+		}
+#endif
 	}
 #endif /* CONFIG_PCI_IOV */
 	{ /* Interrupt Throttling Rate */
@@ -938,6 +981,10 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_RxBufferMode > bd) {
 #endif
+			/* for 82599 only 1BUF supported value - erratum 49 */
+			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+				RxBufferMode[bd] = IXGBE_RXBUFMODE_1BUF_ALWAYS;
+
 			rx_buf_mode = RxBufferMode[bd];
 			ixgbe_validate_option(&rx_buf_mode, &opt);
 			switch (rx_buf_mode) {
@@ -956,10 +1003,13 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 #ifdef module_param_array
 		} else {
+			/* 82599 doesn't support PS - erratum 49 */
+			if (adapter->hw.mac.type != ixgbe_mac_82599EB)
+				*aflags |= IXGBE_FLAG_RX_PS_CAPABLE;
 			*aflags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
-			*aflags |= IXGBE_FLAG_RX_PS_CAPABLE;
 		}
 #endif
+
 	}
 #ifdef HAVE_TX_MQ
 	{ /* Flow Director filtering mode */
@@ -976,55 +1026,42 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 
 		*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
 		*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+		feature[RING_F_FDIR].indices = IXGBE_MAX_FDIR_INDICES;
+
 		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 			goto no_flow_director;
+
 		if (num_FdirMode > bd) {
 			fdir_filter_mode = FdirMode[bd];
 			ixgbe_validate_option(&fdir_filter_mode, &opt);
 
 			switch (fdir_filter_mode) {
-			case IXGBE_FDIR_FILTER_OFF:
-				DPRINTK(PROBE, INFO, "Flow Director disabled\n");
-				break;
-			case IXGBE_FDIR_FILTER_HASH:
-				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-				feature[RING_F_FDIR].indices =
-					IXGBE_MAX_FDIR_INDICES;
-				DPRINTK(PROBE, INFO,
-				        "Flow Director hash filtering enabled\n");
-				break;
 			case IXGBE_FDIR_FILTER_PERFECT:
 #ifdef NETIF_F_NTUPLE
-				*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
 				*aflags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-				feature[RING_F_FDIR].indices =
-					IXGBE_MAX_FDIR_INDICES;
 				DPRINTK(PROBE, INFO,
 				        "Flow Director perfect filtering enabled\n");
 #else /* NETIF_F_NTUPLE */
 				DPRINTK(PROBE, INFO, "No ethtool support for "
-				        "Flow Director perfect filtering. "
-				        "Defaulting to hash filtering.\n");
-				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-				feature[RING_F_FDIR].indices =
-					IXGBE_MAX_FDIR_INDICES;
+				        "Flow Director perfect filtering.\n");
 #endif /* NETIF_F_NTUPLE */
 				break;
+			case IXGBE_FDIR_FILTER_HASH:
+				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+				DPRINTK(PROBE, INFO,
+				        "Flow Director hash filtering enabled\n");
+				break;
+			case IXGBE_FDIR_FILTER_OFF:
 			default:
+				DPRINTK(PROBE, INFO, "Flow Director disabled\n");
 				break;
 			}
 		} else {
 			if (opt.def == IXGBE_FDIR_FILTER_OFF) {
-				*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-				feature[RING_F_FDIR].indices = 0;
 				DPRINTK(PROBE, INFO,
 					"Flow Director hash filtering disabled\n");
 			} else {
 				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				feature[RING_F_FDIR].indices = IXGBE_MAX_FDIR_INDICES;
 				DPRINTK(PROBE, INFO,
 					"Flow Director hash filtering enabled\n");
 			}
