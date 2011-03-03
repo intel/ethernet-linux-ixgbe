@@ -981,7 +981,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_RxBufferMode > bd) {
 #endif
-			/* for 82599 only 1BUF supported value - erratum 49 */
+			/* for 82599 only 1BUF supported value - erratum 45 */
 			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
 				RxBufferMode[bd] = IXGBE_RXBUFMODE_1BUF_ALWAYS;
 
@@ -1003,7 +1003,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 #ifdef module_param_array
 		} else {
-			/* 82599 doesn't support PS - erratum 49 */
+			/* 82599 doesn't support PS - erratum 45 */
 			if (adapter->hw.mac.type != ixgbe_mac_82599EB)
 				*aflags |= IXGBE_FLAG_RX_PS_CAPABLE;
 			*aflags |= IXGBE_FLAG_RX_1BUF_CAPABLE;

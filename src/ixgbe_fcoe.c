@@ -141,7 +141,7 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	struct scatterlist *sg;
 	unsigned int i, j, dmacount;
 	unsigned int len;
-	static const unsigned int bufflen = 4096;
+	static const unsigned int bufflen = IXGBE_FCBUFF_MIN;
 	unsigned int firstoff = 0;
 	unsigned int lastsize;
 	unsigned int thisoff = 0;
@@ -237,20 +237,20 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	lastsize = thisoff + thislen;
 
 	/*
-	 * lastsize can not be PAGE_SIZE.
+	 * lastsize can not be bufflen.
 	 * If it is then adding another buffer with lastsize = 1.
 	 * Since lastsize is 1 there will be no HW access to this buffer.
 	 */
-	if (lastsize == PAGE_SIZE) {
-		if (j == (IXGBE_BUFFCNT_MAX - 1)) {
+	if (lastsize == bufflen) {
+		if (j >= IXGBE_BUFFCNT_MAX) {
 			DPRINTK(DRV, ERR, "xid=%x:%d,%d,%d:addr=%llx "
-				"not enough descriptors only since lastsize"
-				" is PAGE_SIZE\n",
-				xid, i, j, dmacount, (u64)addr);
+				   "not enough user buffers. We need an extra "
+				   "buffer because lastsize is bufflen.\n",
+					xid, i, j, dmacount, (u64)addr);
 			goto out_noddp_free;
 		}
 
-		ddp->udl[j+1] = ddp->udl[j];
+		ddp->udl[j] = (u64)(fcoe->extra_ddp_buffer_dma);
 		j++;
 		lastsize = 1;
 	}
@@ -512,6 +512,25 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 				"failed to allocated FCoE DDP pool\n");
 
 		spin_lock_init(&fcoe->lock);
+
+		/* Extra buffer to be shared by all DDPs for HW work around */
+		fcoe->extra_ddp_buffer = kmalloc(IXGBE_FCBUFF_MIN, GFP_ATOMIC);
+		if (fcoe->extra_ddp_buffer == NULL) {
+			DPRINTK(DRV, ERR, "failed to allocated extra DDP buffer\n");
+			goto out_extra_ddp_buffer_alloc;
+		}
+
+		fcoe->extra_ddp_buffer_dma =
+			dma_map_single(&adapter->pdev->dev,
+				       fcoe->extra_ddp_buffer,
+				       IXGBE_FCBUFF_MIN,
+				       DMA_FROM_DEVICE);
+
+		if (dma_mapping_error(&adapter->pdev->dev,
+				      fcoe->extra_ddp_buffer_dma)) {
+			DPRINTK(DRV, ERR, "failed to map extra DDP buffer\n");
+			goto out_extra_ddp_buffer_dma;
+		}
 	}
 
 	/* Enable L2 eth type filter for FCoE */
@@ -565,6 +584,15 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 		}
 	}
 #endif /* CONFIG_DCB */
+
+	return;
+
+out_extra_ddp_buffer_dma:
+	kfree(fcoe->extra_ddp_buffer);
+out_extra_ddp_buffer_alloc:
+	pci_pool_destroy(fcoe->pool);
+	fcoe->pool = NULL;
+
 }
 
 /**
@@ -584,6 +612,12 @@ void ixgbe_cleanup_fcoe(struct ixgbe_adapter *adapter)
 	if (fcoe->pool) {
 		for (i = 0; i < IXGBE_FCOE_DDP_MAX; i++)
 			ixgbe_fcoe_ddp_put(adapter->netdev, i);
+
+		dma_unmap_single(&adapter->pdev->dev,
+				 fcoe->extra_ddp_buffer_dma,
+				 IXGBE_FCBUFF_MIN,
+				 DMA_FROM_DEVICE);
+		kfree(fcoe->extra_ddp_buffer);
 		pci_pool_destroy(fcoe->pool);
 		fcoe->pool = NULL;
 	}

@@ -563,7 +563,7 @@ struct ixgbe_adapter {
 	u64 lsc_int;
 
 	/* RX */
-	struct ixgbe_ring *rx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
+	struct ixgbe_ring *rx_ring[MAX_RX_QUEUES] ____cacheline_aligned_in_smp;
 	int num_rx_queues;
 	int num_rx_pools;               /* == num_rx_queues in 82598 */
 	int num_rx_queues_per_pool;	/* 1 if 82598, can be many if 82599 */
