@@ -171,7 +171,7 @@ static const char ixgbe_gstrings_test[][ETH_GSTRING_LEN] = {
 #define IXGBE_TEST_LEN sizeof(ixgbe_gstrings_test) / ETH_GSTRING_LEN
 #endif /* ETHTOOL_TEST */
 
-static int ixgbe_get_settings(struct net_device *netdev,
+int ixgbe_get_settings(struct net_device *netdev,
                               struct ethtool_cmd *ecmd)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -186,37 +186,34 @@ static int ixgbe_get_settings(struct net_device *netdev,
 	    (hw->phy.multispeed_fiber)) {
 		ecmd->supported |= (SUPPORTED_1000baseT_Full |
 		                    SUPPORTED_Autoneg);
-	switch (hw->mac.type) {
-	case ixgbe_mac_X540:
-		ecmd->supported |= SUPPORTED_100baseT_Full;
-		break;
-	default:
-		break;
-	}
-
-		ecmd->advertising = ADVERTISED_Autoneg;
-		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
-			ecmd->advertising |= ADVERTISED_100baseT_Full;
-		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL)
-			ecmd->advertising |= ADVERTISED_10000baseT_Full;
-		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
-			ecmd->advertising |= ADVERTISED_1000baseT_Full;
-		/*
-		 * It's possible that phy.autoneg_advertised may not be
-		 * set yet.  If so display what the default would be -
-		 * both 1G and 10G supported.
-		 */
-		if (!(ecmd->advertising & (ADVERTISED_1000baseT_Full |
-					   ADVERTISED_10000baseT_Full)))
-			ecmd->advertising |= (ADVERTISED_10000baseT_Full |
-					      ADVERTISED_1000baseT_Full);
 		switch (hw->mac.type) {
 		case ixgbe_mac_X540:
-			if (!(ecmd->advertising & (ADVERTISED_100baseT_Full)))
-				ecmd->advertising |= (ADVERTISED_100baseT_Full);
+			ecmd->supported |= SUPPORTED_100baseT_Full;
 			break;
 		default:
 			break;
+		}
+
+		ecmd->advertising = ADVERTISED_Autoneg;
+		if (hw->phy.autoneg_advertised) {
+			if (hw->phy.autoneg_advertised &
+			    IXGBE_LINK_SPEED_100_FULL)
+				ecmd->advertising |= ADVERTISED_100baseT_Full;
+			if (hw->phy.autoneg_advertised &
+			    IXGBE_LINK_SPEED_10GB_FULL)
+				ecmd->advertising |= ADVERTISED_10000baseT_Full;
+			if (hw->phy.autoneg_advertised &
+			    IXGBE_LINK_SPEED_1GB_FULL)
+				ecmd->advertising |= ADVERTISED_1000baseT_Full;
+		} else {
+			/*
+			 * Default advertised modes in case
+			 * phy.autoneg_advertised isn't set.
+			 */
+			ecmd->advertising |= (ADVERTISED_10000baseT_Full |
+					      ADVERTISED_1000baseT_Full);
+			if (hw->mac.type == ixgbe_mac_X540)
+				ecmd->advertising |= ADVERTISED_100baseT_Full;
 		}
 
 		if (hw->phy.media_type == ixgbe_media_type_copper) {
@@ -381,24 +378,19 @@ static int ixgbe_set_settings(struct net_device *netdev,
 		if (ecmd->advertising & ADVERTISED_1000baseT_Full)
 			advertised |= IXGBE_LINK_SPEED_1GB_FULL;
 
+		if (ecmd->advertising & ADVERTISED_100baseT_Full)
+			advertised |= IXGBE_LINK_SPEED_100_FULL;
+
 		if (old == advertised)
 			return err;
 		/* this sets the link speed and restarts auto-neg */
 		hw->mac.autotry_restart = true;
 		err = hw->mac.ops.setup_link(hw, advertised, true, true);
 		if (err) {
-			DPRINTK(PROBE, INFO,
-			        "setup link failed with code %d\n", err);
+			e_info(probe, "setup link failed with code %d\n", err);
 			hw->mac.ops.setup_link(hw, old, true, true);
 		}
-	} else {
-		/* in this case we currently only support 10Gb/FULL */
-		if ((ecmd->autoneg == AUTONEG_ENABLE) ||
-		    (ecmd->advertising != ADVERTISED_10000baseT_Full) ||
-		    (ecmd->speed + ecmd->duplex != SPEED_10000 + DUPLEX_FULL))
-			return -EINVAL;
 	}
-
 	return err;
 }
 
@@ -1063,7 +1055,7 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 	}
 
 	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
-		msleep(1);
+		usleep_range(1000, 2000);
 
 	if (!netif_running(adapter->netdev)) {
 		for (i = 0; i < adapter->num_tx_queues; i++)
@@ -1164,6 +1156,10 @@ static int ixgbe_get_stats_count(struct net_device *netdev)
 #else /* HAVE_ETHTOOL_GET_SSET_COUNT */
 static int ixgbe_get_sset_count(struct net_device *netdev, int sset)
 {
+#ifdef NETIF_F_NTUPLE
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+#endif /* NETIF_F_NTUPLE */
+
 	switch (sset) {
 	case ETH_SS_TEST:
 		return IXGBE_TEST_LEN;
@@ -1171,7 +1167,8 @@ static int ixgbe_get_sset_count(struct net_device *netdev, int sset)
 		return IXGBE_STATS_LEN;
 #ifdef NETIF_F_NTUPLE
 	case ETH_SS_NTUPLE_FILTERS:
-		return (ETHTOOL_MAX_NTUPLE_LIST_ENTRY *
+		/* return enough space for the mask and all filters */
+		return ((adapter->fdir_filter_count + 1) *
 		        ETHTOOL_MAX_NTUPLE_STRING_PER_ENTRY);
 #endif /* NETIF_F_NTUPLE */
 	default:
@@ -1410,8 +1407,8 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 		writel((_test[pat] & W), (adapter->hw.hw_addr + R));          \
 		val = readl(adapter->hw.hw_addr + R);                         \
 		if (val != (_test[pat] & W & M)) {                            \
-			DPRINTK(DRV, ERR, "pattern test reg %04X failed: got "\
-					  "0x%08X expected 0x%08X\n",         \
+			e_err(drv, "pattern test reg %04X failed: got "\
+			      "0x%08X expected 0x%08X\n",         \
 				R, val, (_test[pat] & W & M));                \
 			*data = R;                                            \
 			writel(before, adapter->hw.hw_addr + R);              \
@@ -1428,8 +1425,8 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 	writel((W & M), (adapter->hw.hw_addr + R));                           \
 	val = readl(adapter->hw.hw_addr + R);                                 \
 	if ((W & M) != (val & M)) {                                           \
-		DPRINTK(DRV, ERR, "set/check reg %04X test failed: got 0x%08X "\
-				 "expected 0x%08X\n", R, (val & M), (W & M)); \
+		e_err(drv, "set/check reg %04X test failed: got 0x%08X "\
+		      "expected 0x%08X\n", R, (val & M), (W & M)); \
 		*data = R;                                                    \
 		writel(before, (adapter->hw.hw_addr + R));                    \
 		return 1;                                                     \
@@ -1470,8 +1467,8 @@ static int ixgbe_reg_test(struct ixgbe_adapter *adapter, u64 *data)
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_STATUS, toggle);
 	status_after = IXGBE_READ_REG(&adapter->hw, IXGBE_STATUS) & toggle;
 	if (value != status_after) {
-		DPRINTK(DRV, ERR, "failed STATUS register test got: "
-		        "0x%08X expected: 0x%08X\n", status_after, value);
+		e_err(drv, "failed STATUS register test got: "
+		      "0x%08X expected: 0x%08X\n", status_after, value);
 		*data = 1;
 		return 1;
 	}
@@ -1570,12 +1567,12 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 		*data = 1;
 		return -1;
 	}
-	DPRINTK(HW, INFO, "testing %s interrupt\n",
-		(shared_int ? "shared" : "unshared"));
+	e_info(hw, "testing %s interrupt\n",
+	       (shared_int ? "shared" : "unshared"));
 
 	/* Disable all the interrupts */
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, 0xFFFFFFFF);
-	msleep(10);
+	usleep_range(10000, 20000);
 
 	/* Test each interrupt */
 	for (; i < 10; i++) {
@@ -1595,7 +1592,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			                ~mask & 0x00007FFF);
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS,
 			                ~mask & 0x00007FFF);
-			msleep(10);
+			usleep_range(10000, 20000);
 
 			if (adapter->test_icr & mask) {
 				*data = 3;
@@ -1612,7 +1609,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 		adapter->test_icr = 0;
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMS, mask);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS, mask);
-		msleep(10);
+		usleep_range(10000, 20000);
 
 		if (!(adapter->test_icr &mask)) {
 			*data = 4;
@@ -1632,7 +1629,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			                ~mask & 0x00007FFF);
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS,
 			                ~mask & 0x00007FFF);
-			msleep(10);
+			usleep_range(10000, 20000);
 
 			if (adapter->test_icr) {
 				*data = 5;
@@ -1643,7 +1640,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, 0xFFFFFFFF);
-	msleep(10);
+	usleep_range(10000, 20000);
 
 	/* Unhook test interrupt handler */
 	free_irq(irq, netdev);
@@ -1769,7 +1766,7 @@ static int ixgbe_setup_loopback_test(struct ixgbe_adapter *adapter)
 	reg_data |= IXGBE_AUTOC_LMS_10G_LINK_NO_AN | IXGBE_AUTOC_FLU;
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_AUTOC, reg_data);
 	IXGBE_WRITE_FLUSH(&adapter->hw);
-	msleep(10);
+	usleep_range(10000, 20000);
 
 	/* Disable Atlas Tx lanes; re-enabled in reset path */
 	if (hw->mac.type == ixgbe_mac_82598EB) {
@@ -1982,7 +1979,7 @@ static void ixgbe_diag_test(struct net_device *netdev,
 	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
 		/* Offline tests */
 
-		DPRINTK(HW, INFO, "offline testing starting\n");
+		e_info(hw, "offline testing starting\n");
 
 		/* Link test performed before hardware reset so autoneg doesn't
 		 * interfere with test result */
@@ -1993,10 +1990,10 @@ static void ixgbe_diag_test(struct net_device *netdev,
 			int i;
 			for (i = 0; i < adapter->num_vfs; i++) {
 				if (adapter->vfinfo[i].clear_to_send) {
-					DPRINTK(DRV, WARNING, "Please take "
-						"active VFS offline and "
-						"restart the adapter before "
-						"running NIC diagnostics\n");
+					e_warn(drv, "Please take active VFS "
+					       "offline and restart the "
+					       "adapter before running NIC "
+					       "diagnostics\n");
 					data[0] = 1;
 					data[1] = 1;
 					data[2] = 1;
@@ -2015,17 +2012,17 @@ static void ixgbe_diag_test(struct net_device *netdev,
 		else
 			ixgbe_reset(adapter);
 
-		DPRINTK(HW, INFO, "register testing starting\n");
+		e_info(hw, "register testing starting\n");
 		if (ixgbe_reg_test(adapter, &data[0]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 		ixgbe_reset(adapter);
-		DPRINTK(HW, INFO, "eeprom testing starting\n");
+		e_info(hw, "eeprom testing starting\n");
 		if (ixgbe_eeprom_test(adapter, &data[1]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 		ixgbe_reset(adapter);
-		DPRINTK(HW, INFO, "interrupt testing starting\n");
+		e_info(hw, "interrupt testing starting\n");
 		if (ixgbe_intr_test(adapter, &data[2]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
@@ -2033,14 +2030,13 @@ static void ixgbe_diag_test(struct net_device *netdev,
 		 * loopback diagnostic. */
 		if (adapter->flags & (IXGBE_FLAG_SRIOV_ENABLED |
 				      IXGBE_FLAG_VMDQ_ENABLED)) {
-			DPRINTK(HW, INFO, "skip MAC loopback diagnostic in VT "
-				"mode\n");
+			e_info(hw, "skip MAC loopback diagnostic in VT mode\n");
 			data[3] = 0;
 			goto skip_loopback;
 		}
 
 		ixgbe_reset(adapter);
-		DPRINTK(HW, INFO, "loopback testing starting\n");
+		e_info(hw, "loopback testing starting\n");
 		if (ixgbe_loopback_test(adapter, &data[3]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
@@ -2051,7 +2047,7 @@ skip_loopback:
 		if (if_running)
 			dev_open(netdev);
 	} else {
-		DPRINTK(HW, INFO, "online testing starting\n");
+		e_info(hw, "online testing starting\n");
 		/* Online tests */
 		if (ixgbe_link_test(adapter, &data[4]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
@@ -2249,8 +2245,7 @@ static bool ixgbe_update_rsc(struct ixgbe_adapter *adapter,
 	if (ec->rx_coalesce_usecs != 1 &&
 	    ec->rx_coalesce_usecs <= 1000000/IXGBE_MAX_RSC_INT_RATE) {
 		if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED) {
-			DPRINTK(PROBE, INFO, "rx-usecs set too low, "
-					     "disabling RSC\n");
+			e_info(probe, "rx-usecs set too low, disabling RSC\n");
 			adapter->flags2 &= ~IXGBE_FLAG2_RSC_ENABLED;
 			return true;
 		}
@@ -2258,9 +2253,8 @@ static bool ixgbe_update_rsc(struct ixgbe_adapter *adapter,
 		/* check the feature flag value and enable RSC if necessary */
 		if ((netdev->features & NETIF_F_LRO) &&
 		    !(adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)) {
-			DPRINTK(PROBE, INFO, "rx-usecs set to %d, "
-					     "re-enabling RSC\n",
-			        ec->rx_coalesce_usecs);
+			e_info(probe, "rx-usecs set to %d, re-enabling RSC\n",
+			       ec->rx_coalesce_usecs);
 			adapter->flags2 |= IXGBE_FLAG2_RSC_ENABLED;
 			return true;
 		}
@@ -2404,8 +2398,8 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 		if ((data & ETH_FLAG_LRO) &&
 		    (!adapter->rx_itr_setting ||
 		     (adapter->rx_itr_setting > IXGBE_MAX_RSC_INT_RATE))) {
-			DPRINTK(PROBE, INFO, "rx-usecs set too low, "
-					     "not enabling RSC\n");
+			e_info(probe, "rx-usecs set too low, "
+			       "not enabling RSC\n");
 		} else {
 			adapter->flags2 ^= IXGBE_FLAG2_RSC_ENABLED;
 			switch (adapter->hw.mac.type) {
@@ -2452,20 +2446,19 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 	 * Check if Flow Director n-tuple support was enabled or disabled.  If
 	 * the state changed, we need to reset.
 	 */
-	if ((adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE) &&
-	    (!(data & ETH_FLAG_NTUPLE))) {
-		/* turn off Flow Director perfect, set hash and reset */
+	if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
+		/* turn off ATR, enable perfect filters and reset */
+		if (data & ETH_FLAG_NTUPLE) {
+			adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+			adapter->flags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+			need_reset = true;
+		}
+	} else if (!(data & ETH_FLAG_NTUPLE)) {
+		/* turn off Flow Director, set ATR and reset */
 		adapter->flags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-		adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+		if (adapter->flags & IXGBE_FLAG_RSS_ENABLED)
+			adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
 		need_reset = true;
-	} else if ((!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) &&
-	           (data & ETH_FLAG_NTUPLE)) {
-		/* turn off Flow Director hash, enable perfect and reset */
-		adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-		adapter->flags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-		need_reset = true;
-	} else {
-		/* no state change */
 	}
 
 #endif /* NETIF_F_NTUPLE */
@@ -2478,17 +2471,96 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 
 	return 0;
 }
-#endif /* ETHTOOL_GFLAGS */
 
+#endif /* ETHTOOL_GFLAGS */
 #ifdef NETIF_F_NTUPLE
+static void ixgbe_fdir_set_sw_index(struct ixgbe_adapter *adapter,
+				    struct ixgbe_fdir_filter *input)
+{
+	struct hlist_node *node, *node2;
+	struct ixgbe_fdir_filter *filter;
+	u16 sw_idx;
+
+	/* limit bucket hash to available values */
+	input->filter.formatted.bkt_hash &= (1024 << adapter->fdir_pballoc) - 1;
+
+	/*
+	 * set software index to bucket_hash + 1 in order to guarantee
+	 * that between the two at least one bit is set.
+	 */
+	sw_idx = input->filter.formatted.bkt_hash + 1;
+
+	hlist_for_each_entry_safe(filter, node, node2,
+				  &adapter->fdir_filter_list, fdir_node) {
+		/* hash not found, no matching entry */
+		if (filter->filter.formatted.bkt_hash >
+		    input->filter.formatted.bkt_hash)
+			break;
+
+		/* we still haven't found the hash yet, keep looking */
+		if (filter->filter.formatted.bkt_hash !=
+		    input->filter.formatted.bkt_hash)
+			continue;
+
+		/* hash found and matching SW index exists, check next one */
+		if (sw_idx == filter->sw_idx)
+			sw_idx++;
+
+		/*
+		 * if matching filter found we remove it from the list and
+		 * take it's software index as our own
+		 */
+		if (!memcmp(&input->filter, &filter->filter,
+			    sizeof(union ixgbe_atr_input))) {
+			sw_idx = filter->sw_idx;
+			hlist_del(&filter->fdir_node);
+			kfree(filter);
+			adapter->fdir_filter_count--;
+			break;
+		}
+	}
+
+	input->sw_idx = sw_idx;
+}
+
+static void ixgbe_fdir_record_filter(struct ixgbe_adapter *adapter,
+				     struct ixgbe_fdir_filter *input)
+{
+	struct hlist_node *node, *node2, *parent;
+	struct ixgbe_fdir_filter *filter;
+	
+	parent = NULL;
+
+	hlist_for_each_entry_safe(filter, node, node2,
+				  &adapter->fdir_filter_list, fdir_node) {
+		/* hash not found, no matching entry */
+		if (filter->filter.formatted.bkt_hash >
+		    input->filter.formatted.bkt_hash)
+			break;
+		/* sw index greater than location in list */
+		if ((filter->filter.formatted.bkt_hash ==
+		     input->filter.formatted.bkt_hash) &&
+		    (filter->sw_idx > input->sw_idx))
+			break;
+		parent = node;
+	}
+
+	INIT_HLIST_NODE(&input->fdir_node);
+	if (parent)
+		hlist_add_after(parent, &input->fdir_node);
+	else
+		hlist_add_head(&input->fdir_node, &adapter->fdir_filter_list);
+	adapter->fdir_filter_count++;
+}
+
 static int ixgbe_set_rx_ntuple(struct net_device *dev,
                                struct ethtool_rx_ntuple *cmd)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
+	struct ixgbe_hw *hw = &adapter->hw;
 	struct ethtool_rx_ntuple_flow_spec *fs = &cmd->fs;
-	union ixgbe_atr_input input_struct;
-	struct ixgbe_atr_input_masks input_masks;
-	int target_queue;
+	struct ixgbe_fdir_filter *input;
+	union ixgbe_atr_input mask;
 	int err;
 
 	if (adapter->hw.mac.type == ixgbe_mac_82598EB)
@@ -2496,37 +2568,48 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 
 	/*
 	 * Don't allow programming if the action is a queue greater than
-	 * the number of online Tx queues.
+	 * the number of online Rx queues.
 	 */
-	if ((fs->action >= adapter->num_tx_queues) ||
-	    (fs->action < ETHTOOL_RXNTUPLE_ACTION_DROP))
+	if ((fs->action >= adapter->num_rx_queues) ||
+	    (fs->action < ETHTOOL_RXNTUPLE_ACTION_CLEAR))
 		return -EINVAL;
 
-	memset(&input_struct, 0, sizeof(union ixgbe_atr_input));
-	memset(&input_masks, 0, sizeof(struct ixgbe_atr_input_masks));
+	input = kzalloc(sizeof(*input), GFP_ATOMIC);
+	if (!input)
+		return -ENOMEM;
+
+	memset(&mask, 0, sizeof(union ixgbe_atr_input));
 
 	/* record flow type */
 	switch (fs->flow_type) {
-	case IPV4_FLOW:
-		input_struct.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_IPV4;
-		break;
 	case TCP_V4_FLOW:
-		input_struct.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_TCPV4;
+		input->filter.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_TCPV4;
+		mask.formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK |
+					   IXGBE_ATR_L4TYPE_MASK;
 		break;
 	case UDP_V4_FLOW:
-		input_struct.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_UDPV4;
+		input->filter.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_UDPV4;
+		mask.formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK |
+					   IXGBE_ATR_L4TYPE_MASK;
 		break;
 	case SCTP_V4_FLOW:
-		input_struct.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_SCTPV4;
+		input->filter.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_SCTPV4;
+		mask.formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK |
+					   IXGBE_ATR_L4TYPE_MASK;
+		break;
+	case IP_USER_FLOW:
+		input->filter.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_IPV4;
+		mask.formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK;
 		break;
 	default:
-		return -1;
+		e_err(drv, "Unrecognized flow type\n");
+		goto err_out;
 	}
 
 	/* copy vlan tag minus the CFI bit */
 	if (fs->vlan_tag || fs->vlan_tag_mask) {
-		input_struct.formatted.vlan_id = htons(fs->vlan_tag & 0xEFFF);
-		input_masks.vlan_id_mask = htons(~fs->vlan_tag_mask & 0xEFFF);
+		input->filter.formatted.vlan_id = htons(fs->vlan_tag & 0xEFFF);
+		mask.formatted.vlan_id = htons(~fs->vlan_tag_mask & 0xEFFF);
 		switch (fs->vlan_tag_mask & 0xEFFF) {
 		/* all of these are valid vlan-mask values */
 		case 0xEFFF:
@@ -2536,17 +2619,16 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 			break;
 		/* exit with error if vlan-mask is invalid */
 		default:
-			DPRINTK(DRV, ERR, "Partial VLAN ID or "
-				"priority mask in vlan-mask is not "
-				"supported by hardware\n");
-			return -1;
+			e_err(drv, "Partial VLAN ID or priority mask in "
+			      "vlan-mask is not supported by hardware\n");
+			goto err_out;
 		}
 	}
 
 	/* make sure we only use the first 2 bytes of user data */
 	if (fs->data || fs->data_mask) {
-		input_struct.formatted.flex_bytes = htons(fs->data & 0xFFFF);
-		input_masks.flex_mask = htons(~fs->data_mask & 0xFFFF);
+		input->filter.formatted.flex_bytes = htons(fs->data & 0xFFFF);
+		mask.formatted.flex_bytes = htons(~fs->data_mask & 0xFFFF);
 		switch (fs->data_mask & 0xFFFF) {
 		/* all of these are valid flex_byte values */
 		case 0xFFFF:
@@ -2554,9 +2636,22 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 			break;
 		/* exit with error if flex_mask is invalid */
 		default:
-			DPRINTK(DRV, ERR, "Partial flex_byte mask is not "
-				"supported by hardware\n");
-			return -1;
+			e_err(drv, "Partial flex_byte mask is not supported "
+			      "by hardware\n");
+			goto err_out;
+		}
+		input->filter.formatted.vm_pool = fs->data >> 16;
+		mask.formatted.vm_pool = ~fs->data_mask >> 16;
+		switch (fs->data_mask & 0xFF0000) {
+		/* all of these are valid vm_pool mask values */
+		case 0xFF0000:
+		case 0x000000:
+			break;
+		/* exit with error if vm_pool mask is invalid */
+		default:
+			e_err(drv, "Partial vm_pool mask is not supported by "
+			      "hardware\n");
+			goto err_out;
 		}
 	} 
 
@@ -2568,37 +2663,227 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 	 * If either are set then assign both.
 	 */
 	if (fs->h_u.tcp_ip4_spec.ip4src || fs->m_u.tcp_ip4_spec.ip4src) {
-		input_struct.formatted.src_ip[0] = fs->h_u.tcp_ip4_spec.ip4src;
-		input_masks.src_ip_mask[0] = ~fs->m_u.tcp_ip4_spec.ip4src;
+		input->filter.formatted.src_ip[0] = fs->h_u.tcp_ip4_spec.ip4src;
+		mask.formatted.src_ip[0] = ~fs->m_u.tcp_ip4_spec.ip4src;
 	}
 
 	if (fs->h_u.tcp_ip4_spec.ip4dst || fs->m_u.tcp_ip4_spec.ip4dst) {
-		input_struct.formatted.dst_ip[0] = fs->h_u.tcp_ip4_spec.ip4dst;
-		input_masks.dst_ip_mask[0] = fs->m_u.tcp_ip4_spec.ip4dst;
+		input->filter.formatted.dst_ip[0] = fs->h_u.tcp_ip4_spec.ip4dst;
+		mask.formatted.dst_ip[0] = ~fs->m_u.tcp_ip4_spec.ip4dst;
 	}
 	if (fs->h_u.tcp_ip4_spec.psrc || fs->m_u.tcp_ip4_spec.psrc) {
-		input_struct.formatted.src_port = fs->h_u.tcp_ip4_spec.psrc;
-		input_masks.src_port_mask = ~fs->m_u.tcp_ip4_spec.psrc;
+		input->filter.formatted.src_port = fs->h_u.tcp_ip4_spec.psrc;
+		mask.formatted.src_port = ~fs->m_u.tcp_ip4_spec.psrc;
 	}
 	if (fs->h_u.tcp_ip4_spec.pdst || fs->m_u.tcp_ip4_spec.pdst) {
-		input_struct.formatted.dst_port = fs->h_u.tcp_ip4_spec.pdst;
-		input_masks.dst_port_mask = ~fs->m_u.tcp_ip4_spec.pdst;
+		input->filter.formatted.dst_port = fs->h_u.tcp_ip4_spec.pdst;
+		mask.formatted.dst_port = ~fs->m_u.tcp_ip4_spec.pdst;
 	}
 
 	/* determine if we need to drop or route the packet */
-	if (fs->action == ETHTOOL_RXNTUPLE_ACTION_DROP)
-		target_queue = MAX_RX_QUEUES - 1;
+	if (fs->action < 0)
+		input->action = IXGBE_FDIR_DROP_QUEUE;
 	else
-		target_queue = fs->action;
+		input->action = adapter->rx_ring[fs->action]->reg_idx;
 
 	spin_lock(&adapter->fdir_perfect_lock);
-	err = ixgbe_fdir_add_perfect_filter_82599(&adapter->hw,
-						  &input_struct,
-						  &input_masks, 0,
-						  target_queue);
+
+	if (hlist_empty(&adapter->fdir_filter_list)) {
+		/* save mask and program input mask into HW */
+		memcpy(&adapter->fdir_mask, &mask, sizeof(mask));
+		err = ixgbe_fdir_set_input_mask_82599(hw, &mask);
+		if (err) {
+			e_err(drv, "Error writing mask\n");
+			goto err_out_w_lock;
+		}
+	} else if (memcmp(&adapter->fdir_mask, &mask, sizeof(mask))) {
+		e_err(drv, "Only one mask supported per port\n");
+		goto err_out_w_lock;
+	}
+
+	/* apply mask and compute/store hash */
+	ixgbe_atr_compute_perfect_hash_82599(&input->filter, &mask);
+
+	ixgbe_fdir_set_sw_index(adapter, input);
+
+	if (fs->action == ETHTOOL_RXNTUPLE_ACTION_CLEAR) {
+		/* erase filter from memory */
+		err = ixgbe_fdir_erase_perfect_filter_82599(hw,
+							    &input->filter,
+							    input->sw_idx);
+		if (err)
+			goto err_out_w_lock;
+
+		kfree(input);
+	} else {
+		/* Don't exceed the available space for filters in the HW */
+		if (adapter->fdir_filter_count >=
+		    ((1024 << adapter->fdir_pballoc) - 2))
+			goto err_out_w_lock;
+
+		/* program filters to filter memory */
+		err = ixgbe_fdir_write_perfect_filter_82599(hw,
+							    &input->filter,
+							    input->sw_idx,
+							    input->action);
+		if (err)
+			goto err_out_w_lock;
+
+		ixgbe_fdir_record_filter(adapter, input);
+	}
+
 	spin_unlock(&adapter->fdir_perfect_lock);
 
-	return err ? -1 : 0;
+	return 0;
+err_out_w_lock:
+	spin_unlock(&adapter->fdir_perfect_lock);
+err_out:
+	kfree(input);
+	return -1;
+}
+
+static int ixgbe_get_rx_ntuple(struct net_device *netdev, u32 stringset,
+			       void *data)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct hlist_node *node, *node2;
+	struct ixgbe_fdir_filter *filter;
+	char *p = (char *)data;
+	int num_strings = 0;
+	int i = 0;
+
+	if (!hlist_empty(&adapter->fdir_filter_list)) {
+		union ixgbe_atr_input *mask = &adapter->fdir_mask;
+
+		sprintf(p, "Input Mask:\n");
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+
+		sprintf(p, "\tVT Mask: 0x%02x\n", mask->formatted.vm_pool);
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		switch (mask->formatted.flow_type & IXGBE_ATR_L4TYPE_MASK) {
+		case 0x0:
+			sprintf(p, "\tFlow Mask: L4 header ignored\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		case IXGBE_ATR_L4TYPE_MASK:
+			sprintf(p, "\tFlow Mask: L4 header checked\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		default:
+			sprintf(p, "\tFlow Type Mask: Unknown\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		}
+		sprintf(p, "\tVLAN mask: 0x%04x\n",
+			ntohs(~mask->formatted.vlan_id));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tSrc IP mask: 0x%08x\n",
+			ntohl(~mask->formatted.src_ip[0]));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tDest IP mask: 0x%08x\n",
+			ntohl(~mask->formatted.dst_ip[0]));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tSrc Port mask: 0x%04x\n",
+			ntohs(~mask->formatted.src_port));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tDest Port mask: 0x%04x\n",
+			ntohs(~mask->formatted.dst_port));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tEtherType mask: 0x%04x\n",
+			ntohs(~mask->formatted.flex_bytes));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+	}
+
+	hlist_for_each_entry_safe(filter, node, node2,
+				  &adapter->fdir_filter_list, fdir_node) {
+		sprintf(p, "Filter %d:\n", i);
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tBucket Hash: 0x%04x\n",
+			filter->filter.formatted.bkt_hash);
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tSoftware Index: 0x%04x\n",
+			filter->sw_idx);
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		if (filter->action == (MAX_RX_QUEUES - 1))
+			sprintf(p, "\tAction: Drop\n");
+		else
+			sprintf(p, "\tAction: Directed to queue %d\n",
+				filter->action);
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+
+		sprintf(p, "\tVT Pool: 0x%02x\n",
+			filter->filter.formatted.vm_pool);
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		switch (filter->filter.formatted.flow_type) {
+		case IXGBE_ATR_FLOW_TYPE_IPV4:
+			sprintf(p, "\tFlow Type: Raw IP\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		case IXGBE_ATR_FLOW_TYPE_TCPV4:
+			sprintf(p, "\tFlow Type: TCP\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		case IXGBE_ATR_FLOW_TYPE_UDPV4:
+			sprintf(p, "\tFlow Type: UDP\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		case IXGBE_ATR_FLOW_TYPE_SCTPV4:
+			sprintf(p, "\tFlow Type: STCP\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		default:
+			sprintf(p, "\tFlow Type: Unknown\n");	
+			p += ETH_GSTRING_LEN;
+			num_strings++;
+			break;
+		}
+		sprintf(p, "\tVLAN: 0x%04x\n",
+			ntohs(filter->filter.formatted.vlan_id));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tSrc IP addr: 0x%08x\n",
+			ntohl(filter->filter.formatted.src_ip[0]));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tDest IP addr: 0x%08x\n",
+			ntohl(filter->filter.formatted.dst_ip[0]));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tSrc Port: 0x%04x\n",
+			ntohs(filter->filter.formatted.src_port));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tDest Port: 0x%04x\n",
+			ntohs(filter->filter.formatted.dst_port));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		sprintf(p, "\tEtherType: 0x%04x\n",
+			ntohs(filter->filter.formatted.flex_bytes));
+		p += ETH_GSTRING_LEN;
+		num_strings++;
+		i++;
+	}
+	return num_strings;
 }
 
 #endif /* NETIF_F_NTUPLE */
@@ -2654,6 +2939,7 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif
 #ifdef NETIF_F_NTUPLE
 	.set_rx_ntuple          = ixgbe_set_rx_ntuple,
+	.get_rx_ntuple          = ixgbe_get_rx_ntuple,
 #endif /* NETIF_F_NTUPLE */
 };
 

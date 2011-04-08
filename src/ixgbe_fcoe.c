@@ -118,21 +118,17 @@ out_ddp_put:
 }
 
 /**
- * ixgbe_fcoe_ddp_get - called to set up ddp context
+ * ixgbe_fcoe_ddp_setup - called to set up ddp context
  * @netdev: the corresponding net_device
  * @xid: the exchange id requesting ddp
  * @sgl: the scatter-gather list for this request
  * @sgc: the number of scatter-gather items
  *
- * This is the implementation of net_device_ops.ndo_fcoe_ddp_setup
- * and is expected to be called from ULD, e.g., FCP layer of libfc
- * to set up ddp for the corresponding xid of the given sglist for
- * the corresponding I/O.
- *
  * Returns : 1 for success and 0 for no ddp
  */
-int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
-		       struct scatterlist *sgl, unsigned int sgc)
+static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
+				struct scatterlist *sgl, unsigned int sgc,
+				int target_mode)
 {
 	struct ixgbe_adapter *adapter;
 	struct ixgbe_hw *hw;
@@ -146,15 +142,15 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	unsigned int lastsize;
 	unsigned int thisoff = 0;
 	unsigned int thislen = 0;
-	u32 fcbuff, fcdmarw, fcfltrw;
-	dma_addr_t addr;
+	u32 fcbuff, fcdmarw, fcfltrw, fcrxctl;
+	dma_addr_t addr = 0;
 
 	if (!netdev || !sgl || !sgc)
 		return 0;
 
 	adapter = netdev_priv(netdev);
 	if (xid >= IXGBE_FCOE_DDP_MAX) {
-		DPRINTK(DRV, WARNING, "xid=0x%x out-of-range\n", xid);
+		e_warn(drv, "xid=0x%x out-of-range\n", xid);
 		return 0;
 	}
 
@@ -165,13 +161,13 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 
 	fcoe = &adapter->fcoe;
 	if (!fcoe->pool) {
-		DPRINTK(DRV, WARNING, "xid=0x%x no ddp pool for fcoe\n", xid);
+		e_warn(drv, "xid=0x%x no ddp pool for fcoe\n", xid);
 		return 0;
 	}
 
 	ddp = &fcoe->ddp[xid];
 	if (ddp->sgl) {
-		DPRINTK(DRV, ERR, "xid 0x%x w/ non-null sgl=%p nents=%d\n",
+		e_err(drv, "xid 0x%x w/ non-null sgl=%p nents=%d\n",
 			xid, ddp->sgl, ddp->sgc);
 		return 0;
 	}
@@ -180,14 +176,14 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	/* setup dma from scsi command sgl */
 	dmacount = pci_map_sg(adapter->pdev, sgl, sgc, DMA_FROM_DEVICE);
 	if (dmacount == 0) {
-		DPRINTK(DRV, ERR, "xid 0x%x DMA map error\n", xid);
+		e_err(drv, "xid 0x%x DMA map error\n", xid);
 		return 0;
 	}
 
 	/* alloc the udl from our ddp pool */
 	ddp->udl = pci_pool_alloc(fcoe->pool, GFP_ATOMIC, &ddp->udp);
 	if (!ddp->udl) {
-		DPRINTK(DRV, ERR, "failed allocated ddp context\n");
+		e_err(drv, "failed allocated ddp context\n");
 		goto out_noddp_unmap;
 	}
 	ddp->sgl = sgl;
@@ -200,8 +196,8 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 		while (len) {
 			/* max number of buffers allowed in one DDP context */
 			if (j >= IXGBE_BUFFCNT_MAX) {
-				DPRINTK(DRV, ERR, "xid=%x:%d,%d,%d:addr=%llx "
-					"not enough descriptors\n",
+				e_err(drv, "xid=%x:%d,%d,%d:addr=%llx "
+				      "not enough descriptors\n",
 					xid, i, j, dmacount, (u64)addr);
 				goto out_noddp_free;
 			}
@@ -243,10 +239,10 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	 */
 	if (lastsize == bufflen) {
 		if (j >= IXGBE_BUFFCNT_MAX) {
-			DPRINTK(DRV, ERR, "xid=%x:%d,%d,%d:addr=%llx "
-				   "not enough user buffers. We need an extra "
-				   "buffer because lastsize is bufflen.\n",
-					xid, i, j, dmacount, (u64)addr);
+			e_err(drv, "xid=%x:%d,%d,%d:addr=%llx "
+			      "not enough user buffers. We need an extra "
+			      "buffer because lastsize is bufflen.\n",
+			      xid, i, j, dmacount, (u64)addr);
 			goto out_noddp_free;
 		}
 
@@ -258,6 +254,9 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	fcbuff = (IXGBE_FCBUFF_4KB << IXGBE_FCBUFF_BUFFSIZE_SHIFT);
 	fcbuff |= ((j & 0xff) << IXGBE_FCBUFF_BUFFCNT_SHIFT);
 	fcbuff |= (firstoff << IXGBE_FCBUFF_OFFSET_SHIFT);
+	/* Set WRCONTX bit to allow DDP for target */
+	if (target_mode)
+		fcbuff |= (IXGBE_FCBUFF_WRCONTX);
 	fcbuff |= (IXGBE_FCBUFF_VALID);
 
 	fcdmarw = xid;
@@ -270,6 +269,16 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	/* program DMA context */
 	hw = &adapter->hw;
 	spin_lock_bh(&fcoe->lock);
+
+	/* turn on last frame indication for target mode as FCP_RSPtarget is
+	 * supposed to send FCP_RSP when it is done. */
+	if (target_mode && !test_bit(__IXGBE_FCOE_TARGET, &fcoe->mode)) {
+		set_bit(__IXGBE_FCOE_TARGET, &fcoe->mode);
+		fcrxctl = IXGBE_READ_REG(hw, IXGBE_FCRXCTRL);
+		fcrxctl |= IXGBE_FCRXCTRL_LASTSEQH;
+		IXGBE_WRITE_REG(hw, IXGBE_FCRXCTRL, fcrxctl);
+	}
+
 	IXGBE_WRITE_REG(hw, IXGBE_FCPTRL, ddp->udp & DMA_BIT_MASK(32));
 	IXGBE_WRITE_REG(hw, IXGBE_FCPTRH, (u64)ddp->udp >> 32);
 	IXGBE_WRITE_REG(hw, IXGBE_FCBUFF, fcbuff);
@@ -278,6 +287,7 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 	IXGBE_WRITE_REG(hw, IXGBE_FCPARAM, 0);
 	IXGBE_WRITE_REG(hw, IXGBE_FCFLT, IXGBE_FCFLT_VALID);
 	IXGBE_WRITE_REG(hw, IXGBE_FCFLTRW, fcfltrw);
+
 	spin_unlock_bh(&fcoe->lock);
 
 	return 1;
@@ -291,6 +301,49 @@ out_noddp_unmap:
 	return 0;
 }
 
+/**
+ * ixgbe_fcoe_ddp_get - called to set up ddp context in initiator mode
+ * @netdev: the corresponding net_device
+ * @xid: the exchange id requesting ddp
+ * @sgl: the scatter-gather list for this request
+ * @sgc: the number of scatter-gather items
+ *
+ * This is the implementation of net_device_ops.ndo_fcoe_ddp_setup
+ * and is expected to be called from ULD, e.g., FCP layer of libfc
+ * to set up ddp for the corresponding xid of the given sglist for
+ * the corresponding I/O.
+ *
+ * Returns : 1 for success and 0 for no ddp
+ */
+int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
+		       struct scatterlist *sgl, unsigned int sgc)
+{
+	return ixgbe_fcoe_ddp_setup(netdev, xid, sgl, sgc, 0);
+}
+
+#ifdef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
+/**
+ * ixgbe_fcoe_ddp_target - called to set up ddp context in target mode
+ * @netdev: the corresponding net_device
+ * @xid: the exchange id requesting ddp
+ * @sgl: the scatter-gather list for this request
+ * @sgc: the number of scatter-gather items
+ *
+ * This is the implementation of net_device_ops.ndo_fcoe_ddp_target
+ * and is expected to be called from ULD, e.g., FCP layer of libfc
+ * to set up ddp for the corresponding xid of the given sglist for
+ * the corresponding I/O. The DDP in target mode is a write I/O request
+ * from the initiator.
+ *
+ * Returns : 1 for success and 0 for no ddp
+ */
+int ixgbe_fcoe_ddp_target(struct net_device *netdev, u16 xid,
+			    struct scatterlist *sgl, unsigned int sgc)
+{
+	return ixgbe_fcoe_ddp_setup(netdev, xid, sgl, sgc, 1);
+}
+
+#endif /* HAVE_NETDEV_OPS_FCOE_DDP_TARGET */
 /**
  * ixgbe_fcoe_ddp - check ddp status and mark it done
  * @adapter: ixgbe adapter
@@ -311,9 +364,10 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 	struct ixgbe_fcoe_ddp *ddp;
 	struct fc_frame_header *fh;
+	struct fcoe_crc_eof *crc;
 	int rc = -EINVAL;
 	u32 fcerr = staterr & IXGBE_RXDADV_ERR_FCERR;
-	u32 ddp_err;
+	u32 ddp_err, fctl;
 	u16 xid;
 
 	skb->ip_summed = (fcerr == IXGBE_FCERR_BADCRC) ? CHECKSUM_NONE :
@@ -324,7 +378,8 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	if (skb->protocol == htons(ETH_P_8021Q))
 		fh = (struct fc_frame_header *)((char *)fh + VLAN_HLEN);
 
-	if (ntoh24(fh->fh_f_ctl) & FC_FC_EX_CTX)
+	fctl = ntoh24(fh->fh_f_ctl);
+	if (fctl & FC_FC_EX_CTX)
 		xid =  ntohs(fh->fh_ox_id);
 	else
 		xid =  ntohs(fh->fh_rx_id);
@@ -368,6 +423,18 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		break;
 	}
 
+	/* In target mode, check the last data frame of the sequence.
+	 * For DDP in target mode, data is already DDPed but the header
+	 * indication of the last data frame ould allow is to tell if we
+	 * got all the data and the ULP can send FCP_RSP back, as this is
+	 * not a full fcoe frame, we fill the trailer here so it won't be
+	 * dropped by the ULP stack.
+	 */
+	if ((fh->fh_r_ctl == FC_RCTL_DD_SOL_DATA) &&
+	    (fctl & FC_FC_END_SEQ)) {
+		crc = (struct fcoe_crc_eof *)skb_put(skb, sizeof(*crc));
+		crc->fcoe_eof = FC_EOF_T;
+	}
 ddp_out:
 	return rc;
 }
@@ -508,28 +575,26 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 					     adapter->pdev, IXGBE_FCPTR_MAX,
 					     IXGBE_FCPTR_ALIGN, PAGE_SIZE);
 		if (!fcoe->pool)
-			DPRINTK(DRV, ERR,
-				"failed to allocated FCoE DDP pool\n");
-
+			e_err(drv, "failed to allocated FCoE DDP pool\n");
 		spin_lock_init(&fcoe->lock);
 
 		/* Extra buffer to be shared by all DDPs for HW work around */
 		fcoe->extra_ddp_buffer = kmalloc(IXGBE_FCBUFF_MIN, GFP_ATOMIC);
 		if (fcoe->extra_ddp_buffer == NULL) {
-			DPRINTK(DRV, ERR, "failed to allocated extra DDP buffer\n");
+			e_err(drv, "failed to allocated extra DDP buffer\n");
 			goto out_extra_ddp_buffer_alloc;
 		}
 
-		fcoe->extra_ddp_buffer_dma =
+		fcoe->extra_ddp_buffer_dma = 
 			dma_map_single(&adapter->pdev->dev,
 				       fcoe->extra_ddp_buffer,
 				       IXGBE_FCBUFF_MIN,
 				       DMA_FROM_DEVICE);
-
 		if (dma_mapping_error(&adapter->pdev->dev,
 				      fcoe->extra_ddp_buffer_dma)) {
-			DPRINTK(DRV, ERR, "failed to map extra DDP buffer\n");
+			e_err(drv, "failed to map extra DDP buffer\n");
 			goto out_extra_ddp_buffer_dma;
+
 		}
 	}
 
@@ -592,7 +657,6 @@ out_extra_ddp_buffer_dma:
 out_extra_ddp_buffer_alloc:
 	pci_pool_destroy(fcoe->pool);
 	fcoe->pool = NULL;
-
 }
 
 /**
@@ -612,7 +676,6 @@ void ixgbe_cleanup_fcoe(struct ixgbe_adapter *adapter)
 	if (fcoe->pool) {
 		for (i = 0; i < IXGBE_FCOE_DDP_MAX; i++)
 			ixgbe_fcoe_ddp_put(adapter->netdev, i);
-
 		dma_unmap_single(&adapter->pdev->dev,
 				 fcoe->extra_ddp_buffer_dma,
 				 IXGBE_FCBUFF_MIN,
@@ -646,7 +709,7 @@ int ixgbe_fcoe_enable(struct net_device *netdev)
 	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
 		goto out_enable;
 
-	DPRINTK(DRV, INFO, "Enabling FCoE offload features.\n");
+	e_info(drv, "Enabling FCoE offload features.\n");
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_stop(netdev);
 
@@ -691,7 +754,7 @@ int ixgbe_fcoe_disable(struct net_device *netdev)
 	if (!atomic_dec_and_test(&fcoe->refcnt))
 		goto out_disable;
 
-	DPRINTK(DRV, INFO, "Disabling FCoE offload features.\n");
+	e_info(drv, "Disabling FCoE offload features.\n");
 	netdev->features &= ~NETIF_F_FCOE_CRC;
 	netdev->features &= ~NETIF_F_FSO;
 	netdev->features &= ~NETIF_F_FCOE_MTU;

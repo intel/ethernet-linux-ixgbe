@@ -105,34 +105,29 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_packet_buffers_82598(struct ixgbe_hw *hw,
                                           struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret_val = 0;
 	u32 value = IXGBE_RXPBSIZE_64KB;
 	u8  i = 0;
 
 	/* Setup Rx packet buffer sizes */
-	switch (dcb_config->rx_pba_cfg) {
-	case pba_80_48:
+	if (dcb_config->rx_pba_cfg == pba_80_48) {
 		/* Setup the first four at 80KB */
 		value = IXGBE_RXPBSIZE_80KB;
+
 		for (; i < 4; i++)
 			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
+
 		/* Setup the last four at 48KB...don't re-init i */
 		value = IXGBE_RXPBSIZE_48KB;
-		/* Fall Through */
-	case pba_equal:
-	default:
-		for (; i < IXGBE_MAX_PACKET_BUFFERS; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
-
-		/* Setup Tx packet buffer sizes */
-		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
-			IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i),
-			                IXGBE_TXPBSIZE_40KB);
-		}
-		break;
 	}
 
-	return ret_val;
+	for (; i < IXGBE_MAX_PACKET_BUFFERS; i++)
+		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
+
+	/* Setup Tx packet buffer sizes */
+	for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++)
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), IXGBE_TXPBSIZE_40KB);
+
+	return 0;
 }
 
 /**

@@ -104,62 +104,69 @@ s32 ixgbe_dcb_get_pfc_stats_82599(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
                                           struct ixgbe_dcb_config *dcb_config)
 {
-	s32 ret_val = 0;
+	int num_tcs = dcb_config->num_tcs.pg_tcs;
+	u32 rx_pb_size = hw->mac.rx_pb_size << IXGBE_RXPBSIZE_SHIFT;
 	u32 rxpktsize;
-	u32 maxtxpktsize = IXGBE_TXPBSIZE_MAX;
 	u32 txpktsize;
-	int num_tcs;
+	u32 txpbthresh;
 	u8  i = 0;
 
-	num_tcs = dcb_config->num_tcs.pg_tcs;
-	/* Setup Rx packet buffer sizes */
-	if (dcb_config->rx_pba_cfg == pba_80_48) {
-		/*
-		 * This really means configure the first half of the TCs
-		 * (Traffic Classes) to use 5/8 of the Rx packet buffer
-		 * space.  To determine the size of the buffer for each TC,
-		 * multiply the size of the entire packet buffer by 5/8
-		 * then divide by half of the number of TCs.
-		 */
-		rxpktsize = (hw->mac.rx_pb_size * 5 / 8) / (num_tcs / 2);
-		for (i = 0; i < (num_tcs / 2); i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
-			                rxpktsize << IXGBE_RXPBSIZE_SHIFT);
-
-		/*
-		 * The second half of the TCs use the remaining 3/8
-		 * of the Rx packet buffer space.
-		 */
-		rxpktsize = (hw->mac.rx_pb_size * 3 / 8) / (num_tcs / 2);
-		for (; i < num_tcs; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
-			                rxpktsize << IXGBE_RXPBSIZE_SHIFT);
-	} else {
-		/* Divide the Rx packet buffer evenly among the TCs */
-		rxpktsize = hw->mac.rx_pb_size / num_tcs;
-		for (i = 0; i < num_tcs; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i),
-			                rxpktsize << IXGBE_RXPBSIZE_SHIFT);
+	/* reserve space for Flow Director filters */
+	switch (dcb_config->fdir_pballoc) {
+	case IXGBE_FDIR_PBALLOC_256K:
+		rx_pb_size -= 256 << IXGBE_RXPBSIZE_SHIFT;
+		break;
+	case IXGBE_FDIR_PBALLOC_128K:
+		rx_pb_size -= 128 << IXGBE_RXPBSIZE_SHIFT;
+		break;
+	case IXGBE_FDIR_PBALLOC_64K:
+		rx_pb_size -= 64 << IXGBE_RXPBSIZE_SHIFT;
+		break;
+	case IXGBE_FDIR_PBALLOC_NONE:
+	default:
+		/* do nothing */
+		break;
 	}
-	/* Setup remainig TCs, if any, to zero buffer size*/
-	for (; i < MAX_TRAFFIC_CLASS; i++)
-		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
 
-	/* Setup Tx packet buffer and threshold equally for all TCs */
-	txpktsize = maxtxpktsize/num_tcs;
+	/*
+	 * This really means configure the first half of the TCs
+	 * (Traffic Classes) to use 5/8 of the Rx packet buffer
+	 * space.  To determine the size of the buffer for each TC,
+	 * we are multiplying the average size by 5/4 and applying
+	 * it to half of the traffic classes.
+	 */
+	if (dcb_config->rx_pba_cfg == pba_80_48) {
+		rxpktsize = (rx_pb_size * 5) / (num_tcs * 4);
+		rx_pb_size -= rxpktsize * (num_tcs / 2);
+		for (; i < (num_tcs / 2); i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize);
+	}
+
+	/* Divide the remaining Rx packet buffer evenly among the TCs */
+	rxpktsize = rx_pb_size / (num_tcs - i);
+	for (; i < num_tcs; i++)
+		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize);
+
+	/*
+	 * Setup Tx packet buffer and threshold equally for all TCs
+	 * TXPBTHRESH register is set in K so divide by 1024 and subtract
+	 * 10 since the largest packet we support is just over 9K.
+	 */
+	txpktsize = IXGBE_TXPBSIZE_MAX / num_tcs;
+	txpbthresh = (txpktsize / 1024) - IXGBE_TXPKT_SIZE_MAX;
 	for (i = 0; i < num_tcs; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), txpktsize);
-		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i),
-		                ((txpktsize  / 1024) - IXGBE_TXPKT_SIZE_MAX));
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), txpbthresh);
 	}
 
-	/* Setup remainig TCs, if any, to zero buffer size*/
+	/* Clear unused TCs, if any, to zero buffer size*/
 	for (; i < MAX_TRAFFIC_CLASS; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), 0);
 	}
 
-	return ret_val;
+	return 0;
 }
 
 /**
@@ -474,22 +481,30 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 	reg |= IXGBE_RTTDCS_ARBDIS;
 	IXGBE_WRITE_REG(hw, IXGBE_RTTDCS, reg);
 
-	/* Enable DCB for Rx with 8 TCs */
 	reg = IXGBE_READ_REG(hw, IXGBE_MRQC);
-	switch (reg & IXGBE_MRQC_MRQE_MASK) {
-	case 0:
-	case IXGBE_MRQC_RT4TCEN:
-		/* RSS disabled cases */
-		reg = (reg & ~IXGBE_MRQC_MRQE_MASK) | IXGBE_MRQC_RT8TCEN;
-		break;
-	case IXGBE_MRQC_RSSEN:
-	case IXGBE_MRQC_RTRSS4TCEN:
-		/* RSS enabled cases */
-		reg = (reg & ~IXGBE_MRQC_MRQE_MASK) | IXGBE_MRQC_RTRSS8TCEN;
-		break;
-	default:
-		/* Unsupported value, assume stale data, overwrite no RSS */
-		reg = (reg & ~IXGBE_MRQC_MRQE_MASK) | IXGBE_MRQC_RT8TCEN;
+	if (dcb_config->num_tcs.pg_tcs == 8) {
+		/* Enable DCB for Rx with 8 TCs */
+		switch (reg & IXGBE_MRQC_MRQE_MASK) {
+		case 0:
+		case IXGBE_MRQC_RT4TCEN:
+			/* RSS disabled cases */
+			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
+			      IXGBE_MRQC_RT8TCEN;
+			break;
+		case IXGBE_MRQC_RSSEN:
+		case IXGBE_MRQC_RTRSS4TCEN:
+			/* RSS enabled cases */
+			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
+			      IXGBE_MRQC_RTRSS8TCEN;
+			break;
+		default:
+			/*
+			 * Unsupported value, assume stale data,
+			 * overwrite no RSS
+			*/
+			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
+			      IXGBE_MRQC_RT8TCEN;
+		}
 	}
 	if (dcb_config->num_tcs.pg_tcs == 4) {
 		/* Enable DCB for Rx with 4 TCs and VT Mode*/

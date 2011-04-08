@@ -111,7 +111,6 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82599_T3_LOM:
 			hw->mac.type = ixgbe_mac_82599EB;
 			break;
-		case IXGBE_DEV_ID_X540:
 		case IXGBE_DEV_ID_X540T:
 			hw->mac.type = ixgbe_mac_X540;
 			break;
@@ -167,20 +166,6 @@ s32 ixgbe_start_hw(struct ixgbe_hw *hw)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.start_hw, (hw),
 	                       IXGBE_NOT_IMPLEMENTED);
-}
-
-/**
- *  ixgbe_enable_relaxed_ordering - Enables tx relaxed ordering,
- *  which is disabled by default in ixgbe_start_hw();
- *
- *  @hw: pointer to hardware structure
- *
- *   Enable relaxed ordering;
- **/
-void ixgbe_enable_relaxed_ordering(struct ixgbe_hw *hw)
-{
-	if (hw->mac.ops.enable_relaxed_ordering)
-		hw->mac.ops.enable_relaxed_ordering(hw);
 }
 
 /**
@@ -355,19 +340,6 @@ s32 ixgbe_stop_adapter(struct ixgbe_hw *hw)
 s32 ixgbe_read_pba_string(struct ixgbe_hw *hw, u8 *pba_num, u32 pba_num_size)
 {
 	return ixgbe_read_pba_string_generic(hw, pba_num, pba_num_size);
-}
-
-/**
- *  ixgbe_read_pba_length - Reads part number string length from EEPROM
- *  @hw: pointer to hardware structure
- *  @pba_num_size: part number string buffer length
- *
- *  Reads the part number length from the EEPROM.
- *  Returns expected buffer size in pba_num_size.
- **/
-s32 ixgbe_read_pba_length(struct ixgbe_hw *hw, u32 *pba_num_size)
-{
-	return ixgbe_read_pba_length_generic(hw, pba_num_size);
 }
 
 /**
@@ -897,6 +869,21 @@ s32 ixgbe_fc_enable(struct ixgbe_hw *hw, s32 packetbuf_num)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.fc_enable, (hw, packetbuf_num),
 	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ * ixgbe_set_fw_drv_ver - Try to send the driver version number FW
+ * @hw: pointer to hardware structure
+ * @maj: driver major number to be sent to firmware
+ * @min: driver minor number to be sent to firmware
+ * @build: driver build number to be sent to firmware
+ * @ver: driver version number to be sent to firmware
+ **/
+s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
+                         u8 ver)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.set_fw_drv_ver, (hw, maj, min,
+	                       build, ver), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**

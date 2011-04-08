@@ -36,7 +36,6 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw(struct ixgbe_hw *hw);
 s32 ixgbe_reset_hw(struct ixgbe_hw *hw);
 s32 ixgbe_start_hw(struct ixgbe_hw *hw);
-void ixgbe_enable_relaxed_ordering(struct ixgbe_hw *hw);
 s32 ixgbe_clear_hw_cntrs(struct ixgbe_hw *hw);
 enum ixgbe_media_type ixgbe_get_media_type(struct ixgbe_hw *hw);
 s32 ixgbe_get_mac_addr(struct ixgbe_hw *hw, u8 *mac_addr);
@@ -45,7 +44,6 @@ u32 ixgbe_get_num_of_tx_queues(struct ixgbe_hw *hw);
 u32 ixgbe_get_num_of_rx_queues(struct ixgbe_hw *hw);
 s32 ixgbe_stop_adapter(struct ixgbe_hw *hw);
 s32 ixgbe_read_pba_string(struct ixgbe_hw *hw, u8 *pba_num, u32 pba_num_size);
-s32 ixgbe_read_pba_length(struct ixgbe_hw *hw, u32 *pba_num_size);
 
 s32 ixgbe_identify_phy(struct ixgbe_hw *hw);
 s32 ixgbe_reset_phy(struct ixgbe_hw *hw);
@@ -102,7 +100,8 @@ s32 ixgbe_set_vfta(struct ixgbe_hw *hw, u32 vlan,
                    u32 vind, bool vlan_on);
 
 s32 ixgbe_fc_enable(struct ixgbe_hw *hw, s32 packetbuf_num);
-
+s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
+                         u8 ver);
 void ixgbe_set_mta(struct ixgbe_hw *hw, u8 *mc_addr);
 s32 ixgbe_get_phy_firmware_version(struct ixgbe_hw *hw,
                                    u16 *firmware_version);
@@ -113,18 +112,29 @@ s32 ixgbe_read_i2c_eeprom(struct ixgbe_hw *hw, u8 byte_offset, u8 *eeprom_data);
 u32 ixgbe_get_supported_physical_layer(struct ixgbe_hw *hw);
 s32 ixgbe_enable_rx_dma(struct ixgbe_hw *hw, u32 regval);
 s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw);
-s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 pballoc);
-s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 pballoc);
+s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 fdirctrl);
+s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 fdirctrl);
 s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
                                           union ixgbe_atr_hash_dword input,
 					  union ixgbe_atr_hash_dword common,
                                           u8 queue);
+s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
+				    union ixgbe_atr_input *input_mask);
+s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
+					  union ixgbe_atr_input *input,
+					  u16 soft_id, u8 queue);
+s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
+					  union ixgbe_atr_input *input,
+					  u16 soft_id);
 s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
                                         union ixgbe_atr_input *input,
-                                        struct ixgbe_atr_input_masks *masks,
+                                        union ixgbe_atr_input *mask,
                                         u16 soft_id,
                                         u8 queue);
-u32 ixgbe_atr_compute_hash_82599(union ixgbe_atr_input *input, u32 key);
+void ixgbe_atr_compute_perfect_hash_82599(union ixgbe_atr_input *input,
+					  union ixgbe_atr_input *mask);
+u32 ixgbe_atr_compute_sig_hash_82599(union ixgbe_atr_hash_dword input,
+                                     union ixgbe_atr_hash_dword common);
 s32 ixgbe_read_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
                         u8 *data);
 s32 ixgbe_write_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,

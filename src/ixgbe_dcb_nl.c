@@ -429,13 +429,14 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 	u8 err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	if (state > 0) {
-		/* Turn on DCB */
-		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED)
-			goto out;
+	/* verify there is something to do, if not then exit */
+	if (!!state != !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		return err;
 
+	if (state) {
+		/* Turn on DCB */
 		if (!(adapter->flags & IXGBE_FLAG_MSIX_ENABLED)) {
-			DPRINTK(DRV, ERR, "Enable failed, needs MSI-X\n");
+			e_err(drv, "Enable failed, needs MSI-X\n");
 			err = 1;
 			goto out;
 		}
@@ -454,55 +455,46 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
-			DPRINTK(DRV, INFO, "DCB enabled, "
-                                "disabling Flow Director\n");
+			e_info(drv, "DCB enabled, disabling ATR\n");
 			adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			adapter->flags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 			break;
 		default:
 			break;
 		}
 		adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
 		adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
-		ixgbe_init_interrupt_scheme(adapter);
-		if (netif_running(netdev))
-#ifdef HAVE_NET_DEVICE_OPS
-			netdev->netdev_ops->ndo_open(netdev);
-#else
-			netdev->open(netdev);
-#endif
 	} else {
 		/* Turn off DCB */
-		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-			if (netif_running(netdev))
+		if (netif_running(netdev))
 #ifdef HAVE_NET_DEVICE_OPS
-				netdev->netdev_ops->ndo_stop(netdev);
+			netdev->netdev_ops->ndo_stop(netdev);
 #else
-				netdev->stop(netdev);
+			netdev->stop(netdev);
 #endif
-			ixgbe_clear_interrupt_scheme(adapter);
-			adapter->hw.fc.requested_mode = adapter->last_lfc_mode;
-			adapter->temp_dcb_cfg.pfc_mode_enable = false;
-			adapter->dcb_cfg.pfc_mode_enable = false;
-			adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
-			adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
-			switch (adapter->hw.mac.type) {
-			case ixgbe_mac_82599EB:
-			case ixgbe_mac_X540:
+		ixgbe_clear_interrupt_scheme(adapter);
+		adapter->hw.fc.requested_mode = adapter->last_lfc_mode;
+		adapter->temp_dcb_cfg.pfc_mode_enable = false;
+		adapter->dcb_cfg.pfc_mode_enable = false;
+		adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
+		adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82599EB:
+		case ixgbe_mac_X540:
+			if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
 				adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				break;
-			default:
-				break;
-			}
-			ixgbe_init_interrupt_scheme(adapter);
-			if (netif_running(netdev))
-#ifdef HAVE_NET_DEVICE_OPS
-				netdev->netdev_ops->ndo_open(netdev);
-#else
-				netdev->open(netdev);
-#endif
+			break;
+		default:
+			break;
 		}
 	}
+
+	ixgbe_init_interrupt_scheme(adapter);
+	if (netif_running(netdev))
+#ifdef HAVE_NET_DEVICE_OPS
+		netdev->netdev_ops->ndo_open(netdev);
+#else
+		netdev->open(netdev);
+#endif
 out:
 	return err;
 }
@@ -542,7 +534,7 @@ static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 	struct net_device *netdev = NULL;
 	struct ixgbe_adapter *adapter = NULL;
 	int ret = -EINVAL;
-	u8 value;
+	u8 state;
 
 	if (!info->attrs[DCB_A_IFNAME] || !info->attrs[DCB_A_STATE])
 		goto err;
@@ -558,83 +550,71 @@ static int ixgbe_dcb_sstate(struct sk_buff *skb, struct genl_info *info)
 	else
 		adapter = netdev_priv(netdev);
 
-	value = nla_get_u8(info->attrs[DCB_A_STATE]);
-	if ((value & 1) != value) {
-		DPRINTK(DRV, ERR, "Value is not 1 or 0, it is %d.\n", value);
-	} else {
-		switch (value) {
-		case 0:
-			if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-				if (netdev->flags & IFF_UP)
-#ifdef HAVE_NET_DEVICE_OPS
-					netdev->netdev_ops->ndo_stop(netdev);
-#else
-					netdev->stop(netdev);
-#endif
-				ixgbe_clear_interrupt_scheme(adapter);
+	state = nla_get_u8(info->attrs[DCB_A_STATE]);
+	if (state > 1) {
+		e_err(drv, "Value is not 1 or 0, it is %d.\n", state);
+		goto out;
+	}
 
-				adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
-				if (adapter->flags & IXGBE_FLAG_RSS_CAPABLE)
-					adapter->flags |=
-					                 IXGBE_FLAG_RSS_ENABLED;
-				ixgbe_init_interrupt_scheme(adapter);
-				ixgbe_reset(adapter);
-				if (netdev->flags & IFF_UP)
-#ifdef HAVE_NET_DEVICE_OPS
-					netdev->netdev_ops->ndo_open(netdev);
-#else
-					netdev->open(netdev);
-#endif
-				break;
-			} else {
-				/* Nothing to do, already off */
-				goto out;
-			}
-		case 1:
-			if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-				/* Nothing to do, already on */
-				goto out;
-			} else if (!(adapter->flags & IXGBE_FLAG_DCB_CAPABLE)) {
-				DPRINTK(DRV, ERR, "Enable failed.  Make sure "
-				        "the driver can enable MSI-X.\n");
-				ret = -EINVAL;
-				goto err_out;
-			} else {
-				if (netdev->flags & IFF_UP)
-#ifdef HAVE_NET_DEVICE_OPS
-					netdev->netdev_ops->ndo_stop(netdev);
-#else
-					netdev->stop(netdev);
-#endif
-				ixgbe_clear_interrupt_scheme(adapter);
 
-				adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
-				adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
-				adapter->dcb_cfg.support.capabilities =
-				 (IXGBE_DCB_PG_SUPPORT | IXGBE_DCB_PFC_SUPPORT |
-				  IXGBE_DCB_GSP_SUPPORT);
-				if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
-					DPRINTK(DRV, INFO, "DCB enabled, "
-					        "disabling Flow Director\n");
-					adapter->flags &=
-					          ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-					adapter->flags &=
-					       ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-					adapter->dcb_cfg.support.capabilities |=
-					                IXGBE_DCB_UP2TC_SUPPORT;
-				}
-				adapter->ring_feature[RING_F_DCB].indices = 8;
-				ixgbe_init_interrupt_scheme(adapter);
-				ixgbe_reset(adapter);
-				if (netdev->flags & IFF_UP)
-#ifdef HAVE_NET_DEVICE_OPS
-					netdev->netdev_ops->ndo_open(netdev);
-#else
-					netdev->open(netdev);
-#endif
-				break;
-			}
+	if (!!state == !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		goto out;
+
+	if (state) {
+		if (!(adapter->flags & IXGBE_FLAG_DCB_CAPABLE)) {
+			e_err(drv, "Enable failed.  Make sure the "
+			      "driver can enable MSI-X.\n");
+			ret = -EINVAL;
+			goto err_out;
 		}
+		if (netdev->flags & IFF_UP)
+#ifdef HAVE_NET_DEVICE_OPS
+			netdev->netdev_ops->ndo_stop(netdev);
+#else
+			netdev->stop(netdev);
+#endif
+		ixgbe_clear_interrupt_scheme(adapter);
+
+		adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
+		adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
+		adapter->dcb_cfg.support.capabilities =
+			 (IXGBE_DCB_PG_SUPPORT | IXGBE_DCB_PFC_SUPPORT |
+			  IXGBE_DCB_GSP_SUPPORT);
+		if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+			e_info(drv, "DCB enabled, disabling ATR\n");
+			adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+			adapter->dcb_cfg.support.capabilities |=
+			                IXGBE_DCB_UP2TC_SUPPORT;
+		}
+		adapter->ring_feature[RING_F_DCB].indices = 8;
+		ixgbe_init_interrupt_scheme(adapter);
+		ixgbe_reset(adapter);
+		if (netdev->flags & IFF_UP)
+#ifdef HAVE_NET_DEVICE_OPS
+			netdev->netdev_ops->ndo_open(netdev);
+#else
+			netdev->open(netdev);
+#endif
+	} else {
+		if (netdev->flags & IFF_UP)
+#ifdef HAVE_NET_DEVICE_OPS
+			netdev->netdev_ops->ndo_stop(netdev);
+#else
+			netdev->stop(netdev);
+#endif
+		ixgbe_clear_interrupt_scheme(adapter);
+
+		adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
+		if (adapter->flags & IXGBE_FLAG_RSS_CAPABLE)
+			adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
+		ixgbe_init_interrupt_scheme(adapter);
+		ixgbe_reset(adapter);
+		if (netdev->flags & IFF_UP)
+#ifdef HAVE_NET_DEVICE_OPS
+			netdev->netdev_ops->ndo_open(netdev);
+#else
+			netdev->open(netdev);
+#endif
 	}
 
 out:
@@ -701,7 +681,7 @@ static int ixgbe_dcb_slink_spd(struct sk_buff *skb, struct genl_info *info)
 
 	value = nla_get_u8(info->attrs[DCB_A_LINK_SPD]);
 	if (value > 9) {
-		DPRINTK(DRV, ERR, "Value is not 0 thru 9, it is %d.\n", value);
+		e_err(drv, "Value is not 0 thru 9, it is %d.\n", value);
 	} else {
 		if (!adapter->dcb_set_bitmap &&
 		   ixgbe_copy_dcb_cfg(&adapter->dcb_cfg, &adapter->temp_dcb_cfg,
@@ -819,7 +799,7 @@ static int ixgbe_dcb_gperm_hwaddr(struct sk_buff *skb, struct genl_info *info)
 	return 0;
 
 err:
-	DPRINTK(DRV, ERR, "Error in get permanent hwaddr.\n");
+	e_err(drv, "Error in get permanent hwaddr.\n");
 	kfree(dcb_skb);
 err_out:
 	dev_put(netdev);
@@ -1200,7 +1180,7 @@ static int ixgbe_dcb_pg_gcfg(struct sk_buff *skb, struct genl_info *info,
 	return 0;
 
 err_param:
-	DPRINTK(DRV, ERR, "Error in get pg %s.\n", dir?"rx":"tx");
+	e_err(drv, "Error in get pg %s.\n", dir ? "rx" : "tx");
 	nla_nest_cancel(dcb_skb, param_nest);
 err_pg:
 	nla_nest_cancel(dcb_skb, pg_nest);
@@ -1373,7 +1353,7 @@ static int ixgbe_dcb_gpfccfg(struct sk_buff *skb, struct genl_info *info)
 	return 0;
 
 err:
-	DPRINTK(DRV, ERR, "Error in get pfc stats.\n");
+	e_err(drv, "Error in get pfc stats.\n");
 	kfree(dcb_skb);
 err_out:
 	dev_put(netdev);
@@ -1403,7 +1383,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 
 	if (do_reset) {
 		while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
-			msleep(1);
+			usleep_range(1000, 2000);
 
 		if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
 			if (netif_running(netdev))
@@ -1505,7 +1485,7 @@ static int ixgbe_dcb_set_all(struct sk_buff *skb, struct genl_info *info)
 
 	value = nla_get_u8(info->attrs[DCB_A_SET_ALL]);
 	if ((value & 1) != value) {
-		DPRINTK(DRV, ERR, "Value is not 1 or 0, it is %d.\n", value);
+		e_err(drv, "Value is not 1 or 0, it is %d.\n", value);
 	} else {
 		if (!adapter->dcb_set_bitmap) {
 			retval = 1;
@@ -1513,7 +1493,7 @@ static int ixgbe_dcb_set_all(struct sk_buff *skb, struct genl_info *info)
 		}
 
 		while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
-			msleep(1);
+			usleep_range(1000, 2000);
 
 		ret = ixgbe_copy_dcb_cfg(&adapter->temp_dcb_cfg,
 				&adapter->dcb_cfg,

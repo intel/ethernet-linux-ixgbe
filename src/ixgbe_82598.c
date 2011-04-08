@@ -52,7 +52,6 @@ static s32 ixgbe_setup_copper_link_82598(struct ixgbe_hw *hw,
                                                bool autoneg_wait_to_complete);
 static s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw);
 s32 ixgbe_start_hw_82598(struct ixgbe_hw *hw);
-void ixgbe_enable_relaxed_ordering_82598(struct ixgbe_hw *hw);
 s32 ixgbe_set_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
 static s32 ixgbe_clear_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
 s32 ixgbe_set_vfta_82598(struct ixgbe_hw *hw, u32 vlan,
@@ -153,7 +152,6 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 
 	/* MAC */
 	mac->ops.start_hw = &ixgbe_start_hw_82598;
-	mac->ops.enable_relaxed_ordering = &ixgbe_enable_relaxed_ordering_82598;
 	mac->ops.reset_hw = &ixgbe_reset_hw_82598;
 	mac->ops.get_media_type = &ixgbe_get_media_type_82598;
 	mac->ops.get_supported_physical_layer =
@@ -1306,30 +1304,3 @@ void ixgbe_set_lan_id_multi_port_pcie_82598(struct ixgbe_hw *hw)
 	}
 }
 
-/**
- *  ixgbe_enable_relaxed_ordering_82598 - enable relaxed ordering
- *  @hw: pointer to hardware structure
- *
- **/
-void ixgbe_enable_relaxed_ordering_82598(struct ixgbe_hw *hw)
-{
-	u32 regval;
-	u32 i;
-
-	/* Enable relaxed ordering */
-	for (i = 0; ((i < hw->mac.max_tx_queues) &&
-	     (i < IXGBE_DCA_MAX_QUEUES_82598)); i++) {
-		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
-		regval |= IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
-		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(i), regval);
-	}
-
-	for (i = 0; ((i < hw->mac.max_rx_queues) &&
-	     (i < IXGBE_DCA_MAX_QUEUES_82598)); i++) {
-		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
-		regval |= (IXGBE_DCA_RXCTRL_DESC_WRO_EN |
-		           IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
-		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
-	}
-
-}

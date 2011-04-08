@@ -50,6 +50,7 @@ static s32 ixgbe_fc_autoneg_copper(struct ixgbe_hw *hw);
 static s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw);
 static s32 ixgbe_negotiate_fc(struct ixgbe_hw *hw, u32 adv_reg, u32 lp_reg,
 			      u32 adv_sym, u32 adv_asm, u32 lp_sym, u32 lp_asm);
+static s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num);
 
 s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan);
 
@@ -116,6 +117,9 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 
 	/* Flow Control */
 	mac->ops.fc_enable = &ixgbe_fc_enable_generic;
+
+	/* Manageability interface */
+	mac->ops.set_fw_drv_ver = &ixgbe_set_fw_drv_ver_generic;
 
 	/* Link */
 	mac->ops.get_link_capabilities = NULL;
@@ -445,64 +449,6 @@ s32 ixgbe_read_pba_string_generic(struct ixgbe_hw *hw, u8 *pba_num,
 }
 
 /**
- *  ixgbe_read_pba_length_generic - Reads part number length from EEPROM
- *  @hw: pointer to hardware structure
- *  @pba_num_size: part number string buffer length
- *
- *  Reads the part number length from the EEPROM.
- *  Returns expected buffer size in pba_num_size
- **/
-s32 ixgbe_read_pba_length_generic(struct ixgbe_hw *hw, u32 *pba_num_size)
-{
-	s32 ret_val;
-	u16 data;
-	u16 pba_ptr;
-	u16 length;
-
-	if (pba_num_size == NULL) {
-		hw_dbg(hw, "PBA buffer size was null\n");
-		return IXGBE_ERR_INVALID_ARGUMENT;
-	}
-
-	ret_val = hw->eeprom.ops.read(hw, IXGBE_PBANUM0_PTR, &data);
-	if (ret_val) {
-		hw_dbg(hw, "NVM Read Error\n");
-		return ret_val;
-	}
-
-	ret_val = hw->eeprom.ops.read(hw, IXGBE_PBANUM1_PTR, &pba_ptr);
-	if (ret_val) {
-		hw_dbg(hw, "NVM Read Error\n");
-		return ret_val;
-	}
-
-	 /* if data is not ptr guard the PBA must be in legacy format */
-	if (data != IXGBE_PBANUM_PTR_GUARD) {
-		*pba_num_size = 11;
-		return 0;
-	}
-
-	ret_val = hw->eeprom.ops.read(hw, pba_ptr, &length);
-	if (ret_val) {
-		hw_dbg(hw, "NVM Read Error\n");
-		return ret_val;
-	}
-
-	if (length == 0xFFFF || length == 0) {
-		hw_dbg(hw, "NVM PBA number section invalid length\n");
-		return IXGBE_ERR_PBA_SECTION;
-	}
-
-	/*
-	 * Convert from length in u16 values to u8 chars, add 1 for NULL,
-	 * and subtract 2 because length field is included in length.
-	 */
-	*pba_num_size = ((u32)length * 2) - 1;
-
-	return 0;
-}
-
-/**
  *  ixgbe_get_mac_addr_generic - Generic get MAC address
  *  @hw: pointer to hardware structure
  *  @mac_addr: Adapter MAC address
@@ -725,7 +671,7 @@ s32 ixgbe_init_eeprom_params_generic(struct ixgbe_hw *hw)
 			eeprom_size = (u16)((eec & IXGBE_EEC_SIZE) >>
 			                    IXGBE_EEC_SIZE_SHIFT);
 			eeprom->word_size = 1 << (eeprom_size +
-			                     IXGBE_EEPROM_WORD_SIZE_BASE_SHIFT);
+			                     IXGBE_EEPROM_WORD_SIZE_SHIFT);
 		}
 
 		if (eec & IXGBE_EEC_ADDR_SIZE)
@@ -985,7 +931,8 @@ static s32 ixgbe_acquire_eeprom(struct ixgbe_hw *hw)
 	u32 eec;
 	u32 i;
 
-	if (ixgbe_acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) != 0)
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM)
+	    != 0)
 		status = IXGBE_ERR_SWFW_SYNC;
 
 	if (status == 0) {
@@ -1008,7 +955,7 @@ static s32 ixgbe_acquire_eeprom(struct ixgbe_hw *hw)
 			IXGBE_WRITE_REG(hw, IXGBE_EEC, eec);
 			hw_dbg(hw, "Could not acquire EEPROM grant\n");
 
-			ixgbe_release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
+			hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 			status = IXGBE_ERR_EEPROM;
 		}
 
@@ -1049,6 +996,28 @@ static s32 ixgbe_get_eeprom_semaphore(struct ixgbe_hw *hw)
 			break;
 		}
 		udelay(50);
+	}
+
+	if (i == timeout) {
+		hw_dbg(hw, "Driver can't access the Eeprom - SMBI Semaphore "
+		         "not granted.\n");
+		/*
+		 * this release is particularly important because our attempts
+		 * above to get the semaphore may have succeeded, and if there
+		 * was a timeout, we should unconditionally clear the semaphore
+		 * bits to free the driver to make progress
+		 */
+		ixgbe_release_eeprom_semaphore(hw);
+
+		udelay(50);
+		/*
+		 * one last try
+		 * If the SMBI bit is 0 when we read it, then the bit will be
+		 * set and we have the semaphore
+		 */
+		swsm = IXGBE_READ_REG(hw, IXGBE_SWSM);
+		if (!(swsm & IXGBE_SWSM_SMBI))
+			status = 0;
 	}
 
 	/* Now get the semaphore between SW/FW through the SWESMBI bit */
@@ -1315,7 +1284,7 @@ static void ixgbe_release_eeprom(struct ixgbe_hw *hw)
 	eec &= ~IXGBE_EEC_REQ;
 	IXGBE_WRITE_REG(hw, IXGBE_EEC, eec);
 
-	ixgbe_release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 
 	/* Delay before attempt to obtain semaphore again to allow FW access */
 	msleep(hw->eeprom.semaphore_delay);
@@ -2053,8 +2022,6 @@ out:
 /**
  *  ixgbe_fc_autoneg_fiber - Enable flow control on 1 gig fiber
  *  @hw: pointer to hardware structure
- *  @speed:
- *  @link_up
  *
  *  Enable flow control according on 1 gig fiber.
  **/
@@ -2216,7 +2183,7 @@ static s32 ixgbe_negotiate_fc(struct ixgbe_hw *hw, u32 adv_reg, u32 lp_reg,
  *
  *  Called at init time to set up flow control.
  **/
-s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num)
+static s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num)
 {
 	s32 ret_val = 0;
 	u32 reg = 0, reg_bp = 0;
@@ -2231,8 +2198,8 @@ s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num)
 #endif /* CONFIG_DCB */
 	/* Validate the packetbuf configuration */
 	if (packetbuf_num < 0 || packetbuf_num > 7) {
-		hw_dbg(hw, "Invalid packet buffer number [%d], expected range is"
-		          " 0-7\n", packetbuf_num);
+		hw_dbg(hw, "Invalid packet buffer number [%d], expected range "
+		          "is 0-7\n", packetbuf_num);
 		ret_val = IXGBE_ERR_INVALID_LINK_SETTINGS;
 		goto out;
 	}
@@ -2476,7 +2443,7 @@ out:
  *  @hw: pointer to hardware structure
  *  @mask: Mask to specify which semaphore to acquire
  *
- *  Acquires the SWFW semaphore thought the GSSR register for the specified
+ *  Acquires the SWFW semaphore through the GSSR register for the specified
  *  function (CSR, PHY0, PHY1, EEPROM, Flash)
  **/
 s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u16 mask)
@@ -2524,7 +2491,7 @@ s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u16 mask)
  *  @hw: pointer to hardware structure
  *  @mask: Mask to specify which semaphore to release
  *
- *  Releases the SWFW semaphore thought the GSSR register for the specified
+ *  Releases the SWFW semaphore through the GSSR register for the specified
  *  function (CSR, PHY0, PHY1, EEPROM, Flash)
  **/
 void ixgbe_release_swfw_sync(struct ixgbe_hw *hw, u16 mask)
@@ -3282,7 +3249,6 @@ static s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
 {
 
 	switch (hw->device_id) {
-	case IXGBE_DEV_ID_X540:
 	case IXGBE_DEV_ID_X540T:
 		return 0;
 	case IXGBE_DEV_ID_82599_T3_LOM:
@@ -3372,27 +3338,177 @@ s32 ixgbe_get_device_caps_generic(struct ixgbe_hw *hw, u16 *device_caps)
 }
 
 /**
- *  ixgbe_enable_relaxed_ordering_gen2 - Enable relaxed ordering
- *  @hw: pointer to hardware structure
- *
+ *  ixgbe_calculate_checksum - Calculate checksum for buffer
+ *  @buffer: pointer to EEPROM
+ *  @length: size of EEPROM to calculate a checksum for
+ *  Calculates the checksum for some buffer on a specified length.  The
+ *  checksum calculated is returned.
  **/
-void ixgbe_enable_relaxed_ordering_gen2(struct ixgbe_hw *hw)
+static u8 ixgbe_calculate_checksum(u8 *buffer, u32 length)
 {
-	u32 regval;
 	u32 i;
+	u8 sum = 0;
 
-	/* Enable relaxed ordering */
-	for (i = 0; i < hw->mac.max_tx_queues; i++) {
-		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
-		regval |= IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
-		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), regval);
-	}
+	if (!buffer)
+		return 0;
+	for (i = 0; i < length; i++)
+		sum += buffer[i];
 
-	for (i = 0; i < hw->mac.max_rx_queues; i++) {
-		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
-		regval |= (IXGBE_DCA_RXCTRL_DESC_WRO_EN |
-		           IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
-		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
-	}
-
+	return (u8) (0 - sum);
 }
+
+/**
+ *  ixgbe_host_interface_command - Issue command to manageability block
+ *  @hw: pointer to the HW structure
+ *  @buffer: contains the command to write and where the return status will
+ *           be placed
+ *  @lenght: lenght of buffer, must be multiple of 4 bytes
+ *
+ *  Communicates with the manageability block.  On success return 0
+ *  else return IXGBE_ERR_HOST_INTERFACE_COMMAND.
+ **/
+static s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u8 *buffer,
+                                        u32 length)
+{
+	u32 hicr, i;
+	u32 hdr_size = sizeof(struct ixgbe_hic_hdr);
+	u8 buf_len, dword_len;
+
+	s32 ret_val = 0;
+
+	/* Bail if not supported */
+	switch (hw->mac.type) {
+	case ixgbe_mac_X540:
+		break;
+	default:
+		hw_dbg(hw, "Firmware is not present.\n");
+		goto out;
+	}
+
+	if (length == 0 || length & 0x3 ||
+	    length > IXGBE_HI_MAX_BLOCK_BYTE_LENGTH) {
+		hw_dbg(hw, "Buffer length failure.\n");
+		ret_val = -IXGBE_ERR_HOST_INTERFACE_COMMAND;
+		goto out;
+	}
+
+	/* Check that the host interface is enabled. */
+	hicr = IXGBE_READ_REG(hw, IXGBE_HICR);
+	if ((hicr & IXGBE_HICR_EN) == 0) {
+		hw_dbg(hw, "IXGBE_HOST_EN bit disabled.\n");
+		ret_val = -IXGBE_ERR_HOST_INTERFACE_COMMAND;
+		goto out;
+	}
+
+	/* Calculate length in DWORDs */
+	dword_len = length >> 2;
+
+	/*
+	 * The device driver writes the relevant command block
+	 * into the ram area.
+	 */
+	for (i = 0; i < dword_len; i++)
+		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_FLEX_MNG,
+		                      i, *((u32 *)buffer + i));
+
+	/* Setting this bit tells the ARC that a new command is pending. */
+	IXGBE_WRITE_REG(hw, IXGBE_HICR, hicr | IXGBE_HICR_C);
+
+	for (i = 0; i < IXGBE_HI_COMMAND_TIMEOUT; i++) {
+		hicr = IXGBE_READ_REG(hw, IXGBE_HICR);
+		if (!(hicr & IXGBE_HICR_C))
+			break;
+		msleep(1);
+	}
+
+	/* Check command successful completion. */
+	if (i == IXGBE_HI_COMMAND_TIMEOUT ||
+	    (!(IXGBE_READ_REG(hw, IXGBE_HICR) & IXGBE_HICR_SV))) {
+		hw_dbg(hw, "Command has failed with no status valid.\n");
+		ret_val = -IXGBE_ERR_HOST_INTERFACE_COMMAND;
+		goto out;
+	}
+
+	/* Calculate length in DWORDs */
+	dword_len = hdr_size >> 2;
+
+	/* first pull in the header so we know the buffer length */
+	for (i = 0; i < dword_len; i++)
+		*((u32 *)buffer + i) =
+			IXGBE_READ_REG_ARRAY(hw, IXGBE_FLEX_MNG, i);
+
+	/* If there is any thing in data position pull it in */
+	buf_len = ((struct ixgbe_hic_hdr *)buffer)->buf_len;
+	if (buf_len == 0)
+		goto out;
+
+	if (length < (buf_len + hdr_size)) {
+		hw_dbg(hw, "Buffer not large enough for reply message.\n");
+		ret_val = -IXGBE_ERR_HOST_INTERFACE_COMMAND;
+		goto out;
+	}
+
+	/* Calculate length in DWORDs, add one for odd lengths */
+	dword_len = (buf_len + 1) >> 2;
+
+	/* Pull in the rest of the buffer (i is where we left off)*/
+	for (; i < buf_len; i++)
+		*((u32 *)buffer + i) =
+			IXGBE_READ_REG_ARRAY(hw, IXGBE_FLEX_MNG, i);
+
+out:
+	return ret_val;
+}
+
+/**
+ *  ixgbe_set_fw_drv_ver_generic - Sends driver version to firmware
+ *  @hw: pointer to the HW structure
+ *  @maj: driver version major number
+ *  @min: driver version minor number
+ *  @build: driver version build number
+ *  @ver: driver version number
+ *
+ *  Sends driver version number to firmware through the manageability
+ *  block.  On success return 0
+ *  else returns IXGBE_ERR_SWFW_SYNC when encountering an error acquiring
+ *  semaphore or IXGBE_ERR_HOST_INTERFACE_COMMAND when command fails.
+ **/
+s32 ixgbe_set_fw_drv_ver_generic(struct ixgbe_hw *hw, u8 maj, u8 min,
+                                 u8 build, u8 ver)
+{
+	struct ixgbe_hic_drv_info fw_cmd;
+	int i;
+	s32 ret_val = 0;
+
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_SW_MNG_SM)
+	    != 0) {
+		ret_val = IXGBE_ERR_SWFW_SYNC;
+		goto out;
+	}
+
+	fw_cmd.hdr.cmd = FW_CEM_CMD_DRIVER_INFO;
+	fw_cmd.hdr.buf_len = FW_CEM_CMD_DRIVER_INFO_LEN;
+	fw_cmd.hdr.cmd_or_resp.cmd_resv = FW_CEM_CMD_RESERVED;
+	fw_cmd.port_num = (u8)hw->bus.func;
+	fw_cmd.drv_version = (maj << 24) + (min << 16) + (build << 8) + ver;
+	fw_cmd.hdr.checksum = ixgbe_calculate_checksum((u8 *)&fw_cmd,
+				(FW_CEM_HDR_LEN + fw_cmd.hdr.buf_len));
+
+	for (i = 0; i <= FW_CEM_MAX_RETRIES; i++) {
+		ret_val = ixgbe_host_interface_command(hw, (u8 *)&fw_cmd,
+		                                       sizeof(fw_cmd));
+		if (ret_val != 0)
+			continue;
+
+		if (fw_cmd.hdr.cmd_or_resp.ret_status ==
+		    FW_CEM_RESP_STATUS_SUCCESS)
+			break;
+
+		ret_val = -IXGBE_ERR_HOST_INTERFACE_COMMAND;
+	}
+
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_SW_MNG_SM);
+out:
+	return ret_val;
+}
+

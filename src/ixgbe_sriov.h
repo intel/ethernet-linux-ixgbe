@@ -50,6 +50,9 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate);
 int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 			    int vf, struct ifla_vf_info *ivi);
 #endif
+#ifdef HAVE_IPLINK_VF_CONFIG
+void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter);
+#endif /* HAVE_IPLINK_VF_CONFIG */
 void ixgbe_dump_registers(struct ixgbe_adapter *adapter);
 
 #endif /* _IXGBE_SRIOV_H_ */

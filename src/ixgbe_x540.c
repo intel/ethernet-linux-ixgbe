@@ -25,6 +25,7 @@
 
 *******************************************************************************/
 
+#include "ixgbe_x540.h"
 #include "ixgbe_type.h"
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
@@ -85,10 +86,10 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 
 	/* PHY */
 	phy->ops.init = &ixgbe_init_phy_ops_generic;
+	phy->ops.reset = NULL;
 
 	/* MAC */
 	mac->ops.reset_hw = &ixgbe_reset_hw_X540;
-	mac->ops.enable_relaxed_ordering = &ixgbe_enable_relaxed_ordering_gen2;
 	mac->ops.get_media_type = &ixgbe_get_media_type_X540;
 	mac->ops.get_supported_physical_layer =
 	                            &ixgbe_get_supported_physical_layer_X540;
@@ -127,7 +128,19 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->max_rx_queues    = 128;
 	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_generic(hw);
 
+	/*
+	 * FWSM register
+	 * ARC supported; valid only if manageability features are
+	 * enabled.
+	 */
+	mac->arc_subsystem_valid = (IXGBE_READ_REG(hw, IXGBE_FWSM) &
+	                           IXGBE_FWSM_MODE_MASK) ? true : false;
+
 	hw->mbx.ops.init_params = ixgbe_init_mbx_params_pf;
+
+	/* LEDs */
+	mac->ops.blink_led_start = ixgbe_blink_led_start_x540;
+	mac->ops.blink_led_stop = ixgbe_blink_led_stop_x540;
 
 	return ret_val;
 }
@@ -157,7 +170,7 @@ s32 ixgbe_get_link_capabilities_X540(struct ixgbe_hw *hw,
  **/
 enum ixgbe_media_type ixgbe_get_media_type_X540(struct ixgbe_hw *hw)
 {
-    return ixgbe_media_type_copper;
+	return ixgbe_media_type_copper;
 }
 
 /**
@@ -278,7 +291,7 @@ mac_reset_top:
 
 		/* Reserve the last RAR for the SAN MAC address */
 		hw->mac.num_rar_entries--;
-    }
+	}
 
 	return status;
 }
@@ -349,7 +362,7 @@ s32 ixgbe_init_eeprom_params_X540(struct ixgbe_hw *hw)
 		eeprom_size = (u16)((eec & IXGBE_EEC_SIZE) >>
 		                    IXGBE_EEC_SIZE_SHIFT);
 		eeprom->word_size = 1 << (eeprom_size +
-		                          IXGBE_EEPROM_WORD_SIZE_BASE_SHIFT);
+		                          IXGBE_EEPROM_WORD_SIZE_SHIFT);
 
 		hw_dbg(hw, "Eeprom params: type = %d, size = %d\n",
 		          eeprom->type, eeprom->word_size);
@@ -370,12 +383,13 @@ s32 ixgbe_read_eerd_X540(struct ixgbe_hw *hw, u16 offset, u16 *data)
 {
 	s32 status = 0;
 
-	if (ixgbe_acquire_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM) == 0)
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
+	    0)
 		status = ixgbe_read_eerd_generic(hw, offset, data);
 	else
 		status = IXGBE_ERR_SWFW_SYNC;
 
-	ixgbe_release_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM);
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 	return status;
 }
 
@@ -391,13 +405,13 @@ s32 ixgbe_write_eewr_X540(struct ixgbe_hw *hw, u16 offset, u16 data)
 {
 	s32 status = 0;
 
-	if (ixgbe_acquire_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM) ==
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0)
 		status = ixgbe_write_eewr_generic(hw, offset, data);
 	else
 		status = IXGBE_ERR_SWFW_SYNC;
 
-	ixgbe_release_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM);
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 	return status;
 }
 
@@ -499,10 +513,12 @@ s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw,
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 
-	if (status != 0)
+	if (status != 0) {
 		hw_dbg(hw, "EEPROM read failed\n");
+		goto out;
+	}
 
-	if (ixgbe_acquire_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM) ==
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0) {
 		checksum = hw->eeprom.ops.calc_checksum(hw);
 
@@ -527,7 +543,8 @@ s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw,
 		status = IXGBE_ERR_SWFW_SYNC;
 	}
 
-	ixgbe_release_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM);
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
+out:
 	return status;
 }
 
@@ -554,7 +571,7 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 	if (status != 0)
 		hw_dbg(hw, "EEPROM read failed\n");
 
-	if (ixgbe_acquire_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM) ==
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0) {
 		checksum = hw->eeprom.ops.calc_checksum(hw);
 
@@ -571,7 +588,7 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 		status = IXGBE_ERR_SWFW_SYNC;
 	}
 
-	ixgbe_release_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM);
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 
 	return status;
 }
@@ -661,24 +678,32 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 	u32 hwmask = 0;
 	u32 timeout = 200;
 	u32 i;
+	s32 ret_val = 0;
 
 	if (swmask == IXGBE_GSSR_EEP_SM)
-	    hwmask = IXGBE_GSSR_FLASH_SM;
+		hwmask = IXGBE_GSSR_FLASH_SM;
+
+	/* SW only mask doesn't have FW bit pair */
+	if (swmask == IXGBE_GSSR_SW_MNG_SM)
+		fwmask = 0;
 
 	for (i = 0; i < timeout; i++) {
 		/*
 		 * SW NVM semaphore bit is used for access to all
 		 * SW_FW_SYNC bits (not just NVM)
 		 */
-		if (ixgbe_get_swfw_sync_semaphore(hw))
-			return IXGBE_ERR_SWFW_SYNC;
+		if (ixgbe_get_swfw_sync_semaphore(hw)) {
+			ret_val = IXGBE_ERR_SWFW_SYNC;
+			goto out;
+		}
 
 		swfw_sync = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC);
 		if (!(swfw_sync & (fwmask | swmask | hwmask))) {
 			swfw_sync |= swmask;
 			IXGBE_WRITE_REG(hw, IXGBE_SWFW_SYNC, swfw_sync);
 			ixgbe_release_swfw_sync_semaphore(hw);
-			break;
+			msleep(5);
+			goto out;
 		} else {
 			/*
 			 * Firmware currently using resource (fwmask), hardware currently
@@ -690,25 +715,32 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 		}
 	}
 
+	/* Failed to get SW only semaphore */
+	if (swmask == IXGBE_GSSR_SW_MNG_SM) {
+		ret_val = IXGBE_ERR_SWFW_SYNC;
+		goto out;
+	}
+
 	/* If the resource is not released by the FW/HW the SW can assume that
 	 * the FW/HW malfunctions. In that case the SW should sets the SW bit(s)
 	 * of the requested resource(s) while ignoring the corresponding FW/HW
 	 * bits in the SW_FW_SYNC register.
 	 */
-	if (i >= timeout) {
-		swfw_sync = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC);
-		if (swfw_sync & (fwmask| hwmask)) {
-			if (ixgbe_get_swfw_sync_semaphore(hw))
-				return IXGBE_ERR_SWFW_SYNC;
-
-			swfw_sync |= swmask;
-			IXGBE_WRITE_REG(hw, IXGBE_SWFW_SYNC, swfw_sync);
-			ixgbe_release_swfw_sync_semaphore(hw);
+	swfw_sync = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC);
+	if (swfw_sync & (fwmask| hwmask)) {
+		if (ixgbe_get_swfw_sync_semaphore(hw)) {
+			ret_val = IXGBE_ERR_SWFW_SYNC;
+			goto out;
 		}
+
+		swfw_sync |= swmask;
+		IXGBE_WRITE_REG(hw, IXGBE_SWFW_SYNC, swfw_sync);
+		ixgbe_release_swfw_sync_semaphore(hw);
+		msleep(5);
 	}
 
-	msleep(5);
-	return 0;
+out:
+	return ret_val;
 }
 
 /**
@@ -810,3 +842,66 @@ static void ixgbe_release_swfw_sync_semaphore(struct ixgbe_hw *hw)
 
 	IXGBE_WRITE_FLUSH(hw);
 }
+
+/**
+ * ixgbe_blink_led_start_x540 - Blink LED based on index.
+ * @hw: pointer to hardware structure
+ * @index: led number to blink
+ *
+ * Devices that implement the version 2 interface:
+ *   X540
+ **/
+s32 ixgbe_blink_led_start_x540(struct ixgbe_hw *hw, u32 index)
+{
+	u32 macc_reg;
+	u32 ledctl_reg;
+
+	/*
+	 * In order for the blink bit in the LED control register
+	 * to work, link and speed must be forced in the MAC. We
+	 * will reverse this when we stop the blinking.
+	 */
+	macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
+	macc_reg |= IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS;
+	IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);
+
+	/* Set the LED to LINK_UP + BLINK. */
+	ledctl_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
+	ledctl_reg &= ~IXGBE_LED_MODE_MASK(index);
+	ledctl_reg |= IXGBE_LED_BLINK(index);
+	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, ledctl_reg);
+	IXGBE_WRITE_FLUSH(hw);
+
+	return 0;
+}
+
+/**
+ * ixgbe_blink_led_stop_x540 - Stop blinking LED based on index.
+ * @hw: pointer to hardware structure
+ * @index: led number to stop blinking
+ *
+ * Devices that implement the version 2 interface:
+ *   X540
+ **/
+s32 ixgbe_blink_led_stop_x540(struct ixgbe_hw *hw, u32 index)
+{
+	u32 macc_reg;
+	u32 ledctl_reg;
+
+	/* Restore the LED to its default value. */
+	ledctl_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
+	ledctl_reg &= ~IXGBE_LED_MODE_MASK(index);
+	ledctl_reg |= IXGBE_LED_LINK_ACTIVE << IXGBE_LED_MODE_SHIFT(index);
+	ledctl_reg &= ~IXGBE_LED_BLINK(index);
+	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, ledctl_reg);
+
+	/* Unforce link and speed in the MAC. */
+	macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
+	macc_reg &= ~(IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS);
+	IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);
+	IXGBE_WRITE_FLUSH(hw);
+
+	return 0;
+}
+
+

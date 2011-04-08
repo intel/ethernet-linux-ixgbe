@@ -144,6 +144,7 @@ struct ixgbe_dcb_config {
 
 	u32  dcb_cfg_version; /* Not used...OS-specific? */
 	u32  link_speed; /* For bandwidth allocation validation purpose */
+	enum ixgbe_fdir_pballoc_type fdir_pballoc; /* for RX buffer config */
 };
 
 /* DCB driver APIs */

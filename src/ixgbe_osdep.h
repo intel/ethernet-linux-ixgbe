@@ -59,6 +59,24 @@
 #define hw_dbg(hw, S, A...)      do {} while (0)
 #endif
 
+#define e_dev_info(format, arg...) \
+	dev_info(&adapter->pdev->dev, format, ## arg)
+#define e_dev_warn(format, arg...) \
+	dev_warn(&adapter->pdev->dev, format, ## arg)
+#define e_dev_err(format, arg...) \
+	dev_err(&adapter->pdev->dev, format, ## arg)
+#define e_dev_notice(format, arg...) \
+	dev_notice(&adapter->pdev->dev, format, ## arg)
+#define e_info(msglvl, format, arg...) \
+	netif_info(adapter, msglvl, adapter->netdev, format, ## arg)
+#define e_err(msglvl, format, arg...) \
+	netif_err(adapter, msglvl, adapter->netdev, format, ## arg)
+#define e_warn(msglvl, format, arg...) \
+	netif_warn(adapter, msglvl, adapter->netdev, format, ## arg)
+#define e_crit(msglvl, format, arg...) \
+	netif_crit(adapter, msglvl, adapter->netdev, format, ## arg)
+
+
 #ifdef DBG
 #define IXGBE_WRITE_REG(a, reg, value) do {\
 	switch (reg) { \

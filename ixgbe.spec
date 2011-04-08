@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 3.2.10
+Version: 3.3.8
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -29,89 +29,11 @@ This package contains the Linux driver for the Intel(R) 10GbE PCI Express Family
 %setup
 
 %build
+make -C src clean
+make -C src
 
 %install
-mkdir -p %{buildroot}
-
-KV=$(uname -r)
-KA=%{_arch}
-KV_BASE=$(echo $KV | sed '{ s/hugemem//g; s/smp//g; s/enterprise//g; }' )
-
-if [ -e /usr/src/kernels ] && [ $(echo $KV_BASE | grep "^2.6") ]; then
-	if [ -e /etc/redhat-release ]; then
-		KSP=$(ls /lib/modules | grep $KV_BASE)
-		for K in $KSP ; do
-			if [ $KA == "x86_64" ] && \
-			   [ $(echo $K | grep hugemem) ]; then
-				# Include path for x86_64 hugemem is broken
-				# on RHEL4
-				continue
-			fi
-			if [ -e /lib/modules/$K/build/.config ] && \
-			   !(grep -w CONFIG_PCI /lib/modules/$K/build/.config | grep -i y) ; then
-				# Exclude kernels that don't support PCI
-				continue
-			fi
-			make -C src clean
-			make -C src KSP=/lib/modules/$K/build \
-				INSTALL_MOD_PATH=%{buildroot} \
-				KVERSION=$k \
-				MANDIR=%{_mandir} \
-				CFLAGS_EXTRA="$CFLAGS_EXTRA" install
-		done
-	else
-		make -C src clean
-		make -C src INSTALL_MOD_PATH=%{buildroot} \
-			MANDIR=%{_mandir} install
-	fi
-else
-	SwitchRHKernel () {
-		CFLAGS_EXTRA=""
-		for K in $2 ; do
-			if [ $K == $1 ] ; then
-				CFLAGS_EXTRA="$CFLAGS_EXTRA -D__BOOT_KERNEL_$K=1"
-			else
-				CFLAGS_EXTRA="$CFLAGS_EXTRA -D__BOOT_KERNEL_$K=0"
-			fi
-		done
-	}
-
-	KSP="/lib/modules/$KV/build
-	     /usr/src/linux-$KV
-	     /usr/src/linux-$(echo $KV | sed 's/-.*//')
-	     /usr/src/kernel-headers-$KV
-	     /usr/src/kernel-source-$KV
-	     /usr/src/linux-$(echo $KV | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/')
-	     /usr/src/linux"
-
-	KSRC=$(for d in $KSP ; do [ -e $d/include/linux ] && echo $d; echo;  done)
-	KSRC=$(echo $KSRC | awk '{ print $1 }')
-
-	if [ -e $KSRC/include/linux/rhconfig.h ] ; then
-		RHKL=$(grep 'BOOT_KERNEL_.* [01]' /boot/kernel.h |
-		       sed 's/.*BOOT_KERNEL_\(.*\) [01]/\1/')
-		if echo $RHKL | grep BIGMEM
-		then
-			RHKL=$(echo $RHKL | sed 's/ENTERPRISE//')
-		fi
-		if echo $RHKL | grep HUGEMEM
-		then
-			RHKL=$(echo $RHKL | sed 's/BIGMEM//')
-		fi
-		for K in $RHKL ; do
-			SwitchRHKernel $K "$RHKL"
-			make -C src clean
-			if [ $KA == "x86_64" ] ; then
-				CFLAGS_EXTRA="$CFLAGS_EXTRA -D__MODULE_KERNEL_x86_64=0 -D__MODULE_KERNEL_ia32e=1"
-			fi
-			make -C src INSTALL_MOD_PATH=%{buildroot} \
-				MANDIR=%{_mandir} CFLAGS_EXTRA="$CFLAGS_EXTRA" install
-		done
-	else
-		make -C src clean
-		make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} install
-	fi
-fi
+make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} install
 # Append .new to driver name to avoid conflict with kernel RPM
 cd %{buildroot}
 find lib -name "ixgbe.*o" -exec mv {} {}.new \; \

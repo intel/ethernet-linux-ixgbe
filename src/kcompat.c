@@ -379,28 +379,6 @@ int _kc_snprintf(char * buf, size_t size, const char *fmt, ...)
 #endif /* < 2.4.8 */
 
 /*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,4,21) )
-struct sk_buff *
-_kc_skb_pad(struct sk_buff *skb, int pad)
-{
-        struct sk_buff *nskb;
-        
-        /* If the skbuff is non linear tailroom is always zero.. */
-        if(skb_tailroom(skb) >= pad)
-        {
-                memset(skb->data+skb->len, 0, pad);
-                return skb;
-        }
-        
-        nskb = skb_copy_expand(skb, skb_headroom(skb), skb_tailroom(skb) + pad, GFP_ATOMIC);
-        kfree_skb(skb);
-        if(nskb)
-                memset(nskb->data+nskb->len, 0, pad);
-        return nskb;
-} 
-#endif /* < 2.4.21 */
-
-/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,4,13) )
 
 /**************************************/
@@ -643,6 +621,39 @@ void *_kc_kzalloc(size_t size, int flags)
 	return ret;
 }
 #endif /* <= 2.6.13 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18) )
+int _kc_skb_pad(struct sk_buff *skb, int pad)
+{
+	int ntail;
+        
+        /* If the skbuff is non linear tailroom is always zero.. */
+        if(!skb_cloned(skb) && skb_tailroom(skb) >= pad) {
+		memset(skb->data+skb->len, 0, pad);
+		return 0;
+        }
+        
+	ntail = skb->data_len + pad - (skb->end - skb->tail);
+	if (likely(skb_cloned(skb) || ntail > 0)) {
+		if (pskb_expand_head(skb, 0, ntail, GFP_ATOMIC));
+			goto free_skb;
+	}
+
+#ifdef MAX_SKB_FRAGS
+	if (skb_is_nonlinear(skb) &&
+	    !__pskb_pull_tail(skb, skb->data_len))
+		goto free_skb;
+
+#endif
+	memset(skb->data + skb->len, 0, pad);
+        return 0;
+
+free_skb:
+	kfree_skb(skb);
+	return -ENOMEM;
+} 
+#endif /* < 2.6.18 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19) )

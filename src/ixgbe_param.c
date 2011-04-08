@@ -294,19 +294,16 @@ IXGBE_PARAM(FdirMode, "Flow Director filtering modes:\n"
 
 /* Flow Director packet buffer allocation level
  *
- * Valid Range: 0-2  0 = 8k hash/2k perfect, 1 = 16k hash/4k perfect,
- *                   2 = 32k hash/8k perfect
+ * Valid Range: 0-3  0 = No memory allocation,	1 = 8k hash/2k perfect,
+ * 		     2 = 16k hash/4k perfect,	3 = 32k hash/8k perfect
  *
  * Default Value: 0
  */
 IXGBE_PARAM(FdirPballoc, "Flow Director packet buffer allocation level:\n"
-	                 "\t\t\t0 = 8k hash filters or 2k perfect filters\n"
-	                 "\t\t\t1 = 16k hash filters or 4k perfect filters\n"
-	                 "\t\t\t2 = 32k hash filters or 8k perfect filters");
+	                 "\t\t\t1 = 8k hash filters or 2k perfect filters\n"
+	                 "\t\t\t2 = 16k hash filters or 4k perfect filters\n"
+	                 "\t\t\t3 = 32k hash filters or 8k perfect filters");
 
-#define IXGBE_FDIR_PBALLOC_64K				0
-#define IXGBE_FDIR_PBALLOC_128K				1
-#define IXGBE_FDIR_PBALLOC_256K				2
 #define IXGBE_DEFAULT_FDIR_PBALLOC IXGBE_FDIR_PBALLOC_64K
 
 /* Software ATR packet sample rate
@@ -690,9 +687,11 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				feature[RING_F_VMDQ].indices =
 				          min(feature[RING_F_VMDQ].indices, 16);
 
-			/* Disable RSS when using VMDQ mode */
+			/* Disable incompatible features */
 			*aflags &= ~IXGBE_FLAG_RSS_CAPABLE;
 			*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
+			*aflags &= ~IXGBE_FLAG_DCB_CAPABLE;
+			*aflags &= ~IXGBE_FLAG_DCB_ENABLED;
 		}
 	}
 #ifdef CONFIG_PCI_IOV
@@ -983,7 +982,8 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 			/* for 82599 only 1BUF supported value - erratum 45 */
 			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
-				RxBufferMode[bd] = IXGBE_RXBUFMODE_1BUF_ALWAYS;
+				 RxBufferMode[bd] = IXGBE_RXBUFMODE_1BUF_ALWAYS;
+
 
 			rx_buf_mode = RxBufferMode[bd];
 			ixgbe_validate_option(&rx_buf_mode, &opt);
@@ -1057,26 +1057,18 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				break;
 			}
 		} else {
-			if (opt.def == IXGBE_FDIR_FILTER_OFF) {
-				DPRINTK(PROBE, INFO,
-					"Flow Director hash filtering disabled\n");
-			} else {
-				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				DPRINTK(PROBE, INFO,
-					"Flow Director hash filtering enabled\n");
-			}
+			*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
 		}
 		/* Check interoperability */
-		if ((*aflags & IXGBE_FLAG_FDIR_HASH_CAPABLE) ||
-		    (*aflags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
-			if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
-				DPRINTK(PROBE, INFO,
-					"Flow Director is not supported "
-					"while multiple queues are disabled. "
-					"Disabling Flow Director\n");
-				*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-				*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-			}
+		if ((*aflags & (IXGBE_FLAG_FDIR_HASH_CAPABLE |
+		                IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) &&
+		    !(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
+			DPRINTK(PROBE, INFO,
+				"Flow Director is not supported while "
+				"multiple queues are disabled. "
+				"Disabling Flow Director\n");
+			*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+			*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 		}
 no_flow_director:
 		/* empty code line with semi-colon */ ;
@@ -1094,9 +1086,7 @@ no_flow_director:
 		};
 		char pstring[10];
 
-		if ((adapter->hw.mac.type == ixgbe_mac_82598EB) ||
-		    (!(*aflags & (IXGBE_FLAG_FDIR_HASH_CAPABLE |
-		                  IXGBE_FLAG_FDIR_PERFECT_CAPABLE))))
+		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 			goto no_fdir_pballoc;
 		if (num_FdirPballoc > bd) {
 			fdir_pballoc_mode = FdirPballoc[bd];
@@ -1118,12 +1108,10 @@ no_flow_director:
 				break;
 			}
 			DPRINTK(PROBE, INFO,
-			        "Flow Director allocated %s of packet buffer\n",
+			        "Flow Director will be allocated %s of packet buffer\n",
 			        pstring);
 		} else {
 			adapter->fdir_pballoc = opt.def;
-			DPRINTK(PROBE, INFO,
-			     "Flow Director allocated 64kB of packet buffer\n");
 		}
 no_fdir_pballoc:
 		/* empty code line with semi-colon */ ;
@@ -1145,13 +1133,8 @@ no_fdir_pballoc:
 		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 			goto no_fdir_sample;
 
-		/* no sample rate for perfect filtering */
-		if (*aflags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)
-			goto no_fdir_sample;
 		if (num_AtrSampleRate > bd) {
-			/* Only enable the sample rate if hashing (ATR) is on */
-			if (*aflags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
-				adapter->atr_sample_rate = AtrSampleRate[bd];
+			adapter->atr_sample_rate = AtrSampleRate[bd];
 
 			if (adapter->atr_sample_rate) {
 				ixgbe_validate_option(&adapter->atr_sample_rate,
@@ -1160,12 +1143,7 @@ no_fdir_pballoc:
 				        adapter->atr_sample_rate);
 			}
 		} else {
-			/* Only enable the sample rate if hashing (ATR) is on */
-			if (*aflags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
-				adapter->atr_sample_rate = opt.def;
-
-			DPRINTK(PROBE, INFO, "%s default of %d\n", atr_string,
-			        adapter->atr_sample_rate);
+			adapter->atr_sample_rate = opt.def;
 		}
 no_fdir_sample:
 		/* empty code line with semi-colon */ ;
@@ -1199,7 +1177,8 @@ no_fdir_sample:
 			}
 #endif
 #ifdef CONFIG_PCI_IOV
-			if (*aflags & IXGBE_FLAG_SRIOV_ENABLED)
+			if (*aflags & (IXGBE_FLAG_SRIOV_ENABLED |
+				       IXGBE_FLAG_VMDQ_ENABLED))
 				*aflags &= ~IXGBE_FLAG_FCOE_CAPABLE;
 #endif
 			DPRINTK(PROBE, INFO, "FCoE Offload feature %sabled\n",

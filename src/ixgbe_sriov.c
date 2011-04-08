@@ -126,7 +126,7 @@ void ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf)
 
 	/* MTU < 68 is an error and causes problems on some kernels */
 	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE)) {
-		DPRINTK(DRV, ERR, "VF mtu %d out of range\n", new_mtu);
+		e_err(drv, "VF mtu %d out of range\n", new_mtu);
 		return;
 	}
 
@@ -137,7 +137,7 @@ void ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf)
 		IXGBE_WRITE_REG(hw, IXGBE_MAXFRS, max_frs);
 	}
 
-	DPRINTK(DRV, INFO, "VF requests change max MTU to %d\n", new_mtu);
+	e_info(drv, "VF requests change max MTU to %d\n", new_mtu);
 }
 
 void ixgbe_set_vmolr(struct ixgbe_hw *hw, u32 vf, bool aupe)
@@ -213,7 +213,7 @@ int ixgbe_vf_configuration(struct pci_dev *pdev, unsigned int event_mask)
 
 	if (enable) {
 		random_ether_addr(vf_mac_addr);
-		DPRINTK(PROBE, INFO, "IOV: VF %d is enabled "
+		e_info(probe, "IOV: VF %d is enabled "
 		       "mac %02X:%02X:%02X:%02X:%02X:%02X\n",
 		       vfn,
 		       vf_mac_addr[0], vf_mac_addr[1], vf_mac_addr[2],
@@ -314,14 +314,12 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		if (is_valid_ether_addr(new_mac) &&
 		    !adapter->vfinfo[vf].pf_set_mac) {
 			ixgbe_set_vf_mac(adapter, vf, new_mac);
-			DPRINTK(PROBE, INFO,
-				"Set MAC msg received from VF %d\n", vf);
+			e_info(probe, "Set MAC msg received from VF %d\n", vf);
 		} else if (memcmp(adapter->vfinfo[vf].vf_mac_addresses,
 				  new_mac, ETH_ALEN)) {
-			DPRINTK(PROBE, INFO,
-				"VF %d attempted to override administratively "
-				"set MAC address\nReload the VF driver to "
-				"resume operations\n", vf);
+			e_warn(drv, "VF %d attempted to override "
+			       "administratively set MAC address\nReload "
+			       "the VF driver to resume operations\n", vf);
 			retval = -1;
 		}
 		break;
@@ -333,7 +331,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 						 hash_list, vf);
 		break;
 	case IXGBE_VF_SET_LPE:
-		DPRINTK(PROBE, INFO, "Set LPE msg received from vf %d\n", vf);
+		e_info(probe, "Set LPE msg received from vf %d\n", vf);
 		ixgbe_set_vf_lpe(adapter, msgbuf);
 		break;
 	case IXGBE_VF_SET_VLAN:
@@ -341,17 +339,17 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 					>> IXGBE_VT_MSGINFO_SHIFT;
 		vid = (msgbuf[1] & IXGBE_VLVF_VLANID_MASK);
 		if (adapter->vfinfo[vf].pf_vlan) {
-			DPRINTK(PROBE, INFO,
-				"VF %d attempted to override administratively "
-				"set VLAN configuration\nReload the VF driver "
-				"to resume operations\n", vf);
+			e_warn(drv, "VF %d attempted to override "
+			       "administratively set VLAN configuration\n"
+			       "Reload the VF driver to resume operations\n",
+			       vf);
 			retval = -1;
 		} else {
 			retval = ixgbe_set_vf_vlan(adapter, add, vid, vf);
 		}
 		break;
 	default:
-		DPRINTK(PROBE, ERR, "Unhandled Msg %8.8x\n", msgbuf[0]);
+		e_err(drv, "Unhandled Msg %8.8x\n", msgbuf[0]);
 		retval = IXGBE_ERR_MBX;
 		break;
 	}
@@ -485,10 +483,90 @@ out:
        return err;
 }
 
+static int ixgbe_link_mbps(int internal_link_speed)
+{
+	switch (internal_link_speed) {
+	case IXGBE_LINK_SPEED_100_FULL:
+		return 100;
+	case IXGBE_LINK_SPEED_1GB_FULL:
+		return 1000;
+	case IXGBE_LINK_SPEED_10GB_FULL:
+		return 10000;
+	default:
+		return 0;
+	}
+}
+
+static void ixgbe_set_vf_rate_limit(struct ixgbe_hw *hw, int vf, int tx_rate,
+				    int link_speed)
+{
+	int rf_dec, rf_int;
+	u32 bcnrc_val;
+
+	if (tx_rate != 0) {
+		/* Calculate the rate factor values to set */
+		rf_int = link_speed / tx_rate;
+		rf_dec = (link_speed - (rf_int * tx_rate));
+		rf_dec = (rf_dec * (1<<IXGBE_RTTBCNRC_RF_INT_SHIFT)) / tx_rate;
+
+		bcnrc_val = IXGBE_RTTBCNRC_RS_ENA;
+		bcnrc_val |= ((rf_int<<IXGBE_RTTBCNRC_RF_INT_SHIFT) &
+		               IXGBE_RTTBCNRC_RF_INT_MASK);
+		bcnrc_val |= (rf_dec & IXGBE_RTTBCNRC_RF_DEC_MASK);
+	} else {
+		bcnrc_val = 0;
+	}
+
+	IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, 2*vf); /* vf Y uses queue 2*Y */
+	IXGBE_WRITE_REG(hw, IXGBE_RTTBCNRC, bcnrc_val);
+}
+
+void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)
+{
+	int actual_link_speed, i;
+	bool reset_rate = false;
+
+	/* VF TX rate limit was not set */
+	if (adapter->vf_rate_link_speed == 0)
+		return;
+
+	actual_link_speed = ixgbe_link_mbps(adapter->link_speed);
+	if (actual_link_speed != adapter->vf_rate_link_speed) {
+		reset_rate = true;
+		adapter->vf_rate_link_speed = 0;
+		dev_info(&adapter->pdev->dev,
+		         "Link speed has been changed. VF Transmit rate "
+		         "is disabled\n");
+	}
+
+	for (i = 0; i < adapter->num_vfs; i++) {
+		if (reset_rate)
+			adapter->vfinfo[i].tx_rate = 0;
+
+		ixgbe_set_vf_rate_limit(&adapter->hw, i,
+					adapter->vfinfo[i].tx_rate,
+					actual_link_speed);
+	}
+}
 
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate)
 {
-	return -EOPNOTSUPP;
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	int actual_link_speed;
+
+	actual_link_speed = ixgbe_link_mbps(adapter->link_speed);
+	if ((vf >= adapter->num_vfs) || (!adapter->link_up) ||
+	    (tx_rate > actual_link_speed) || (actual_link_speed != 10000) ||
+	    ((tx_rate != 0) && (tx_rate <= 10)))
+	    /* rate limit cannot be set to 10Mb or less in 10Gb adapters */
+		return -EINVAL;
+	
+	adapter->vf_rate_link_speed = actual_link_speed;
+	adapter->vfinfo[vf].tx_rate = (u16)tx_rate;
+	ixgbe_set_vf_rate_limit(hw, vf, tx_rate, actual_link_speed);
+
+	return 0;
 }
 
 int ixgbe_ndo_get_vf_config(struct net_device *netdev,
@@ -499,7 +577,7 @@ int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 		return -EINVAL;
 	ivi->vf = vf;
 	memcpy(&ivi->mac, adapter->vfinfo[vf].vf_mac_addresses, ETH_ALEN);
-	ivi->tx_rate = 0;
+	ivi->tx_rate = adapter->vfinfo[vf].tx_rate;
 	ivi->vlan = adapter->vfinfo[vf].pf_vlan;
 	ivi->qos = adapter->vfinfo[vf].pf_qos;
 	return 0;

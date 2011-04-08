@@ -1,7 +1,7 @@
 Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters
 ====================================================================
 
-November 19, 2010
+March 14, 2011
 
 Contents
 ========
@@ -81,7 +81,7 @@ is an Intel(R) Ethernet Server Adapter X520-2, then it only supports Intel
 optics and/or the direct attach cables listed below.
 
 When 82599-based SFP+ devices are connected back to back, they should be set to
-the same Speed setting via Ethtool. Results may vary if you mix speed settings. 
+the same Speed setting via ethtool. Results may vary if you mix speed settings. 
  
 Supplier    Type                                             Part Numbers
 
@@ -107,7 +107,7 @@ Finisar    DUAL RATE 1G/10G SFP+ SR (No Bail)	             FTLX8571D3QCV-IT
 Avago	   DUAL RATE 1G/10G SFP+ SR (No Bail)	             AFBR-703SDZ-IN1	
 Finisar	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             FTLX1471D3QCV-IT
 Avago	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             AFCT-701SDZ-IN1
-Finistar   1000BASE-T SFP                                    FCLF8522P2BTL
+Finisar   1000BASE-T SFP                                    FCLF8522P2BTL
 Avago      1000BASE-T SFP                                    ABCU-5710RZ
 		
 82599-based adapters support all passive and active limiting direct attach 
@@ -116,7 +116,7 @@ cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
 Laser turns off for SFP+ when ifconfig down
 -------------------------------------------
 "ifconfig down" turns off the laser for 82599-based SFP+ fiber adapters.
-"ifconfig up" turns on the later.
+"ifconfig up" turns on the laser.
 
 
 82598-BASED ADAPTERS
@@ -406,7 +406,7 @@ affinity.
 You can verify that the driver is using Flow Director by looking at the counter
 in ethtool: fdir_miss and fdir_match.
 
-Other Ethtool Commands:
+Other ethtool Commands:
 To enable Flow Director
 	ethtool -K ethX ntuple on
 To add a filter
@@ -482,7 +482,7 @@ For example:
 
 NOTE: If both 82598 and 82599-based adapters are installed on the same machine,
 you must be careful in loading the driver with the parameters. Depending on 
-system configuration, number of slots, etc. it’s impossible to predict in all
+system configuration, number of slots, etc. it's impossible to predict in all
 cases where the positions would be on the command line and the user
 will have to specify zero in those positions occupied by an 82598 port.
 
@@ -534,14 +534,14 @@ Additional Configurations
   should help to avoid buffer starvation issues when allocating receive
   packets.
 
-  Ethtool
+  ethtool
   -------
   The driver utilizes the ethtool interface for driver configuration and
   diagnostics, as well as displaying statistical information. The latest 
-  Ethtool version is required for this functionality.
+  ethtool version is required for this functionality.
 
   The latest release of ethtool can be found from
-  http://sourceforge.net/projects/gkernel.
+  http://ftp.kernel.org/pub/software/network/ethtool/.
 
   NAPI
   ----
@@ -581,7 +581,7 @@ Additional Configurations
      make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
 
   You can verify that the driver is using LRO by looking at these counters in 
-  Ethtool:
+  ethtool:
 
   lro_flushed - the total number of receives using LRO.
   lro_aggregated - counts the total number of Ethernet packets that were combined.
@@ -603,7 +603,7 @@ Additional Configurations
      make CFLAGS_EXTRA="-DIXGBE_NO_HW_RSC" install
  
   You can verify that the driver is using HW RSC by looking at the counter in 
-  Ethtool:
+  ethtool:
  
      hw_rsc_count - counts the total number of Ethernet packets that were being
      combined.
@@ -793,7 +793,7 @@ issues download your adapter's user guide and read the Release Notes.
   If this error occurs, moving your adapter to a true x8 slot will resolve the 
   issue.
 
-  Ethtool may incorrectly display SFP+ fiber module as Direct Attached cable
+  ethtool may incorrectly display SFP+ fiber module as Direct Attached cable
   --------------------------------------------------------------------------
   Due to kernel limitations, port type can only be correctly displayed on 
   kernel 2.6.33 or greater.
@@ -827,8 +827,9 @@ issues download your adapter's user guide and read the Release Notes.
   Otherwise the driver can be loaded once and will be safe, but unloading it 
   will lead to the issue.
 
-  Enabling SR-IOV in a 32-bit Microsoft* Windows* Server 2008 Guest OS using
-  Intel (R) 82576-based GbE or Intel (R) 82599-based 10GbE controller under KVM
+  Enabling SR-IOV in a 32-bit or 64-bit Microsoft* Windows* Server 2008/R2 
+  Guest OS using Intel (R) 82576-based GbE or Intel (R) 82599-based 10GbE 
+  controller under KVM
   -----------------------------------------------------------------------------
   KVM Hypervisor/VMM supports direct assignment of a PCIe device to a VM.  This 
   includes traditional PCIe devices, as well as SR-IOV-capable devices using
@@ -836,14 +837,14 @@ issues download your adapter's user guide and read the Release Notes.
 
   While direct assignment of a PCIe device or an SR-IOV Virtual Function (VF)
   to a Linux-based VM running 2.6.32 or later kernel works fine, there is a
-  known issue with Microsoft Windows Server 2008 VM that results in a "yellow 
-  bang" error. This problem is within the KVM VMM itself, not the Intel driver,
-  or the SR-IOV logic of the VMM, but rather that KVM emulates an older CPU 
-  model for the guests, and this older CPU model does not support MSI-X
+  known issue with Microsoft Windows Server 2008/R2 VM that results in a 
+  "yellow bang" error. This problem is within the KVM VMM itself, not the Intel
+  driver, or the SR-IOV logic of the VMM, but rather that KVM emulates an older
+  CPU model for the guests, and this older CPU model does not support MSI-X
   interrupts, which is a requirement for Intel SR-IOV.  
 
   If you wish to use the Intel 82576 or 82599-based controllers in SR-IOV mode
-  with KVM and a Microsoft Windows Server 2008 guest try the following 
+  with KVM and a Microsoft Windows Server 2008/R2 guest try the following 
   workaround. The workaround is to tell KVM to emulate a different model of CPU
   when using qemu to create the KVM guest: 
 
@@ -869,7 +870,7 @@ License
 =======
 
 Intel 10 Gigabit PCI Express Linux driver.
-Copyright(c) 1999 - 2010 Intel Corporation.
+Copyright(c) 1999 - 2011 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,

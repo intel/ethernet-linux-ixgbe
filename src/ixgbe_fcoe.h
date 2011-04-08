@@ -59,6 +59,9 @@
 #define IXGBE_FCERR_NODMA        0x00500000
 #define IXGBE_FCERR_PKTLOST      0x00600000
 
+/* FCoE DDP for target mode */
+#define __IXGBE_FCOE_TARGET	1
+
 struct ixgbe_fcoe_ddp {
 	int len;
 	u32 err;
@@ -71,6 +74,7 @@ struct ixgbe_fcoe_ddp {
 struct ixgbe_fcoe {
 	u8 tc;
 	u8 up;
+	unsigned long mode;
 	atomic_t refcnt;
 	spinlock_t lock;
 	struct pci_pool *pool;

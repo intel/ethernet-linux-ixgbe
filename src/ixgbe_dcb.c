@@ -162,7 +162,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 	             DCB_CREDIT_QUANTUM;
 
 	/* Find smallest link percentage */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
 		p = &dcb_config->tc_config[i].path[direction];
 		bw_percent = dcb_config->bw_percentage[direction][p->bwg_id];
 		link_percentage = p->bwg_percent;
@@ -184,7 +184,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 	min_multiplier = (min_credit / min_percent) + 1;
 
 	/* Find out the link percentage for each TC first */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
 		p = &dcb_config->tc_config[i].path[direction];
 		bw_percent = dcb_config->bw_percentage[direction][p->bwg_id];
 

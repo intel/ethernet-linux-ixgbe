@@ -183,6 +183,7 @@ struct vf_data_storage {
 	bool pf_set_mac;
 	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
 	u16 pf_qos;
+	u16 tx_rate;
 };
 
 #ifndef IXGBE_NO_LRO
@@ -213,6 +214,7 @@ struct ixgbe_lro_desc {
 	u32     tsval;
 	__be32  tsecr;
 	u32     append_cnt;
+	struct  vlan_group *vlgrp;
 };
 
 struct ixgbe_lro_list {
@@ -276,7 +278,7 @@ struct ixgbe_rx_queue_stats {
 	u64 alloc_rx_buff_failed;
 };
 
-enum ixbge_ring_state_t {
+enum ixgbe_ring_state_t {
 	__IXGBE_TX_FDIR_INIT_DONE,
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
@@ -317,6 +319,10 @@ enum ixbge_ring_state_t {
 #define clear_ring_lro_enabled(ring) \
 	clear_bit(__IXGBE_RX_LRO_ENABLED, &(ring)->state)
 #endif /* IXGBE_NO_LRO */
+#define netdev_ring(ring) (ring->netdev)
+#define ring_queue_index(ring) (ring->queue_index)
+
+
 struct ixgbe_ring {
 	struct ixgbe_ring *next;	/* pointer to next ring in q_vector */
 	void *desc;			/* descriptor ring memory */
@@ -643,10 +649,20 @@ struct ixgbe_adapter {
 	bool l2switch_enable;
 	bool l2loopback_enable;
 	struct vf_data_storage *vfinfo;
+	int vf_rate_link_speed;
 	int node;
 	unsigned long fdir_overflow; /* number of times ATR was backed off */
+	struct hlist_head fdir_filter_list;
+	union ixgbe_atr_input fdir_mask;
+	int fdir_filter_count;
 };
 
+struct ixgbe_fdir_filter {
+	struct  hlist_node fdir_node;
+	union ixgbe_atr_input filter;
+	u16 sw_idx;
+	u16 action;
+};
 
 enum ixbge_state_t {
 	__IXGBE_TESTING,
@@ -707,6 +723,8 @@ extern void ixgbe_tx_ctxtdesc(struct ixgbe_ring *, u32, u32, u32, u32);
 extern void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);
 extern void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter,
 				   struct ixgbe_ring *);
+extern void ixgbe_vlan_stripping_enable(struct ixgbe_adapter *adapter);
+extern void ixgbe_vlan_stripping_disable(struct ixgbe_adapter *adapter);
 #ifdef ETHTOOL_OPS_COMPAT
 extern int ethtool_ioctl(struct ifreq *ifr);
 #endif
@@ -725,6 +743,10 @@ extern int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 			  u32 staterr);
 extern int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
                               struct scatterlist *sgl, unsigned int sgc);
+#ifdef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
+extern int ixgbe_fcoe_ddp_target(struct net_device *netdev, u16 xid,
+				 struct scatterlist *sgl, unsigned int sgc);
+#endif /* HAVE_NETDEV_OPS_FCOE_DDP_TARGET */
 extern int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid);
 #ifdef HAVE_NETDEV_OPS_FCOE_ENABLE
 extern int ixgbe_fcoe_enable(struct net_device *netdev);
@@ -741,5 +763,7 @@ extern int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type);
 #endif
 #endif /* IXGBE_FCOE */
 
-
+extern void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring);
+extern int ixgbe_get_settings(struct net_device *netdev,
+			      struct ethtool_cmd *ecmd);
 #endif /* _IXGBE_H_ */
