@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -59,7 +59,7 @@
 #define IXGBE_VT_MSGTYPE_CTS      0x20000000  /* Indicates that VF is still
                                                  clear to send requests */
 #define IXGBE_VT_MSGINFO_SHIFT    16
-/* bits 23:16 are used for exra info for certain messages */
+/* bits 23:16 are used for extra info for certain messages */
 #define IXGBE_VT_MSGINFO_MASK     (0xFF << IXGBE_VT_MSGINFO_SHIFT)
 
 #define IXGBE_VF_RESET            0x01 /* VF requests reset */
@@ -67,6 +67,7 @@
 #define IXGBE_VF_SET_MULTICAST    0x03 /* VF requests PF to set MC addr */
 #define IXGBE_VF_SET_VLAN         0x04 /* VF requests PF to set VLAN */
 #define IXGBE_VF_SET_LPE          0x05 /* VF requests PF to set VMOLR.LPE */
+#define IXGBE_VF_SET_MACVLAN      0x06 /* VF requests PF for unicast filter */
 
 /* length of permanent address message returned from PF */
 #define IXGBE_VF_PERMADDR_MSG_LEN 4
@@ -74,6 +75,7 @@
 #define IXGBE_VF_MC_TYPE_WORD     3
 
 #define IXGBE_PF_CONTROL_MSG      0x0100 /* PF control message */
+
 
 #define IXGBE_VF_MBX_INIT_TIMEOUT 2000 /* number of retries on mailbox */
 #define IXGBE_VF_MBX_INIT_DELAY   500  /* microseconds between retries */

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -68,7 +68,8 @@ static s32 ixgbe_verify_fw_version_82599(struct ixgbe_hw *hw);
 bool ixgbe_verify_lesm_fw_enabled_82599(struct ixgbe_hw *hw);
 static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
 				   u16 offset, u16 *data);
-
+static s32 ixgbe_read_eeprom_buffer_82599(struct ixgbe_hw *hw, u16 offset,
+					  u16 words, u16 *data);
 
 void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 {
@@ -143,10 +144,6 @@ s32 ixgbe_init_phy_ops_82599(struct ixgbe_hw *hw)
 		phy->ops.get_firmware_version =
 		             &ixgbe_get_phy_firmware_version_tnx;
 		break;
-	case ixgbe_phy_aq:
-		phy->ops.get_firmware_version =
-		             &ixgbe_get_phy_firmware_version_generic;
-		break;
 	default:
 		break;
 	}
@@ -172,7 +169,7 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 			goto setup_sfp_out;
 
 		/* PHY config will finish before releasing the semaphore */
-		ret_val = hw->mac.ops.acquire_swfw_sync(hw, 
+		ret_val = hw->mac.ops.acquire_swfw_sync(hw,
 		                                        IXGBE_GSSR_MAC_CSR_SM);
 		if (ret_val != 0) {
 			ret_val = IXGBE_ERR_SWFW_SYNC;
@@ -271,6 +268,7 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	/* Link */
 	mac->ops.get_link_capabilities = &ixgbe_get_link_capabilities_82599;
 	mac->ops.check_link            = &ixgbe_check_mac_link_generic;
+	mac->ops.setup_rxpba = &ixgbe_set_rxpba_generic;
 	ixgbe_init_mac_link_ops_82599(hw);
 
 	mac->mcft_size        = 128;
@@ -281,10 +279,17 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->max_rx_queues    = 128;
 	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_generic(hw);
 
+	mac->arc_subsystem_valid = (IXGBE_READ_REG(hw, IXGBE_FWSM) &
+	                           IXGBE_FWSM_MODE_MASK) ? true : false;
+
 	hw->mbx.ops.init_params = ixgbe_init_mbx_params_pf;
 
 	/* EEPROM */
 	eeprom->ops.read = &ixgbe_read_eeprom_82599;
+	eeprom->ops.read_buffer = &ixgbe_read_eeprom_buffer_82599;
+
+	/* Manageability interface */
+	mac->ops.set_fw_drv_ver = &ixgbe_set_fw_drv_ver_generic;
 
 	return ret_val;
 }
@@ -401,7 +406,6 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	switch (hw->phy.type) {
 	case ixgbe_phy_cu_unknown:
 	case ixgbe_phy_tn:
-	case ixgbe_phy_aq:
 		media_type = ixgbe_media_type_copper;
 		goto out;
 	default:
@@ -421,6 +425,7 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_SFP:
 	case IXGBE_DEV_ID_82599_SFP_FCOE:
 	case IXGBE_DEV_ID_82599_SFP_EM:
+	case IXGBE_DEV_ID_82599_SFP_SF2:
 		media_type = ixgbe_media_type_fiber;
 		break;
 	case IXGBE_DEV_ID_82599_CX4:
@@ -428,6 +433,9 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 		break;
 	case IXGBE_DEV_ID_82599_T3_LOM:
 		media_type = ixgbe_media_type_copper;
+		break;
+	case IXGBE_DEV_ID_82599_LS:
+		media_type = ixgbe_media_type_fiber_lco;
 		break;
 	default:
 		media_type = ixgbe_media_type_unknown;
@@ -952,14 +960,18 @@ static s32 ixgbe_setup_copper_link_82599(struct ixgbe_hw *hw,
  **/
 s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
-	u32 ctrl;
-	u32 i;
-	u32 autoc;
-	u32 autoc2;
+	ixgbe_link_speed link_speed;
+	s32 status;
+	u32 ctrl, i, autoc, autoc2;
+	bool link_up = false;
 
 	/* Call adapter stop to disable tx/rx and clear interrupts */
-	hw->mac.ops.stop_adapter(hw);
+	status = hw->mac.ops.stop_adapter(hw);
+	if (status != 0)
+		goto reset_hw_out;
+
+	/* flush pending Tx transactions */
+	ixgbe_clear_tx_pending(hw);
 
 	/* PHY ops must be identified and initialized prior to reset */
 
@@ -982,47 +994,48 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 	if (hw->phy.reset_disable == false && hw->phy.ops.reset != NULL)
 		hw->phy.ops.reset(hw);
 
-	/*
-	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
-	 * access and verify no pending requests before reset
-	 */
-	ixgbe_disable_pcie_master(hw);
-
 mac_reset_top:
 	/*
-	 * Issue global reset to the MAC.  This needs to be a SW reset.
-	 * If link reset is used, it might reset the MAC when mng is using it
+	 * Issue global reset to the MAC. Needs to be SW reset if link is up.
+	 * If link reset is used when link is up, it might reset the PHY when
+	 * mng is using it.  If link is down or the flag to force full link
+	 * reset is set, then perform link reset.
 	 */
-	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL, (ctrl | IXGBE_CTRL_RST));
+	ctrl = IXGBE_CTRL_LNK_RST;
+	if (!hw->force_full_reset) {
+		hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
+		if (link_up)
+			ctrl = IXGBE_CTRL_RST;
+	}
+
+	ctrl |= IXGBE_READ_REG(hw, IXGBE_CTRL);
+	IXGBE_WRITE_REG(hw, IXGBE_CTRL, ctrl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Poll for reset bit to self-clear indicating reset is complete */
 	for (i = 0; i < 10; i++) {
 		udelay(1);
 		ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-		if (!(ctrl & IXGBE_CTRL_RST))
+		if (!(ctrl & IXGBE_CTRL_RST_MASK))
 			break;
 	}
-	if (ctrl & IXGBE_CTRL_RST) {
+
+	if (ctrl & IXGBE_CTRL_RST_MASK) {
 		status = IXGBE_ERR_RESET_FAILED;
 		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
+	msleep(50);
+
 	/*
 	 * Double resets are required for recovery from certain error
 	 * conditions.  Between resets, it is necessary to stall to allow time
-	 * for any pending HW events to complete.  We use 1usec since that is
-	 * what is needed for ixgbe_disable_pcie_master().  The second reset
-	 * then clears out any effects of those events.
+	 * for any pending HW events to complete.
 	 */
 	if (hw->mac.flags & IXGBE_FLAGS_DOUBLE_RESET_REQUIRED) {
 		hw->mac.flags &= ~IXGBE_FLAGS_DOUBLE_RESET_REQUIRED;
-		udelay(1);
 		goto mac_reset_top;
 	}
-
-	msleep(50);
 
 	/*
 	 * Store the original AUTOC/AUTOC2 values if they have not been
@@ -1156,79 +1169,6 @@ s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_set_fdir_rxpba_82599 - Initialize Flow Director RX packet buffer
- *  @hw: pointer to hardware structure
- *  @pballoc: which mode to allocate filters with
- **/
-static s32 ixgbe_set_fdir_rxpba_82599(struct ixgbe_hw *hw, const u32 pballoc)
-{
-	u32 fdir_pbsize = hw->mac.rx_pb_size << IXGBE_RXPBSIZE_SHIFT;
-	u32 current_rxpbsize = 0;
-	int i;
-
-	/* reserve space for Flow Director filters */
-	switch (pballoc) {
-	case IXGBE_FDIR_PBALLOC_256K:
-		fdir_pbsize -= 256 << IXGBE_RXPBSIZE_SHIFT;
-		break;
-	case IXGBE_FDIR_PBALLOC_128K:
-		fdir_pbsize -= 128 << IXGBE_RXPBSIZE_SHIFT;
-		break;
-	case IXGBE_FDIR_PBALLOC_64K:
-		fdir_pbsize -= 64 << IXGBE_RXPBSIZE_SHIFT;
-		break;
-	case IXGBE_FDIR_PBALLOC_NONE:
-	default:
-		return IXGBE_ERR_PARAM;
-	}
-
-	/* determine current RX packet buffer size */
-	for (i = 0; i < 8; i++)
-		current_rxpbsize += IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
-
-	/* if there is already room for the filters do nothing */
-	if (current_rxpbsize <= fdir_pbsize)
-		return 0;
-
-	if (current_rxpbsize > hw->mac.rx_pb_size) {
-		/*
-		 * if rxpbsize is greater than max then HW max the Rx buffer
-		 * sizes are unconfigured or misconfigured since HW default is
-		 * to give the full buffer to each traffic class resulting in
-		 * the total size being buffer size 8x actual size
-		 *
-		 * This assumes no DCB since the RXPBSIZE registers appear to
-		 * be unconfigured.
-		 */
-		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(0), fdir_pbsize);
-		for (i = 1; i < 8; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
-	} else {
-		/*
-		 * Since the Rx packet buffer appears to have already been
-		 * configured we need to shrink each packet buffer by enough
-		 * to make room for the filters.  As such we take each rxpbsize
-		 * value and multiply it by a fraction representing the size
-		 * needed over the size we currently have.
-		 *
-		 * We need to reduce fdir_pbsize and current_rxpbsize to
-		 * 1/1024 of their original values in order to avoid
-		 * overflowing the u32 being used to store rxpbsize.
-		 */
-		fdir_pbsize >>= IXGBE_RXPBSIZE_SHIFT;
-		current_rxpbsize >>= IXGBE_RXPBSIZE_SHIFT;
-		for (i = 0; i < 8; i++) {
-			u32 rxpbsize = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
-			rxpbsize *= fdir_pbsize;
-			rxpbsize /= current_rxpbsize;
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpbsize);
-		}
-	}
-
-	return 0;
-}
-
-/**
  *  ixgbe_fdir_enable_82599 - Initialize Flow Director control registers
  *  @hw: pointer to hardware structure
  *  @fdirctrl: value to write to flow director control register
@@ -1275,17 +1215,10 @@ static void ixgbe_fdir_enable_82599(struct ixgbe_hw *hw, u32 fdirctrl)
  **/
 s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 fdirctrl)
 {
-	s32 err;
-
-	/* Before enabling Flow Director, verify the Rx Packet Buffer size */
-	err = ixgbe_set_fdir_rxpba_82599(hw, fdirctrl);
-	if (err)
-		return err;
-
 	/*
 	 * Continue setup of fdirctrl register bits:
 	 *  Move the flexible bytes to use the ethertype - shift 6 words
-	 *  Set the maximum length per hash bucket to 0xA filters 
+	 *  Set the maximum length per hash bucket to 0xA filters
 	 *  Send interrupt when 64 filters are left
 	 */
 	fdirctrl |= (0x6 << IXGBE_FDIRCTRL_FLEX_SHIFT) |
@@ -1306,20 +1239,13 @@ s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 fdirctrl)
  **/
 s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 fdirctrl)
 {
-	s32 err;
-
-	/* Before enabling Flow Director, verify the Rx Packet Buffer size */
-	err = ixgbe_set_fdir_rxpba_82599(hw, fdirctrl);
-	if (err)
-		return err;
-
 	/*
 	 * Continue setup of fdirctrl register bits:
 	 *  Turn perfect match filtering on
 	 *  Report hash in RSS field of Rx wb descriptor
 	 *  Initialize the drop queue
 	 *  Move the flexible bytes to use the ethertype - shift 6 words
-	 *  Set the maximum length per hash bucket to 0xA filters 
+	 *  Set the maximum length per hash bucket to 0xA filters
 	 *  Send interrupt when 64 (0x4 * 16) filters are left
 	 */
 	fdirctrl |= IXGBE_FDIRCTRL_PERFECT_MATCH |
@@ -1992,7 +1918,6 @@ u32 ixgbe_get_supported_physical_layer_82599(struct ixgbe_hw *hw)
 
 	switch (hw->phy.type) {
 	case ixgbe_phy_tn:
-	case ixgbe_phy_aq:
 	case ixgbe_phy_cu_unknown:
 		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_EXT_ABILITY,
 		IXGBE_MDIO_PMA_PMD_DEV_TYPE, &ext_ability);
@@ -2222,6 +2147,39 @@ bool ixgbe_verify_lesm_fw_enabled_82599(struct ixgbe_hw *hw)
 
 out:
 	return lesm_enabled;
+}
+
+/**
+ *  ixgbe_read_eeprom_buffer_82599 - Read EEPROM word(s) using
+ *  fastest available method
+ *
+ *  @hw: pointer to hardware structure
+ *  @offset: offset of  word in EEPROM to read
+ *  @words: number of words
+ *  @data: word(s) read from the EEPROM
+ *
+ *  Retrieves 16 bit word(s) read from EEPROM
+ **/
+static s32 ixgbe_read_eeprom_buffer_82599(struct ixgbe_hw *hw, u16 offset,
+					  u16 words, u16 *data)
+{
+	struct ixgbe_eeprom_info *eeprom = &hw->eeprom;
+	s32 ret_val = IXGBE_ERR_CONFIG;
+
+	/*
+	 * If EEPROM is detected and can be addressed using 14 bits,
+	 * use EERD otherwise use bit bang
+	 */
+	if ((eeprom->type == ixgbe_eeprom_spi) &&
+	    (offset + (words - 1) <= IXGBE_EERD_MAX_ADDR))
+		ret_val = ixgbe_read_eerd_buffer_generic(hw, offset, words,
+							 data);
+	else
+		ret_val = ixgbe_read_eeprom_buffer_bit_bang_generic(hw, offset,
+								    words,
+								    data);
+
+	return ret_val;
 }
 
 /**

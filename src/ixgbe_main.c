@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -24,7 +24,6 @@
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
 *******************************************************************************/
-
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -55,6 +54,8 @@
 
 #include "ixgbe.h"
 
+
+#include "ixgbe_dcb_82599.h"
 #include "ixgbe_sriov.h"
 
 char ixgbe_driver_name[] = "ixgbe";
@@ -73,8 +74,8 @@ static const char ixgbe_driver_string[] =
 #define VMDQ_TAG
 
 #define MAJ 3
-#define MIN 3
-#define BUILD 9
+#define MIN 4
+#define BUILD 24
 #define DRV_VERSION __stringify(MAJ) "." __stringify(MIN) "." __stringify(BUILD) DRIVERNAPI DRV_HW_PERF FPGA VMDQ_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -105,6 +106,7 @@ static struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_KR)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP_EM)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP_SF2)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_KX4_MEZZ)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_T3_LOM)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_CX4)},
@@ -112,6 +114,7 @@ static struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP_FCOE)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_COMBO_BACKPLANE)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_X540T)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_LS)},
 	/* required last entry */
 	{0, }
 };
@@ -305,62 +308,6 @@ void ixgbe_unmap_and_free_tx_resource(struct ixgbe_ring *tx_ring,
 	/* tx_buffer_info must be completely set up in the transmit path */
 }
 
-/**
- * ixgbe_dcb_txq_to_tc - convert a register index to a traffic class
- * @adapter: driver private struct
- * @index: queue number to query (0-127)
- *
- * Helper function to determine the traffic class index for a particular
- * register index.
- *
- * Returns : a tc index for use in range 0-7, or 0-3
- */
-u8 ixgbe_dcb_txq_to_tc(struct ixgbe_adapter *adapter, u8 reg_idx)
-{
-	int tc = -1;
-	int dcb_i = adapter->ring_feature[RING_F_DCB].indices;
-
-	/* if DCB is not enabled the queues have no TC */
-	if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
-		return tc;
-
-	/* check valid range */
-	if (reg_idx >= adapter->hw.mac.max_tx_queues)
-		return tc;
-
-	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_82598EB:
-		tc = reg_idx >> 2;
-		break;
-	default:
-		if (dcb_i != 4 && dcb_i != 8)
-			break;
-
-		/* if VMDq is enabled the lowest order bits determine TC */
-		if (adapter->flags & (IXGBE_FLAG_SRIOV_ENABLED |
-				      IXGBE_FLAG_VMDQ_ENABLED)) {
-			tc = reg_idx & (dcb_i - 1);
-			break;
-		}
-
-		/*
-		 * Convert the reg_idx into the correct TC. This bitmask
-		 * targets the last full 32 ring traffic class and assigns
-		 * it a value of 1. From there the rest of the rings are
-		 * based on shifting the mask further up to include the
-		 * reg_idx / 16 and then reg_idx / 8. It assumes dcB_i
-		 * will only ever be 8 or 4 and that reg_idx will never
-		 * be greater then 128. The code without the power of 2
-		 * optimizations would be:
-		 * (((reg_idx % 32) + 32) * dcb_i) >> (9 - reg_idx / 32)
-		 */
-		tc = ((reg_idx & 0X1F) + 0x20) * dcb_i;
-		tc >>= 9 - (reg_idx >> 5);
-	}
-
-	return tc;
-}
-
 static void ixgbe_update_xoff_received(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -407,7 +354,8 @@ static void ixgbe_update_xoff_received(struct ixgbe_adapter *adapter)
 	/* disarm tx queues that have received xoff frames */
 	for (i = 0; i < adapter->num_tx_queues; i++) {
 		struct ixgbe_ring *tx_ring = adapter->tx_ring[i];
-		u8 tc = ixgbe_dcb_txq_to_tc(adapter, tx_ring->reg_idx);
+		u8 tc = tx_ring->dcb_tc;
+
 		if ((tc <= 7) && (xoff[tc]))
 			clear_bit(__IXGBE_HANG_CHECK_ARMED, &tx_ring->state);
 	}
@@ -585,7 +533,6 @@ static int ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 		struct ixgbe_hw *hw = &adapter->hw;
 		u32 head = IXGBE_READ_REG(hw, IXGBE_TDH(tx_ring->reg_idx));
 		u32 tail = IXGBE_READ_REG(hw, IXGBE_TDT(tx_ring->reg_idx));
-		u16 i = tx_ring->next_to_clean;
 		e_err(drv, "Detected Tx Unit Hang\n"
 			"  Tx Queue             <%d>\n"
 			"  TDH, TDT             <%x>, <%x>\n"
@@ -779,6 +726,15 @@ static int __ixgbe_notify_dca(struct device *dev, void *data)
 }
 
 #endif /* CONFIG_DCA or CONFIG_DCA_MODULE */
+
+#ifdef NETIF_F_RXHASH
+static inline void ixgbe_rx_hash(union ixgbe_adv_rx_desc *rx_desc,
+				 struct sk_buff *skb)
+{
+	skb->rxhash = le32_to_cpu(rx_desc->wb.lower.hi_dword.rss);
+}
+#endif /* NETIF_F_RXHASH */
+
 static inline void ixgbe_release_rx_desc(struct ixgbe_ring *rx_ring, u32 val)
 {
 	rx_ring->next_to_use = val;
@@ -1022,15 +978,11 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 #ifdef CONFIG_IXGBE_NAPI
 		if (!(adapter->flags & IXGBE_FLAG_IN_NETPOLL)) {
 #ifdef NETIF_F_HW_VLAN_TX
-			if (vlan_tag & VLAN_VID_MASK) {
-				if (vlgrp)
-					vlan_gro_receive(&q_vector->napi,
-							 vlgrp, vlan_tag, skb);
-				else
-					dev_kfree_skb_any(skb);
-			} else {
+			if (vlgrp && (vlan_tag & VLAN_VID_MASK))
+				vlan_gro_receive(&q_vector->napi,
+						 vlgrp, vlan_tag, skb);
+			else
 				napi_gro_receive(&q_vector->napi, skb);
-			}
 #else
 			napi_gro_receive(&q_vector->napi, skb);
 #endif
@@ -1041,15 +993,11 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 			/* bypass unused variable warnings */
 			ret = ret;
 #ifdef NETIF_F_HW_VLAN_TX
-			if (vlan_tag & VLAN_VID_MASK) {
-				if (vlgrp)
-					ret = vlan_hwaccel_rx(skb, vlgrp,
-					                      vlan_tag);
-				else
-					dev_kfree_skb_any(skb);
-			} else {
+			if (vlgrp && (vlan_tag & VLAN_VID_MASK))
+				ret = vlan_hwaccel_rx(skb, vlgrp,
+				                      vlan_tag);
+			else
 				ret = netif_rx(skb);
-			}
 #else
 			ret = netif_rx(skb);
 #endif
@@ -1684,6 +1632,10 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 #endif /* CONFIG_PCI_IOV */
 		ixgbe_rx_status_indication(staterr, adapter);
 		ixgbe_rx_checksum(adapter, rx_desc, skb, staterr);
+#ifdef NETIF_F_RXHASH
+		if (adapter->netdev->features & NETIF_F_RXHASH)
+			ixgbe_rx_hash(rx_desc, skb);
+#endif /* NETIF_F_RXHASH */
 
 		/* probably a little skewed due to removing CRC */
 		total_rx_bytes += skb->len;
@@ -1927,7 +1879,7 @@ void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector)
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 		/*
-		 * 82599 can support a value of zero, so allow it for
+		 * 82599 and X540 can support a value of zero, so allow it for
 		 * max interrupt rate, but there is an errata where it can
 		 * not be zero with RSC
 		 */
@@ -2276,7 +2228,6 @@ static int ixgbe_poll(struct napi_struct *napi, int budget)
 	struct ixgbe_adapter *adapter = q_vector->adapter;
 	struct ixgbe_ring *ring;
 	int per_ring_budget;
-	int total_work = 0;
 	bool clean_complete = true;
 
 	if (adapter->flags & IXGBE_FLAG_DCA_ENABLED)
@@ -2296,25 +2247,23 @@ static int ixgbe_poll(struct napi_struct *napi, int budget)
 		clean_complete &= !!ixgbe_clean_rx_irq(q_vector, ring,
 						       per_ring_budget);
 
-	if (!clean_complete)
-		total_work = budget;
-
 #ifndef HAVE_NETDEV_NAPI_LIST
 	if (!netif_running(adapter->netdev))
-		total_work = 0;
+		clean_complete = true;
 
 #endif
-	/* If all Rx work done, exit the polling mode */
-	if (total_work < budget) {
+	/* If all work done, exit the polling mode */
+	if (clean_complete) {
 		napi_complete(napi);
 		if (adapter->rx_itr_setting & 1)
 			ixgbe_set_itr(q_vector);
 		if (!test_bit(__IXGBE_DOWN, &adapter->state))
 			ixgbe_irq_enable_queues(adapter,
 						((u64)1 << q_vector->v_idx));
+		return 0;
 	}
 
-	return total_work;
+	return budget;
 }
 #endif /* CONFIG_IXGBE_NAPI */
 
@@ -2827,6 +2776,8 @@ static void ixgbe_setup_mtqc(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 rttdcs;
 	u32 mask;
+	u32 reg;
+	u8 tcs = netdev_get_num_tc(adapter->netdev);
 
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		return;
@@ -2841,8 +2792,8 @@ static void ixgbe_setup_mtqc(struct ixgbe_adapter *adapter)
 	mask |= IXGBE_FLAG_DCB_ENABLED;
 	switch (adapter->flags & mask) {
 
-	case (IXGBE_FLAG_VMDQ_ENABLED):
-	case (IXGBE_FLAG_SRIOV_ENABLED):
+	case IXGBE_FLAG_VMDQ_ENABLED:
+	case IXGBE_FLAG_SRIOV_ENABLED:
 	case (IXGBE_FLAG_SRIOV_ENABLED | IXGBE_FLAG_VMDQ_ENABLED):
 		IXGBE_WRITE_REG(hw, IXGBE_MTQC,
 				(IXGBE_MTQC_VT_ENA | IXGBE_MTQC_64VF));
@@ -2857,11 +2808,23 @@ static void ixgbe_setup_mtqc(struct ixgbe_adapter *adapter)
 					| IXGBE_MTQC_4TC_4TQ));
 		break;
 
-	case (IXGBE_FLAG_DCB_ENABLED):
-		IXGBE_WRITE_REG(hw, IXGBE_MTQC,
-				IXGBE_MTQC_RT_ENA | IXGBE_MTQC_8TC_8TQ);
-		break;
+	case IXGBE_FLAG_DCB_ENABLED:
+		if (!tcs)
+			reg = IXGBE_MTQC_64Q_1PB;
+		else if (tcs <= 4)
+			reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_4TC_4TQ;
+		else
+			reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_8TC_8TQ;
 
+		IXGBE_WRITE_REG(hw, IXGBE_MTQC, reg);
+
+		/* Enable Security TX Buffer IFG for multiple pb */
+		if (tcs) {
+			reg = IXGBE_READ_REG(hw, IXGBE_SECTXMINIFG);
+			reg |= IXGBE_SECTX_DCB;
+			IXGBE_WRITE_REG(hw, IXGBE_SECTXMINIFG, reg);
+		}
+		break;
 	default:
 		IXGBE_WRITE_REG(hw, IXGBE_MTQC, IXGBE_MTQC_64Q_1PB);
 		break;
@@ -2905,7 +2868,7 @@ static void ixgbe_configure_tx(struct ixgbe_adapter *adapter)
 		ixgbe_configure_tx_ring(adapter, adapter->tx_ring[i]);
 }
 
-#define IXGBE_SRRCTL_BSIZEHDRSIZE_SHIFT	2
+#define IXGBE_SRRCTL_BSIZEHDRSIZE_SHIFT 2
 
 static void ixgbe_configure_srrctl(struct ixgbe_adapter *adapter,
 				   struct ixgbe_ring *rx_ring)
@@ -2976,7 +2939,14 @@ static void ixgbe_setup_mrqc(struct ixgbe_adapter *adapter)
 	u32 mrqc = 0, reta = 0;
 	u32 rxcsum;
 	int i, j;
+	int maxq = adapter->ring_feature[RING_F_RSS].indices;
 	int mask;
+	u8 tcs = netdev_get_num_tc(adapter->netdev);
+
+#ifdef HAVE_MQPRIO
+	if (tcs)
+		maxq = min(maxq, adapter->num_tx_queues / tcs);
+#endif
 
 	/* Fill out hash function seeds */
 	for (i = 0; i < 10; i++)
@@ -2984,7 +2954,7 @@ static void ixgbe_setup_mrqc(struct ixgbe_adapter *adapter)
 
 	/* Fill out redirection table */
 	for (i = 0, j = 0; i < 128; i++, j++) {
-		if (j == adapter->ring_feature[RING_F_RSS].indices)
+		if (j == maxq)
 			j = 0;
 		/* reta = 4-byte sliding window of
 		 * 0x00..(indices-1)(indices-1)00..etc. */
@@ -2998,14 +2968,11 @@ static void ixgbe_setup_mrqc(struct ixgbe_adapter *adapter)
 	rxcsum |= IXGBE_RXCSUM_PCSD;
 	IXGBE_WRITE_REG(hw, IXGBE_RXCSUM, rxcsum);
 
-	if (adapter->hw.mac.type == ixgbe_mac_82598EB)
-		mask = adapter->flags & IXGBE_FLAG_RSS_ENABLED;
-	else
-		mask = adapter->flags & (IXGBE_FLAG_RSS_ENABLED
-					 | IXGBE_FLAG_DCB_ENABLED
-					 | IXGBE_FLAG_VMDQ_ENABLED
-					 | IXGBE_FLAG_SRIOV_ENABLED
-					);
+	mask = adapter->flags & (IXGBE_FLAG_RSS_ENABLED
+				 | IXGBE_FLAG_DCB_ENABLED
+				 | IXGBE_FLAG_VMDQ_ENABLED
+				 | IXGBE_FLAG_SRIOV_ENABLED
+				);
 
 	switch (mask) {
 	case (IXGBE_FLAG_RSS_ENABLED):
@@ -3027,9 +2994,21 @@ static void ixgbe_setup_mrqc(struct ixgbe_adapter *adapter)
 			mrqc = IXGBE_MRQC_VMDQEN;
 		break;
 	case (IXGBE_FLAG_DCB_ENABLED | IXGBE_FLAG_VMDQ_ENABLED):
+	case (IXGBE_FLAG_DCB_ENABLED | IXGBE_FLAG_SRIOV_ENABLED):
 	case (IXGBE_FLAG_DCB_ENABLED | IXGBE_FLAG_VMDQ_ENABLED
-				| IXGBE_FLAG_SRIOV_ENABLED):
-		mrqc = IXGBE_MRQC_VMDQRT4TCEN;	/* 4 TCs */
+				     | IXGBE_FLAG_SRIOV_ENABLED):
+		if (tcs <= 4)
+			mrqc = IXGBE_MRQC_VMDQRT4TCEN;	/* 4 TCs */
+		else
+			mrqc = IXGBE_MRQC_VMDQRT8TCEN;	/* 8 TCs */
+		break;
+	case (IXGBE_FLAG_RSS_ENABLED | IXGBE_FLAG_DCB_ENABLED):
+		if (!tcs)
+			mrqc = IXGBE_MRQC_RSSEN;
+		else if (tcs <= 4)
+			mrqc = IXGBE_MRQC_RTRSS4TCEN;
+		else
+			mrqc = IXGBE_MRQC_RTRSS8TCEN;
 		break;
 	case (IXGBE_FLAG_DCB_ENABLED):
 		mrqc = IXGBE_MRQC_RT8TCEN;
@@ -3044,7 +3023,12 @@ static void ixgbe_setup_mrqc(struct ixgbe_adapter *adapter)
 	      | IXGBE_MRQC_RSS_FIELD_IPV6
 	      | IXGBE_MRQC_RSS_FIELD_IPV6_TCP;
 
-	      IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
+	if (adapter->flags2 & IXGBE_FLAG2_RSS_FIELD_IPV4_UDP)
+		mrqc |= IXGBE_MRQC_RSS_FIELD_IPV4_UDP;
+	if (adapter->flags2 & IXGBE_FLAG2_RSS_FIELD_IPV6_UDP)
+		mrqc |= IXGBE_MRQC_RSS_FIELD_IPV6_UDP;
+
+	IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
 }
 
 /**
@@ -3067,8 +3051,8 @@ void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter,
 	rscctrl = IXGBE_READ_REG(hw, IXGBE_RSCCTL(reg_idx));
 	rscctrl |= IXGBE_RSCCTL_RSCEN;
 	/*
-	 * we must limit the number of descriptors so that
-	 * the total size of max desc * buf_len is not greater
+	 * we must limit the number of descriptors so that the
+	 * total size of max desc * buf_len is not greater
 	 * than 65535
 	 */
 	if (ring_is_ps_enabled(ring)) {
@@ -3089,7 +3073,6 @@ void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter,
 		else
 			rscctrl |= IXGBE_RSCCTL_MAXDESC_4;
 	}
-
 	IXGBE_WRITE_REG(hw, IXGBE_RSCCTL(reg_idx), rscctrl);
 }
 
@@ -3290,12 +3273,12 @@ static void ixgbe_configure_virtualization(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 		vt_reg = IXGBE_VT_CTL;
-		vt_reg_bits = IXGBE_VMD_CTL_VMDQ_EN
-				| IXGBE_VT_CTL_REPLEN;
+		vt_reg_bits = IXGBE_VMD_CTL_VMDQ_EN;
 		if (adapter->num_vfs) {
 			vt_reg_bits &= ~IXGBE_VT_CTL_POOL_MASK;
 			vt_reg_bits |= (adapter->num_vfs <<
 					IXGBE_VT_CTL_POOL_SHIFT);
+			vt_reg_bits |= IXGBE_VT_CTL_REPLEN;
 		}
 		vmdctl = IXGBE_READ_REG(hw, vt_reg);
 		IXGBE_WRITE_REG(hw, vt_reg, vmdctl | vt_reg_bits);
@@ -3337,12 +3320,14 @@ static void ixgbe_configure_virtualization(struct ixgbe_adapter *adapter)
 	IXGBE_WRITE_REG(hw, IXGBE_GCR_EXT, gcr_ext);
 
 	/* enable Tx loopback for VF/PF communication */
-	if (adapter->l2loopback_enable)
+	if (adapter->l2loopback_enable) 
 		IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LBEN);
 	else
 		IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, 0);	
 
-	hw->mac.ops.set_mac_anti_spoofing(hw, (adapter->num_vfs != 0),
+	hw->mac.ops.set_mac_anti_spoofing(hw,
+					  (adapter->antispoofing_enabled =
+					   (adapter->num_vfs != 0)),
 					  adapter->num_vfs);
 }
 
@@ -3702,14 +3687,13 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 {
 	ixgbe_vlan_rx_register(adapter->netdev, adapter->vlgrp);
 
-#ifndef HAVE_8021P_SUPPORT
 	/*
 	 * add vlan ID 0 and enable vlan tag stripping so we
 	 * always accept priority-tagged traffic
 	 */
 	ixgbe_vlan_rx_add_vid(adapter->netdev, 0);
+#ifndef HAVE_8021P_SUPPORT
 	ixgbe_vlan_stripping_enable(adapter);
-
 #endif
 	if (adapter->vlgrp) {
 		u16 vid;
@@ -3762,7 +3746,7 @@ static u8 *ixgbe_addr_list_itr(struct ixgbe_hw *hw, u8 **mc_addr_ptr, u32 *vmdq)
  *                0 on no addresses written
  *                X on writing X addresses to MTA
  **/
-static int ixgbe_write_mc_addr_list(struct net_device *netdev)
+int ixgbe_write_mc_addr_list(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -3770,27 +3754,35 @@ static int ixgbe_write_mc_addr_list(struct net_device *netdev)
 	struct netdev_hw_addr *ha;
 #endif
 	u8  *addr_list = NULL;
-	int addr_count;
-
-	if (netdev_mc_empty(netdev)) {
-		/* nothing to program, so clear mc list */
-		hw->mac.ops.update_mc_addr_list(hw, NULL, 0, ixgbe_addr_list_itr);
-		return 0;
-	}
+	int addr_count = 0;
 
 	if (!hw->mac.ops.update_mc_addr_list)
 		return -ENOMEM;
 
+	if (!netif_running(netdev))
+		return 0;
+
+
+	hw->mac.ops.update_mc_addr_list(hw, NULL, 0, 
+					ixgbe_addr_list_itr, true);
+
+	if (!netdev_mc_empty(netdev)) {
 #ifdef NETDEV_HW_ADDR_T_MULTICAST
-	ha = list_first_entry(&netdev->mc.list, struct netdev_hw_addr, list);
-	addr_list = ha->addr;
+		ha = list_first_entry(&netdev->mc.list, 
+				      struct netdev_hw_addr, list);
+		addr_list = ha->addr;
 #else
-	addr_list = netdev->mc_list->dmi_addr;
+		addr_list = netdev->mc_list->dmi_addr;
 #endif
-	addr_count = netdev_mc_count(netdev);
+		addr_count = netdev_mc_count(netdev);
 
-	hw->mac.ops.update_mc_addr_list(hw, addr_list, addr_count, ixgbe_addr_list_itr);
+		hw->mac.ops.update_mc_addr_list(hw, addr_list, addr_count,
+						ixgbe_addr_list_itr, false);
+	}
 
+#ifdef CONFIG_PCI_IOV
+	ixgbe_restore_vf_multicasts(adapter);
+#endif
 	return addr_count;
 }
 
@@ -3809,7 +3801,7 @@ static int ixgbe_write_uc_addr_list(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 	unsigned int vfn = adapter->num_vfs;
-	unsigned int rar_entries = hw->mac.num_rar_entries - (vfn + 1);
+	unsigned int rar_entries = IXGBE_MAX_PF_MACVLANS;
 	int count = 0;
 
 	/* return ENOMEM indicating insufficient memory for addresses */
@@ -3918,11 +3910,6 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 #endif
 	}
 
-#ifdef CONFIG_PCI_IOV
-	if (adapter->num_vfs)
-		ixgbe_restore_vf_multicasts(adapter);
-
-#endif
 	if (hw->mac.type != ixgbe_mac_82598EB) {
 		vmolr |= IXGBE_READ_REG(hw, IXGBE_VMOLR(adapter->num_vfs)) &
 			 ~(IXGBE_VMOLR_MPE | IXGBE_VMOLR_ROMPE |
@@ -3982,12 +3969,8 @@ static void ixgbe_napi_disable_all(struct ixgbe_adapter *adapter)
 static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	u32 max_frame = adapter->netdev->mtu + ETH_HLEN + ETH_FCS_LEN;
 
-	if (adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)
-		adapter->dcb_cfg.fdir_pballoc = adapter->fdir_pballoc;
-	else
-		adapter->dcb_cfg.fdir_pballoc = 0;
+	u32 max_frame = adapter->netdev->mtu + ETH_HLEN + ETH_FCS_LEN;
 
 	if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED)) {
 		if (hw->mac.type == ixgbe_mac_82598EB)
@@ -4004,7 +3987,7 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 				  IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif
 
-	adapter->dcb_cfg.num_tcs.pg_tcs = adapter->ring_feature[RING_F_DCB].indices;
+	adapter->dcb_cfg.num_tcs.pg_tcs = MAX_TRAFFIC_CLASS;
 	ixgbe_dcb_calculate_tc_credits(hw, &adapter->dcb_cfg, max_frame,
 				       DCB_TX_CONFIG);
 	ixgbe_dcb_calculate_tc_credits(hw, &adapter->dcb_cfg, max_frame,
@@ -4147,15 +4130,31 @@ static void ixgbe_fdir_filter_restore(struct ixgbe_adapter *adapter)
 	hlist_for_each_entry_safe(filter, node, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
 		ixgbe_fdir_write_perfect_filter_82599(hw,
-						      &filter->filter,
-						      filter->sw_idx,
-						      filter->action);
+				&filter->filter, filter->sw_idx,
+				(filter->action == IXGBE_FDIR_DROP_QUEUE) ?
+				IXGBE_FDIR_DROP_QUEUE :
+				adapter->rx_ring[filter->action]->reg_idx);
 	}
 
 	spin_unlock(&adapter->fdir_perfect_lock);
 }
 
 #endif /* NETIF_F_NTUPLE */
+
+static void ixgbe_configure_pb(struct ixgbe_adapter *adapter)
+{
+	int headroom = 0;
+	struct ixgbe_hw *hw = &adapter->hw;
+	u8 tc = netdev_get_num_tc(adapter->netdev);
+
+	if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE ||
+	    adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)
+		headroom = 32 << adapter->fdir_pballoc;
+
+	hw->mac.ops.setup_rxpba(&adapter->hw, tc, headroom, PBA_STRATEGY_EQUAL);
+}
+
+
 static void ixgbe_configure(struct ixgbe_adapter *adapter)
 {
 	ixgbe_set_rx_mode(adapter->netdev);
@@ -4164,6 +4163,7 @@ static void ixgbe_configure(struct ixgbe_adapter *adapter)
 	ixgbe_restore_vlan(adapter);
 #endif
 	ixgbe_configure_dcb(adapter);
+	ixgbe_configure_pb(adapter);
 
 #ifdef IXGBE_FCOE
 	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
@@ -4345,9 +4345,10 @@ static void ixgbe_setup_gpie(struct ixgbe_adapter *adapter)
 	if (adapter->flags & IXGBE_FLAG_FAN_FAIL_CAPABLE)
 		gpie |= IXGBE_SDP1_GPIEN;
 
-	if (hw->mac.type == ixgbe_mac_82599EB)
+	if (hw->mac.type == ixgbe_mac_82599EB) {
 		gpie |= IXGBE_SDP1_GPIEN;
 		gpie |= IXGBE_SDP2_GPIEN;
+	}
 
 	IXGBE_WRITE_REG(hw, IXGBE_GPIE, gpie);
 }
@@ -4688,7 +4689,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	/* disable transmits in the hardware now that interrupts are off */
 	for (i = 0; i < adapter->num_tx_queues; i++) {
 		u8 reg_idx = adapter->tx_ring[i]->reg_idx;
-		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(reg_idx), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(reg_idx), IXGBE_TXDCTL_SWFLSH);
 	}
 
 	/* Disable the Tx DMA engine on 82599 and X540 */
@@ -4721,6 +4722,9 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 }
 
 
+/* Artificial max queue cap per traffic class in DCB mode */
+#define DCB_QUEUE_CAP 8
+
 /**
  * ixgbe_set_dcb_queues: Allocate queues for a DCB-enabled device
  * @adapter: board private structure to initialize
@@ -4732,23 +4736,72 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
  **/
 static inline bool ixgbe_set_dcb_queues(struct ixgbe_adapter *adapter)
 {
-	bool ret = false;
-	struct ixgbe_ring_feature *f = &adapter->ring_feature[RING_F_DCB];
+	int tcs;
+#ifdef HAVE_MQPRIO
+	int per_tc_q, q, i, offset = 0;
+	struct net_device *dev = adapter->netdev;	
 
-	if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
-		return ret;
+	/* Map queue offset and counts onto allocated tx queues */
+	tcs = netdev_get_num_tc(dev);
 
-#ifdef HAVE_TX_MQ
-	f->mask = 0x7 << 3;
-	adapter->num_rx_queues = f->indices;
-	adapter->num_tx_queues = f->indices;
-	ret = true;
+	if (!tcs)
+		return false;
+
+	per_tc_q = min(dev->num_tx_queues / tcs, (unsigned int)DCB_QUEUE_CAP);
+	q = min((int)num_online_cpus(), per_tc_q);
+
+	for (i = 0; i < tcs; i++) {
+		netdev_set_prio_tc_map(dev, i, i);
+		netdev_set_tc_queue(dev, i, q, offset);
+		offset += q;
+	}
+
+	adapter->num_tx_queues = q * tcs;
+	adapter->num_rx_queues = q * tcs;
+
+#ifdef IXGBE_FCOE
+	/* FCoE enabled queues require special configuration indexed
+	 * by feature specific indices and mask. Here we map FCoE
+	 * indices onto the DCB queue pairs allowing FCoE to own
+	 * configuration later.
+	 */
+
+	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED) {
+		int tc;
+		struct ixgbe_ring_feature *fcoe =
+					&adapter->ring_feature[RING_F_FCOE];
+
+		tc = netdev_get_prio_tc_map(dev, adapter->fcoe.up);
+		fcoe->indices = dev->tc_to_txq[tc].count;
+		fcoe->mask = dev->tc_to_txq[tc].offset;
+	}
+#endif /* IXGBE_FCOE */
 #else
-	f->mask = 0;
-	f->indices = 0;
-#endif
+	if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		return false;
 
-	return ret;
+	/* Enable one Queue per traffic class */
+	tcs = adapter->tc;
+	if (!tcs)
+		return false;
+
+	adapter->num_rx_queues = tcs;
+	adapter->num_tx_queues = tcs;
+
+#ifdef IXGBE_FCOE
+	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED) {
+		struct ixgbe_ring_feature *fcoe =
+				&adapter->ring_feature[RING_F_FCOE];
+
+		fcoe->mask = tcs;
+		fcoe->indices = min((int)num_online_cpus(), fcoe->indices);
+		adapter->num_rx_queues += fcoe->indices;
+		adapter->num_tx_queues += fcoe->indices;
+	}
+#endif /* IXGBE_FCOE */
+#endif /* HAVE_MQ */
+
+	return true;
 }
 
 /**
@@ -4973,13 +5026,15 @@ static void ixgbe_set_num_queues(struct ixgbe_adapter *adapter)
 	if (ixgbe_set_vmdq_queues(adapter))
 		return;
 
+
+	if (ixgbe_set_dcb_queues(adapter))
+		return;
+
 #ifdef IXGBE_FCOE
 	if (ixgbe_set_fcoe_queues(adapter))
 		return;
 
 #endif /* IXGBE_FCOE */
-	if (ixgbe_set_dcb_queues(adapter))
-		return;
 
 	if (ixgbe_set_fdir_queues(adapter))
 		return;
@@ -5060,6 +5115,60 @@ static inline bool ixgbe_cache_ring_rss(struct ixgbe_adapter *adapter)
 	return true;
 }
 
+/* ixgbe_get_first_reg_idx - Return first register index associated with ring */
+static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
+				    unsigned int *tx, unsigned int *rx)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct net_device *dev = adapter->netdev;
+	u8 num_tcs = netdev_get_num_tc(dev);
+
+	*tx = 0;
+	*rx = 0;
+
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
+		*tx = tc << 2;
+		*rx = tc << 3;
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		if (num_tcs == 8) {
+			if (tc < 3) {
+				*tx = tc << 5;
+				*rx = tc << 4;
+			} else if (tc <  5) {
+				*tx = ((tc + 2) << 4);
+				*rx = tc << 4;
+			} else if (tc < num_tcs) {
+				*tx = ((tc + 8) << 3);
+				*rx = tc << 4;
+			}
+		} else if (num_tcs == 4) {
+			*rx =  tc << 5;
+			switch (tc) {
+			case 0:
+				*tx =  0;
+				break;
+			case 1:
+				*tx = 64;
+				break;
+			case 2:
+				*tx = 96;
+				break;
+			case 3:
+				*tx = 112;
+				break;
+			default:
+				break;
+			}
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 /**
  * ixgbe_cache_ring_dcb - Descriptor ring to register mapping for DCB
  * @adapter: board private structure to initialize
@@ -5069,72 +5178,31 @@ static inline bool ixgbe_cache_ring_rss(struct ixgbe_adapter *adapter)
  **/
 static inline bool ixgbe_cache_ring_dcb(struct ixgbe_adapter *adapter)
 {
-	int i;
-	bool ret = false;
-	int dcb_i = adapter->ring_feature[RING_F_DCB].indices;
+	int i, j, k;
+	struct net_device *dev = adapter->netdev;
+	u8 num_tcs = netdev_get_num_tc(dev);
 
-	if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+	if (!num_tcs)
 		return false;
 
-	/* the number of queues is assumed to be symmetric */
-	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_82598EB:
-		for (i = 0; i < dcb_i; i++) {
-			adapter->rx_ring[i]->reg_idx = i << 3;
-			adapter->tx_ring[i]->reg_idx = i << 2;
+	for (i = 0, k = 0; i < num_tcs; i++) {
+		unsigned int tx_s, rx_s;
+#ifdef HAVE_MQPRIO
+		u16 count = dev->tc_to_txq[i].count;
+#else
+		u16 count = 1;
+#endif
+
+		ixgbe_get_first_reg_idx(adapter, i, &tx_s, &rx_s);
+		for (j = 0; j < count; j++, k++) {
+			adapter->tx_ring[k]->reg_idx = tx_s + j;
+			adapter->rx_ring[k]->reg_idx = rx_s + j;
+			adapter->tx_ring[k]->dcb_tc = i;
+			adapter->rx_ring[k]->dcb_tc = i;
 		}
-		ret = true;
-		break;
-	case ixgbe_mac_82599EB:
-	case ixgbe_mac_X540:
-		if (dcb_i == 8) {
-			/*
-			 * Tx TC0 starts at: descriptor queue 0
-			 * Tx TC1 starts at: descriptor queue 32
-			 * Tx TC2 starts at: descriptor queue 64
-			 * Tx TC3 starts at: descriptor queue 80
-			 * Tx TC4 starts at: descriptor queue 96
-			 * Tx TC5 starts at: descriptor queue 104
-			 * Tx TC6 starts at: descriptor queue 112
-			 * Tx TC7 starts at: descriptor queue 120
-			 *
-			 * Rx TC0-TC7 are offset by 16 queues each
-			 */
-			for (i = 0; i < 3; i++) {
-				adapter->tx_ring[i]->reg_idx = i << 5;
-				adapter->rx_ring[i]->reg_idx = i << 4;
-			}
-			for ( ; i < 5; i++) {
-				adapter->tx_ring[i]->reg_idx = ((i + 2) << 4);
-				adapter->rx_ring[i]->reg_idx = i << 4;
-			}
-			for ( ; i < dcb_i; i++) {
-				adapter->tx_ring[i]->reg_idx = ((i + 8) << 3);
-				adapter->rx_ring[i]->reg_idx = i << 4;
-			}
-			ret = true;
-		} else if (dcb_i == 4) {
-			/*
-			 * Tx TC0 starts at: descriptor queue 0
-			 * Tx TC1 starts at: descriptor queue 64
-			 * Tx TC2 starts at: descriptor queue 96
-			 * Tx TC3 starts at: descriptor queue 112
-			 *
-			 * Rx TC0-TC3 are offset by 32 queues each
-			 */
-			adapter->tx_ring[0]->reg_idx = 0;
-			adapter->tx_ring[1]->reg_idx = 64;
-			adapter->tx_ring[2]->reg_idx = 96;
-			adapter->tx_ring[3]->reg_idx = 112;
-			for (i = 0 ; i < dcb_i; i++)
-				adapter->rx_ring[i]->reg_idx = i << 5;
-			ret = true;
-		}
-		break;
-	default:
-		break;
 	}
-	return ret;
+
+	return true;
 }
 
 /**
@@ -5142,8 +5210,8 @@ static inline bool ixgbe_cache_ring_dcb(struct ixgbe_adapter *adapter)
  * @adapter: board private structure to initialize
  *
  * Cache the descriptor ring offsets for VMDq to the assigned rings.  It
- * will also try to cache the proper offsets if RSS is enabled along with
- * VMDq.
+ * will also try to cache the proper offsets if RSS/DCB/CNA/NPA are all 
+ * enabled along with VMDq.
  *
  **/
 static inline bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
@@ -5153,6 +5221,8 @@ static inline bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
 #ifdef IXGBE_FCOE
 	struct ixgbe_ring_feature *f = &adapter->ring_feature[RING_F_FCOE];
 #endif /* IXGBE_FCOE */
+	u8 tc = netdev_get_num_tc(adapter->netdev);
+
 	switch (adapter->flags & (IXGBE_FLAG_RSS_ENABLED
 				   | IXGBE_FLAG_DCB_ENABLED
 				   | IXGBE_FLAG_VMDQ_ENABLED)) {
@@ -5178,21 +5248,18 @@ static inline bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
 		break;
 
 	case (IXGBE_FLAG_VMDQ_ENABLED | IXGBE_FLAG_DCB_ENABLED):
-		if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82599EB:
+		case ixgbe_mac_X540:
 			for (i = 0; i < adapter->num_rx_queues; i++) {
-				adapter->rx_ring[i]->reg_idx =
-					(adapter->num_vfs + i) *
-					 adapter->ring_feature[RING_F_DCB].indices;
+				adapter->rx_ring[i]->reg_idx = VMDQ_P(i) * tc;
 #ifdef IXGBE_FCOE
 				if (i >= adapter->num_rx_queues - f->indices)
-					adapter->rx_ring[i]->reg_idx +=
-						adapter->fcoe.tc;
+					adapter->rx_ring[i]->reg_idx += tc;
 #endif /* IXGBE_FCOE */
 			}
 			for (i = 0; i < adapter->num_tx_queues; i++) {
-				adapter->tx_ring[i]->reg_idx =
-					(adapter->num_vfs + i) *
-					 adapter->ring_feature[RING_F_DCB].indices;
+				adapter->tx_ring[i]->reg_idx = VMDQ_P(i) * tc;
 #ifdef IXGBE_FCOE
 				if (i >= adapter->num_tx_queues - f->indices)
 					adapter->tx_ring[i]->reg_idx +=
@@ -5200,6 +5267,9 @@ static inline bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
 #endif /* IXGBE_FCOE */
 			}
 			ret = true;
+			break;
+		default:
+			break;
 		}
 		break;
 
@@ -5347,10 +5417,10 @@ static void ixgbe_cache_ring_register(struct ixgbe_adapter *adapter)
 	adapter->rx_ring[0]->reg_idx = 0;
 	adapter->tx_ring[0]->reg_idx = 0;
 
-	if (ixgbe_cache_ring_sriov(adapter))
+	if (ixgbe_cache_ring_vmdq(adapter))
 		return;
 
-	if (ixgbe_cache_ring_vmdq(adapter))
+	if (ixgbe_cache_ring_sriov(adapter))
 		return;
 
 #ifdef IXGBE_FCOE
@@ -5843,22 +5913,24 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 			adapter->flags |= IXGBE_FLAG_SRIOV_CAPABLE;
 		if (hw->device_id == IXGBE_DEV_ID_82599_T3_LOM)
 			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_CAPABLE;
-#ifdef NETIF_F_NTUPLE
-		/* n-tuple support exists, always init our spinlock */
-		spin_lock_init(&adapter->fdir_perfect_lock);
-#endif /* NETIF_F_NTUPLE */
 		adapter->max_msix_q_vectors = IXGBE_MAX_MSIX_Q_VECTORS_82599;
 		break;
 	default:
 		break;
 	}
-	/* Default DCB settings, if applicable */
-	adapter->ring_feature[RING_F_DCB].indices = 8;
+
+#ifdef NETIF_F_NTUPLE
+	/* n-tuple support exists, always init our spinlock */
+	spin_lock_init(&adapter->fdir_perfect_lock);
+
+#endif /* NETIF_F_NTUPLE */
 
 	if (adapter->flags & IXGBE_FLAG_DCB_CAPABLE) {
-		int j, dcb_i;
+		int j;
 		struct tc_configuration *tc;
-		dcb_i = adapter->ring_feature[RING_F_DCB].indices;
+		int dcb_i = MAX_TRAFFIC_CLASS;
+
+
 		adapter->dcb_cfg.num_tcs.pg_tcs = dcb_i;
 		adapter->dcb_cfg.num_tcs.pfc_tcs = dcb_i;
 		for (j = 0; j < dcb_i; j++) {
@@ -5873,6 +5945,8 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 				tc->path[DCB_TX_CONFIG].bwg_percent += 100 % dcb_i;
 				tc->path[DCB_RX_CONFIG].bwg_percent += 100 % dcb_i;
 			}
+			tc->path[DCB_TX_CONFIG].up_to_tc_bitmap |= (1 << j);
+			tc->path[DCB_RX_CONFIG].up_to_tc_bitmap |= (1 << j);
 		}
 		adapter->dcb_cfg.bw_percentage[DCB_TX_CONFIG][0] = 100;
 		adapter->dcb_cfg.bw_percentage[DCB_RX_CONFIG][0] = 100;
@@ -5882,10 +5956,12 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		adapter->dcb_set_bitmap = 0x00;
 
 	}
+#ifdef CONFIG_DCB
 	/* XXX does this need to be initialized even w/o DCB? */
 	ixgbe_copy_dcb_cfg(&adapter->dcb_cfg, &adapter->temp_dcb_cfg,
-			   adapter->ring_feature[RING_F_DCB].indices);
+			   MAX_TRAFFIC_CLASS);
 
+#endif
 	if (hw->mac.type == ixgbe_mac_82599EB ||
 	    hw->mac.type == ixgbe_mac_X540)
 		hw->mbx.ops.init_params(hw);
@@ -6561,8 +6637,13 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 		hwstats->gotc += IXGBE_READ_REG(hw, IXGBE_GOTCH);
 		hwstats->tor += IXGBE_READ_REG(hw, IXGBE_TORH);
 		break;
-	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+		/* OS2BMC stats are X540 only*/
+		hwstats->o2bgptc += IXGBE_READ_REG(hw, IXGBE_O2BGPTC);
+		hwstats->o2bspc += IXGBE_READ_REG(hw, IXGBE_O2BSPC);
+		hwstats->b2ospc += IXGBE_READ_REG(hw, IXGBE_B2OSPC);
+		hwstats->b2ogprc += IXGBE_READ_REG(hw, IXGBE_B2OGPRC);
+	case ixgbe_mac_82599EB:
 		hwstats->gorc += IXGBE_READ_REG(hw, IXGBE_GORCL);
 		IXGBE_READ_REG(hw, IXGBE_GORCH); /* to clear */
 		hwstats->gotc += IXGBE_READ_REG(hw, IXGBE_GOTCL);
@@ -6626,7 +6707,6 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	hwstats->ptc1023 += IXGBE_READ_REG(hw, IXGBE_PTC1023);
 	hwstats->ptc1522 += IXGBE_READ_REG(hw, IXGBE_PTC1522);
 	hwstats->bptc += IXGBE_READ_REG(hw, IXGBE_BPTC);
-
 	/* Fill out the OS statistics structure */
 	net_stats->multicast = hwstats->mprc;
 
@@ -7084,7 +7164,7 @@ static void ixgbe_reset_subtask(struct ixgbe_adapter *adapter)
 		return;
 
 	adapter->tx_timeout_count++;
-
+	netdev_err(adapter->netdev, "Reset adapter\n");
 	ixgbe_reinit_locked(adapter);
 }
 
@@ -7522,8 +7602,8 @@ static void ixgbe_atr(struct ixgbe_ring *ring, struct sk_buff *skb,
 
 	th = tcp_hdr(skb);
 
-	/* skip this packet since the socket is closing */
-	if (th->fin)
+	/* skip this packet since it is invalid or the socket is closing */
+	if (!th || th->fin)
 		return;
 
 	/* sample on all syn packets or once every atr sample count */
@@ -7548,7 +7628,7 @@ static void ixgbe_atr(struct ixgbe_ring *ring, struct sk_buff *skb,
 	 * since src port and flex bytes occupy the same word XOR them together
 	 * and write the value to source port portion of compressed dword
 	 */
-	if (vlan_id)
+	if (tx_flags & (IXGBE_TX_FLAGS_SW_VLAN | IXGBE_TX_FLAGS_HW_VLAN))
 		common.port.src ^= th->dest ^ __constant_htons(ETH_P_8021Q);
 	else
 		common.port.src ^= th->dest ^ protocol;
@@ -7675,7 +7755,7 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 			            IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT;
 		else
 #endif /* IXGBE_FCOE */
-			tx_flags |= skb->queue_mapping <<
+			tx_flags |= tx_ring->dcb_tc <<
 				    IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT;
 		if (tx_flags & IXGBE_TX_FLAGS_SW_VLAN) {
 			struct vlan_ethhdr *vhdr;
@@ -7872,7 +7952,7 @@ static void ixgbe_netpoll(struct net_device *netdev)
 			ixgbe_msix_clean_rings(0, q_vector);
 		}
 	} else {
-		ixgbe_intr(adapter->pdev->irq, netdev);
+		ixgbe_intr(0, adapter);
 	}
 	adapter->flags &= ~IXGBE_FLAG_IN_NETPOLL;
 #ifndef CONFIG_IXGBE_NAPI
@@ -7894,31 +7974,122 @@ static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb)
 			txq &= (adapter->ring_feature[RING_F_FCOE].indices - 1);
 			txq += adapter->ring_feature[RING_F_FCOE].mask;
 			return txq;
+#ifdef HAVE_MQPRIO
 		} else if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
 			txq = adapter->fcoe.up;
 			return txq;
+#endif
 		}
 	}
 
 #endif /* IXGBE_FCOE */
 	if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE) {
+		if (skb_rx_queue_recorded(skb))
+			txq = skb_get_rx_queue(skb);
 		while (unlikely(txq >= dev->real_num_tx_queues))
 			txq -= dev->real_num_tx_queues;
 		return txq;
 	}
 
+#ifndef HAVE_MQPRIO
 	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
 		if (skb->priority == TC_PRIO_CONTROL)
-			txq = adapter->ring_feature[RING_F_DCB].indices - 1;
+			txq = adapter->tc - 1;
 		else
 			txq = (skb->vlan_tci & IXGBE_TX_FLAGS_VLAN_PRIO_MASK)
 			       >> 13;
 		return txq;
 	}
+#endif
+
 	return skb_tx_hash(dev, skb);
 }
 
 #endif /* HAVE_NETDEV_SELECT_QUEUE */
+
+/* ixgbe_validate_rtr - verify 802.1Qp to rx packet buffer mapping is valid.
+ * #adapter: pointer to ixgbe_adapter
+ * @tc: number of traffic classes currently enabled
+ *
+ * Configure a valid 802.1Qp to rx packet buffer mapping ie confirm
+ * 802.1Q priority maps to a packet buffer that exists.
+ */
+static void ixgbe_validate_rtr(struct ixgbe_adapter *adapter, u8 tc)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 reg, rsave;
+	int i;
+
+	/* 82598 have a static priority to TC mapping that can not
+	 * be changed so no validation is needed.
+	 */
+	if (hw->mac.type == ixgbe_mac_82598EB)
+		return;
+
+	reg = IXGBE_READ_REG(hw, IXGBE_RTRUP2TC);
+	rsave = reg;
+
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		u8 up2tc = reg >> (i * IXGBE_RTRUP2TC_UP_SHIFT);
+
+		/* If up2tc is out of bounds default to zero */
+		if (up2tc > tc)
+			reg &= ~(0x7 << IXGBE_RTRUP2TC_UP_SHIFT);
+	}
+
+	if (reg != rsave)
+		IXGBE_WRITE_REG(hw, IXGBE_RTRUP2TC, reg);
+
+	return;
+}
+
+/* ixgbe_setup_tc - routine to configure net_device for multiple traffic
+ * classes.
+ *
+ * @netdev: net device to configure
+ * @tc: number of traffic classes to enable
+ */
+int ixgbe_setup_tc(struct net_device *dev, u8 tc)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(dev);
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	/* If DCB is anabled do not remove traffic classes, multiple
+	 * traffic classes are required to implement DCB
+	 */
+	if (!tc && (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		return 0;
+
+	/* Hardware supports up to 8 traffic classes */
+	if (tc > MAX_TRAFFIC_CLASS ||
+	    (hw->mac.type == ixgbe_mac_82598EB && tc < MAX_TRAFFIC_CLASS))
+		return -EINVAL;
+
+	/* Hardware has to reinitialize queues and interrupts to
+	 * match packet buffer alignment. Unfortunantly, the
+	 * hardware is not flexible enough to do this dynamically.
+	 */
+	if (netif_running(dev))
+		ixgbe_close(dev);
+	ixgbe_clear_interrupt_scheme(adapter);
+
+#ifdef HAVE_MQPRIO
+	if (tc)
+		netdev_set_num_tc(dev, tc);
+	else
+		netdev_reset_tc(dev);
+#else
+	adapter->tc = tc;
+#endif
+
+	ixgbe_init_interrupt_scheme(adapter);
+	ixgbe_validate_rtr(adapter, tc);
+	if (netif_running(dev))
+		ixgbe_open(dev);
+
+	return 0;
+}
+
 #ifdef HAVE_NET_DEVICE_OPS
 static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_open		= &ixgbe_open,
@@ -7938,6 +8109,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_vlan_rx_register	= &ixgbe_vlan_rx_register,
 	.ndo_vlan_rx_add_vid	= &ixgbe_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= &ixgbe_vlan_rx_kill_vid,
+#endif
+#ifdef HAVE_MQPRIO
+	.ndo_setup_tc		= &ixgbe_setup_tc,
 #endif
 #ifdef HAVE_IPLINK_VF_CONFIG
 	.ndo_set_vf_mac		= ixgbe_ndo_set_vf_mac,
@@ -8010,12 +8184,34 @@ static void __devinit ixgbe_probe_vf(struct ixgbe_adapter *adapter)
 {
 #ifdef CONFIG_PCI_IOV
 	int err;
+	int num_vf_macvlans, i;
+	struct vf_macvlans *mv_list;
 
 	err = pci_enable_sriov(adapter->pdev, adapter->num_vfs);
 	if (err) {
 		e_err(probe, "Failed to enable PCI sriov: %d\n", err);
 		goto err_novfs;
 	}
+
+	num_vf_macvlans = adapter->hw.mac.num_rar_entries -
+		(IXGBE_MAX_PF_MACVLANS + 1 + adapter->num_vfs);
+
+	adapter->mv_list = mv_list = kcalloc(num_vf_macvlans,
+					     sizeof(struct vf_macvlans),
+					     GFP_KERNEL);
+	if (mv_list) {
+		/* Initialize list of VF macvlans */
+		INIT_LIST_HEAD(&adapter->vf_mvs.l);
+		for (i = 0; i < num_vf_macvlans; i++) {
+			mv_list->vf = -1;
+			mv_list->free = true;
+			mv_list->rar_entry = adapter->hw.mac.num_rar_entries -
+				(i + adapter->num_vfs + 1);
+			list_add(&mv_list->l, &adapter->vf_mvs.l);
+			mv_list++;
+		}
+	}
+
 	/* If call to enable VFs succeeded then allocate memory
 	 * for per VF control structures.
 	 */
@@ -8139,6 +8335,15 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 #ifdef HAVE_TX_MQ
 	indices = num_possible_cpus();
+
+#ifdef CONFIG_DCB
+#ifdef HAVE_MQPRIO
+	indices *= MAX_TRAFFIC_CLASS;
+#else
+	indices = max_t(unsigned int, indices, IXGBE_MAX_DCB_INDICES);
+#endif /* HAVE_MQPRIO */
+#endif /* CONFIG_DCB */
+
 	if (mac_type == ixgbe_mac_unknown)
 		indices = max_t(unsigned int, IXGBE_MAX_RSS_INDICES,
 				IXGBE_MAX_FDIR_INDICES);
@@ -8146,7 +8351,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		indices = min_t(unsigned int, indices, IXGBE_MAX_RSS_INDICES);
 	else
 		indices = min_t(unsigned int, indices, IXGBE_MAX_FDIR_INDICES);
-	indices = max_t(unsigned int, indices, IXGBE_MAX_DCB_INDICES);
+
 #ifdef IXGBE_FCOE
 	indices += min_t(unsigned int, num_possible_cpus(),
 			  IXGBE_MAX_FCOE_INDICES);
@@ -8274,10 +8479,19 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 #ifdef NETIF_F_GRO
 	netdev->features |= NETIF_F_GRO;
 #endif /* NETIF_F_GRO */
+#ifdef NETIF_F_RXHASH
+	netdev->features |= NETIF_F_RXHASH;
+#endif /* NETIF_F_RXHASH */
 
 
-	if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+	switch(adapter->hw.mac.type) {
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
 		netdev->features |= NETIF_F_SCTP_CSUM;
+		break;
+	default:
+		break;
+	}
 
 #ifdef HAVE_NETDEV_VLAN_FEATURES
 #ifdef NETIF_F_TSO
@@ -8415,6 +8629,10 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	err = ixgbe_init_interrupt_scheme(adapter);
 	if (err)
 		goto err_sw_init;
+#ifdef NETIF_F_RXHASH
+	if (!(adapter->flags & IXGBE_FLAG_RSS_ENABLED))
+		netdev->features &= ~NETIF_F_RXHASH;
+#endif /* NETIF_F_RXHASH */
 
 	/* WOL not supported for all but the following */
 	adapter->wol = 0;
@@ -8793,9 +9011,6 @@ static int __init ixgbe_init_module(void)
 	pr_info("%s - version %s\n", ixgbe_driver_string, ixgbe_driver_version);
 	pr_info("%s\n", ixgbe_copyright);
 
-#ifndef CONFIG_DCB
-	ixgbe_dcb_netlink_register();
-#endif
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	dca_register_notify(&dca_notifier);
 
@@ -8816,9 +9031,6 @@ static void __exit ixgbe_exit_module(void)
 {
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	dca_unregister_notify(&dca_notifier);
-#endif
-#ifndef CONFIG_DCB
-	ixgbe_dcb_netlink_unregister();
 #endif
 	pci_unregister_driver(&ixgbe_driver);
 }

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -45,7 +45,11 @@ u32 ixgbe_get_supported_physical_layer_X540(struct ixgbe_hw *hw);
 
 s32 ixgbe_init_eeprom_params_X540(struct ixgbe_hw *hw);
 s32 ixgbe_read_eerd_X540(struct ixgbe_hw *hw, u16 offset, u16 *data);
+s32 ixgbe_read_eerd_buffer_X540(struct ixgbe_hw *hw,
+                                u16 offset, u16 words, u16 *data);
 s32 ixgbe_write_eewr_X540(struct ixgbe_hw *hw, u16 offset, u16 data);
+s32 ixgbe_write_eewr_buffer_X540(struct ixgbe_hw *hw,
+                                 u16 offset, u16 words, u16 *data);
 s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw);
 s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw, u16 *checksum_val);
 u16 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw);
@@ -79,7 +83,9 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	/* EEPROM */
 	eeprom->ops.init_params = &ixgbe_init_eeprom_params_X540;
 	eeprom->ops.read = &ixgbe_read_eerd_X540;
+	eeprom->ops.read_buffer = &ixgbe_read_eerd_buffer_X540;
 	eeprom->ops.write = &ixgbe_write_eewr_X540;
+	eeprom->ops.write_buffer = &ixgbe_write_eewr_buffer_X540;
 	eeprom->ops.update_checksum = &ixgbe_update_eeprom_checksum_X540;
 	eeprom->ops.validate_checksum = &ixgbe_validate_eeprom_checksum_X540;
 	eeprom->ops.calc_checksum = &ixgbe_calc_eeprom_checksum_X540;
@@ -118,7 +124,8 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	/* Link */
 	mac->ops.get_link_capabilities = &ixgbe_get_copper_link_capabilities_generic;
 	mac->ops.setup_link = &ixgbe_setup_mac_link_X540;
-	mac->ops.check_link            = &ixgbe_check_mac_link_generic;
+	mac->ops.setup_rxpba = &ixgbe_set_rxpba_generic;
+	mac->ops.check_link = &ixgbe_check_mac_link_generic;
 
 	mac->mcft_size        = 128;
 	mac->vft_size         = 128;
@@ -139,8 +146,11 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	hw->mbx.ops.init_params = ixgbe_init_mbx_params_pf;
 
 	/* LEDs */
-	mac->ops.blink_led_start = ixgbe_blink_led_start_x540;
-	mac->ops.blink_led_stop = ixgbe_blink_led_stop_x540;
+	mac->ops.blink_led_start = ixgbe_blink_led_start_X540;
+	mac->ops.blink_led_stop = ixgbe_blink_led_stop_X540;
+
+	/* Manageability interface */
+	mac->ops.set_fw_drv_ver = &ixgbe_set_fw_drv_ver_generic;
 
 	return ret_val;
 }
@@ -198,19 +208,17 @@ s32 ixgbe_setup_mac_link_X540(struct ixgbe_hw *hw,
 s32 ixgbe_reset_hw_X540(struct ixgbe_hw *hw)
 {
 	ixgbe_link_speed link_speed;
-	s32 status = 0;
-	u32 ctrl, ctrl_ext, reset_bit;
-	u32 i;
+	s32 status;
+	u32 ctrl, i;
 	bool link_up = false;
 
 	/* Call adapter stop to disable tx/rx and clear interrupts */
-	hw->mac.ops.stop_adapter(hw);
+	status = hw->mac.ops.stop_adapter(hw);
+	if (status != 0)
+		goto reset_hw_out;
 
-	/*
-	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
-	 * access and verify no pending requests before reset
-	 */
-	ixgbe_disable_pcie_master(hw);
+	/* flush pending Tx transactions */
+	ixgbe_clear_tx_pending(hw);
 
 mac_reset_top:
 	/*
@@ -219,53 +227,41 @@ mac_reset_top:
 	 * mng is using it.  If link is down or the flag to force full link
 	 * reset is set, then perform link reset.
 	 */
-	if (hw->force_full_reset) {
-		reset_bit = IXGBE_CTRL_LNK_RST;
-	} else {
+	ctrl = IXGBE_CTRL_LNK_RST;
+	if (!hw->force_full_reset) {
 		hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
-		if (!link_up)
-			reset_bit = IXGBE_CTRL_LNK_RST;
-		else
-			reset_bit = IXGBE_CTRL_RST;
+		if (link_up)
+			ctrl = IXGBE_CTRL_RST;
 	}
 
-	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL, (ctrl | reset_bit));
+	ctrl |= IXGBE_READ_REG(hw, IXGBE_CTRL);
+	IXGBE_WRITE_REG(hw, IXGBE_CTRL, ctrl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Poll for reset bit to self-clear indicating reset is complete */
 	for (i = 0; i < 10; i++) {
 		udelay(1);
 		ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-		if (!(ctrl & reset_bit))
+		if (!(ctrl & IXGBE_CTRL_RST_MASK))
 			break;
 	}
 
-
-	if (ctrl & reset_bit) {
+	if (ctrl & IXGBE_CTRL_RST_MASK) {
 		status = IXGBE_ERR_RESET_FAILED;
 		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
+	msleep(50);
+
 	/*
 	 * Double resets are required for recovery from certain error
 	 * conditions.  Between resets, it is necessary to stall to allow time
-	 * for any pending HW events to complete.  We use 1usec since that is
-	 * what is needed for ixgbe_disable_pcie_master().  The second reset
-	 * then clears out any effects of those events.
+	 * for any pending HW events to complete.
 	 */
 	if (hw->mac.flags & IXGBE_FLAGS_DOUBLE_RESET_REQUIRED) {
 		hw->mac.flags &= ~IXGBE_FLAGS_DOUBLE_RESET_REQUIRED;
-		udelay(1);
 		goto mac_reset_top;
 	}
-
-	/* Clear PF Reset Done bit so PF/VF Mail Ops can work */
-	ctrl_ext = IXGBE_READ_REG(hw, IXGBE_CTRL_EXT);
-	ctrl_ext |= IXGBE_CTRL_EXT_PFRSTD;
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL_EXT, ctrl_ext);
-
-	msleep(50);
 
 	/* Set the Rx packet buffer size. */
 	IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(0), 384 << IXGBE_RXPBSIZE_SHIFT);
@@ -293,6 +289,7 @@ mac_reset_top:
 		hw->mac.num_rar_entries--;
 	}
 
+reset_hw_out:
 	return status;
 }
 
@@ -394,6 +391,31 @@ s32 ixgbe_read_eerd_X540(struct ixgbe_hw *hw, u16 offset, u16 *data)
 }
 
 /**
+ *  ixgbe_read_eerd_buffer_X540- Read EEPROM word(s) using EERD
+ *  @hw: pointer to hardware structure
+ *  @offset: offset of  word in the EEPROM to read
+ *  @words: number of words
+ *  @data: word(s) read from the EEPROM
+ *
+ *  Reads a 16 bit word(s) from the EEPROM using the EERD register.
+ **/
+s32 ixgbe_read_eerd_buffer_X540(struct ixgbe_hw *hw,
+                                u16 offset, u16 words, u16 *data)
+{
+	s32 status = 0;
+
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
+	    0)
+		status = ixgbe_read_eerd_buffer_generic(hw, offset,
+		                                        words, data);
+	else
+		status = IXGBE_ERR_SWFW_SYNC;
+
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
+	return status;
+}
+
+/**
  *  ixgbe_write_eewr_X540 - Write EEPROM word using EEWR
  *  @hw: pointer to hardware structure
  *  @offset: offset of  word in the EEPROM to write
@@ -408,6 +430,31 @@ s32 ixgbe_write_eewr_X540(struct ixgbe_hw *hw, u16 offset, u16 data)
 	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0)
 		status = ixgbe_write_eewr_generic(hw, offset, data);
+	else
+		status = IXGBE_ERR_SWFW_SYNC;
+
+	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
+	return status;
+}
+
+/**
+ *  ixgbe_write_eewr_buffer_X540 - Write EEPROM word(s) using EEWR
+ *  @hw: pointer to hardware structure
+ *  @offset: offset of  word in the EEPROM to write
+ *  @words: number of words
+ *  @data: word(s) write to the EEPROM
+ *
+ *  Write a 16 bit word(s) to the EEPROM using the EEWR register.
+ **/
+s32 ixgbe_write_eewr_buffer_X540(struct ixgbe_hw *hw,
+                                 u16 offset, u16 words, u16 *data)
+{
+	s32 status = 0;
+
+	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
+	    0)
+		status = ixgbe_write_eewr_buffer_generic(hw, offset,
+		                                         words, data);
 	else
 		status = IXGBE_ERR_SWFW_SYNC;
 
@@ -844,14 +891,14 @@ static void ixgbe_release_swfw_sync_semaphore(struct ixgbe_hw *hw)
 }
 
 /**
- * ixgbe_blink_led_start_x540 - Blink LED based on index.
+ * ixgbe_blink_led_start_X540 - Blink LED based on index.
  * @hw: pointer to hardware structure
  * @index: led number to blink
  *
  * Devices that implement the version 2 interface:
  *   X540
  **/
-s32 ixgbe_blink_led_start_x540(struct ixgbe_hw *hw, u32 index)
+s32 ixgbe_blink_led_start_X540(struct ixgbe_hw *hw, u32 index)
 {
 	u32 macc_reg;
 	u32 ledctl_reg;
@@ -876,14 +923,14 @@ s32 ixgbe_blink_led_start_x540(struct ixgbe_hw *hw, u32 index)
 }
 
 /**
- * ixgbe_blink_led_stop_x540 - Stop blinking LED based on index.
+ * ixgbe_blink_led_stop_X540 - Stop blinking LED based on index.
  * @hw: pointer to hardware structure
  * @index: led number to stop blinking
  *
  * Devices that implement the version 2 interface:
  *   X540
  **/
-s32 ixgbe_blink_led_stop_x540(struct ixgbe_hw *hw, u32 index)
+s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index)
 {
 	u32 macc_reg;
 	u32 ledctl_reg;

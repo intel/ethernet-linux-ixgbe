@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -32,7 +32,6 @@
 
 /* DCB data structures */
 
-#define IXGBE_MAX_PACKET_BUFFERS 8
 #define MAX_USER_PRIORITY        8
 #define MAX_TRAFFIC_CLASS        8
 #define MAX_BW_GROUP             8
@@ -144,7 +143,6 @@ struct ixgbe_dcb_config {
 
 	u32  dcb_cfg_version; /* Not used...OS-specific? */
 	u32  link_speed; /* For bandwidth allocation validation purpose */
-	enum ixgbe_fdir_pballoc_type fdir_pballoc; /* for RX buffer config */
 };
 
 /* DCB driver APIs */

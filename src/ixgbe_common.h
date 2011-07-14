@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -49,10 +49,18 @@ s32 ixgbe_led_off_generic(struct ixgbe_hw *hw, u32 index);
 
 s32 ixgbe_init_eeprom_params_generic(struct ixgbe_hw *hw);
 s32 ixgbe_write_eeprom_generic(struct ixgbe_hw *hw, u16 offset, u16 data);
+s32 ixgbe_write_eeprom_buffer_bit_bang_generic(struct ixgbe_hw *hw, u16 offset,
+                                               u16 words, u16 *data);
 s32 ixgbe_read_eerd_generic(struct ixgbe_hw *hw, u16 offset, u16 *data);
+s32 ixgbe_read_eerd_buffer_generic(struct ixgbe_hw *hw, u16 offset,
+                                   u16 words, u16 *data);
 s32 ixgbe_write_eewr_generic(struct ixgbe_hw *hw, u16 offset, u16 data);
+s32 ixgbe_write_eewr_buffer_generic(struct ixgbe_hw *hw, u16 offset,
+                                    u16 words, u16 *data);
 s32 ixgbe_read_eeprom_bit_bang_generic(struct ixgbe_hw *hw, u16 offset,
                                        u16 *data);
+s32 ixgbe_read_eeprom_buffer_bit_bang_generic(struct ixgbe_hw *hw, u16 offset,
+                                              u16 words, u16 *data);
 u16 ixgbe_calc_eeprom_checksum_generic(struct ixgbe_hw *hw);
 s32 ixgbe_validate_eeprom_checksum_generic(struct ixgbe_hw *hw,
                                            u16 *checksum_val);
@@ -65,7 +73,7 @@ s32 ixgbe_clear_rar_generic(struct ixgbe_hw *hw, u32 index);
 s32 ixgbe_init_rx_addrs_generic(struct ixgbe_hw *hw);
 s32 ixgbe_update_mc_addr_list_generic(struct ixgbe_hw *hw, u8 *mc_addr_list,
                                       u32 mc_addr_count,
-                                      ixgbe_mc_addr_itr func);
+                                      ixgbe_mc_addr_itr func, bool clear);
 s32 ixgbe_update_uc_addr_list_generic(struct ixgbe_hw *hw, u8 *addr_list,
                                       u32 addr_count, ixgbe_mc_addr_itr func);
 s32 ixgbe_enable_mc_generic(struct ixgbe_hw *hw);
@@ -105,6 +113,9 @@ s32 ixgbe_get_fcoe_boot_status_generic(struct ixgbe_hw *hw, u16 *bs);
 void ixgbe_set_mac_anti_spoofing(struct ixgbe_hw *hw, bool enable, int pf);
 void ixgbe_set_vlan_anti_spoofing(struct ixgbe_hw *hw, bool enable, int vf);
 s32 ixgbe_get_device_caps_generic(struct ixgbe_hw *hw, u16 *device_caps);
+void ixgbe_set_rxpba_generic(struct ixgbe_hw *hw, int num_pb, u32 headroom,
+                             int strategy);
 s32 ixgbe_set_fw_drv_ver_generic(struct ixgbe_hw *hw, u8 maj, u8 min,
                                  u8 build, u8 ver);
 #endif /* IXGBE_COMMON */
+void ixgbe_clear_tx_pending(struct ixgbe_hw *hw);

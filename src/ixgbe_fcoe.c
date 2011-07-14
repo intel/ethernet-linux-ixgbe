@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -239,10 +239,12 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	 */
 	if (lastsize == bufflen) {
 		if (j >= IXGBE_BUFFCNT_MAX) {
-			e_err(drv, "xid=%x:%d,%d,%d:addr=%llx "
-			      "not enough user buffers. We need an extra "
-			      "buffer because lastsize is bufflen.\n",
-			      xid, i, j, dmacount, (u64)addr);
+			printk_once("Will NOT use DDP since there are not "
+				    "enough user buffers. We need an  extra "
+				    "buffer because lastsize is bufflen. "
+				    "xid=%x:%d,%d,%d:addr=%llx\n",
+				    xid, i, j, dmacount, (u64)addr);
+
 			goto out_noddp_free;
 		}
 
@@ -392,7 +394,6 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		goto ddp_out;
 
 	ddp_err = staterr & (IXGBE_RXDADV_ERR_FCEOFE | IXGBE_RXDADV_ERR_FCERR);
-	ddp->err = ddp_err;
 	if (ddp_err)
 		goto ddp_out;
 
@@ -407,6 +408,7 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	case IXGBE_RXDADV_STAT_FCSTAT_FCPRSP:
 		pci_unmap_sg(adapter->pdev, ddp->sgl,
 			     ddp->sgc, DMA_FROM_DEVICE);
+		ddp->err = ddp_err;
 		ddp->sgl = NULL;
 		ddp->sgc = 0;
 		/* fall through */
@@ -809,24 +811,16 @@ u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter)
 u8 ixgbe_fcoe_setapp(struct ixgbe_adapter *adapter, u8 up)
 {
 	int i;
-	u32 up2tc;
+	struct tc_configuration *tc_cfg;
 
-	/* valid user priority bitmap must not be 0 */
-	if (up) {
-		/* from user priority to the corresponding traffic class */
-		up2tc = IXGBE_READ_REG(&adapter->hw, IXGBE_RTTUP2TC);
-		for (i = 0; i < MAX_USER_PRIORITY; i++) {
-			if (up & (1 << i)) {
-				up2tc >>= (i * IXGBE_RTTUP2TC_UP_SHIFT);
-				up2tc &= (MAX_TRAFFIC_CLASS - 1);
-				adapter->fcoe.tc = (u8)up2tc;
-				adapter->fcoe.up = i;
-				return 0;
-			}
-		}
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		tc_cfg = &adapter->temp_dcb_cfg.tc_config[i];
+		if (tc_cfg->path[0].up_to_tc_bitmap & up)
+			adapter->fcoe.tc = i;
 	}
 
-	return 1;
+	adapter->fcoe.up = ffs(up) - 1;
+	return 0;
 }
 #endif /* HAVE_DCBNL_OPS_GETAPP */
 #endif /* CONFIG_DCB */

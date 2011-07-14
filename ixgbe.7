@@ -103,7 +103,7 @@ different values for each type of interrupt.
 .B Valid Range: 
 956-488281 (0=off, 1=dynamic)
 .br
-.B Default Value: 8000
+.B Default Value: 1
 .IP
 Interrupt Throttle Rate (interrupts/sec)
 .br
@@ -220,11 +220,11 @@ packet, looks to see if the packet will create a new flow.
 0-n
 .br
 .B Default Value:
-1 (off)
+-1 (off)
 .IP
 0 - n: where n is the number of NUMA nodes (i.e. 0 - 3) currently online in 
 your system
-1: turns this option off
+-1: turns this option off
 .IP
 The Node parameter will allow you to pick which NUMA node you want to have 
 the adapter allocate memory on.

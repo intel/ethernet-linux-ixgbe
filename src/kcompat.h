@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -52,6 +52,7 @@
 #include <linux/mii.h>
 #include <linux/vmalloc.h>
 #include <asm/io.h>
+#include <linux/ethtool.h>
 
 /* NAPI enable/disable flags here */
 /* enable NAPI for ixgbe by default */
@@ -180,18 +181,6 @@ struct msix_entry {
 
 #ifdef HAVE_POLL_CONTROLLER
 #define CONFIG_NET_POLL_CONTROLLER
-#endif
-
-#ifndef NETDEV_TX_OK
-#define NETDEV_TX_OK 0
-#endif
-
-#ifndef NETDEV_TX_BUSY
-#define NETDEV_TX_BUSY 1
-#endif
-
-#ifndef NETDEV_TX_LOCKED
-#define NETDEV_TX_LOCKED -1
 #endif
 
 #ifndef SKB_DATAREF_SHIFT
@@ -1471,6 +1460,16 @@ static inline void *_kc_skb_header_pointer(const struct sk_buff *skb,
 #else
 	return NULL;
 #endif
+
+#ifndef NETDEV_TX_OK
+#define NETDEV_TX_OK 0
+#endif
+#ifndef NETDEV_TX_BUSY
+#define NETDEV_TX_BUSY 1
+#endif
+#ifndef NETDEV_TX_LOCKED
+#define NETDEV_TX_LOCKED -1
+#endif
 }
 #endif /* < 2.6.9 */
 
@@ -1743,6 +1742,7 @@ static inline int _kc_request_irq(unsigned int irq, new_handler_t handler, unsig
 
 #define irq_handler_t new_handler_t
 /* pci_restore_state and pci_save_state handles MSI/PCIE from 2.6.19 */
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(5,4)))
 #define PCIE_CONFIG_SPACE_LEN 256
 #define PCI_CONFIG_SPACE_LEN 64
 #define PCIE_LINK_STATUS 0x12
@@ -1753,6 +1753,8 @@ extern int _kc_pci_save_state(struct pci_dev *);
 #undef pci_restore_state
 extern void _kc_pci_restore_state(struct pci_dev *);
 #define pci_restore_state(pdev) _kc_pci_restore_state(pdev)
+#endif /* !(RHEL_RELEASE_CODE >= RHEL 5.4) */
+
 #ifdef HAVE_PCI_ERS
 #undef free_netdev
 extern void _kc_free_netdev(struct net_device *);
@@ -2081,6 +2083,21 @@ extern void _kc_pci_disable_link_state(struct pci_dev *dev, int state);
 #endif /* < 2.6.26 */
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27) )
+static inline void _kc_ethtool_cmd_speed_set(struct ethtool_cmd *ep,
+					     __u32 speed)
+{
+	ep->speed = (__u16)speed;
+	/* ep->speed_hi = (__u16)(speed >> 16); */
+}
+#define ethtool_cmd_speed_set _kc_ethtool_cmd_speed_set
+
+static inline __u32 _kc_ethtool_cmd_speed(struct ethtool_cmd *ep)
+{
+	/* no speed_hi before 2.6.27, and probably no need for it yet */
+	return (__u32)ep->speed;
+}
+#define ethtool_cmd_speed _kc_ethtool_cmd_speed
+
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15) )
 #if ((LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)) && defined(CONFIG_PM))
 #define ANCIENT_PM 1
@@ -2193,6 +2210,8 @@ extern int _kc_pci_prepare_to_sleep(struct pci_dev *dev);
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30) )
+#define skb_rx_queue_recorded(a) false
+#define skb_get_rx_queue(a) 0
 #undef CONFIG_FCOE
 #undef CONFIG_FCOE_MODULE
 extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
@@ -2293,6 +2312,12 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #ifndef pci_pcie_cap
 #define pci_pcie_cap(pdev) pci_find_capability(pdev, PCI_CAP_ID_EXP)
 #endif
+#ifndef IPV4_FLOW
+#define IPV4_FLOW 0x10
+#endif /* IPV4_FLOW */
+#ifndef IPV6_FLOW
+#define IPV6_FLOW 0x11
+#endif /* IPV6_FLOW */
 /* Features back-ported to RHEL6 or SLES11 SP1 after 2.6.32 */
 #if ( (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) || \
       (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,1,0)) )
@@ -2449,9 +2474,6 @@ do {								\
 #define netif_info(priv, type, dev, fmt, args...)		\
 	netif_level(info, priv, type, dev, fmt, ##args)
 
-#if !defined(CONFIG_PM_OPS) && defined(CONFIG_PM_SLEEP)
-#define CONFIG_PM_OPS
-#endif
 #ifdef SET_SYSTEM_SLEEP_PM_OPS
 #define HAVE_SYSTEM_SLEEP_PM_OPS
 #endif
@@ -2479,6 +2501,9 @@ void _kc_netif_set_real_num_tx_queues(struct net_device *, unsigned int);
 #else
 #define netif_set_real_num_tx_queues(_netdev, _count) do {} while(0)
 #endif /* HAVE_TX_MQ */
+#ifndef ETH_FLAG_RXHASH
+#define ETH_FLAG_RXHASH (1<<28)
+#endif /* ETH_FLAG_RXHASH */
 #else /* < 2.6.35 */
 #define HAVE_PM_QOS_REQUEST_LIST
 #define HAVE_IRQ_AFFINITY_HINT
@@ -2599,17 +2624,76 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 }
 #define skb_checksum_start_offset(skb) _kc_skb_checksum_start_offset(skb)
 #endif /* 2.6.22 -> 2.6.37 */
-
+#ifdef CONFIG_DCB
+#ifndef DCB_CAP_DCBX_HOST
+#define DCB_CAP_DCBX_HOST		0x01
+#endif
+#ifndef DCB_CAP_DCBX_LLD_MANAGED
+#define DCB_CAP_DCBX_LLD_MANAGED	0x02
+#endif
+#ifndef DCB_CAP_DCBX_VER_CEE
+#define DCB_CAP_DCBX_VER_CEE		0x04
+#endif
+#ifndef DCB_CAP_DCBX_VER_IEEE
+#define DCB_CAP_DCBX_VER_IEEE		0x08
+#endif
+#ifndef DCB_CAP_DCBX_STATIC
+#define DCB_CAP_DCBX_STATIC		0x10
+#endif
+#endif /* CONFIG_DCB */
+#else /* < 2.6.38 */
+#ifndef HAVE_DCBNL_IEEE
+#define HAVE_DCBNL_IEEE
+#endif
 #endif /* < 2.6.38 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
+extern u8 _kc_netdev_get_num_tc(struct net_device *dev);
+#define netdev_get_num_tc(dev) _kc_netdev_get_num_tc(dev)
 #else /* < 2.6.39 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
 #define HAVE_NETDEV_OPS_FCOE_DDP_TARGET
 #endif
 #endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
+#ifndef HAVE_MQPRIO
+#define HAVE_MQPRIO
+#endif
 #endif /* < 2.6.39 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
+#ifdef ETHTOOL_GRXRINGS
+#ifndef FLOW_EXT
+#define	FLOW_EXT	0x80000000
+union _kc_ethtool_flow_union {
+	struct ethtool_tcpip4_spec		tcp_ip4_spec;
+	struct ethtool_usrip4_spec		usr_ip4_spec;
+	__u8					hdata[60];
+};
+struct _kc_ethtool_flow_ext {
+	__be16	vlan_etype;
+	__be16	vlan_tci;
+	__be32	data[2];
+};
+struct _kc_ethtool_rx_flow_spec {
+	__u32		flow_type;
+	union _kc_ethtool_flow_union h_u;
+	struct _kc_ethtool_flow_ext h_ext;
+	union _kc_ethtool_flow_union m_u;
+	struct _kc_ethtool_flow_ext m_ext;
+	__u64		ring_cookie;
+	__u32		location;
+};
+#define ethtool_rx_flow_spec _kc_ethtool_rx_flow_spec
+#endif /* FLOW_EXT */
+#endif
+
+#define pci_disable_link_state_locked pci_disable_link_state
+
+#else /* < 3.0.0 */
+#define HAVE_ETHTOOL_SET_PHYS_ID
+#endif /* < 3.0.0 */
 
 #endif /* _KCOMPAT_H_ */

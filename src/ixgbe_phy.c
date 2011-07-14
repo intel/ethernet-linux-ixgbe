@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -36,7 +36,7 @@ static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data);
 static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw);
 static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data);
 static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data);
-static s32 ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
+static void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
 static void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
 static s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data);
 static bool ixgbe_get_i2c_data(u32 *i2cctl);
@@ -180,7 +180,6 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 	case TN1010_PHY_ID:
 		phy_type = ixgbe_phy_tn;
 		break;
-	case AQ1002_PHY_ID:
 	case X540_PHY_ID:
 		phy_type = ixgbe_phy_aq;
 		break;
@@ -496,7 +495,8 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 		                     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
 		                     &autoneg_reg);
 
-		autoneg_reg &= ~IXGBE_MII_100BASE_T_ADVERTISE;
+		autoneg_reg &= ~(IXGBE_MII_100BASE_T_ADVERTISE |
+				 IXGBE_MII_100BASE_T_ADVERTISE_HALF);
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
 			autoneg_reg |= IXGBE_MII_100BASE_T_ADVERTISE;
 
@@ -1469,19 +1469,15 @@ static void ixgbe_i2c_stop(struct ixgbe_hw *hw)
  **/
 static s32 ixgbe_clock_in_i2c_byte(struct ixgbe_hw *hw, u8 *data)
 {
-	s32 status = 0;
 	s32 i;
 	bool bit = 0;
 
 	for (i = 7; i >= 0; i--) {
-		status = ixgbe_clock_in_i2c_bit(hw, &bit);
+		ixgbe_clock_in_i2c_bit(hw, &bit);
 		*data |= bit << i;
-
-		if (status != 0)
-			break;
 	}
 
-	return status;
+	return 0;
 }
 
 /**
@@ -1510,6 +1506,7 @@ static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data)
 	i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL);
 	i2cctl |= IXGBE_I2C_DATA_OUT;
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL, i2cctl);
+	IXGBE_WRITE_FLUSH(hw);
 
 	return status;
 }
@@ -1522,16 +1519,14 @@ static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data)
  **/
 static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
 {
-	s32 status;
+	s32 status = 0;
 	u32 i = 0;
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL);
 	u32 timeout = 10;
 	bool ack = 1;
 
-	status = ixgbe_raise_i2c_clk(hw, &i2cctl);
+	ixgbe_raise_i2c_clk(hw, &i2cctl);
 
-	if (status != 0)
-		goto out;
 
 	/* Minimum high period of clock is 4us */
 	udelay(IXGBE_I2C_T_HIGH);
@@ -1557,7 +1552,6 @@ static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
 	/* Minimum low period of clock is 4.7 us */
 	udelay(IXGBE_I2C_T_LOW);
 
-out:
 	return status;
 }
 
@@ -1570,10 +1564,9 @@ out:
  **/
 static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data)
 {
-	s32 status;
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL);
 
-	status = ixgbe_raise_i2c_clk(hw, &i2cctl);
+	ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 	/* Minimum high period of clock is 4us */
 	udelay(IXGBE_I2C_T_HIGH);
@@ -1586,7 +1579,7 @@ static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data)
 	/* Minimum low period of clock is 4.7 us */
 	udelay(IXGBE_I2C_T_LOW);
 
-	return status;
+	return 0;
 }
 
 /**
@@ -1603,7 +1596,7 @@ static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
 
 	status = ixgbe_set_i2c_data(hw, &i2cctl, data);
 	if (status == 0) {
-		status = ixgbe_raise_i2c_clk(hw, &i2cctl);
+		ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 		/* Minimum high period of clock is 4us */
 		udelay(IXGBE_I2C_T_HIGH);
@@ -1628,18 +1621,15 @@ static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
  *
  *  Raises the I2C clock line '0'->'1'
  **/
-static s32 ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
+static void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 {
-	s32 status = 0;
-
 	*i2cctl |= IXGBE_I2C_CLK_OUT;
 
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL, *i2cctl);
+	IXGBE_WRITE_FLUSH(hw);
 
 	/* SCL rise time (1000ns) */
 	udelay(IXGBE_I2C_T_RISE);
-
-	return status;
 }
 
 /**
@@ -1655,6 +1645,7 @@ static void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 	*i2cctl &= ~IXGBE_I2C_CLK_OUT;
 
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL, *i2cctl);
+	IXGBE_WRITE_FLUSH(hw);
 
 	/* SCL fall time (300ns) */
 	udelay(IXGBE_I2C_T_FALL);
@@ -1678,6 +1669,7 @@ static s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
 		*i2cctl &= ~IXGBE_I2C_DATA_OUT;
 
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL, *i2cctl);
+	IXGBE_WRITE_FLUSH(hw);
 
 	/* Data rise/fall (1000ns/300ns) and set-up time (250ns) */
 	udelay(IXGBE_I2C_T_RISE + IXGBE_I2C_T_FALL + IXGBE_I2C_T_SU_DATA);

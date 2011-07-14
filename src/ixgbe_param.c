@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -191,10 +191,11 @@ IXGBE_PARAM(L2LBen, "L2 Loopback Enable: 0 = disable, 1 = enable (default)");
  *
  * Valid Range: 956-488281 (0=off, 1=dynamic)
  *
- * Default Value: 8000
+ * Default Value: 1
  */
-#define DEFAULT_ITR                 8000
-IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (956-488281), default 8000");
+#define DEFAULT_ITR		1
+IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (0,1,956-488281), default 1");
+#define DEFAULT_EITR		20000
 #define MAX_ITR       IXGBE_MAX_INT_RATE
 #define MIN_ITR       IXGBE_MIN_INT_RATE
 
@@ -692,7 +693,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
 			*aflags &= ~IXGBE_FLAG_DCB_CAPABLE;
 			*aflags &= ~IXGBE_FLAG_DCB_ENABLED;
-		}
+		} 
 	}
 #ifdef CONFIG_PCI_IOV
 	{ /* Single Root I/O Virtualization (SR-IOV) */
@@ -805,9 +806,8 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			case 1:
 				DPRINTK(PROBE, INFO, "dynamic interrupt "
                                         "throttling enabled\n");
-				adapter->rx_eitr_param = 20000;
-				adapter->tx_eitr_param =
-						adapter->rx_eitr_param >> 1;
+				adapter->rx_eitr_param = DEFAULT_EITR;
+				adapter->tx_eitr_param = (DEFAULT_EITR >> 1);
 				adapter->rx_itr_setting = 1;
 				adapter->tx_itr_setting = 1;
 				break;
@@ -822,10 +822,10 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 #ifdef module_param_array
 		} else {
-			adapter->rx_eitr_param = DEFAULT_ITR;
-			adapter->rx_itr_setting = DEFAULT_ITR & ~1;
-			adapter->tx_eitr_param = (DEFAULT_ITR >> 1);
-			adapter->tx_itr_setting = (DEFAULT_ITR >> 1) & ~1;
+			adapter->rx_eitr_param = DEFAULT_EITR;
+			adapter->tx_eitr_param = (DEFAULT_EITR >> 1);
+			adapter->rx_itr_setting = DEFAULT_ITR;
+			adapter->tx_itr_setting = DEFAULT_ITR;
 		}
 #endif
 	}
@@ -1037,14 +1037,14 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 
 			switch (fdir_filter_mode) {
 			case IXGBE_FDIR_FILTER_PERFECT:
-#ifdef NETIF_F_NTUPLE
+#ifdef ETHTOOL_GRXRINGS
 				*aflags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 				DPRINTK(PROBE, INFO,
 				        "Flow Director perfect filtering enabled\n");
-#else /* NETIF_F_NTUPLE */
+#else /* ETHTOOL_GRXRINGS */
 				DPRINTK(PROBE, INFO, "No ethtool support for "
 				        "Flow Director perfect filtering.\n");
-#endif /* NETIF_F_NTUPLE */
+#endif /* ETHTOOL_GRXRINGS */
 				break;
 			case IXGBE_FDIR_FILTER_HASH:
 				*aflags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;

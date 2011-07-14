@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -107,7 +107,9 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82599_BACKPLANE_FCOE:
 		case IXGBE_DEV_ID_82599_SFP_FCOE:
 		case IXGBE_DEV_ID_82599_SFP_EM:
+		case IXGBE_DEV_ID_82599_SFP_SF2:
 		case IXGBE_DEV_ID_82599_CX4:
+		case IXGBE_DEV_ID_82599_LS:
 		case IXGBE_DEV_ID_82599_T3_LOM:
 			hw->mac.type = ixgbe_mac_82599EB;
 			break;
@@ -639,6 +641,25 @@ s32 ixgbe_write_eeprom(struct ixgbe_hw *hw, u16 offset, u16 data)
 }
 
 /**
+ *  ixgbe_write_eeprom_buffer - Write word(s) to EEPROM
+ *  @hw: pointer to hardware structure
+ *  @offset: offset within the EEPROM to be written to
+ *  @data: 16 bit word(s) to be written to the EEPROM
+ *  @words: number of words
+ *
+ *  Writes 16 bit word(s) to EEPROM. If ixgbe_eeprom_update_checksum is not
+ *  called after this function, the EEPROM will most likely contain an
+ *  invalid checksum.
+ **/
+s32 ixgbe_write_eeprom_buffer(struct ixgbe_hw *hw, u16 offset, u16 words,
+                              u16 *data)
+{
+	return ixgbe_call_func(hw, hw->eeprom.ops.write_buffer,
+	                       (hw, offset, words, data),
+	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
  *  ixgbe_read_eeprom - Read word from EEPROM
  *  @hw: pointer to hardware structure
  *  @offset: offset within the EEPROM to be read
@@ -649,6 +670,23 @@ s32 ixgbe_write_eeprom(struct ixgbe_hw *hw, u16 offset, u16 data)
 s32 ixgbe_read_eeprom(struct ixgbe_hw *hw, u16 offset, u16 *data)
 {
 	return ixgbe_call_func(hw, hw->eeprom.ops.read, (hw, offset, data),
+	                       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_read_eeprom_buffer - Read word(s) from EEPROM
+ *  @hw: pointer to hardware structure
+ *  @offset: offset within the EEPROM to be read
+ *  @data: read 16 bit word(s) from EEPROM
+ *  @words: number of words
+ *
+ *  Reads 16 bit word(s) from EEPROM
+ **/
+s32 ixgbe_read_eeprom_buffer(struct ixgbe_hw *hw, u16 offset,
+                             u16 words, u16 *data)
+{
+	return ixgbe_call_func(hw, hw->eeprom.ops.read_buffer,
+	                       (hw, offset, words, data),
 	                       IXGBE_NOT_IMPLEMENTED);
 }
 
@@ -800,10 +838,11 @@ s32 ixgbe_update_uc_addr_list(struct ixgbe_hw *hw, u8 *addr_list,
  *  multicast table.
  **/
 s32 ixgbe_update_mc_addr_list(struct ixgbe_hw *hw, u8 *mc_addr_list,
-                              u32 mc_addr_count, ixgbe_mc_addr_itr func)
+                              u32 mc_addr_count, ixgbe_mc_addr_itr func,
+                              bool clear)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.update_mc_addr_list, (hw,
-	                       mc_addr_list, mc_addr_count, func),
+	                       mc_addr_list, mc_addr_count, func, clear),
 	                       IXGBE_NOT_IMPLEMENTED);
 }
 

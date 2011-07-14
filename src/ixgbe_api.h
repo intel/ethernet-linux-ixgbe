@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -76,7 +76,12 @@ s32 ixgbe_blink_led_stop(struct ixgbe_hw *hw, u32 index);
 
 s32 ixgbe_init_eeprom_params(struct ixgbe_hw *hw);
 s32 ixgbe_write_eeprom(struct ixgbe_hw *hw, u16 offset, u16 data);
+s32 ixgbe_write_eeprom_buffer(struct ixgbe_hw *hw, u16 offset,
+                              u16 words, u16 *data);
 s32 ixgbe_read_eeprom(struct ixgbe_hw *hw, u16 offset, u16 *data);
+s32 ixgbe_read_eeprom_buffer(struct ixgbe_hw *hw, u16 offset,
+                             u16 words, u16 *data);
+
 s32 ixgbe_validate_eeprom_checksum(struct ixgbe_hw *hw, u16 *checksum_val);
 s32 ixgbe_update_eeprom_checksum(struct ixgbe_hw *hw);
 
@@ -91,7 +96,8 @@ u32 ixgbe_get_num_rx_addrs(struct ixgbe_hw *hw);
 s32 ixgbe_update_uc_addr_list(struct ixgbe_hw *hw, u8 *addr_list,
                               u32 addr_count, ixgbe_mc_addr_itr func);
 s32 ixgbe_update_mc_addr_list(struct ixgbe_hw *hw, u8 *mc_addr_list,
-                              u32 mc_addr_count, ixgbe_mc_addr_itr func);
+                              u32 mc_addr_count, ixgbe_mc_addr_itr func,
+                              bool clear);
 void ixgbe_add_uc_addr(struct ixgbe_hw *hw, u8 *addr_list, u32 vmdq);
 s32 ixgbe_enable_mc(struct ixgbe_hw *hw);
 s32 ixgbe_disable_mc(struct ixgbe_hw *hw);

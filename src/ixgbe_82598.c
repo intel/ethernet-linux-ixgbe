@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -65,6 +65,8 @@ u32 ixgbe_get_supported_physical_layer_82598(struct ixgbe_hw *hw);
 s32 ixgbe_init_phy_ops_82598(struct ixgbe_hw *hw);
 void ixgbe_set_lan_id_multi_port_pcie_82598(struct ixgbe_hw *hw);
 void ixgbe_set_pcie_completion_timeout(struct ixgbe_hw *hw);
+static void ixgbe_set_rxpba_82598(struct ixgbe_hw *hw, int num_pb,
+                                  u32 headroom, int strategy);
 
 /**
  *  ixgbe_set_pcie_completion_timeout - set pci-e completion timeout
@@ -186,6 +188,10 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	mac->ops.flap_tx_laser = NULL;
 	mac->ops.get_link_capabilities =
 	                       &ixgbe_get_link_capabilities_82598;
+	mac->ops.setup_rxpba = &ixgbe_set_rxpba_82598;
+
+	/* Manageability interface */
+	mac->ops.set_fw_drv_ver = NULL;
 
 	return ret_val;
 }
@@ -222,10 +228,6 @@ s32 ixgbe_init_phy_ops_82598(struct ixgbe_hw *hw)
 		phy->ops.check_link = &ixgbe_check_phy_link_tnx;
 		phy->ops.get_firmware_version =
 		             &ixgbe_get_phy_firmware_version_tnx;
-		break;
-	case ixgbe_phy_aq:
-		phy->ops.get_firmware_version =
-		             &ixgbe_get_phy_firmware_version_generic;
 		break;
 	case ixgbe_phy_nl:
 		phy->ops.reset = &ixgbe_reset_phy_nl;
@@ -368,7 +370,6 @@ static enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw)
 	switch (hw->phy.type) {
 	case ixgbe_phy_cu_unknown:
 	case ixgbe_phy_tn:
-	case ixgbe_phy_aq:
 		media_type = ixgbe_media_type_copper;
 		goto out;
 	default:
@@ -821,7 +822,9 @@ static s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw)
 	u8  analog_val;
 
 	/* Call adapter stop to disable tx/rx and clear interrupts */
-	hw->mac.ops.stop_adapter(hw);
+	status = hw->mac.ops.stop_adapter(hw);
+	if (status != 0)
+		goto reset_hw_out;
 
 	/*
 	 * Power up the Atlas Tx lanes if they are currently powered down.
@@ -864,26 +867,19 @@ static s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw)
 		phy_status = hw->phy.ops.init(hw);
 		if (phy_status == IXGBE_ERR_SFP_NOT_SUPPORTED)
 			goto reset_hw_out;
-		else if (phy_status == IXGBE_ERR_SFP_NOT_PRESENT)
-			goto no_phy_reset;
+		if (phy_status == IXGBE_ERR_SFP_NOT_PRESENT)
+			goto mac_reset_top;
 
 		hw->phy.ops.reset(hw);
 	}
-
-no_phy_reset:
-	/*
-	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
-	 * access and verify no pending requests before reset
-	 */
-	ixgbe_disable_pcie_master(hw);
 
 mac_reset_top:
 	/*
 	 * Issue global reset to the MAC.  This needs to be a SW reset.
 	 * If link reset is used, it might reset the MAC when mng is using it
 	 */
-	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL, (ctrl | IXGBE_CTRL_RST));
+	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL) | IXGBE_CTRL_RST;
+	IXGBE_WRITE_REG(hw, IXGBE_CTRL, ctrl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Poll for reset bit to self-clear indicating reset is complete */
@@ -898,20 +894,17 @@ mac_reset_top:
 		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
+	msleep(50);
+
 	/*
 	 * Double resets are required for recovery from certain error
 	 * conditions.  Between resets, it is necessary to stall to allow time
-	 * for any pending HW events to complete.  We use 1usec since that is
-	 * what is needed for ixgbe_disable_pcie_master().  The second reset
-	 * then clears out any effects of those events.
+	 * for any pending HW events to complete.
 	 */
 	if (hw->mac.flags & IXGBE_FLAGS_DOUBLE_RESET_REQUIRED) {
 		hw->mac.flags &= ~IXGBE_FLAGS_DOUBLE_RESET_REQUIRED;
-		udelay(1);
 		goto mac_reset_top;
 	}
-
-	msleep(50);
 
 	gheccr = IXGBE_READ_REG(hw, IXGBE_GHECCR);
 	gheccr &= ~((1 << 21) | (1 << 18) | (1 << 9) | (1 << 6));
@@ -1191,7 +1184,6 @@ u32 ixgbe_get_supported_physical_layer_82598(struct ixgbe_hw *hw)
 	 * physical layer because 10GBase-T PHYs use LMS = KX4/KX */
 	switch (hw->phy.type) {
 	case ixgbe_phy_tn:
-	case ixgbe_phy_aq:
 	case ixgbe_phy_cu_unknown:
 		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_EXT_ABILITY,
 		IXGBE_MDIO_PMA_PMD_DEV_TYPE, &ext_ability);
@@ -1304,3 +1296,43 @@ void ixgbe_set_lan_id_multi_port_pcie_82598(struct ixgbe_hw *hw)
 	}
 }
 
+/**
+ * ixgbe_set_rxpba_82598 - Initialize RX packet buffer
+ * @hw: pointer to hardware structure
+ * @num_pb: number of packet buffers to allocate
+ * @headroom: reserve n KB of headroom
+ * @strategy: packet buffer allocation strategy
+ **/
+static void ixgbe_set_rxpba_82598(struct ixgbe_hw *hw, int num_pb,
+                                  u32 headroom, int strategy)
+{
+	u32 rxpktsize = IXGBE_RXPBSIZE_64KB;
+	u8 i = 0;
+
+	if (!num_pb)
+		return;
+
+	/* Setup Rx packet buffer sizes */
+	switch (strategy) {
+	case PBA_STRATEGY_WEIGHTED:
+		/* Setup the first four at 80KB */
+		rxpktsize = IXGBE_RXPBSIZE_80KB;
+		for (; i < 4; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize);
+		/* Setup the last four at 48KB...don't re-init i */
+		rxpktsize = IXGBE_RXPBSIZE_48KB;
+		/* Fall Through */
+	case PBA_STRATEGY_EQUAL:
+	default:
+		/* Divide the remaining Rx packet buffer evenly among the TCs */
+		for (; i < IXGBE_MAX_PACKET_BUFFERS; i++)
+			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize);
+		break;
+	}
+
+	/* Setup Tx packet buffer sizes */
+	for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++)
+		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), IXGBE_TXPBSIZE_40KB);
+
+	return;
+}

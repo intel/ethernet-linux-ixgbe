@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -110,23 +110,6 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
 	u32 txpktsize;
 	u32 txpbthresh;
 	u8  i = 0;
-
-	/* reserve space for Flow Director filters */
-	switch (dcb_config->fdir_pballoc) {
-	case IXGBE_FDIR_PBALLOC_256K:
-		rx_pb_size -= 256 << IXGBE_RXPBSIZE_SHIFT;
-		break;
-	case IXGBE_FDIR_PBALLOC_128K:
-		rx_pb_size -= 128 << IXGBE_RXPBSIZE_SHIFT;
-		break;
-	case IXGBE_FDIR_PBALLOC_64K:
-		rx_pb_size -= 64 << IXGBE_RXPBSIZE_SHIFT;
-		break;
-	case IXGBE_FDIR_PBALLOC_NONE:
-	default:
-		/* do nothing */
-		break;
-	}
 
 	/*
 	 * This really means configure the first half of the TCs
@@ -405,7 +388,19 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
 	reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
 	reg &= ~IXGBE_MFLCN_RFCE;
 	reg |= IXGBE_MFLCN_RPFCE | IXGBE_MFLCN_DPF;
+
+	if (hw->mac.type == ixgbe_mac_X540) {
+		u8 pfc_en = 0;
+		for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+			if (dcb_config->tc_config[i].dcb_pfc)
+				pfc_en |= 1 << i;
+		}
+
+		reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
+	}
+
 	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
+
 out:
 	return 0;
 }

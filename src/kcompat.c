@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -623,7 +623,7 @@ void *_kc_kzalloc(size_t size, int flags)
 #endif /* <= 2.6.13 */
 
 /*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18) )
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19) )
 int _kc_skb_pad(struct sk_buff *skb, int pad)
 {
 	int ntail;
@@ -653,10 +653,8 @@ free_skb:
 	kfree_skb(skb);
 	return -ENOMEM;
 } 
-#endif /* < 2.6.18 */
 
-/*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19) )
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(5,4)))
 int _kc_pci_save_state(struct pci_dev *pdev)
 {
 	struct adapter_struct *adapter = pci_get_drvdata(pdev);
@@ -714,6 +712,7 @@ void _kc_pci_restore_state(struct pci_dev *pdev)
 #endif
 	}
 }
+#endif /* !(RHEL_RELEASE_CODE >= RHEL 5.4) */
 
 #ifdef HAVE_PCI_ERS
 void _kc_free_netdev(struct net_device *netdev)
@@ -745,7 +744,7 @@ void *_kc_kmemdup(const void *src, size_t len, unsigned gfp)
 		memcpy(p, src, len);
 	return p;
 }
-#endif /* <= 2.6.18 */
+#endif /* <= 2.6.19 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22) )
@@ -865,12 +864,12 @@ void _kc_print_hex_dump(const char *level,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23) )
-int ixgbe_dcb_netlink_register()
+int ixgbe_dcb_netlink_register(void)
 {
 	return 0;
 }
 
-int ixgbe_dcb_netlink_unregister()
+int ixgbe_dcb_netlink_unregister(void)
 {
 	return 0;
 }
@@ -1121,3 +1120,15 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 	return 0;
 }
 #endif /* < 2.6.36 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
+u8 _kc_netdev_get_num_tc(struct net_device *dev)
+{
+	struct adapter_struct *kc_adapter = netdev_priv(dev);
+	if (kc_adapter->flags & IXGBE_FLAG_DCB_ENABLED)
+		return kc_adapter->tc;
+	else
+		return 0;
+}
+#endif /* < 2.6.39 */

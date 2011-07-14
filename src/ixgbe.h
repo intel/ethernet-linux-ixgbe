@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2011 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -132,6 +132,7 @@
 #define IXGBE_MAX_VF_FUNCTIONS          64
 #define IXGBE_MAX_VFTA_ENTRIES          128
 #define MAX_EMULATION_MAC_ADDRS         16
+#define IXGBE_MAX_PF_MACVLANS           15
 
 #ifdef CONFIG_PCI_IOV
 #define VMDQ_P(p)   ((p) + adapter->num_vfs)
@@ -184,6 +185,15 @@ struct vf_data_storage {
 	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
 	u16 pf_qos;
 	u16 tx_rate;
+};
+
+struct vf_macvlans {
+	struct list_head l;
+	int vf;
+	int rar_entry;
+	bool free;
+	bool is_macvlan;
+	u8 vf_macvlan[ETH_ALEN];
 };
 
 #ifndef IXGBE_NO_LRO
@@ -326,7 +336,7 @@ enum ixgbe_ring_state_t {
 struct ixgbe_ring {
 	struct ixgbe_ring *next;	/* pointer to next ring in q_vector */
 	void *desc;			/* descriptor ring memory */
-	struct device *dev;             /* device for dma mapping */
+	struct device *dev;             /* device for DMA mapping */
 	struct net_device *netdev;      /* netdev ring belongs to */
 	union {
 		struct ixgbe_tx_buffer *tx_buffer_info;
@@ -339,16 +349,18 @@ struct ixgbe_ring {
 	u16 rx_buf_len;
 
 	u8 queue_index; /* needed for multiqueue queue management */
-	u8 reg_idx;			/* holds the special value that gets the
-					 * hardware register offset associated
-					 * with this ring, which is different
-					 * for DCB and RSS modes */
+	u8 reg_idx;			/* holds the special value that gets
+					 * the hardware register offset
+					 * associated with this ring, which is
+					 * different for DCB and RSS modes
+					 */
 	u8 atr_sample_rate;
 	u8 atr_count;
 
 	u16 next_to_use;
 	u16 next_to_clean;
 
+	u8 dcb_tc;
 	struct ixgbe_queue_stats stats;
 	union {
 		struct ixgbe_tx_queue_stats tx_stats;
@@ -362,8 +374,7 @@ struct ixgbe_ring {
 
 enum ixgbe_ring_f_enum {
 	RING_F_NONE = 0,
-	RING_F_DCB,
-	RING_F_VMDQ,
+	RING_F_VMDQ,  /* SR-IOV uses the same ring feature */
 	RING_F_RSS,
 	RING_F_FDIR,
 #ifdef IXGBE_FCOE
@@ -372,7 +383,7 @@ enum ixgbe_ring_f_enum {
 	RING_F_ARRAY_SIZE      /* must be last in enum set */
 };
 
-#define IXGBE_MAX_DCB_INDICES   8
+#define IXGBE_MAX_DCB_INDICES  8
 #define IXGBE_MAX_RSS_INDICES  16
 #define IXGBE_MAX_VMDQ_INDICES 64
 #define IXGBE_MAX_FDIR_INDICES 64
@@ -407,19 +418,19 @@ struct ixgbe_ring_container {
  */
 struct ixgbe_q_vector {
 	struct ixgbe_adapter *adapter;
+	int cpu;	    /* CPU for DCA */
 	unsigned int v_idx; /* index of q_vector within array, also used for
 	                     * finding the bit in EICR and friends that
 	                     * represents the vector for this ring */
-	int cpu;	    /* cpu for DCA */
-#ifdef CONFIG_IXGBE_NAPI
-	struct napi_struct napi;
-#endif
 	struct ixgbe_ring_container rx, tx;
+	struct ixgbe_lro_list *lrolist;   /* LRO list for queue vector*/
 
 	u32 eitr;
 
-	struct ixgbe_lro_list *lrolist;   /* LRO list for queue vector*/
 	char name[IFNAMSIZ + 9];
+#ifdef CONFIG_IXGBE_NAPI
+	struct napi_struct napi;
+#endif
 #ifndef HAVE_NETDEV_NAPI_LIST
 	struct net_device poll_dev;
 #endif
@@ -543,6 +554,8 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_SFP_NEEDS_RESET              (u32)(1 << 8)
 #define IXGBE_FLAG2_RESET_REQUESTED              (u32)(1 << 9)
 #define IXGBE_FLAG2_FDIR_REQUIRES_REINIT         (u32)(1 << 10)
+#define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP           (u32)(1 << 11)
+#define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP           (u32)(1 << 12)
 
 	struct timer_list service_timer;
 	u16 bd_number;
@@ -550,6 +563,9 @@ struct ixgbe_adapter {
 	struct ixgbe_dcb_config dcb_cfg;
 	struct ixgbe_dcb_config temp_dcb_cfg;
 	u8 dcb_set_bitmap;
+#ifndef HAVE_MQPRIO
+	u8 tc;
+#endif
 	enum ixgbe_fc_mode last_lfc_mode;
 
 	/* Interrupt Throttle Rate */
@@ -642,6 +658,9 @@ struct ixgbe_adapter {
 	bool netdev_registered;
 	char lsc_int_name[IFNAMSIZ + 9];
 	u32 interrupt_event;
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
+	u32 led_reg;
+#endif
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
 	unsigned int num_vfs;
@@ -650,6 +669,9 @@ struct ixgbe_adapter {
 	bool l2loopback_enable;
 	struct vf_data_storage *vfinfo;
 	int vf_rate_link_speed;
+	struct vf_macvlans vf_mvs;
+	struct vf_macvlans *mv_list;
+	bool antispoofing_enabled;
 	int node;
 	unsigned long fdir_overflow; /* number of times ATR was backed off */
 	struct hlist_head fdir_filter_list;
@@ -719,6 +741,8 @@ extern void ixgbe_alloc_rx_buffers(struct ixgbe_ring *, u16);
 extern void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter, struct ixgbe_ring *);
 extern void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter, struct ixgbe_ring *);
 extern void ixgbe_set_rx_mode(struct net_device *netdev);
+extern int ixgbe_write_mc_addr_list(struct net_device *netdev);
+extern int ixgbe_setup_tc(struct net_device *dev, u8 tc);
 extern void ixgbe_tx_ctxtdesc(struct ixgbe_ring *, u32, u32, u32, u32);
 extern void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);
 extern void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter,
@@ -728,9 +752,6 @@ extern void ixgbe_vlan_stripping_disable(struct ixgbe_adapter *adapter);
 #ifdef ETHTOOL_OPS_COMPAT
 extern int ethtool_ioctl(struct ifreq *ifr);
 #endif
-extern int ixgbe_dcb_netlink_register(void);
-extern int ixgbe_dcb_netlink_unregister(void);
-
 
 #ifdef IXGBE_FCOE
 extern void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter);
