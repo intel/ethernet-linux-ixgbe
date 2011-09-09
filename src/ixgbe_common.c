@@ -300,8 +300,9 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 	IXGBE_READ_REG(hw, IXGBE_GORCH);
 	IXGBE_READ_REG(hw, IXGBE_GOTCL);
 	IXGBE_READ_REG(hw, IXGBE_GOTCH);
-	for (i = 0; i < 8; i++)
-		IXGBE_READ_REG(hw, IXGBE_RNBC(i));
+	if (hw->mac.type == ixgbe_mac_82598EB)
+		for (i = 0; i < 8; i++)
+			IXGBE_READ_REG(hw, IXGBE_RNBC(i));
 	IXGBE_READ_REG(hw, IXGBE_RUC);
 	IXGBE_READ_REG(hw, IXGBE_RFC);
 	IXGBE_READ_REG(hw, IXGBE_ROC);
@@ -2113,7 +2114,6 @@ s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw, s32 packetbuf_num)
 	s32 ret_val = 0;
 	u32 mflcn_reg, fccfg_reg;
 	u32 reg;
-	u32 rx_pba_size;
 	u32 fcrtl, fcrth;
 
 #ifdef CONFIG_DCB
@@ -2193,11 +2193,8 @@ s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw, s32 packetbuf_num)
 	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, mflcn_reg);
 	IXGBE_WRITE_REG(hw, IXGBE_FCCFG, fccfg_reg);
 
-	rx_pba_size = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(packetbuf_num));
-	rx_pba_size >>= IXGBE_RXPBSIZE_SHIFT;
-
-	fcrth = (rx_pba_size - hw->fc.high_water) << 10;
-	fcrtl = (rx_pba_size - hw->fc.low_water) << 10;
+	fcrth = hw->fc.high_water[packetbuf_num] << 10;
+	fcrtl = hw->fc.low_water << 10;
 
 	if (hw->fc.current_mode & ixgbe_fc_tx_pause) {
 		fcrth |= IXGBE_FCRTH_FCEN;
@@ -2303,8 +2300,8 @@ static s32 ixgbe_fc_autoneg_fiber(struct ixgbe_hw *hw)
 	 */
 
 	linkstat = IXGBE_READ_REG(hw, IXGBE_PCS1GLSTA);
-	if (((linkstat & IXGBE_PCS1GLSTA_AN_COMPLETE) == 0) ||
-	    ((linkstat & IXGBE_PCS1GLSTA_AN_TIMED_OUT) == 1)) {
+	if ((!!(linkstat & IXGBE_PCS1GLSTA_AN_COMPLETE) == 0) ||
+	    (!!(linkstat & IXGBE_PCS1GLSTA_AN_TIMED_OUT) == 1)) {
 		ret_val = IXGBE_ERR_FC_NOT_NEGOTIATED;
 		goto out;
 	}
@@ -2474,7 +2471,9 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw, s32 packetbuf_num)
 	 * Validate the water mark configuration.  Zero water marks are invalid
 	 * because it causes the controller to just blast out fc packets.
 	 */
-	if (!hw->fc.low_water || !hw->fc.high_water || !hw->fc.pause_time) {
+	if (!hw->fc.low_water ||
+	    !hw->fc.high_water[packetbuf_num] ||
+	    !hw->fc.pause_time) {
 		hw_dbg(hw, "Invalid water mark configuration\n");
 		ret_val = IXGBE_ERR_INVALID_LINK_SETTINGS;
 		goto out;
@@ -2792,6 +2791,7 @@ s32 ixgbe_blink_led_start_generic(struct ixgbe_hw *hw, u32 index)
 		autoc_reg |= IXGBE_AUTOC_AN_RESTART;
 		autoc_reg |= IXGBE_AUTOC_FLU;
 		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
+		IXGBE_WRITE_FLUSH(hw);
 		msleep(10);
 	}
 

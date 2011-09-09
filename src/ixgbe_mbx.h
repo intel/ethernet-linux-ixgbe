@@ -36,6 +36,17 @@
 #define IXGBE_VFMAILBOX             0x002FC
 #define IXGBE_VFMBMEM               0x00200
 
+/* Define mailbox register bits */
+#define IXGBE_VFMAILBOX_REQ      0x00000001 /* Request for PF Ready bit */
+#define IXGBE_VFMAILBOX_ACK      0x00000002 /* Ack PF message received */
+#define IXGBE_VFMAILBOX_VFU      0x00000004 /* VF owns the mailbox buffer */
+#define IXGBE_VFMAILBOX_PFU      0x00000008 /* PF owns the mailbox buffer */
+#define IXGBE_VFMAILBOX_PFSTS    0x00000010 /* PF wrote a message in the MB */
+#define IXGBE_VFMAILBOX_PFACK    0x00000020 /* PF ack the previous VF msg */
+#define IXGBE_VFMAILBOX_RSTI     0x00000040 /* PF has reset indication */
+#define IXGBE_VFMAILBOX_RSTD     0x00000080 /* PF has indicated reset done */
+#define IXGBE_VFMAILBOX_R2C_BITS 0x000000B0 /* All read to clear bits */
+
 #define IXGBE_PFMAILBOX_STS   0x00000001 /* Initiate message send to VF */
 #define IXGBE_PFMAILBOX_ACK   0x00000002 /* Ack message recv'd from VF */
 #define IXGBE_PFMAILBOX_VFU   0x00000004 /* VF owns the mailbox buffer */
@@ -88,6 +99,7 @@ s32 ixgbe_check_for_msg(struct ixgbe_hw *, u16);
 s32 ixgbe_check_for_ack(struct ixgbe_hw *, u16);
 s32 ixgbe_check_for_rst(struct ixgbe_hw *, u16);
 void ixgbe_init_mbx_ops_generic(struct ixgbe_hw *hw);
+void ixgbe_init_mbx_params_vf(struct ixgbe_hw *);
 void ixgbe_init_mbx_params_pf(struct ixgbe_hw *);
 
 #endif /* _IXGBE_MBX_H_ */

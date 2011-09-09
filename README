@@ -2,7 +2,7 @@ Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
 
-April 14, 2011
+September 2, 2011
 
 Contents
 ========
@@ -32,8 +32,8 @@ In This Release
 ===============
 
 This file describes the ixgbe Linux* Base Driver for the 10 Gigabit PCI 
-Express Family of Adapters.  This driver supports the 2.6.x kernel, and 
-includes support for any Linux supported system, including Itanium(R)2, 
+Express Family of Adapters.  This driver supports the 2.6.x and 3.x kernels, 
+and includes support for any Linux supported system, including Itanium(R)2, 
 x86_64, i686, and PPC.
 
 This driver is only supported as a loadable module at this time.  Intel is
@@ -566,6 +566,11 @@ The following is an example using udp4 (UDP over IPv4):
     IP SA
     IP DA
 
+LRO
+---
+Enable/disable Large Receive Offload.
+Valid Range: 0(off), 1(on)
+Default Value: 1
 
 Additional Configurations
 =========================
@@ -708,8 +713,21 @@ Additional Configurations
 
        Where x=the PF interface#  n=the number of spoofed packets
 
+  Setting MAC Address, VLAN and Rate Limit Using IProute2 Tool
+  ------------------------------------------------------------
+  You can set a MAC address of a Virtual Function (VF), a default VLAN and the
+  rate limit using the IProute2 tool. Download the latest version of the 
+  iproute2 tool from Sourceforge if your version does not have all the
+  features you require.
 
-   
+  (WoL) Wake on LAN Support
+  -------------------------
+  Some adapters do not support Wake on LAN. To determine if your adapter 
+  supports Wake on LAN, run 
+
+        ethtool ethX
+
+
 Performance Tuning
 ==================
 

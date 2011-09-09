@@ -291,12 +291,17 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82598(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
                                struct ixgbe_dcb_config *dcb_config)
 {
-	u32 reg, rx_pba_size;
+	u32 reg;
 	u8  i;
 
 	if (!dcb_config->pfc_mode_enable)
 		goto out;
 
+#ifdef CONFIG_DCB
+	/* Block LFC now that we're configuring PFC */
+	hw->fc.requested_mode = ixgbe_fc_pfc;
+
+#endif /* CONFIG_DCB */
 	/* Enable Transmit Priority Flow Control */
 	reg = IXGBE_READ_REG(hw, IXGBE_RMCS);
 	reg &= ~IXGBE_RMCS_TFCE_802_3X;
@@ -315,9 +320,7 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
 	 * for each traffic class.
 	 */
 	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		rx_pba_size = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
-		rx_pba_size >>= IXGBE_RXPBSIZE_SHIFT;
-		reg = (rx_pba_size - hw->fc.low_water) << 10;
+		reg = hw->fc.low_water << 10;
 
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx ||
 		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full)
@@ -325,7 +328,7 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw,
 
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTL(i), reg);
 
-		reg = (rx_pba_size - hw->fc.high_water) << 10;
+		reg = hw->fc.high_water[i] << 10;
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx ||
 		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full)
 			reg |= IXGBE_FCRTH_FCEN;

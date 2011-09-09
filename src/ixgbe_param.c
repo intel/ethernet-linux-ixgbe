@@ -195,7 +195,6 @@ IXGBE_PARAM(L2LBen, "L2 Loopback Enable: 0 = disable, 1 = enable (default)");
  */
 #define DEFAULT_ITR		1
 IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (0,1,956-488281), default 1");
-#define DEFAULT_EITR		20000
 #define MAX_ITR       IXGBE_MAX_INT_RATE
 #define MIN_ITR       IXGBE_MIN_INT_RATE
 
@@ -330,7 +329,16 @@ IXGBE_PARAM(AtrSampleRate, "Software ATR Tx packet sample rate");
  * Default Value: 1
  */
 IXGBE_PARAM(FCoE, "Disable or enable FCoE Offload, default 1");
+
 #endif /* IXGBE_FCOE */
+/* Enable/disable Large Receive Offload
+ *
+ * Valid Values: 0(off), 1(on)
+ *
+ * Default Value: 1
+ */
+IXGBE_PARAM(LRO, "Large Receive Offload (0,1), default 1 = on");
+
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
@@ -764,14 +772,12 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 			unsigned int l2LBen = L2LBen[bd];
 			ixgbe_validate_option(&l2LBen, &opt);
-			adapter->l2loopback_enable = l2LBen;
+			if (l2LBen)
+				adapter->flags |= IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE;
 #ifdef module_param_array
 		} else {
-			if (opt.def == OPTION_DISABLED) {
-				adapter->l2loopback_enable = 0;
-			} else {
-				adapter->l2loopback_enable = opt.def;
-			}
+			if (opt.def == OPTION_ENABLED)
+				adapter->flags |= IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE;
 		}
 #endif
 	}
@@ -789,43 +795,29 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_InterruptThrottleRate > bd) {
 #endif
-			u32 eitr = InterruptThrottleRate[bd];
-			switch (eitr) {
+			u32 itr = InterruptThrottleRate[bd];
+			switch (itr) {
 			case 0:
 				DPRINTK(PROBE, INFO, "%s turned off\n",
 				        opt.name);
-				/*
-				 * zero is a special value, we don't want to
-				 * turn off ITR completely, just set it to an
-				 * insane interrupt rate
-				 */
-				adapter->rx_eitr_param = IXGBE_MAX_INT_RATE;
 				adapter->rx_itr_setting = 0;
-				adapter->tx_itr_setting = 0;
 				break;
 			case 1:
 				DPRINTK(PROBE, INFO, "dynamic interrupt "
                                         "throttling enabled\n");
-				adapter->rx_eitr_param = DEFAULT_EITR;
-				adapter->tx_eitr_param = (DEFAULT_EITR >> 1);
 				adapter->rx_itr_setting = 1;
-				adapter->tx_itr_setting = 1;
 				break;
 			default:
-				ixgbe_validate_option(&eitr, &opt);
-				adapter->rx_eitr_param = eitr;
-				adapter->tx_eitr_param = (eitr >> 1);
+				ixgbe_validate_option(&itr, &opt);
 				/* the first bit is used as control */
-				adapter->rx_itr_setting = eitr & ~1;
-				adapter->tx_itr_setting = (eitr >> 1) & ~1;
+				adapter->rx_itr_setting = (1000000/itr) << 2;
 				break;
 			}
+			adapter->tx_itr_setting = adapter->rx_itr_setting;
 #ifdef module_param_array
 		} else {
-			adapter->rx_eitr_param = DEFAULT_EITR;
-			adapter->tx_eitr_param = (DEFAULT_EITR >> 1);
-			adapter->rx_itr_setting = DEFAULT_ITR;
-			adapter->tx_itr_setting = DEFAULT_ITR;
+			adapter->rx_itr_setting = opt.def;
+			adapter->tx_itr_setting = opt.def;
 		}
 #endif
 	}
@@ -1070,6 +1062,11 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			*aflags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
 			*aflags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 		}
+
+		/* limit the number of queues for FDIR using RSS param */
+		if (feature[RING_F_RSS].indices && num_RSS > bd && RSS[bd])
+			feature[RING_F_FDIR].indices = feature[RING_F_RSS].indices;
+
 no_flow_director:
 		/* empty code line with semi-colon */ ;
 	}
@@ -1191,6 +1188,46 @@ no_fdir_sample:
 		}
 	}
 #endif /* IXGBE_FCOE */
+	{ /* LRO - Enable Large Receive Offload */
+		struct ixgbe_option opt = {
+			.type = enable_option,
+			.name = "LRO - Large Receive Offload",
+			.err  = "defaulting to Enabled",
+			.def  = OPTION_ENABLED
+		};
+		struct net_device *netdev = adapter->netdev;
+
+#ifdef IXGBE_NO_LRO
+		if (!(adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE))
+			opt.def = OPTION_DISABLED;
+
+#endif
+#ifdef module_param_array
+		if (num_LRO > bd) {
+#endif
+			unsigned int lro = LRO[bd];
+			ixgbe_validate_option(&lro, &opt);
+			if (lro)
+				netdev->features |= NETIF_F_LRO;
+			else
+				netdev->features &= ~NETIF_F_LRO;
+#ifdef module_param_array
+		} else if (opt.def == OPTION_ENABLED) {
+			netdev->features |= NETIF_F_LRO;
+		} else {
+			netdev->features &= ~NETIF_F_LRO;
+		}
+#endif
+#ifdef IXGBE_NO_LRO
+		if ((netdev->features & NETIF_F_LRO) &&
+		    !(adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE)) {
+			DPRINTK(PROBE, INFO,
+			        "RSC is not supported on this "
+			        "hardware.  Disabling RSC.\n");
+			netdev->features &= ~NETIF_F_LRO;
+		}
+#endif
+	}
 	{ /* Node assignment */
 		static struct ixgbe_option opt = {
 			.type = range_option,

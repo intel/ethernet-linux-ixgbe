@@ -117,5 +117,5 @@ void ixgbe_set_rxpba_generic(struct ixgbe_hw *hw, int num_pb, u32 headroom,
                              int strategy);
 s32 ixgbe_set_fw_drv_ver_generic(struct ixgbe_hw *hw, u8 maj, u8 min,
                                  u8 build, u8 ver);
-#endif /* IXGBE_COMMON */
 void ixgbe_clear_tx_pending(struct ixgbe_hw *hw);
+#endif /* IXGBE_COMMON */

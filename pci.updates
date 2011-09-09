@@ -66,13 +66,16 @@
 		8086 a03c  Ethernet Server Adapter X520-T2
 		8086 a21c  Ethernet Server Adapter X520-T2
 	1528  Ethernet Controller 10 Gigabit X540-AT2
+		108e 7b14  Sun Dual Port 10 GbE PCIe 2.0 ExpressModule, Base-T
+		108e 7b15  Sun Dual Port 10 GbE PCIe 2.0 Low Profile Adapter, Base-T
+		1028 1f61  Ethernet 10G 4P X540/I350 rNDC
 		8086 0001  Ethernet Server Adapter X540-T2
 		8086 0002  Ethernet Server Adapter X540-T1
 		8086 001a  Ethernet Server Adapter X540-T2
 		8086 00a2  Ethernet Server Adapter X540-T1
-		8086 5003  Ethernet Server Adapter X540-T2
+		8086 5003  Ethernet 10G 2P X540-t Adapter
 	1529  82599 10 Gigabit Dual Port Backplane Connection with FCoE
 	152a  82599 10 Gigabit Dual port Network Connection with FCoE
 	154d  82599EB 10-Gigabit SFP+ Network Connection
-		8086 7b11 Ethernet 10G 2P X520 Adapter
+		8086 7b11  Ethernet 10G 2P X520 Adapter
 	154f  82599EB 10Gigabit Dual Port Network Connection

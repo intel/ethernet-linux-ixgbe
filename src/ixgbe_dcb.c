@@ -59,7 +59,7 @@ s32 ixgbe_dcb_check_config(struct ixgbe_dcb_config *dcb_config)
 	/* First Tx, then Rx */
 	for (i = 0; i < 2; i++) {
 		/* Check each traffic class for rule violation */
-		for (j = 0; j < dcb_config->num_tcs.pg_tcs; j++) {
+		for (j = 0; j < MAX_TRAFFIC_CLASS; j++) {
 			p = &dcb_config->tc_config[j].path[i];
 
 			bw = p->bwg_percent;
@@ -123,7 +123,7 @@ s32 ixgbe_dcb_check_config(struct ixgbe_dcb_config *dcb_config)
 
 err_config:
 	hw_dbg(hw, "DCB error code %d while checking %s settings.\n",
-	          ret_val, (j == DCB_TX_CONFIG) ? "Tx" : "Rx");
+	          ret_val, (i == DCB_TX_CONFIG) ? "Tx" : "Rx");
 
 	return ret_val;
 }
@@ -162,7 +162,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 	             DCB_CREDIT_QUANTUM;
 
 	/* Find smallest link percentage */
-	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
 		p = &dcb_config->tc_config[i].path[direction];
 		bw_percent = dcb_config->bw_percentage[direction][p->bwg_id];
 		link_percentage = p->bwg_percent;
@@ -184,7 +184,7 @@ s32 ixgbe_dcb_calculate_tc_credits(struct ixgbe_hw *hw,
 	min_multiplier = (min_credit / min_percent) + 1;
 
 	/* Find out the link percentage for each TC first */
-	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
 		p = &dcb_config->tc_config[i].path[direction];
 		bw_percent = dcb_config->bw_percentage[direction][p->bwg_id];
 
@@ -403,7 +403,7 @@ s32 ixgbe_dcb_config_tc_stats(struct ixgbe_hw *hw)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
-		ret = ixgbe_dcb_config_tc_stats_82599(hw);
+		ret = ixgbe_dcb_config_tc_stats_82599(hw, NULL);
 		break;
 	default:
 		break;

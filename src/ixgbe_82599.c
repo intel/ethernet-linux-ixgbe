@@ -996,7 +996,7 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 
 mac_reset_top:
 	/*
-	 * Issue global reset to the MAC. Needs to be SW reset if link is up.
+	 * Issue global reset to the MAC.  Needs to be SW reset if link is up.
 	 * If link reset is used when link is up, it might reset the PHY when
 	 * mng is using it.  If link is down or the flag to force full link
 	 * reset is set, then perform link reset.

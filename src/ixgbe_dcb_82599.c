@@ -193,7 +193,7 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw,
 	IXGBE_WRITE_REG(hw, IXGBE_RTRUP2TC, reg);
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
 		p = &dcb_config->tc_config[i].path[DCB_RX_CONFIG];
 
 		credit_refill = p->data_credits_refill;
@@ -239,7 +239,7 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw,
 	}
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
 		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
 		max_credits = dcb_config->tc_config[i].desc_credits_max;
 		reg = max_credits << IXGBE_RTTDT2C_MCL_SHIFT;
@@ -304,7 +304,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
 	IXGBE_WRITE_REG(hw, IXGBE_RTTUP2TC, reg);
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
 		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
 		reg = p->data_credits_refill;
 		reg |= (u32)(p->data_credits_max) << IXGBE_RTTPT2C_MCL_SHIFT;
@@ -340,28 +340,30 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
 s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
                                struct ixgbe_dcb_config *dcb_config)
 {
-	u32 i, reg, rx_pba_size;
+	u32 i, reg;
 
 	/* If PFC is disabled globally then fall back to LFC. */
 	if (!dcb_config->pfc_mode_enable) {
-		for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++)
+		for (i = 0; i < MAX_TRAFFIC_CLASS; i++)
 			hw->mac.ops.fc_enable(hw, i);
 		goto out;
 	}
 
-	/* Configure PFC Tx thresholds per TC */
-	for (i = 0; i < dcb_config->num_tcs.pg_tcs; i++) {
-		rx_pba_size = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
-		rx_pba_size >>= IXGBE_RXPBSIZE_SHIFT;
+#ifdef CONFIG_DCB
+	/* Block LFC now that we're configuring PFC */
+	hw->fc.requested_mode = ixgbe_fc_pfc;
 
-		reg = (rx_pba_size - hw->fc.low_water) << 10;
+#endif /* CONFIG_DCB */
+	/* Configure PFC Tx thresholds per TC */
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		reg = hw->fc.low_water << 10;
 
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
 		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx)
 			reg |= IXGBE_FCRTL_XONE;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), reg);
 
-		reg = (rx_pba_size - hw->fc.high_water) << 10;
+		reg = hw->fc.high_water[i] << 10;
 		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
 		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx)
 			reg |= IXGBE_FCRTH_FCEN;
@@ -412,47 +414,119 @@ out:
  * Configure queue statistics registers, all queues belonging to same traffic
  * class uses a single set of queue statistics counters.
  */
-s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw)
+s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw,
+                                    struct ixgbe_dcb_config *dcb_config)
 {
 	u32 reg = 0;
 	u8  i   = 0;
+	u8 tc_count = 8;
+	bool vt_mode = false;
 
-	/*
-	 * Receive Queues stats setting
-	 * 32 RQSMR registers, each configuring 4 queues.
-	 * Set all 16 queues of each TC to the same stat
-	 * with TC 'n' going to stat 'n'.
-	 */
-	for (i = 0; i < 32; i++) {
-		reg = 0x01010101 * (i / 4);
-		IXGBE_WRITE_REG(hw, IXGBE_RQSMR(i), reg);
+	if (dcb_config != NULL) {
+		tc_count = dcb_config->num_tcs.pg_tcs;
+		vt_mode = dcb_config->vt_mode;
 	}
-	/*
-	 * Transmit Queues stats setting
-	 * 32 TQSM registers, each controlling 4 queues.
-	 * Set all queues of each TC to the same stat
-	 * with TC 'n' going to stat 'n'.
-	 * Tx queues are allocated non-uniformly to TCs:
-	 * 32, 32, 16, 16, 8, 8, 8, 8.
-	 */
-	for (i = 0; i < 32; i++) {
-		if (i < 8)
-			reg = 0x00000000;
-		else if (i < 16)
-			reg = 0x01010101;
-		else if (i < 20)
-			reg = 0x02020202;
-		else if (i < 24)
-			reg = 0x03030303;
-		else if (i < 26)
-			reg = 0x04040404;
-		else if (i < 28)
-			reg = 0x05050505;
-		else if (i < 30)
-			reg = 0x06060606;
-		else
-			reg = 0x07070707;
-		IXGBE_WRITE_REG(hw, IXGBE_TQSM(i), reg);
+
+	if (!((tc_count == 8 && vt_mode == false) || tc_count == 4))
+		return IXGBE_ERR_PARAM;
+
+	if (tc_count == 8 && vt_mode == false) {
+		/*
+		 * Receive Queues stats setting
+		 * 32 RQSMR registers, each configuring 4 queues.
+		 *
+		 * Set all 16 queues of each TC to the same stat
+		 * with TC 'n' going to stat 'n'.
+		 */
+		for (i = 0; i < 32; i++) {
+			reg = 0x01010101 * (i / 4);
+			IXGBE_WRITE_REG(hw, IXGBE_RQSMR(i), reg);
+		}
+		/*
+		 * Transmit Queues stats setting
+		 * 32 TQSM registers, each controlling 4 queues.
+		 *
+		 * Set all queues of each TC to the same stat
+		 * with TC 'n' going to stat 'n'.
+		 * Tx queues are allocated non-uniformly to TCs:
+		 * 32, 32, 16, 16, 8, 8, 8, 8.
+		 */
+		for (i = 0; i < 32; i++) {
+			if (i < 8)
+				reg = 0x00000000;
+			else if (i < 16)
+				reg = 0x01010101;
+			else if (i < 20)
+				reg = 0x02020202;
+			else if (i < 24)
+				reg = 0x03030303;
+			else if (i < 26)
+				reg = 0x04040404;
+			else if (i < 28)
+				reg = 0x05050505;
+			else if (i < 30)
+				reg = 0x06060606;
+			else
+				reg = 0x07070707;
+			IXGBE_WRITE_REG(hw, IXGBE_TQSM(i), reg);
+		}
+	} else if (tc_count == 4 && vt_mode == false) {
+		/*
+		 * Receive Queues stats setting
+		 * 32 RQSMR registers, each configuring 4 queues.
+		 *
+		 * Set all 16 queues of each TC to the same stat
+		 * with TC 'n' going to stat 'n'.
+		 */
+		for (i = 0; i < 32; i++) {
+			if (i % 8 > 3)
+				continue; /* In 4 TC mode, odd 16-queue ranges are not used. */
+			reg = 0x01010101 * (i / 8);
+			IXGBE_WRITE_REG(hw, IXGBE_RQSMR(i), reg);
+		}
+		/*
+		 * Transmit Queues stats setting
+		 * 32 TQSM registers, each controlling 4 queues.
+		 *
+		 * Set all queues of each TC to the same stat
+		 * with TC 'n' going to stat 'n'.
+		 * Tx queues are allocated non-uniformly to TCs:
+		 * 64, 32, 16, 16.
+		 */
+		for (i = 0; i < 32; i++) {
+			if (i < 16)
+				reg = 0x00000000;
+			else if (i < 24)
+				reg = 0x01010101;
+			else if (i < 28)
+				reg = 0x02020202;
+			else
+				reg = 0x03030303;
+			IXGBE_WRITE_REG(hw, IXGBE_TQSM(i), reg);
+		}
+	} else if (tc_count == 4 && vt_mode == true) {
+		/*
+		 * Receive Queues stats setting
+		 * 32 RQSMR registers, each configuring 4 queues.
+		 *
+		 * Queue Indexing in 32 VF with DCB mode maps 4 TC's to each pool.
+		 * Set all 32 queues of each TC across pools to the same stat
+		 * with TC 'n' going to stat 'n'.
+		 */
+		for (i = 0; i < 32; i++) {
+			IXGBE_WRITE_REG(hw, IXGBE_RQSMR(i), 0x03020100);
+		}
+		/*
+		 * Transmit Queues stats setting
+		 * 32 TQSM registers, each controlling 4 queues.
+		 *
+		 * Queue Indexing in 32 VF with DCB mode maps 4 TC's to each pool.
+		 * Set all 32 queues of each TC across pools to the same stat
+		 * with TC 'n' going to stat 'n'.
+		 */
+		for (i = 0; i < 32; i++) {
+			IXGBE_WRITE_REG(hw, IXGBE_TQSM(i), 0x03020100);
+		}
 	}
 
 	return 0;
@@ -502,17 +576,25 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 		}
 	}
 	if (dcb_config->num_tcs.pg_tcs == 4) {
-		/* Enable DCB for Rx with 4 TCs and VT Mode*/
-		reg = (reg & ~IXGBE_MRQC_MRQE_MASK) | IXGBE_MRQC_VMDQRT4TCEN;
+		/* We support both VT-on and VT-off with 4 TCs. */
+		if (dcb_config->vt_mode)
+			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
+			      IXGBE_MRQC_VMDQRT4TCEN;
+		else
+			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
+			      IXGBE_MRQC_RTRSS4TCEN;
 	}
 	IXGBE_WRITE_REG(hw, IXGBE_MRQC, reg);
 
 	/* Enable DCB for Tx with 8 TCs */
 	if (dcb_config->num_tcs.pg_tcs == 8)
 		reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_8TC_8TQ;
-	else /* Enable DCB for Tx with 4 TCs and VT Mode*/
-		reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_VT_ENA
-					| IXGBE_MTQC_4TC_4TQ;
+	else {
+		/* We support both VT-on and VT-off with 4 TCs. */
+		reg = IXGBE_MTQC_RT_ENA | IXGBE_MTQC_4TC_4TQ;
+		if (dcb_config->vt_mode)
+			reg |= IXGBE_MTQC_VT_ENA;
+	}
 	IXGBE_WRITE_REG(hw, IXGBE_MTQC, reg);
 
 	/* Disable drop for all queues */
@@ -550,7 +632,7 @@ s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw,
 	ixgbe_dcb_config_tx_desc_arbiter_82599(hw, dcb_config);
 	ixgbe_dcb_config_tx_data_arbiter_82599(hw, dcb_config);
 	ixgbe_dcb_config_pfc_82599(hw, dcb_config);
-	ixgbe_dcb_config_tc_stats_82599(hw);
+	ixgbe_dcb_config_tc_stats_82599(hw, dcb_config);
 
 
 	return 0;

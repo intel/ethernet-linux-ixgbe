@@ -33,7 +33,6 @@
 /* DCB data structures */
 
 #define MAX_USER_PRIORITY        8
-#define MAX_TRAFFIC_CLASS        8
 #define MAX_BW_GROUP             8
 #define BW_PERCENT               100
 
@@ -143,6 +142,7 @@ struct ixgbe_dcb_config {
 
 	u32  dcb_cfg_version; /* Not used...OS-specific? */
 	u32  link_speed; /* For bandwidth allocation validation purpose */
+	bool vt_mode;
 };
 
 /* DCB driver APIs */

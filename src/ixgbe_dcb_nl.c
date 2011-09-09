@@ -70,13 +70,23 @@ static u8 ixgbe_get_tc_from_up(struct net_device *netdev, u8 up)
 		}
 	} else {
 		/* from user priority to the corresponding traffic class */
-		up2tc = IXGBE_READ_REG(&adapter->hw, IXGBE_RTRUP2TC);
-		up2tc >>= (up * IXGBE_RTRUP2TC_UP_SHIFT);
-		up2tc &= (MAX_TRAFFIC_CLASS - 1);
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_82599EB:
+		case ixgbe_mac_X540:
+			up2tc = IXGBE_READ_REG(&adapter->hw, IXGBE_RTRUP2TC);
+			up2tc >>= (up * IXGBE_RTRUP2TC_UP_SHIFT);
+			up2tc &= (MAX_TRAFFIC_CLASS - 1);
+			break;
+		default:
+			up2tc = up;
+			break;
+		}
+
 		return (u8)up2tc;
 	}
 	return 0;
 }
+
 
 #ifdef IXGBE_FCOE
 static u8 ixgbe_get_up_from_tc(struct net_device *netdev, u8 tc)
@@ -392,7 +402,6 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	u8 up = ixgbe_get_up_from_tc(netdev, adapter->fcoe.tc);
 #endif /* IXGBE_FCOE */
 
-
 	ret = ixgbe_copy_dcb_cfg(&adapter->temp_dcb_cfg, &adapter->dcb_cfg,
 				 MAX_TRAFFIC_CLASS);
 	if (ret)
@@ -466,25 +475,12 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	}
 
 	if (adapter->dcb_set_bitmap & (BIT_PG_TX | BIT_PG_RX)) {
-		int max_frame = adapter->netdev->mtu + ETH_HLEN + ETH_FCS_LEN;
-#ifdef IXGBE_FCOE
-		/* adjust max frame to be able to do baby jumbo for FCoE */
-		if ((adapter->flags & IXGBE_FLAG_FCOE_ENABLED) &&
-		    (max_frame < IXGBE_FCOE_JUMBO_FRAME_SIZE))
-			max_frame = IXGBE_FCOE_JUMBO_FRAME_SIZE;
-#endif /* IXGBE_FCOE */
-		
-		ixgbe_dcb_calculate_tc_credits(&adapter->hw, &adapter->dcb_cfg,
-					       max_frame, DCB_TX_CONFIG);
-		ixgbe_dcb_calculate_tc_credits(&adapter->hw, &adapter->dcb_cfg,
-					       max_frame, DCB_RX_CONFIG);
-
-		ixgbe_dcb_config_rx_arbiter(&adapter->hw,
-					    &adapter->dcb_cfg);
-		ixgbe_dcb_config_tx_desc_arbiter(&adapter->hw,
-						 &adapter->dcb_cfg);
-		ixgbe_dcb_config_tx_data_arbiter(&adapter->hw,
-						 &adapter->dcb_cfg);
+		ixgbe_dcb_config_rx_arbiter_82599(&adapter->hw,
+						  &adapter->dcb_cfg);
+		ixgbe_dcb_config_tx_desc_arbiter_82599(&adapter->hw,
+						       &adapter->dcb_cfg);
+		ixgbe_dcb_config_tx_data_arbiter_82599(&adapter->hw,
+						       &adapter->dcb_cfg);
 	}
 
 	if (adapter->dcb_cfg.pfc_mode_enable)
@@ -601,7 +597,7 @@ static void ixgbe_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 	return;
 }
 
-#if defined(HAVE_DCBNL_OPS_GETAPP) && !defined(HAVE_DCBNL_IEEE)
+#ifdef HAVE_DCBNL_OPS_GETAPP
 /**
  * ixgbe_dcbnl_getapp - retrieve the DCBX application user priority
  * @netdev : the corresponding netdev
@@ -615,6 +611,14 @@ static void ixgbe_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
 {
 	u8 rval = 0;
+#ifdef HAVE_DCBNL_IEEE
+	struct dcb_app app = {
+				.selector = idtype,
+				.protocol = id,
+			     };
+
+	rval = dcb_getapp(netdev, &app);
+#endif
 
 	switch (idtype) {
 	case DCB_APP_IDTYPE_ETHTYPE:
@@ -628,9 +632,9 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
 	default:
 		break;
 	}
+
 	return rval;
 }
-#endif /* HAVE_DCBNL_OPS_GETAPP && !defined(HAVE_DCBNL_IEEE */
 
 /**
  * ixgbe_dcbnl_setapp - set the DCBX application user priority
@@ -646,10 +650,11 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 {
 	int err = 0;
 #ifdef HAVE_DCBNL_IEEE
-	struct dcb_app app = {
-			       .selector = DCB_APP_IDTYPE_ETHTYPE,
-			       .protocol = ETH_P_FCOE,
-			     };
+	struct dcb_app app;
+
+	app.selector = idtype;
+	app.protocol = id;
+	app.priority = up;
 	err = dcb_setapp(netdev, &app);
 #endif
 
@@ -668,8 +673,10 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 	default:
 		break;
 	}
+
 	return err;
 }
+#endif /* HAVE_DCBNL_OPS_GETAPP */
 
 struct dcbnl_rtnl_ops dcbnl_ops = {
 	.getstate	= ixgbe_dcbnl_get_state,
@@ -691,9 +698,9 @@ struct dcbnl_rtnl_ops dcbnl_ops = {
 	.setnumtcs	= ixgbe_dcbnl_setnumtcs,
 	.getpfcstate	= ixgbe_dcbnl_getpfcstate,
 	.setpfcstate	= ixgbe_dcbnl_setpfcstate,
-#if defined(HAVE_DCBNL_OPS_GETAPP) && !defined(HAVE_DCBNL_IEEE)
+#ifdef HAVE_DCBNL_OPS_GETAPP
 	.getapp		= ixgbe_dcbnl_getapp,
-#endif
 	.setapp		= ixgbe_dcbnl_setapp,
+#endif
 };
 #endif

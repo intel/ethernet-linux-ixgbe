@@ -4,7 +4,7 @@
 .\"
 .\" * Other names and brands may be claimed as the property of others.
 .\"
-.TH ixgbe 1 "March 14, 2011"
+.TH ixgbe 1 "September 2, 2011"
 
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
@@ -239,6 +239,14 @@ the adapter allocate memory on.
 .IP
 This parameter controls the internal switch (L2 loopback between pf and vf).
 By default the switch is enabled.
+.LP
+.B LRO
+.IP
+Enable/disable Large Receive Offload.
+.B Valid Range: 
+0(off), 1(on)
+.B Default Value: 
+1
 .LP
 .SH JUMBO FRAMES
 The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabled by changing the MTU to a value larger than the default of 1500. Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:
