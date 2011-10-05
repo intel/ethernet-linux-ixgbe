@@ -612,6 +612,24 @@ DECLARE_BITMAP(_kcompat_node_online_map, MAX_NUMNODES) = {1};
 #endif /* < 2.6.10 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13) )
+char *_kc_kstrdup(const char *s, unsigned int gfp)
+{
+	size_t len;
+	char *buf;
+
+	if (!s)
+		return NULL;
+
+	len = strlen(s) + 1;
+	buf = kmalloc(len, gfp);
+	if (buf)
+		memcpy(buf, s, len);
+	return buf;
+}
+#endif /* < 2.6.13 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14) )
 void *_kc_kzalloc(size_t size, int flags)
 {
@@ -1113,7 +1131,7 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,1)))
 u8 _kc_netdev_get_num_tc(struct net_device *dev)
 {
 	struct adapter_struct *kc_adapter = netdev_priv(dev);

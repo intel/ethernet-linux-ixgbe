@@ -39,6 +39,7 @@
 #endif /* HAVE_IRQ_AFFINITY_HINT */
 #include <linux/vmalloc.h>
 
+
 #ifdef SIOCETHTOOL
 #include <linux/ethtool.h>
 #endif
@@ -57,7 +58,7 @@
 #include <linux/sctp.h>
 #endif
 
-#if defined(IXGBE_FCOE) || defined(CONFIG_FCOE_MODULE)
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #define IXGBE_FCOE
 #include "ixgbe_fcoe.h"
 #endif /* CONFIG_FCOE or CONFIG_FCOE_MODULE */
@@ -124,6 +125,8 @@
 #define IXGBE_TX_FLAGS_FCOE		(u32)(1 << 5)
 #define IXGBE_TX_FLAGS_FSO		(u32)(1 << 6)
 #define IXGBE_TX_FLAGS_TXSW		(u32)(1 << 7)
+#define IXGBE_TX_FLAGS_MAPPED_AS_PAGE	(u32)(1 << 8)
+#define IXGBE_TX_FLAGS_TSTAMP           (u32)(1 << 9)
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0xe0000000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT  29
@@ -136,6 +139,8 @@
 #define IXGBE_MAX_VFTA_ENTRIES          128
 #define MAX_EMULATION_MAC_ADDRS         16
 #define IXGBE_MAX_PF_MACVLANS           15
+#define IXGBE_82599_VF_DEVICE_ID        0x10ED
+#define IXGBE_X540_VF_DEVICE_ID         0x1515
 
 #ifdef CONFIG_PCI_IOV
 #define VMDQ_P(p)   ((p) + adapter->num_vfs)
@@ -638,6 +643,7 @@ struct ixgbe_adapter {
 	struct ixgbe_lro_stats lro_stats;
 #endif
 
+
 #ifdef ETHTOOL_TEST
 	u32 test_icr;
 	struct ixgbe_ring test_tx_ring;
@@ -699,6 +705,10 @@ struct ixgbe_adapter {
 	struct vf_macvlans *mv_list;
 	bool antispoofing_enabled;
 	int node;
+#ifdef CONFIG_PCI_IOV
+	u32 timer_event_accumulator;
+	u32 vferr_refcount;
+#endif
 	struct ixgbe_mac_addr *mac_table;
 };
 
@@ -708,6 +718,7 @@ struct ixgbe_fdir_filter {
 	u16 sw_idx;
 	u16 action;
 };
+
 
 enum ixbge_state_t {
 	__IXGBE_TESTING,

@@ -891,16 +891,24 @@ s32 ixgbe_blink_led_start_X540(struct ixgbe_hw *hw, u32 index)
 {
 	u32 macc_reg;
 	u32 ledctl_reg;
+	ixgbe_link_speed speed;
+	bool link_up;
 
 	/*
-	 * In order for the blink bit in the LED control register
-	 * to work, link and speed must be forced in the MAC. We
-	 * will reverse this when we stop the blinking.
+	 * Forcing link and speed when we are currently linked at less
+	 * then 10G causes the LED to blink at slow rate.
 	 */
-	macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
-	macc_reg |= IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS;
-	IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);
-
+	hw->mac.ops.check_link(hw, &speed, &link_up, false);
+	if (link_up == false) {
+		/*
+		 * In order for the blink bit in the LED control register
+		 * to work, link and speed must be forced in the MAC. We
+		 * will reverse this when we stop the blinking.
+		 */
+		macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
+		macc_reg |= IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS;
+		IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);
+	}
 	/* Set the LED to LINK_UP + BLINK. */
 	ledctl_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
 	ledctl_reg &= ~IXGBE_LED_MODE_MASK(index);

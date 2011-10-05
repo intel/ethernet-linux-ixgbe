@@ -1588,6 +1588,14 @@ static inline int _kc_is_multicast_ether_addr(const u8 *addr)
 #endif /* < 2.6.12 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13) )
+#ifndef kstrdup
+#define kstrdup _kc_kstrdup
+extern char *_kc_kstrdup(const char *s, unsigned int gfp);
+#endif
+#endif /* < 2.6.13 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14) )
 #define pm_message_t u32
 #ifndef kzalloc
@@ -2297,7 +2305,7 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32) )
 #undef netdev_tx_t
 #define netdev_tx_t int
-#if defined(IXGBE_FCOE) || defined(CONFIG_FCOE_MODULE)
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef NETIF_F_FCOE_MTU
 #define NETIF_F_FCOE_MTU       (1 << 26)
 #endif
@@ -2337,7 +2345,7 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #define pm_runtime_get_noresume(dev)	do {} while (0)
 #endif
 #else /* < 2.6.32 */
-#if defined(IXGBE_FCOE) || defined(CONFIG_FCOE_MODULE)
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_ENABLE
 #define HAVE_NETDEV_OPS_FCOE_ENABLE
 #endif
@@ -2348,6 +2356,8 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #endif
 #endif /* CONFIG_DCB */
 #include <linux/pm_runtime.h>
+/* IOV bad DMA target work arounds require at least this kernel rev support */
+#define HAVE_PCIE_TYPE
 #endif /* < 2.6.32 */
 
 /*****************************************************************************/
@@ -2364,14 +2374,14 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 /* Features back-ported to RHEL6 or SLES11 SP1 after 2.6.32 */
 #if ( (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) || \
       (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,1,0)) )
-#if defined(IXGBE_FCOE) || defined(CONFIG_FCOE_MODULE)
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
 #define HAVE_NETDEV_OPS_FCOE_GETWWN
 #endif
 #endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
 #endif /* RHEL6 or SLES11 SP1 */
 #else /* < 2.6.33 */
-#if defined(IXGBE_FCOE) || defined(CONFIG_FCOE_MODULE)
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
 #define HAVE_NETDEV_OPS_FCOE_GETWWN
 #endif
@@ -2673,11 +2683,6 @@ static inline __be16 __kc_vlan_get_protocol(const struct sk_buff *skb)
 }
 #define vlan_get_protocol(_skb) __kc_vlan_get_protocol(_skb)
 #endif
-#ifdef HAVE_HW_TIME_STAMP
-#define SKBTX_HW_TSTAMP (1 << 0)
-#define SKBTX_IN_PROGRESS (1 << 2)
-#define SKB_SHARED_TX_IS_UNION
-#endif
 #if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,4,18) )
 #ifndef HAVE_VLAN_RX_REGISTER
 #define HAVE_VLAN_RX_REGISTER
@@ -2727,7 +2732,7 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 		     skb != (struct sk_buff *)(queue);				\
 		     skb = tmp, tmp = skb->prev)
 #endif
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,1)))
 extern u8 _kc_netdev_get_num_tc(struct net_device *dev);
 #define netdev_get_num_tc(dev) _kc_netdev_get_num_tc(dev)
 #else /* RHEL6.1 or greater */
@@ -2736,7 +2741,7 @@ extern u8 _kc_netdev_get_num_tc(struct net_device *dev);
 #endif /* HAVE_MQPRIO */
 #endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)) */
 #else /* < 2.6.39 */
-#if defined(IXGBE_FCOE) || defined(CONFIG_FCOE_MODULE)
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
 #define HAVE_NETDEV_OPS_FCOE_DDP_TARGET
 #endif
@@ -2757,7 +2762,7 @@ extern u8 _kc_netdev_get_num_tc(struct net_device *dev);
  * updated the kernel version to 2.6.40.x and they back-ported 3.0 features
  * like set_phys_id for ethtool.
  */ 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40))
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40) )
 #ifdef ETHTOOL_GRXRINGS
 #ifndef FLOW_EXT
 #define	FLOW_EXT	0x80000000

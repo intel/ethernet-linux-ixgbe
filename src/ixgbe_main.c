@@ -74,8 +74,8 @@ static const char ixgbe_driver_string[] =
 #define VMDQ_TAG
 
 #define MAJ 3
-#define MIN 5
-#define BUILD 14 
+#define MIN 6
+#define BUILD 7 
 #define DRV_VERSION __stringify(MAJ) "." __stringify(MIN) "." __stringify(BUILD) DRIVERNAPI DRV_HW_PERF FPGA VMDQ_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -1026,7 +1026,7 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 	if (vlan_tag & VLAN_VID_MASK) {
 		/* by placing vlgrp at start of structure we can alias it */
 		struct vlan_group **vlgrp = netdev_priv(skb->dev);
-		if (!*vlgrp && !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		if (!*vlgrp)
 			dev_kfree_skb_any(skb);
 #ifdef CONFIG_IXGBE_NAPI
 		else if (adapter->flags & IXGBE_FLAG_IN_NETPOLL)
@@ -2848,7 +2848,10 @@ void ixgbe_configure_tx_ring(struct ixgbe_adapter *adapter,
 	else
 		txdctl |= (8 << 16);	/* WTHRESH = 8 */
 
-	/* PTHRESH=32 is needed to avoid a Tx hang with DFP enabled. */
+	/*
+	 * Setting PTHRESH to 32 both improves performance
+	 * and avoids a TX hang with DFP enabled
+	 */
 	txdctl |= (1 << 8) |	/* HTHRESH = 1 */
 		   32;		/* PTHRESH = 32 */
 
@@ -4326,6 +4329,7 @@ static void ixgbe_configure_lli(struct ixgbe_adapter *adapter)
 	}
 }
 
+#endif /* IXGBE_NO_LLI */
 /* Additional bittime to account for IXGBE framing */
 #define IXGBE_ETH_FRAMING 20
 
@@ -4448,7 +4452,6 @@ static void ixgbe_pbthresh_setup(struct ixgbe_adapter *adapter)
 	}
 }
 
-#endif /* IXGBE_NO_LLI */
 static void ixgbe_configure_pb(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -5461,7 +5464,7 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
-		if (num_tcs == 8) {
+		if (num_tcs > 4) {
 			if (tc < 3) {
 				*tx = tc << 5;
 				*rx = tc << 4;
@@ -5472,7 +5475,7 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 				*tx = ((tc + 8) << 3);
 				*rx = tc << 4;
 			}
-		} else if (num_tcs == 4) {
+		} else {
 			*rx =  tc << 5;
 			switch (tc) {
 			case 0:
@@ -6285,6 +6288,8 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		adapter->dcb_cfg.round_robin_enable = false;
 		adapter->dcb_set_bitmap = 0x00;
 
+		adapter->dcb_cfg.num_tcs.pg_tcs = MAX_TRAFFIC_CLASS;
+		adapter->dcb_cfg.num_tcs.pfc_tcs = MAX_TRAFFIC_CLASS;
 	}
 #ifdef CONFIG_DCB
 	/* XXX does this need to be initialized even w/o DCB? */
@@ -6328,6 +6333,7 @@ out:
 int ixgbe_setup_tx_resources(struct ixgbe_ring *tx_ring)
 {
 	struct device *dev = tx_ring->dev;
+	int orig_node = dev_to_node(dev);
 	int size;
 
 	size = sizeof(struct ixgbe_tx_buffer) * tx_ring->count;
@@ -6341,8 +6347,15 @@ int ixgbe_setup_tx_resources(struct ixgbe_ring *tx_ring)
 	tx_ring->size = tx_ring->count * sizeof(union ixgbe_adv_tx_desc);
 	tx_ring->size = ALIGN(tx_ring->size, 4096);
 
-	tx_ring->desc = dma_alloc_coherent(dev, tx_ring->size,
-	                                   &tx_ring->dma, GFP_KERNEL);
+	set_dev_node(dev, tx_ring->numa_node);
+	tx_ring->desc = dma_alloc_coherent(dev,
+					   tx_ring->size,
+					   &tx_ring->dma,
+					   GFP_KERNEL);
+	set_dev_node(dev, orig_node);
+	if (!tx_ring->desc)
+		tx_ring->desc = dma_alloc_coherent(dev, tx_ring->size,
+		                                   &tx_ring->dma, GFP_KERNEL);
 	if (!tx_ring->desc)
 		goto err;
 
@@ -6395,6 +6408,7 @@ static int ixgbe_setup_all_tx_resources(struct ixgbe_adapter *adapter)
 int ixgbe_setup_rx_resources(struct ixgbe_ring *rx_ring)
 {
 	struct device *dev = rx_ring->dev;
+	int orig_node = dev_to_node(dev);
 	int size;
 
 	size = sizeof(struct ixgbe_rx_buffer) * rx_ring->count;
@@ -6408,9 +6422,15 @@ int ixgbe_setup_rx_resources(struct ixgbe_ring *rx_ring)
 	rx_ring->size = rx_ring->count * sizeof(union ixgbe_adv_rx_desc);
 	rx_ring->size = ALIGN(rx_ring->size, 4096);
 
-	rx_ring->desc = dma_alloc_coherent(dev, rx_ring->size,
-					   &rx_ring->dma, GFP_KERNEL);
-
+	set_dev_node(dev, rx_ring->numa_node);
+	rx_ring->desc = dma_alloc_coherent(dev,
+					   rx_ring->size,
+					   &rx_ring->dma,
+					   GFP_KERNEL);
+	set_dev_node(dev, orig_node);
+	if (!rx_ring->desc)
+		rx_ring->desc = dma_alloc_coherent(dev, rx_ring->size,
+						   &rx_ring->dma, GFP_KERNEL);
 	if (!rx_ring->desc)
 		goto err;
 
@@ -7449,6 +7469,51 @@ static void ixgbe_sfp_link_config_subtask(struct ixgbe_adapter *adapter)
 	clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
 }
 
+#ifdef CONFIG_PCI_IOV
+static void ixgbe_check_for_bad_vf(struct ixgbe_adapter *adapter)
+{
+	int vf;
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct net_device *netdev = adapter->netdev;
+	u32 gpc;
+	u32 ciaa, ciad;
+
+	gpc = IXGBE_READ_REG(hw, IXGBE_TXDGPC);
+	if (gpc) /* If incrementing then no need for the check below */
+		return;
+	/*
+	 * Check to see if a bad DMA write target from an errant or
+	 * malicious VF has caused a PCIe error.  If so then we can
+	 * issue a VFLR to the offending VF(s) and then resume without
+	 * requesting a full slot reset.
+	 */
+
+	for (vf = 0; vf < adapter->num_vfs; vf++) {
+		ciaa = (vf << 16) | 0x80000000;
+		/* 32 bit read so align, we really want status at offset 6 */
+		ciaa |= PCI_COMMAND;
+		IXGBE_WRITE_REG(hw, IXGBE_CIAA_82599, ciaa);
+		ciad = IXGBE_READ_REG(hw, IXGBE_CIAD_82599);
+		ciaa &= 0x7FFFFFFF;
+		/* disable debug mode asap after reading data */
+		IXGBE_WRITE_REG(hw, IXGBE_CIAA_82599, ciaa);
+		/* Get the upper 16 bits which will be the PCI status reg */
+		ciad >>= 16;
+		if (ciad & PCI_STATUS_REC_MASTER_ABORT) {
+			netdev_err(netdev, "VF %d Hung DMA\n", vf);
+			/* Issue VFLR */
+			ciaa = (vf << 16) | 0x80000000;
+			ciaa |= 0xA8;
+			IXGBE_WRITE_REG(hw, IXGBE_CIAA_82599, ciaa);
+			ciad = 0x00008000;  /* VFLR */
+			IXGBE_WRITE_REG(hw, IXGBE_CIAD_82599, ciad);
+			ciaa &= 0x7FFFFFFF;
+			IXGBE_WRITE_REG(hw, IXGBE_CIAA_82599, ciaa);
+		}
+	}
+}
+
+#endif
 /**
  * ixgbe_service_timer - Timer Call-back
  * @data: pointer to adapter cast into an unsigned long
@@ -7457,6 +7522,33 @@ static void ixgbe_service_timer(unsigned long data)
 {
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
 	unsigned long next_event_offset;
+#ifdef CONFIG_PCI_IOV
+	bool ready = false;
+
+	/*
+	 * don't bother with SR-IOV VF DMA hang check if there are
+	 * no VFs or the link is down
+	 */
+	if (!adapter->num_vfs ||
+	    (adapter->flags & IXGBE_FLAG_NEED_LINK_UPDATE)) {
+		ready = true;
+		goto normal_timer_service;
+	}
+
+	/* If we have VFs allocated then we must check for DMA hangs */
+	ixgbe_check_for_bad_vf(adapter);
+	next_event_offset = HZ / 50;
+	adapter->timer_event_accumulator++;
+
+	if (adapter->timer_event_accumulator >= 100) {
+		ready = true;
+		adapter->timer_event_accumulator = 0;
+	}
+
+	goto schedule_event;
+
+normal_timer_service:
+#endif
 
 	/* poll faster when waiting for link */
 	if (adapter->flags & IXGBE_FLAG_NEED_LINK_UPDATE)
@@ -7464,10 +7556,16 @@ static void ixgbe_service_timer(unsigned long data)
 	else
 		next_event_offset = HZ * 2;
 
+#ifdef CONFIG_PCI_IOV
+schedule_event:
+#endif
 	/* Reset the timer */
 	mod_timer(&adapter->service_timer, next_event_offset + jiffies);
 
-	ixgbe_service_event_schedule(adapter);
+#ifdef CONFIG_PCI_IOV
+	if (ready)
+#endif
+		ixgbe_service_event_schedule(adapter);
 }
 
 static void ixgbe_reset_subtask(struct ixgbe_adapter *adapter)
@@ -7684,6 +7782,9 @@ static __le32 ixgbe_tx_cmd_type(u32 tx_flags)
 	/* set HW vlan bit if vlan is present */
 	if (tx_flags & IXGBE_TX_FLAGS_HW_VLAN)
 		cmd_type |= cpu_to_le32(IXGBE_ADVTXD_DCMD_VLE);
+
+	if (tx_flags & IXGBE_TX_FLAGS_TSTAMP)
+		cmd_type |= cpu_to_le32(IXGBE_ADVTXD_MAC_TSTAMP);
 
 	/* set segmentation enable bits for TSO/FSO */
 #ifdef IXGBE_FCOE
@@ -8141,6 +8242,9 @@ static netdev_tx_t ixgbe_xmit_frame(struct sk_buff *skb, struct net_device *netd
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_ring *tx_ring;
+#ifdef HAVE_TX_MQ
+	unsigned int r_idx = skb->queue_mapping;
+#endif
 
 	if (skb->len <= 0) {
 		dev_kfree_skb_any(skb);
@@ -8158,7 +8262,9 @@ static netdev_tx_t ixgbe_xmit_frame(struct sk_buff *skb, struct net_device *netd
 	}
 
 #ifdef HAVE_TX_MQ
-	tx_ring = adapter->tx_ring[skb->queue_mapping];
+	if (r_idx >= adapter->num_tx_queues)
+		r_idx = r_idx % adapter->num_tx_queues;
+	tx_ring = adapter->tx_ring[r_idx];
 #else
 	tx_ring = adapter->tx_ring[0];
 #endif
@@ -8238,7 +8344,7 @@ static int ixgbe_del_sanmac_netdev(struct net_device *dev)
 }
 
 #endif /* (HAVE_NETDEV_STORAGE_ADDRESS) && defined(NETDEV_HW_ADDR_T_SAN) */
-#ifdef ETHTOOL_OPS_COMPAT
+
 /**
  * ixgbe_ioctl -
  * @netdev:
@@ -8248,14 +8354,15 @@ static int ixgbe_del_sanmac_netdev(struct net_device *dev)
 static int ixgbe_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 {
 	switch (cmd) {
+#ifdef ETHTOOL_OPS_COMPAT
 	case SIOCETHTOOL:
 		return ethtool_ioctl(ifr);
+#endif
 	default:
 		return -EOPNOTSUPP;
 	}
 }
 
-#endif
 #ifdef CONFIG_NET_POLL_CONTROLLER
 /*
  * Polling 'interrupt' - used by things like netconsole to send skbs
@@ -8521,9 +8628,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address	= &ixgbe_set_mac,
 	.ndo_change_mtu		= &ixgbe_change_mtu,
-#ifdef ETHTOOL_OPS_COMPAT
 	.ndo_do_ioctl		= &ixgbe_ioctl,
-#endif
 	.ndo_tx_timeout		= &ixgbe_tx_timeout,
 #ifdef NETIF_F_HW_VLAN_TX
 	.ndo_vlan_rx_add_vid	= &ixgbe_vlan_rx_add_vid,
@@ -8584,9 +8689,7 @@ void ixgbe_assign_netdev_ops(struct net_device *dev)
 	dev->set_multicast_list = &ixgbe_set_rx_mode;
 	dev->set_mac_address = &ixgbe_set_mac;
 	dev->change_mtu = &ixgbe_change_mtu;
-#ifdef ETHTOOL_OPS_COMPAT
 	dev->do_ioctl = &ixgbe_ioctl;
-#endif
 #ifdef HAVE_TX_TIMEOUT
 	dev->tx_timeout = &ixgbe_tx_timeout;
 #endif
@@ -9049,7 +9152,6 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		goto err_sw_init;
 	}
 #endif
-
 	memcpy(&adapter->mac_table[0].addr, hw->mac.perm_addr,
 	       netdev->addr_len);
 	adapter->mac_table[0].queue = adapter->num_vfs;
@@ -9104,13 +9206,9 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	}
 	device_set_wakeup_enable(&adapter->pdev->dev, adapter->wol);
 
-	/* save off EEPROM version number - newer parts use 32bit ID */
-	if (hw->mac.type >= ixgbe_mac_82599EB) {
-		ixgbe_read_eeprom(hw, 0x2d, &adapter->eeprom_verh);
-		ixgbe_read_eeprom(hw, 0x2e, &adapter->eeprom_verl);
-	} else {
-		ixgbe_read_eeprom(hw, 0x29, &adapter->eeprom_verl);
-	}
+	/* save off EEPROM version number */
+	ixgbe_read_eeprom(hw, 0x2d, &adapter->eeprom_verh);
+	ixgbe_read_eeprom(hw, 0x2e, &adapter->eeprom_verl);
 
 	/* reset the hardware with the new settings */
 	err = hw->mac.ops.start_hw(hw);
@@ -9355,6 +9453,91 @@ static pci_ers_result_t ixgbe_io_error_detected(struct pci_dev *pdev,
 	struct ixgbe_adapter *adapter = pci_get_drvdata(pdev);
 	struct net_device *netdev = adapter->netdev;
 
+#ifdef CONFIG_PCI_IOV
+	struct pci_dev *bdev, *vfdev;
+	u32 dw0, dw1, dw2, dw3;
+	int vf, pos;
+	u16 req_id, pf_func;
+
+	if (adapter->hw.mac.type == ixgbe_mac_82598EB ||
+	    adapter->num_vfs == 0)
+		goto skip_bad_vf_detection;
+
+	bdev = pdev->bus->self;
+	while (bdev && (bdev->pcie_type != PCI_EXP_TYPE_ROOT_PORT))
+		bdev = bdev->bus->self;
+
+	if (!bdev)
+		goto skip_bad_vf_detection;
+
+	pos = pci_find_ext_capability(bdev, PCI_EXT_CAP_ID_ERR);
+	if (!pos)
+		goto skip_bad_vf_detection;
+
+	pci_read_config_dword(bdev, pos + PCI_ERR_HEADER_LOG, &dw0);
+	pci_read_config_dword(bdev, pos + PCI_ERR_HEADER_LOG + 4, &dw1);
+	pci_read_config_dword(bdev, pos + PCI_ERR_HEADER_LOG + 8, &dw2);
+	pci_read_config_dword(bdev, pos + PCI_ERR_HEADER_LOG + 12, &dw3);
+
+	req_id = dw1 >> 16;
+	/* On the 82599 if bit 7 of the requestor ID is set then it's a VF */
+	if (!(req_id & 0x0080))
+		goto skip_bad_vf_detection;
+
+	pf_func = req_id & 0x01;
+	if ((pf_func & 1) == (pdev->devfn & 1)) {
+		unsigned int device_id;
+
+		vf = (req_id & 0x7F) >> 1;
+		e_dev_err("VF %d has caused a PCIe error\n", vf);
+		e_dev_err("TLP: dw0: %8.8x\tdw1: %8.8x\tdw2: "
+				"%8.8x\tdw3: %8.8x\n",
+		dw0, dw1, dw2, dw3);
+		switch(adapter->hw.mac.type) {
+		case ixgbe_mac_82599EB:
+			device_id = IXGBE_82599_VF_DEVICE_ID;
+			break;
+		case ixgbe_mac_X540:
+			device_id = IXGBE_X540_VF_DEVICE_ID;
+			break;
+		default:
+			device_id = 0;
+			break;
+		}
+
+		/* Find the pci device of the offending VF */
+		vfdev = pci_get_device(IXGBE_INTEL_VENDOR_ID, device_id, NULL);
+		while (vfdev) {
+			if (vfdev->devfn == (req_id & 0xFF))
+				break;
+			vfdev = pci_get_device(IXGBE_INTEL_VENDOR_ID,
+					       device_id, vfdev);
+		}
+		/*
+ 		 * There's a slim chance the VF could have been hot plugged,
+ 		 * so if it is no longer present we don't need to issue the
+ 		 * VFLR.  Just clean up the AER in that case.
+ 		 */
+		if (vfdev) {
+			e_dev_err("Issuing VFLR to VF %d\n", vf);
+			pci_write_config_dword(vfdev, 0xA8, 0x00008000);
+		}
+
+		pci_cleanup_aer_uncorrect_error_status(pdev);
+	}
+
+	/*
+ 	 * Even though the error may have occurred on the other port
+ 	 * we still need to increment the vf error reference count for
+ 	 * both ports because the I/O resume function will be called
+ 	 * for both of them.
+ 	 */
+	adapter->vferr_refcount++;
+
+	return PCI_ERS_RESULT_RECOVERED;
+
+skip_bad_vf_detection:
+#endif /* CONFIG_PCI_IOV */
 	netif_device_detach(netdev);
 
 	if (state == pci_channel_io_perm_failure)
@@ -9415,6 +9598,14 @@ static void ixgbe_io_resume(struct pci_dev *pdev)
 	struct ixgbe_adapter *adapter = pci_get_drvdata(pdev);
 	struct net_device *netdev = adapter->netdev;
 
+#ifdef CONFIG_PCI_IOV
+	if (adapter->vferr_refcount) {
+		e_info(drv, "Resuming after VF err\n");
+		adapter->vferr_refcount--;
+		return;
+	}
+
+#endif
 	if (netif_running(netdev))
 		ixgbe_up(adapter);
 

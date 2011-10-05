@@ -903,7 +903,6 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
                               struct ethtool_drvinfo *drvinfo)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_hw *hw = &adapter->hw;
 	char firmware_version[32];
 	u32 nvm_track_id;
 
@@ -912,18 +911,10 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 	strncpy(drvinfo->version, ixgbe_driver_version,
 	        sizeof(drvinfo->version) - 1);
 
-	if (hw->mac.type >= ixgbe_mac_82599EB) {
-		nvm_track_id = (adapter->eeprom_verh << 16) |
-				adapter->eeprom_verl;
-		snprintf(firmware_version, sizeof(firmware_version), "0x%08x",
-			 nvm_track_id);
-
-	} else {
-		snprintf(firmware_version, sizeof(firmware_version), "%d.%d-%d",
-			 (adapter->eeprom_verl & 0xF000) >> 12,
-			 (adapter->eeprom_verl & 0x0FF0) >> 4,
-			 adapter->eeprom_verl & 0x000F);
-	}
+	nvm_track_id = (adapter->eeprom_verh << 16) |
+			adapter->eeprom_verl;
+	snprintf(firmware_version, sizeof(firmware_version), "0x%08x",
+		 nvm_track_id);
 
 	strncpy(drvinfo->fw_version, firmware_version,
 	        sizeof(drvinfo->fw_version) -1);

@@ -109,7 +109,6 @@
 #define IXGBE_I2C_CLK_OUT       0x00000002
 #define IXGBE_I2C_DATA_IN       0x00000004
 #define IXGBE_I2C_DATA_OUT      0x00000008
-#define IXGBE_I2C_THERMAL_SENSOR_ADDR 0xF8
 
 /* Interrupt Registers */
 #define IXGBE_EICR      0x00800
@@ -2330,6 +2329,7 @@ enum ixgbe_fdir_pballoc_type {
 
 #define IXGBE_FDIR_DROP_QUEUE                   127
 
+#define IXGBE_STATUS_OVERHEATING_BIT         20 /* STATUS overtemp bit number */
 
 /* Manageablility Host Interface defines */
 #define IXGBE_HI_MAX_BLOCK_BYTE_LENGTH       1792 /* Num of bytes in range */

@@ -254,6 +254,10 @@ static void ixgbe_dcbnl_set_pg_tc_cfg_tx(struct net_device *netdev, int tc,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
+	/* Abort a bad configuration */
+	if (ffs(up_map) > adapter->dcb_cfg.num_tcs.pg_tcs)
+		return;
+
 	if (prio != DCB_ATTR_VALUE_UNDEFINED)
 		adapter->temp_dcb_cfg.tc_config[tc].path[0].prio_type = prio;
 	if (bwg_id != DCB_ATTR_VALUE_UNDEFINED)
@@ -293,6 +297,10 @@ static void ixgbe_dcbnl_set_pg_tc_cfg_rx(struct net_device *netdev, int tc,
 					 u8 up_map)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+	/* Abort a bad configuration */
+	if (ffs(up_map) > adapter->dcb_cfg.num_tcs.pg_tcs)
+		return;
 
 	if (prio != DCB_ATTR_VALUE_UNDEFINED)
 		adapter->temp_dcb_cfg.tc_config[tc].path[1].prio_type = prio;
