@@ -230,6 +230,7 @@ struct ixgbe_lrohdr {
 
 struct ixgbe_lro_list {
 	struct sk_buff_head active;
+	struct sk_buff_head recycled;
 	struct ixgbe_lro_stats stats;
 };
 
@@ -494,6 +495,16 @@ struct ixgbe_mac_addr {
 #define IXGBE_MAC_STATE_MODIFIED	0x2
 #define IXGBE_MAC_STATE_IN_USE		0x4
 
+#ifdef EXT_THERMAL_SENSOR_SUPPORT
+#ifdef IXGBE_PROCFS
+struct ixgbe_therm_proc_data
+{
+	struct ixgbe_hw *hw;
+	struct ixgbe_thermal_diode_data *sensor_data;
+};
+
+#endif /* IXGBE_PROCFS */
+#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 
 /*
  * Only for array allocations in our adapter struct.  On 82598, there will be
@@ -571,6 +582,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_SRIOV_REPLICATION_ENABLE     (u32)(1 << 28)
 #define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE        (u32)(1 << 29)
 #define IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE      (u32)(1 << 30)
+#define IXGBE_FLAG_RX_BB_CAPABLE		(u32)(1 << 31)
 
 	u32 flags2;
 #ifndef IXGBE_NO_HW_RSC
@@ -623,9 +635,15 @@ struct ixgbe_adapter {
 	u32 alloc_rx_buff_failed;
 
 	struct ixgbe_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
+
+#ifdef HAVE_DCBNL_IEEE
+	struct ieee_pfc *ixgbe_ieee_pfc;
+	struct ieee_ets *ixgbe_ieee_ets;
+#endif
 	struct ixgbe_dcb_config dcb_cfg;
 	struct ixgbe_dcb_config temp_dcb_cfg;
 	u8 dcb_set_bitmap;
+	u8 dcbx_cap;
 #ifndef HAVE_MQPRIO
 	u8 tc;
 #endif
@@ -710,6 +728,19 @@ struct ixgbe_adapter {
 	u32 vferr_refcount;
 #endif
 	struct ixgbe_mac_addr *mac_table;
+#ifdef EXT_THERMAL_SENSOR_SUPPORT
+#ifdef IXGBE_SYSFS
+	struct kobject *stat_kobj;
+	struct kobject *therm_kobj[IXGBE_MAX_SENSORS];
+#else /* IXGBE_SYSFS */
+#ifdef IXGBE_PROCFS
+	struct proc_dir_entry *eth_dir;
+	struct proc_dir_entry *stats_dir;
+	struct proc_dir_entry *therm_dir[IXGBE_MAX_SENSORS];
+	struct ixgbe_therm_proc_data therm_data[IXGBE_MAX_SENSORS];
+#endif /* IXGBE_PROCFS */
+#endif /* IXGBE_SYSFS */
+#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 };
 
 struct ixgbe_fdir_filter {
@@ -748,6 +779,19 @@ struct ixgbe_cb {
 	bool	delay_unmap;
 };
 #define IXGBE_CB(skb) ((struct ixgbe_cb *)(skb)->cb)
+
+#ifdef EXT_THERMAL_SENSOR_SUPPORT
+#ifdef IXGBE_SYSFS
+void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter);
+int ixgbe_sysfs_init(struct ixgbe_adapter *adapter);
+#endif /* IXGBE_SYSFS */
+#ifdef IXGBE_PROCFS
+void ixgbe_procfs_exit(struct ixgbe_adapter *adapter);
+int ixgbe_procfs_init(struct ixgbe_adapter *adapter);
+int ixgbe_procfs_topdir_init(void);
+void ixgbe_procfs_topdir_exit(void);
+#endif /* IXGBE_PROCFS */
+#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 
 extern struct dcbnl_rtnl_ops dcbnl_ops;
 extern int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
@@ -832,6 +876,12 @@ extern int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type);
 #endif
 #endif /* IXGBE_FCOE */
 
+#ifdef CONFIG_DCB
+#ifdef HAVE_DCBNL_IEEE
+s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
+#endif /* HAVE_DCBNL_IEEE */
+#endif /* CONFIG_DCB */
+
 extern void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring);
 extern int ixgbe_get_settings(struct net_device *netdev,
 			      struct ethtool_cmd *ecmd);
@@ -845,5 +895,8 @@ extern int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter,
 extern int ixgbe_available_rars(struct ixgbe_adapter *adapter);
 #ifndef HAVE_VLAN_RX_REGISTER
 extern void ixgbe_vlan_mode(struct net_device *, u32);
+#endif
+#ifndef ixgbe_get_netdev_tc_txq
+#define ixgbe_get_netdev_tc_txq(dev, tc) (&dev->tc_to_txq[tc]);
 #endif
 #endif /* _IXGBE_H_ */

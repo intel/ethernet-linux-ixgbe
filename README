@@ -2,7 +2,7 @@ Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
 
-September 2, 2011
+October 17, 2011
 
 Contents
 ========
@@ -114,10 +114,10 @@ Avago      1000BASE-T SFP                                    ABCU-5710RZ
 82599-based adapters support all passive and active limiting direct attach 
 cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
 
-Laser turns off for SFP+ when ifconfig ethx down
+Laser turns off for SFP+ when ifconfig ethX down
 ------------------------------------------------
-"ifconfig ethx down" turns off the laser for 82599-based SFP+ fiber adapters.
-"ifconfig ethx up" turns on the laser.
+"ifconfig ethX down" turns off the laser for 82599-based SFP+ fiber adapters.
+"ifconfig ethX up" turns on the laser.
 
 
 82598-BASED ADAPTERS
@@ -188,7 +188,7 @@ To manually build this driver:
 
 4. Compile the driver module:
 
-     make install
+   make install
 
    The binary will be installed as:
 
@@ -214,7 +214,7 @@ To manually build this driver:
 6. Assign an IP address to the interface by entering the following, where
    x is the interface number:
 
-     ifconfig ethx <IP_address> netmask <netmask>
+     ifconfig ethX <IP_address> netmask <netmask>
 
 7. Verify that the interface works. Enter the following, where <IP_address>
    is the IP address for another machine on the same subnet as the interface
@@ -278,13 +278,16 @@ DCA this parameter allows load-time control of the feature.
 
 RxBufferMode
 ------------
-Valid Range: 0 - 2
+Valid Range: 0 - 3
 Default Value: 2 (82598-based adapters); 0 (82599-based adapters)
 0 = Driver will use single buffer for Rx packets.
 1 = Driver will use packet split mode for Rx. Packet header will be 
     received in header buffer and payload will be received in data buffer.
 2 = Optimal mode. Driver will use single buffer mode for non-Jumbo 
     configurations and packet split mode for Jumbo configurations.
+3 = This buffer mode allows for a page only receive. This mode greatly
+    improves receive performance vs. one-buff or packet split when an
+    IOMMU is enabled.
 
 NOTE: HeaderDataSplit is not supported in 82599-based adapters.
 
@@ -427,7 +430,7 @@ specified when a PAUSE frame is received.
 Flow Control is enabled by default. If you want to disable a flow control 
 capable link partner, use ethtool:
 
-     ethtool -A eth? autoneg off rx off tx off
+     ethtool -A ethX autoneg off rx off tx off
 
 NOTE: For 82598 backplane cards entering 1 gig mode, flow control default 
 behavior is changed to off.  Flow control in 1 gig mode on these devices can 
@@ -545,13 +548,13 @@ Supported Ethtool Commands and Options:
 The following is an example using udp4 (UDP over IPv4):
 
   To include UDP port numbers in RSS hashing run:
-     ethtool -N eth1 rx-flow-hash udp4 sdfn
+     ethtool -N ethX rx-flow-hash udp4 sdfn
 
   To exclude UDP port numbers from RSS hashing run:
-     ethtool -N eth1 rx-flow-hash udp4 sd
+     ethtool -N ethX rx-flow-hash udp4 sd
 
   To display UDP hashing current configuration run:
-     ethtool -n eth1 rx-flow-hash udp4
+     ethtool -n ethX rx-flow-hash udp4
 
   The results of running that call will be the following, if UDP hashing is
   enabled:
@@ -604,7 +607,7 @@ Additional Configurations
   The maximum value for the MTU is 16110.  Use the ifconfig command to
   increase the MTU size.  For example:
 
-        ifconfig ethx mtu 9000 up
+        ifconfig ethX mtu 9000 up
 
   The maximum MTU setting for Jumbo Frames is 16110.  This value coincides
   with the maximum Jumbo Frames size of 16128. This driver will attempt to
@@ -740,11 +743,10 @@ Known Issues/Troubleshooting
 
 For known hardware and troubleshooting issues, refer to the following website.
 
-    http://support.intel.com/support/go/network/adapter/home.htm
+     http://www.intel.com
 
-Either select the link for your adapter or perform a search for the adapter 
-number. The adapter's page lists many issues. For a complete list of hardware
-issues download your adapter's user guide and read the Release Notes.  
+In the search box enter your devices controller ID (i.e., 82599) spec update.
+The spec update file has complete information on known hardware issues.  
 
   NOTE: After installing the driver, if your Intel Ethernet Network Connection 
   is not working, verify in the "In This Release" section of the readme that 

@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 3.6.7
+Version: 3.7.14
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation

@@ -39,13 +39,13 @@
  * This function returns the status data for each of the Traffic Classes in use.
  */
 s32 ixgbe_dcb_get_tc_stats_82599(struct ixgbe_hw *hw,
-                                 struct ixgbe_hw_stats *stats,
-                                 u8 tc_count)
+				 struct ixgbe_hw_stats *stats,
+				 u8 tc_count)
 {
 	int tc;
 
-	if (tc_count > MAX_TRAFFIC_CLASS)
-		return DCB_ERR_PARAM;
+	if (tc_count > IXGBE_DCB_MAX_TRAFFIC_CLASS)
+		return IXGBE_ERR_PARAM;
 	/* Statistics pertaining to each traffic class */
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Transmitted Packets */
@@ -77,13 +77,13 @@ s32 ixgbe_dcb_get_tc_stats_82599(struct ixgbe_hw *hw,
  * This function returns the CBFC status data for each of the Traffic Classes.
  */
 s32 ixgbe_dcb_get_pfc_stats_82599(struct ixgbe_hw *hw,
-                                  struct ixgbe_hw_stats *stats,
-                                  u8 tc_count)
+				  struct ixgbe_hw_stats *stats,
+				  u8 tc_count)
 {
 	int tc;
 
-	if (tc_count > MAX_TRAFFIC_CLASS)
-		return DCB_ERR_PARAM;
+	if (tc_count > IXGBE_DCB_MAX_TRAFFIC_CLASS)
+		return IXGBE_ERR_PARAM;
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Priority XOFF Transmitted */
 		stats->pxofftxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFTXC(tc));
@@ -102,7 +102,7 @@ s32 ixgbe_dcb_get_pfc_stats_82599(struct ixgbe_hw *hw,
  * Configure packet buffers for DCB mode.
  */
 s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
-                                          struct ixgbe_dcb_config *dcb_config)
+					  struct ixgbe_dcb_config *dcb_config)
 {
 	int num_tcs = dcb_config->num_tcs.pg_tcs;
 	u32 rx_pb_size = hw->mac.rx_pb_size << IXGBE_RXPBSIZE_SHIFT;
@@ -118,7 +118,7 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
 	 * we are multiplying the average size by 5/4 and applying
 	 * it to half of the traffic classes.
 	 */
-	if (dcb_config->rx_pba_cfg == pba_80_48) {
+	if (dcb_config->rx_pba_cfg == ixgbe_dcb_pba_80_48) {
 		rxpktsize = (rx_pb_size * 5) / (num_tcs * 4);
 		rx_pb_size -= rxpktsize * (num_tcs / 2);
 		for (; i < (num_tcs / 2); i++)
@@ -143,7 +143,7 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
 	}
 
 	/* Clear unused TCs, if any, to zero buffer size*/
-	for (; i < MAX_TRAFFIC_CLASS; i++) {
+	for (; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
 		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), 0);
@@ -159,15 +159,14 @@ s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
  *
  * Configure Rx Packet Arbiter and credits for each traffic class.
  */
-s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw,
-                                      struct ixgbe_dcb_config *dcb_config)
+s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
+				      u16 *max, u8 *bwg_id, u8 *tsa,
+				      u8 *map)
 {
-	struct tc_bw_alloc    *p;
-	u32    reg           = 0;
-	u32    credit_refill = 0;
-	u32    credit_max    = 0;
-	u8     i             = 0;
-	u8     j;
+	u32 reg = 0;
+	u32 credit_refill = 0;
+	u32 credit_max = 0;
+	u8  i = 0;
 
 	/*
 	 * Disable the arbiter before changing parameters
@@ -183,26 +182,20 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw,
 	 * up_to_tc_bitmap value for that TC will be 11000000 in binary.
 	 */
 	reg = 0;
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		p = &dcb_config->tc_config[i].path[DCB_RX_CONFIG];
-		for (j = 0; j < MAX_USER_PRIORITY; j++) {
-			if (p->up_to_tc_bitmap & (1 << j))
-				reg |= (i << (j * IXGBE_RTRUP2TC_UP_SHIFT));
-		}
-	}
+	for (i = 0; i < IXGBE_DCB_MAX_USER_PRIORITY; i++)
+		reg |= (map[i] << (i * IXGBE_RTRUP2TC_UP_SHIFT));
+
 	IXGBE_WRITE_REG(hw, IXGBE_RTRUP2TC, reg);
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		p = &dcb_config->tc_config[i].path[DCB_RX_CONFIG];
-
-		credit_refill = p->data_credits_refill;
-		credit_max    = p->data_credits_max;
+	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+		credit_refill = refill[i];
+		credit_max = max[i];
 		reg = credit_refill | (credit_max << IXGBE_RTRPT4C_MCL_SHIFT);
 
-		reg |= (u32)(p->bwg_id) << IXGBE_RTRPT4C_BWG_SHIFT;
+		reg |= (u32)(bwg_id[i]) << IXGBE_RTRPT4C_BWG_SHIFT;
 
-		if (p->prio_type == prio_link)
+		if (tsa[i] == ixgbe_dcb_tsa_strict)
 			reg |= IXGBE_RTRPT4C_LSP;
 
 		IXGBE_WRITE_REG(hw, IXGBE_RTRPT4C(i), reg);
@@ -225,12 +218,11 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw,
  *
  * Configure Tx Descriptor Arbiter and credits for each traffic class.
  */
-s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw,
-                                           struct ixgbe_dcb_config *dcb_config)
+s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
+					   u16 *max, u8 *bwg_id, u8 *tsa)
 {
-	struct tc_bw_alloc *p;
-	u32    reg, max_credits;
-	u8     i;
+	u32 reg, max_credits;
+	u8  i;
 
 	/* Clear the per-Tx queue credits; we use per-TC instead */
 	for (i = 0; i < 128; i++) {
@@ -239,17 +231,16 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw,
 	}
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
-		max_credits = dcb_config->tc_config[i].desc_credits_max;
+	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+		max_credits = max[i];
 		reg = max_credits << IXGBE_RTTDT2C_MCL_SHIFT;
-		reg |= p->data_credits_refill;
-		reg |= (u32)(p->bwg_id) << IXGBE_RTTDT2C_BWG_SHIFT;
+		reg |= refill[i];
+		reg |= (u32)(bwg_id[i]) << IXGBE_RTTDT2C_BWG_SHIFT;
 
-		if (p->prio_type == prio_group)
+		if (tsa[i] == ixgbe_dcb_tsa_group_strict_cee)
 			reg |= IXGBE_RTTDT2C_GSP;
 
-		if (p->prio_type == prio_link)
+		if (tsa[i] == ixgbe_dcb_tsa_strict)
 			reg |= IXGBE_RTTDT2C_LSP;
 
 		IXGBE_WRITE_REG(hw, IXGBE_RTTDT2C(i), reg);
@@ -272,12 +263,12 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw,
  *
  * Configure Tx Packet Arbiter and credits for each traffic class.
  */
-s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
-                                           struct ixgbe_dcb_config *dcb_config)
+s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
+					   u16 *max, u8 *bwg_id, u8 *tsa,
+					   u8 *map)
 {
-	struct tc_bw_alloc *p;
 	u32 reg;
-	u8 i, j;
+	u8 i;
 
 	/*
 	 * Disable the arbiter before changing parameters
@@ -295,25 +286,21 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
 	 * up_to_tc_bitmap value for that TC will be 11000000 in binary.
 	 */
 	reg = 0;
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
-		for (j = 0; j < MAX_USER_PRIORITY; j++)
-			if (p->up_to_tc_bitmap & (1 << j))
-				reg |= (i << (j * IXGBE_RTTUP2TC_UP_SHIFT));
-	}
+	for (i = 0; i < IXGBE_DCB_MAX_USER_PRIORITY; i++)
+		reg |= (map[i] << (i * IXGBE_RTTUP2TC_UP_SHIFT));
+
 	IXGBE_WRITE_REG(hw, IXGBE_RTTUP2TC, reg);
 
 	/* Configure traffic class credits and priority */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		p = &dcb_config->tc_config[i].path[DCB_TX_CONFIG];
-		reg = p->data_credits_refill;
-		reg |= (u32)(p->data_credits_max) << IXGBE_RTTPT2C_MCL_SHIFT;
-		reg |= (u32)(p->bwg_id) << IXGBE_RTTPT2C_BWG_SHIFT;
+	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+		reg = refill[i];
+		reg |= (u32)(max[i]) << IXGBE_RTTPT2C_MCL_SHIFT;
+		reg |= (u32)(bwg_id[i]) << IXGBE_RTTPT2C_BWG_SHIFT;
 
-		if (p->prio_type == prio_group)
+		if (tsa[i] == ixgbe_dcb_tsa_group_strict_cee)
 			reg |= IXGBE_RTTPT2C_GSP;
 
-		if (p->prio_type == prio_link)
+		if (tsa[i] == ixgbe_dcb_tsa_strict)
 			reg |= IXGBE_RTTPT2C_LSP;
 
 		IXGBE_WRITE_REG(hw, IXGBE_RTTPT2C(i), reg);
@@ -333,20 +320,19 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw,
 /**
  * ixgbe_dcb_config_pfc_82599 - Configure priority flow control
  * @hw: pointer to hardware structure
- * @dcb_config: pointer to ixgbe_dcb_config structure
+ * @pfc_en: enabled pfc bitmask
+ * @map: priority to tc assignments indexed by priority
  *
  * Configure Priority Flow Control (PFC) for each traffic class.
  */
-s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
-                               struct ixgbe_dcb_config *dcb_config)
+s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 {
-	u32 i, reg;
+	u32 i, j, reg;
+	u8 max_tc = 0;
 
-	/* If PFC is disabled globally then fall back to LFC. */
-	if (!dcb_config->pfc_mode_enable) {
-		for (i = 0; i < MAX_TRAFFIC_CLASS; i++)
-			hw->mac.ops.fc_enable(hw, i);
-		goto out;
+	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+		if (map[i] > max_tc)
+			max_tc = map[i];
 	}
 
 #ifdef CONFIG_DCB
@@ -355,55 +341,66 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw,
 
 #endif /* CONFIG_DCB */
 	/* Configure PFC Tx thresholds per TC */
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+		int enabled = 0;
+
+		if (i > max_tc) {
+			reg = 0;
+			IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), reg);
+			IXGBE_WRITE_REG(hw, IXGBE_FCRTH_82599(i), reg);
+			continue;
+		}
+
+		for (j = 0; j < IXGBE_DCB_MAX_USER_PRIORITY; j++) {
+			if ((map[j] == i) && (pfc_en & (1 << j))) {
+				enabled = 1;
+				break;
+			}
+		}
+
 		reg = hw->fc.low_water << 10;
 
-		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
-		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx)
+		if (enabled)
 			reg |= IXGBE_FCRTL_XONE;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), reg);
 
 		reg = hw->fc.high_water[i] << 10;
-		if (dcb_config->tc_config[i].dcb_pfc == pfc_enabled_full ||
-		    dcb_config->tc_config[i].dcb_pfc == pfc_enabled_tx)
+		if (enabled)
 			reg |= IXGBE_FCRTH_FCEN;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTH_82599(i), reg);
 	}
 
-	/* Configure pause time (2 TCs per register) */
-	reg = hw->fc.pause_time | (hw->fc.pause_time << 16);
-	for (i = 0; i < (MAX_TRAFFIC_CLASS / 2); i++)
-		IXGBE_WRITE_REG(hw, IXGBE_FCTTV(i), reg);
+	if (pfc_en) {
+		/* Configure pause time (2 TCs per register) */
+		reg = hw->fc.pause_time | (hw->fc.pause_time << 16);
+		for (i = 0; i < (IXGBE_DCB_MAX_TRAFFIC_CLASS / 2); i++)
+			IXGBE_WRITE_REG(hw, IXGBE_FCTTV(i), reg);
 
-	/* Configure flow control refresh threshold value */
-	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
+		/* Configure flow control refresh threshold value */
+		IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
 
-	/* Enable Transmit PFC */
-	reg = IXGBE_FCCFG_TFCE_PRIORITY;
-	IXGBE_WRITE_REG(hw, IXGBE_FCCFG, reg);
+		/* Enable Transmit PFC */
+		reg = IXGBE_FCCFG_TFCE_PRIORITY;
+		IXGBE_WRITE_REG(hw, IXGBE_FCCFG, reg);
 
-	/*
-	 * Enable Receive PFC
-	 * We will always honor XOFF frames we receive when
-	 * we are in PFC mode.
-	 */
-	reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
-	reg &= ~IXGBE_MFLCN_RFCE;
-	reg |= IXGBE_MFLCN_RPFCE | IXGBE_MFLCN_DPF;
+		/*
+		 * Enable Receive PFC
+		 * We will always honor XOFF frames we receive when
+		 * we are in PFC mode.
+		 */
+		reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
+		reg &= ~(IXGBE_MFLCN_RFCE | IXGBE_MFLCN_RPFCE_MASK);
+		reg |= IXGBE_MFLCN_RPFCE | IXGBE_MFLCN_DPF;
 
-	if (hw->mac.type == ixgbe_mac_X540) {
-		u8 pfc_en = 0;
-		for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-			if (dcb_config->tc_config[i].dcb_pfc)
-				pfc_en |= 1 << i;
-		}
+		if (hw->mac.type == ixgbe_mac_X540)
+			reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
 
-		reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
+		IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
+	} else {
+		for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++)
+			hw->mac.ops.fc_enable(hw, i);
 	}
 
-	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
-
-out:
 	return 0;
 }
 
@@ -415,7 +412,7 @@ out:
  * class uses a single set of queue statistics counters.
  */
 s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw,
-                                    struct ixgbe_dcb_config *dcb_config)
+				    struct ixgbe_dcb_config *dcb_config)
 {
 	u32 reg = 0;
 	u8  i   = 0;
@@ -480,7 +477,10 @@ s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw,
 		 */
 		for (i = 0; i < 32; i++) {
 			if (i % 8 > 3)
-				continue; /* In 4 TC mode, odd 16-queue ranges are not used. */
+				/* In 4 TC mode, odd 16-queue ranges are
+				 *  not used.
+				*/
+				continue;
 			reg = 0x01010101 * (i / 8);
 			IXGBE_WRITE_REG(hw, IXGBE_RQSMR(i), reg);
 		}
@@ -509,24 +509,22 @@ s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw,
 		 * Receive Queues stats setting
 		 * 32 RQSMR registers, each configuring 4 queues.
 		 *
-		 * Queue Indexing in 32 VF with DCB mode maps 4 TC's to each pool.
-		 * Set all 32 queues of each TC across pools to the same stat
-		 * with TC 'n' going to stat 'n'.
+		 * Queue Indexing in 32 VF with DCB mode maps 4 TC's to each
+		 * pool. Set all 32 queues of each TC across pools to the same
+		 * stat with TC 'n' going to stat 'n'.
 		 */
-		for (i = 0; i < 32; i++) {
+		for (i = 0; i < 32; i++)
 			IXGBE_WRITE_REG(hw, IXGBE_RQSMR(i), 0x03020100);
-		}
 		/*
 		 * Transmit Queues stats setting
 		 * 32 TQSM registers, each controlling 4 queues.
 		 *
-		 * Queue Indexing in 32 VF with DCB mode maps 4 TC's to each pool.
-		 * Set all 32 queues of each TC across pools to the same stat
-		 * with TC 'n' going to stat 'n'.
+		 * Queue Indexing in 32 VF with DCB mode maps 4 TC's to each
+		 * pool. Set all 32 queues of each TC across pools to the same
+		 * stat with TC 'n' going to stat 'n'.
 		 */
-		for (i = 0; i < 32; i++) {
+		for (i = 0; i < 32; i++)
 			IXGBE_WRITE_REG(hw, IXGBE_TQSM(i), 0x03020100);
-		}
 	}
 
 	return 0;
@@ -540,7 +538,7 @@ s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw,
  * Configure general DCB parameters.
  */
 s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
-                           struct ixgbe_dcb_config *dcb_config)
+			   struct ixgbe_dcb_config *dcb_config)
 {
 	u32 reg;
 	u32 q;
@@ -570,7 +568,7 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 			/*
 			 * Unsupported value, assume stale data,
 			 * overwrite no RSS
-			*/
+			 */
 			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
 			      IXGBE_MRQC_RT8TCEN;
 		}
@@ -598,9 +596,8 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 	IXGBE_WRITE_REG(hw, IXGBE_MTQC, reg);
 
 	/* Disable drop for all queues */
-	for (q=0; q < 128; q++) {
+	for (q = 0; q < 128; q++)
 		IXGBE_WRITE_REG(hw, IXGBE_QDE, q << IXGBE_QDE_IDX_SHIFT);
-	}
 
 	/* Enable the Tx desc arbiter */
 	reg = IXGBE_READ_REG(hw, IXGBE_RTTDCS);
@@ -622,17 +619,18 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
  *
  * Configure dcb settings and enable dcb mode.
  */
-s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw,
-                              struct ixgbe_dcb_config *dcb_config)
+s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw, int link_speed, u8 pfc_en,
+			      u16 *refill, u16 *max, u8 *bwg_id, u8 *tsa,
+			      u8 *map)
 {
 
-	ixgbe_dcb_config_packet_buffers_82599(hw, dcb_config);
-	ixgbe_dcb_config_82599(hw, dcb_config);
-	ixgbe_dcb_config_rx_arbiter_82599(hw, dcb_config);
-	ixgbe_dcb_config_tx_desc_arbiter_82599(hw, dcb_config);
-	ixgbe_dcb_config_tx_data_arbiter_82599(hw, dcb_config);
-	ixgbe_dcb_config_pfc_82599(hw, dcb_config);
-	ixgbe_dcb_config_tc_stats_82599(hw, dcb_config);
+	ixgbe_dcb_config_rx_arbiter_82599(hw, refill, max, bwg_id, tsa,
+					  map);
+	ixgbe_dcb_config_tx_desc_arbiter_82599(hw, refill, max, bwg_id,
+					       tsa);
+	ixgbe_dcb_config_tx_data_arbiter_82599(hw, refill, max, bwg_id,
+					       tsa, map);
+	ixgbe_dcb_config_pfc_82599(hw, pfc_en, map);
 
 
 	return 0;

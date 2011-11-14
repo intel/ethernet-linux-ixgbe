@@ -144,6 +144,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	unsigned int thislen = 0;
 	u32 fcbuff, fcdmarw, fcfltrw, fcrxctl;
 	dma_addr_t addr = 0;
+	unsigned int cpu;
 
 	if (!netdev || !sgl || !sgc)
 		return 0;
@@ -196,9 +197,8 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 		while (len) {
 			/* max number of buffers allowed in one DDP context */
 			if (j >= IXGBE_BUFFCNT_MAX) {
-				e_err(drv, "xid=%x:%d,%d,%d:addr=%llx "
-				      "not enough descriptors\n",
-					xid, i, j, dmacount, (u64)addr);
+				cpu = get_cpu();
+				*per_cpu_ptr(fcoe->pcpu_noddp, cpu) += 1;
 				goto out_noddp_free;
 			}
 
@@ -239,12 +239,8 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	 */
 	if (lastsize == bufflen) {
 		if (j >= IXGBE_BUFFCNT_MAX) {
-			printk_once("Will NOT use DDP since there are not "
-				    "enough user buffers. We need an  extra "
-				    "buffer because lastsize is bufflen. "
-				    "xid=%x:%d,%d,%d:addr=%llx\n",
-				    xid, i, j, dmacount, (u64)addr);
-
+			cpu = get_cpu();
+			*per_cpu_ptr(fcoe->pcpu_noddp_ext_buff,	cpu) += 1;
 			goto out_noddp_free;
 		}
 
@@ -295,6 +291,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	return 1;
 
 out_noddp_free:
+	put_cpu();
 	pci_pool_free(fcoe->pool, ddp->udl, ddp->udp);
 	ixgbe_fcoe_clear_ddp(ddp);
 
@@ -578,6 +575,7 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 	struct ixgbe_ring_feature *f = &adapter->ring_feature[RING_F_FCOE];
+	unsigned int cpu;
 #ifdef CONFIG_DCB
 	u8 tc;
 	u32 up2tc;
@@ -609,8 +607,25 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 				      fcoe->extra_ddp_buffer_dma)) {
 			e_err(drv, "failed to map extra DDP buffer\n");
 			goto out_extra_ddp_buffer_dma;
-
 		}
+
+		/* Alloc per cpu mem to count the ddp alloc failure number */
+		fcoe->pcpu_noddp = alloc_percpu(u64);
+		if (!fcoe->pcpu_noddp) {
+			e_err(drv, "failed to alloc noddp counter\n");
+			goto out_pcpu_noddp_alloc_fail;
+		}
+
+		fcoe->pcpu_noddp_ext_buff = alloc_percpu(u64);
+		if (!fcoe->pcpu_noddp_ext_buff) {
+			e_err(drv, "failed to alloc noddp extra buff cnt\n");
+			goto out_pcpu_noddp_extra_buff_alloc_fail;
+		}
+
+		for_each_possible_cpu(cpu) {
+			*per_cpu_ptr(fcoe->pcpu_noddp, cpu) = 0;
+			*per_cpu_ptr(fcoe->pcpu_noddp_ext_buff, cpu) = 0;
+                }
 	}
 
 	/* Enable L2 eth type filter for FCoE */
@@ -655,9 +670,9 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 #ifdef CONFIG_DCB
 
 	up2tc = IXGBE_READ_REG(&adapter->hw, IXGBE_RTTUP2TC);
-	for (i = 0; i < MAX_USER_PRIORITY; i++) {
+	for (i = 0; i < IXGBE_DCB_MAX_USER_PRIORITY; i++) {
 		tc = (u8)(up2tc >> (i * IXGBE_RTTUP2TC_UP_SHIFT));
-		tc &= (MAX_TRAFFIC_CLASS - 1);
+		tc &= (IXGBE_DCB_MAX_TRAFFIC_CLASS - 1);
 		if (fcoe->tc == tc) {
 			fcoe->up = i;
 			break;
@@ -667,6 +682,13 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 
 	return;
 
+out_pcpu_noddp_extra_buff_alloc_fail:
+	free_percpu(fcoe->pcpu_noddp);
+out_pcpu_noddp_alloc_fail:
+	dma_unmap_single(&adapter->pdev->dev,
+			 fcoe->extra_ddp_buffer_dma,
+			 IXGBE_FCBUFF_MIN,
+			 DMA_FROM_DEVICE);
 out_extra_ddp_buffer_dma:
 	kfree(fcoe->extra_ddp_buffer);
 out_extra_ddp_buffer_alloc:
@@ -695,6 +717,8 @@ void ixgbe_cleanup_fcoe(struct ixgbe_adapter *adapter)
 				 fcoe->extra_ddp_buffer_dma,
 				 IXGBE_FCBUFF_MIN,
 				 DMA_FROM_DEVICE);
+		free_percpu(fcoe->pcpu_noddp);
+		free_percpu(fcoe->pcpu_noddp_ext_buff);
 		kfree(fcoe->extra_ddp_buffer);
 		pci_pool_destroy(fcoe->pool);
 		fcoe->pool = NULL;
@@ -812,30 +836,6 @@ u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter)
 }
 
 #endif /* HAVE_DCBNL_OPS_GETAPP */
-/**
- * ixgbe_fcoe_setapp - sets the user priority bitmap for FCoE
- * @adapter : ixgbe adapter
- * @up : 802.1p user priority bitmap
- *
- * Finds out the traffic class from the input user priority
- * bitmap for FCoE.
- *
- * Returns : 0 on success otherwise returns 1 on error
- */
-u8 ixgbe_fcoe_setapp(struct ixgbe_adapter *adapter, u8 up)
-{
-	int i;
-	struct tc_configuration *tc_cfg;
-
-	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
-		tc_cfg = &adapter->temp_dcb_cfg.tc_config[i];
-		if (tc_cfg->path[0].up_to_tc_bitmap & up)
-			adapter->fcoe.tc = i;
-	}
-
-	adapter->fcoe.up = ffs(up) - 1;
-	return 0;
-}
 #endif /* CONFIG_DCB */
 
 #ifdef HAVE_NETDEV_OPS_FCOE_GETWWN

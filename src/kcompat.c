@@ -978,6 +978,21 @@ void _kc_netif_tx_start_all_queues(struct net_device *netdev)
 			netif_start_subqueue(netdev, i);
 }
 #endif /* HAVE_TX_MQ */
+
+#ifndef __WARN_printf
+void __kc_warn_slowpath(const char *file, int line, const char *fmt, ...)
+{
+	va_list args;
+
+	printk(KERN_WARNING "------------[ cut here ]------------\n");
+	printk(KERN_WARNING "WARNING: at %s:%d %s()\n", file, line);
+	va_start(args, fmt);
+	vprintk(fmt, args);
+	va_end(args);
+
+	dump_stack();
+}
+#endif /* __WARN_printf */
 #endif /* < 2.6.27 */
 
 /*****************************************************************************/
@@ -1014,6 +1029,15 @@ _kc_pci_wake_from_d3(struct pci_dev *dev, bool enable)
 
 out:
 	return err;
+}
+
+void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
+			 int off, int size)
+{
+	skb_fill_page_desc(skb, i, page, off, size);
+	skb->len += size;
+	skb->data_len += size;
+	skb->truesize += size;
 }
 #endif /* < 2.6.28 */
 
@@ -1131,7 +1155,7 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,1)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
 u8 _kc_netdev_get_num_tc(struct net_device *dev)
 {
 	struct adapter_struct *kc_adapter = netdev_priv(dev);
@@ -1139,6 +1163,22 @@ u8 _kc_netdev_get_num_tc(struct net_device *dev)
 		return kc_adapter->tc;
 	else
 		return 0;
+}
+
+u8 _kc_netdev_get_prio_tc_map(struct net_device *dev, u8 up)
+{
+	struct adapter_struct *kc_adapter = netdev_priv(dev);
+	int tc;
+	u8 map;
+
+	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++) {
+		map = kc_adapter->dcb_cfg.tc_config[tc].path[0].up_to_tc_bitmap;
+
+		if (map & (1 << up))
+			return tc;	
+	}
+
+	return 0;
 }
 #endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)) */
 #endif /* < 2.6.39 */

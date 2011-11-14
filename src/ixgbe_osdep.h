@@ -60,13 +60,13 @@
 #endif
 
 #define e_dev_info(format, arg...) \
-	dev_info(&adapter->pdev->dev, format, ## arg)
+	dev_info(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_warn(format, arg...) \
-	dev_warn(&adapter->pdev->dev, format, ## arg)
+	dev_warn(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_err(format, arg...) \
-	dev_err(&adapter->pdev->dev, format, ## arg)
+	dev_err(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_notice(format, arg...) \
-	dev_notice(&adapter->pdev->dev, format, ## arg)
+	dev_notice(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_info(msglvl, format, arg...) \
 	netif_info(adapter, msglvl, adapter->netdev, format, ## arg)
 #define e_err(msglvl, format, arg...) \
@@ -122,5 +122,7 @@ extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 #define IXGBE_HTONL(_i) htonl(_i)
 #define IXGBE_NTOHL(_i) ntohl(_i)
 #define IXGBE_NTOHS(_i) ntohs(_i)
+#define IXGBE_CPU_TO_LE32(_i) cpu_to_le32(_i)
+#define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
 
 #endif /* _IXGBE_OSDEP_H_ */

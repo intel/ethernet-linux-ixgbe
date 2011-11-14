@@ -262,17 +262,21 @@ IXGBE_PARAM(LLIVLANP, "Low Latency Interrupt on VLAN priority threshold");
 #endif /* IXGBE_NO_LLI */
 /* Rx buffer mode
  *
- * Valid Range: 0-2 0 = 1buf_mode_always, 1 = ps_mode_always and 2 = optimal
+ * Valid Range: 0-3 0 = 1buf_mode_always,
+ * 		    1 = ps_mode_always
+ * 		    2 = optimal
+ * 		    3 = bounce_buffer_mode -- NAPI only option
  *
  * Default Value: 2
  */
 IXGBE_PARAM(RxBufferMode, "0=1 descriptor per packet,\n"
                           "\t\t\t1=use packet split, multiple descriptors per jumbo frame\n"
-                          "\t\t\t2 (default)=use 1buf mode for 1500 mtu, packet split for jumbo");
-
+                          "\t\t\t2 (default)=use 1buf mode for 1500 mtu, packet split for jumbo\n"
+                          "\t\t\t3=use half page to receive buffer, and other half to receive next");
 #define IXGBE_RXBUFMODE_1BUF_ALWAYS			0
 #define IXGBE_RXBUFMODE_PS_ALWAYS			1
 #define IXGBE_RXBUFMODE_OPTIMAL				2
+#define IXGBE_RXBUFMODE_BOUNCE_BUF			3
 #define IXGBE_DEFAULT_RXBUFMODE	  IXGBE_RXBUFMODE_OPTIMAL
 
 #ifdef HAVE_TX_MQ
@@ -966,25 +970,34 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				__MODULE_STRING(IXGBE_DEFAULT_RXBUFMODE),
 			.def = IXGBE_DEFAULT_RXBUFMODE,
 			.arg = {.r = {.min = IXGBE_RXBUFMODE_1BUF_ALWAYS,
-				      .max = IXGBE_RXBUFMODE_OPTIMAL}}
+				      .max = IXGBE_RXBUFMODE_BOUNCE_BUF}}
 		};
 
 #ifdef module_param_array
 		if (num_RxBufferMode > bd) {
 #endif
-			/* for 82599 only 1BUF supported value - erratum 45 */
-			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
-				 RxBufferMode[bd] = IXGBE_RXBUFMODE_1BUF_ALWAYS;
+			switch (adapter->hw.mac.type) {
+			default:
+				rx_buf_mode = RxBufferMode[bd];
+				break;
+			}
 
-
-			rx_buf_mode = RxBufferMode[bd];
 			ixgbe_validate_option(&rx_buf_mode, &opt);
 			switch (rx_buf_mode) {
 			case IXGBE_RXBUFMODE_OPTIMAL:
 				*aflags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
 				*aflags |= IXGBE_FLAG_RX_PS_CAPABLE;
 				break;
+			case IXGBE_RXBUFMODE_BOUNCE_BUF:
+				*aflags |= IXGBE_FLAG_RX_BB_CAPABLE;
 			case IXGBE_RXBUFMODE_PS_ALWAYS:
+				/*
+				 *  82599 only supports the bounce buffer
+				 *  version of packet split due to hardware
+				 *  erratum 45
+				 */
+				if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+					*aflags |= IXGBE_FLAG_RX_BB_CAPABLE;
 				*aflags |= IXGBE_FLAG_RX_PS_CAPABLE;
 				break;
 			case IXGBE_RXBUFMODE_1BUF_ALWAYS:
@@ -995,8 +1008,8 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			}
 #ifdef module_param_array
 		} else {
-			/* 82599 doesn't support PS - erratum 45 */
-			if (adapter->hw.mac.type != ixgbe_mac_82599EB)
+			if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+				*aflags |= IXGBE_FLAG_RX_BB_CAPABLE;
 				*aflags |= IXGBE_FLAG_RX_PS_CAPABLE;
 			*aflags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
 		}

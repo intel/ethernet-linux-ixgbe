@@ -129,6 +129,8 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("rx_fcoe_dropped", stats.fcoerpdc),
 	IXGBE_STAT("rx_fcoe_packets", stats.fcoeprc),
 	IXGBE_STAT("rx_fcoe_dwords", stats.fcoedwrc),
+	IXGBE_STAT("fcoe_noddp", stats.fcoe_noddp),
+	IXGBE_STAT("fcoe_noddp_ext_buff", stats.fcoe_noddp_ext_buff),
 	IXGBE_STAT("tx_fcoe_packets", stats.fcoeptc),
 	IXGBE_STAT("tx_fcoe_dwords", stats.fcoedwtc),
 #endif /* IXGBE_FCOE */
@@ -404,13 +406,7 @@ static void ixgbe_get_pauseparam(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	/*
-	 * Flow Control Autoneg isn't on if
-	 *  - we didn't ask for it OR
-	 *  - it failed, we know this by tx & rx being off
-	 */
-	if (hw->fc.disable_fc_autoneg ||
-	    (hw->fc.current_mode == ixgbe_fc_none))
+	if (hw->fc.disable_fc_autoneg)
 		pause->autoneg = 0;
 	else
 		pause->autoneg = 1;
@@ -488,7 +484,7 @@ static void ixgbe_set_msglevel(struct net_device *netdev, u32 data)
 
 static int ixgbe_get_regs_len(struct net_device *netdev)
 {
-#define IXGBE_REGS_LEN  1128
+#define IXGBE_REGS_LEN  1129
 	return IXGBE_REGS_LEN * sizeof(u32);
 }
 
@@ -800,6 +796,9 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 	regs_buff[1125] = IXGBE_READ_REG(hw, IXGBE_PCIEECCCTL);
 	regs_buff[1126] = IXGBE_READ_REG(hw, IXGBE_PBTXECC);
 	regs_buff[1127] = IXGBE_READ_REG(hw, IXGBE_PBRXECC);
+
+	/* 82599 X540 specific registers  */
+	regs_buff[1128] = IXGBE_READ_REG(hw, IXGBE_MFLCN);
 }
 
 static int ixgbe_get_eeprom_len(struct net_device *netdev)
@@ -855,10 +854,10 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	u16 i;
 
 	if (eeprom->len == 0)
-		return -EOPNOTSUPP;
+		return -EINVAL;
 
 	if (eeprom->magic != (hw->vendor_id | (hw->device_id << 16)))
-		return -EFAULT;
+		return -EINVAL;
 
 	max_len = hw->eeprom.word_size * 2;
 
@@ -868,19 +867,28 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	if (!eeprom_buff)
 		return -ENOMEM;
 
-	ptr = (void *)eeprom_buff;
+	ptr = eeprom_buff;
 
 	if (eeprom->offset & 1) {
-		/* need read/modify/write of first changed EEPROM word */
-		/* only the second byte of the word is being modified */
+		/*
+		 * need read/modify/write of first changed EEPROM word
+		 * only the second byte of the word is being modified
+		 */
 		ret_val = ixgbe_read_eeprom(hw, first_word, &eeprom_buff[0]);
+		if (ret_val)
+			goto err;
+
 		ptr++;
 	}
 	if (((eeprom->offset + eeprom->len) & 1) && (ret_val == 0)) {
-		/* need read/modify/write of last changed EEPROM word */
-		/* only the first byte of the word is being modified */
+		/*
+		 * need read/modify/write of last changed EEPROM word
+		 * only the first byte of the word is being modified
+		 */
 		ret_val = ixgbe_read_eeprom(hw, last_word,
 		                  &eeprom_buff[last_word - first_word]);
+		if (ret_val)
+			goto err;
 	}
 
 	/* Device's eeprom is always little-endian, word addressable */
@@ -889,12 +897,18 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 
 	memcpy(ptr, bytes, eeprom->len);
 
-	for (i = 0; i <= (last_word - first_word); i++)
-		ret_val |= ixgbe_write_eeprom(hw, first_word + i, eeprom_buff[i]);
+	for (i = 0; i < last_word - first_word + 1; i++)
+		cpu_to_le16s(&eeprom_buff[i]);
+
+	ret_val = ixgbe_write_eeprom_buffer(hw, first_word,
+					    last_word - first_word + 1,
+					    eeprom_buff);
 
 	/* Update the checksum */
-	ixgbe_update_eeprom_checksum(hw);
+	if (ret_val == 0)
+		ixgbe_update_eeprom_checksum(hw);
 
+err:
 	kfree(eeprom_buff);
 	return ret_val;
 }
@@ -2569,6 +2583,8 @@ static int ixgbe_get_ethtool_fdir_all(struct ixgbe_adapter *adapter,
 		cnt++;
 	}
 
+	cmd->rule_cnt = cnt;
+
 	return 0;
 }
 
@@ -2615,7 +2631,11 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 }
 
 static int ixgbe_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
+#ifdef HAVE_ETHTOOL_GET_RXNFC_VOID_RULE_LOCS
 			   void *rule_locs)
+#else
+			   u32 *rule_locs)
+#endif
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	int ret = -EOPNOTSUPP;

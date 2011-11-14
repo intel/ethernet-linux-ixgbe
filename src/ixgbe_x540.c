@@ -31,32 +31,6 @@
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
 
-s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw);
-s32 ixgbe_get_link_capabilities_X540(struct ixgbe_hw *hw,
-                                      ixgbe_link_speed *speed,
-                                      bool *autoneg);
-enum ixgbe_media_type ixgbe_get_media_type_X540(struct ixgbe_hw *hw);
-s32 ixgbe_setup_mac_link_X540(struct ixgbe_hw *hw,
-                               ixgbe_link_speed speed,
-                               bool autoneg, bool link_up_wait_to_complete);
-s32 ixgbe_reset_hw_X540(struct ixgbe_hw *hw);
-s32 ixgbe_start_hw_X540(struct ixgbe_hw *hw);
-u32 ixgbe_get_supported_physical_layer_X540(struct ixgbe_hw *hw);
-
-s32 ixgbe_init_eeprom_params_X540(struct ixgbe_hw *hw);
-s32 ixgbe_read_eerd_X540(struct ixgbe_hw *hw, u16 offset, u16 *data);
-s32 ixgbe_read_eerd_buffer_X540(struct ixgbe_hw *hw,
-                                u16 offset, u16 words, u16 *data);
-s32 ixgbe_write_eewr_X540(struct ixgbe_hw *hw, u16 offset, u16 data);
-s32 ixgbe_write_eewr_buffer_X540(struct ixgbe_hw *hw,
-                                 u16 offset, u16 words, u16 *data);
-s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw);
-s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw, u16 *checksum_val);
-u16 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw);
-
-s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask);
-void ixgbe_release_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask);
-
 static s32 ixgbe_update_flash_X540(struct ixgbe_hw *hw);
 static s32 ixgbe_poll_flash_update_done_X540(struct ixgbe_hw *hw);
 static s32 ixgbe_get_swfw_sync_semaphore(struct ixgbe_hw *hw);
@@ -98,7 +72,7 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.reset_hw = &ixgbe_reset_hw_X540;
 	mac->ops.get_media_type = &ixgbe_get_media_type_X540;
 	mac->ops.get_supported_physical_layer =
-	                            &ixgbe_get_supported_physical_layer_X540;
+				    &ixgbe_get_supported_physical_layer_X540;
 	mac->ops.read_analog_reg8 = NULL;
 	mac->ops.write_analog_reg8 = NULL;
 	mac->ops.start_hw = &ixgbe_start_hw_X540;
@@ -122,18 +96,19 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.set_vlan_anti_spoofing = &ixgbe_set_vlan_anti_spoofing;
 
 	/* Link */
-	mac->ops.get_link_capabilities = &ixgbe_get_copper_link_capabilities_generic;
+	mac->ops.get_link_capabilities =
+				&ixgbe_get_copper_link_capabilities_generic;
 	mac->ops.setup_link = &ixgbe_setup_mac_link_X540;
 	mac->ops.setup_rxpba = &ixgbe_set_rxpba_generic;
 	mac->ops.check_link = &ixgbe_check_mac_link_generic;
 
-	mac->mcft_size        = 128;
-	mac->vft_size         = 128;
-	mac->num_rar_entries  = 128;
-	mac->rx_pb_size       = 384;
-	mac->max_tx_queues    = 128;
-	mac->max_rx_queues    = 128;
-	mac->max_msix_vectors = ixgbe_get_pcie_msix_count_generic(hw);
+	mac->mcft_size		= 128;
+	mac->vft_size		= 128;
+	mac->num_rar_entries	= 128;
+	mac->rx_pb_size		= 384;
+	mac->max_tx_queues	= 128;
+	mac->max_rx_queues	= 128;
+	mac->max_msix_vectors	= ixgbe_get_pcie_msix_count_generic(hw);
 
 	/*
 	 * FWSM register
@@ -141,7 +116,7 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	 * enabled.
 	 */
 	mac->arc_subsystem_valid = (IXGBE_READ_REG(hw, IXGBE_FWSM) &
-	                           IXGBE_FWSM_MODE_MASK) ? true : false;
+				   IXGBE_FWSM_MODE_MASK) ? true : false;
 
 	hw->mbx.ops.init_params = ixgbe_init_mbx_params_pf;
 
@@ -159,15 +134,15 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
  *  ixgbe_get_link_capabilities_X540 - Determines link capabilities
  *  @hw: pointer to hardware structure
  *  @speed: pointer to link speed
- *  @negotiation: true when autoneg or autotry is enabled
+ *  @autoneg: true when autoneg or autotry is enabled
  *
  *  Determines the link capabilities by reading the AUTOC register.
  **/
 s32 ixgbe_get_link_capabilities_X540(struct ixgbe_hw *hw,
-                                     ixgbe_link_speed *speed,
-                                     bool *negotiation)
+				     ixgbe_link_speed *speed,
+				     bool *autoneg)
 {
-	ixgbe_get_copper_link_capabilities_generic(hw, speed, negotiation);
+	ixgbe_get_copper_link_capabilities_generic(hw, speed, autoneg);
 
 	return 0;
 }
@@ -191,11 +166,11 @@ enum ixgbe_media_type ixgbe_get_media_type_X540(struct ixgbe_hw *hw)
  *  @autoneg_wait_to_complete: true when waiting for completion is needed
  **/
 s32 ixgbe_setup_mac_link_X540(struct ixgbe_hw *hw,
-                                     ixgbe_link_speed speed, bool autoneg,
-                                     bool autoneg_wait_to_complete)
+			      ixgbe_link_speed speed, bool autoneg,
+			      bool autoneg_wait_to_complete)
 {
 	return hw->phy.ops.setup_link_speed(hw, speed, autoneg,
-	                                    autoneg_wait_to_complete);
+					    autoneg_wait_to_complete);
 }
 
 /**
@@ -268,7 +243,7 @@ mac_reset_top:
 	/* Add the SAN MAC address to the RAR only if it's a valid address */
 	if (ixgbe_validate_mac_addr(hw->mac.san_addr) == 0) {
 		hw->mac.ops.set_rar(hw, hw->mac.num_rar_entries - 1,
-		                    hw->mac.san_addr, 0, IXGBE_RAH_AV);
+				    hw->mac.san_addr, 0, IXGBE_RAH_AV);
 
 		/* Reserve the last RAR for the SAN MAC address */
 		hw->mac.num_rar_entries--;
@@ -276,7 +251,7 @@ mac_reset_top:
 
 	/* Store the alternative WWNN/WWPN prefix */
 	hw->mac.ops.get_wwn_prefix(hw, &hw->mac.wwnn_prefix,
-	                               &hw->mac.wwpn_prefix);
+				   &hw->mac.wwpn_prefix);
 
 reset_hw_out:
 	return status;
@@ -346,12 +321,12 @@ s32 ixgbe_init_eeprom_params_X540(struct ixgbe_hw *hw)
 
 		eec = IXGBE_READ_REG(hw, IXGBE_EEC);
 		eeprom_size = (u16)((eec & IXGBE_EEC_SIZE) >>
-		                    IXGBE_EEC_SIZE_SHIFT);
+				    IXGBE_EEC_SIZE_SHIFT);
 		eeprom->word_size = 1 << (eeprom_size +
-		                          IXGBE_EEPROM_WORD_SIZE_SHIFT);
+					  IXGBE_EEPROM_WORD_SIZE_SHIFT);
 
 		hw_dbg(hw, "Eeprom params: type = %d, size = %d\n",
-		          eeprom->type, eeprom->word_size);
+			  eeprom->type, eeprom->word_size);
 	}
 
 	return 0;
@@ -389,14 +364,14 @@ s32 ixgbe_read_eerd_X540(struct ixgbe_hw *hw, u16 offset, u16 *data)
  *  Reads a 16 bit word(s) from the EEPROM using the EERD register.
  **/
 s32 ixgbe_read_eerd_buffer_X540(struct ixgbe_hw *hw,
-                                u16 offset, u16 words, u16 *data)
+				u16 offset, u16 words, u16 *data)
 {
 	s32 status = 0;
 
 	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0)
 		status = ixgbe_read_eerd_buffer_generic(hw, offset,
-		                                        words, data);
+							words, data);
 	else
 		status = IXGBE_ERR_SWFW_SYNC;
 
@@ -436,14 +411,14 @@ s32 ixgbe_write_eewr_X540(struct ixgbe_hw *hw, u16 offset, u16 data)
  *  Write a 16 bit word(s) to the EEPROM using the EEWR register.
  **/
 s32 ixgbe_write_eewr_buffer_X540(struct ixgbe_hw *hw,
-                                 u16 offset, u16 words, u16 *data)
+				 u16 offset, u16 words, u16 *data)
 {
 	s32 status = 0;
 
 	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0)
 		status = ixgbe_write_eewr_buffer_generic(hw, offset,
-		                                         words, data);
+							 words, data);
 	else
 		status = IXGBE_ERR_SWFW_SYNC;
 
@@ -501,7 +476,7 @@ u16 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 		    pointer >= hw->eeprom.word_size)
 			continue;
 
-		if (ixgbe_read_eerd_generic(hw, pointer, &length)!=
+		if (ixgbe_read_eerd_generic(hw, pointer, &length) !=
 		    0) {
 			hw_dbg(hw, "EEPROM read failed\n");
 			break;
@@ -536,7 +511,7 @@ u16 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
  *  caller does not need checksum_val, the value can be NULL.
  **/
 s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw,
-                                        u16 *checksum_val)
+					u16 *checksum_val)
 {
 	s32 status;
 	u16 checksum;
@@ -563,7 +538,7 @@ s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw,
 		 * the synchronization semaphores twice here.
 		*/
 		ixgbe_read_eerd_generic(hw, IXGBE_EEPROM_CHECKSUM,
-		                        &read_checksum);
+					&read_checksum);
 
 		/*
 		 * Verify read checksum from EEPROM is the same as
@@ -616,7 +591,7 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 		 * take the synchronization semaphores twice here.
 		*/
 		status = ixgbe_write_eewr_generic(hw, IXGBE_EEPROM_CHECKSUM,
-		                                  checksum);
+						  checksum);
 
 	if (status == 0)
 		status = ixgbe_update_flash_X540(hw);
@@ -742,9 +717,9 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 			goto out;
 		} else {
 			/*
-			 * Firmware currently using resource (fwmask), hardware currently
-			 * using resource (hwmask), or other software thread currently
-			 * using resource (swmask)
+			 * Firmware currently using resource (fwmask), hardware
+			 * currently using resource (hwmask), or other software
+			 * thread currently using resource (swmask)
 			 */
 			ixgbe_release_swfw_sync_semaphore(hw);
 			msleep(5);
@@ -763,7 +738,7 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 	 * bits in the SW_FW_SYNC register.
 	 */
 	swfw_sync = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC);
-	if (swfw_sync & (fwmask| hwmask)) {
+	if (swfw_sync & (fwmask | hwmask)) {
 		if (ixgbe_get_swfw_sync_semaphore(hw)) {
 			ret_val = IXGBE_ERR_SWFW_SYNC;
 			goto out;
@@ -844,13 +819,14 @@ static s32 ixgbe_get_swfw_sync_semaphore(struct ixgbe_hw *hw)
 		 * was not granted because we don't have access to the EEPROM
 		 */
 		if (i >= timeout) {
-			hw_dbg(hw, "REGSMP Software NVM semaphore not granted.\n");
+			hw_dbg(hw, "REGSMP Software NVM semaphore not "
+				 "granted.\n");
 			ixgbe_release_swfw_sync_semaphore(hw);
 			status = IXGBE_ERR_EEPROM;
 		}
 	} else {
 		hw_dbg(hw, "Software semaphore SMBI between device drivers "
-		         "not granted.\n");
+			 "not granted.\n");
 	}
 
 	return status;
@@ -895,16 +871,12 @@ s32 ixgbe_blink_led_start_X540(struct ixgbe_hw *hw, u32 index)
 	bool link_up;
 
 	/*
-	 * Forcing link and speed when we are currently linked at less
-	 * then 10G causes the LED to blink at slow rate.
+	 * Link should be up in order for the blink bit in the LED control
+	 * register to work. Force link and speed in the MAC if link is down.
+	 * This will be reversed when we stop the blinking.
 	 */
 	hw->mac.ops.check_link(hw, &speed, &link_up, false);
 	if (link_up == false) {
-		/*
-		 * In order for the blink bit in the LED control register
-		 * to work, link and speed must be forced in the MAC. We
-		 * will reverse this when we stop the blinking.
-		 */
 		macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
 		macc_reg |= IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS;
 		IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);

@@ -297,10 +297,6 @@ enum {
 #define num_online_cpus() smp_num_cpus
 #endif
 
-#ifndef numa_node_id
-#define numa_node_id() 0
-#endif
-
 #ifndef _LINUX_RANDOM_H
 #include <linux/random.h>
 #endif
@@ -1745,7 +1741,6 @@ static inline int _kc_skb_padto(struct sk_buff *skb, unsigned int len)
 		return 0;
 	return _kc_skb_pad(skb, len - size);
 }
-
 #endif /* < 2.6.18 */
 
 /*****************************************************************************/
@@ -2053,7 +2048,11 @@ static inline int _kc_skb_is_gso_v6(const struct sk_buff *skb)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,6,24) )
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0) )
 #include <linux/pm_qos_params.h>
+#else /* >= 3.2.0 */
+#include <linux/pm_qos.h>
+#endif /* else >= 3.2.0 */
 #endif /* > 2.6.24 */
 
 /*****************************************************************************/
@@ -2079,6 +2078,7 @@ static inline int _kc_skb_is_gso_v6(const struct sk_buff *skb)
 			pci_name(adapter->pdev)); \
 	} \
 }
+
 #endif /* > 2.6.18 */
 
 #define pci_enable_device_mem(pdev) pci_enable_device(pdev)
@@ -2086,6 +2086,22 @@ static inline int _kc_skb_is_gso_v6(const struct sk_buff *skb)
 #ifndef DEFINE_PCI_DEVICE_TABLE
 #define DEFINE_PCI_DEVICE_TABLE(_table) struct pci_device_id _table[]
 #endif /* DEFINE_PCI_DEVICE_TABLE */
+
+#ifndef EXT_THERMAL_SENSOR_SUPPORT
+#define EXT_THERMAL_SENSOR_SUPPORT
+#endif /* EXT_THERMAL_SENSOR_SUPPORT */
+#ifndef IXGBE_PROCFS
+#define IXGBE_PROCFS
+#endif /* IXGBE_PROCFS */
+
+#else /* < 2.6.25 */
+
+#ifndef EXT_THERMAL_SENSOR_SUPPORT
+#define EXT_THERMAL_SENSOR_SUPPORT
+#endif /* EXT_THERMAL_SENSOR_SUPPORT */
+#ifndef IXGBE_SYSFS
+#define IXGBE_SYSFS
+#endif /* IXGBE_SYSFS */
 
 #endif /* < 2.6.25 */
 
@@ -2219,6 +2235,21 @@ extern void _kc_netif_tx_start_all_queues(struct net_device *);
 #define netif_is_multiqueue(a) 0
 #define netif_wake_subqueue(a, b)
 #endif /* NETIF_F_MULTI_QUEUE */
+
+#ifndef __WARN_printf
+extern void __kc_warn_slowpath(const char *file, const int line,
+		const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+#define __WARN_printf(arg...) __kc_warn_slowpath(__FILE__, __LINE__, arg)
+#endif /* __WARN_printf */
+
+#ifndef WARN
+#define WARN(condition, format...) ({						\
+	int __ret_warn_on = !!(condition);				\
+	if (unlikely(__ret_warn_on))					\
+		__WARN_printf(format);					\
+	unlikely(__ret_warn_on);					\
+})
+#endif /* WARN */
 #else /* < 2.6.27 */
 #define HAVE_TX_MQ
 #define HAVE_NETDEV_SELECT_QUEUE
@@ -2240,6 +2271,10 @@ static inline void __kc_skb_queue_head_init(struct sk_buff_head *list)
 	list->qlen = 0;
 }
 #define __skb_queue_head_init(_q) __kc_skb_queue_head_init(_q)
+#endif
+#ifndef skb_add_rx_frag
+#define skb_add_rx_frag _kc_skb_add_rx_frag
+extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *, int, int);
 #endif
 #endif /* < 2.6.28 */
 
@@ -2380,6 +2415,9 @@ extern u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb);
 #endif
 #endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
 #endif /* RHEL6 or SLES11 SP1 */
+#ifndef __percpu
+#define __percpu
+#endif /* __percpu */
 #else /* < 2.6.33 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
@@ -2548,6 +2586,9 @@ do {								\
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
+#ifndef numa_node_id
+#define numa_node_id() 0
+#endif
 #ifdef HAVE_TX_MQ
 #include <net/sch_generic.h>
 #ifndef CONFIG_NETDEVICES_MULTIQUEUE
@@ -2719,9 +2760,6 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 #endif
 #endif /* CONFIG_DCB */
 #else /* < 2.6.38 */
-#ifndef HAVE_DCBNL_IEEE
-#define HAVE_DCBNL_IEEE
-#endif
 #endif /* < 2.6.38 */
 
 /*****************************************************************************/
@@ -2732,9 +2770,12 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 		     skb != (struct sk_buff *)(queue);				\
 		     skb = tmp, tmp = skb->prev)
 #endif
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,1)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
 extern u8 _kc_netdev_get_num_tc(struct net_device *dev);
 #define netdev_get_num_tc(dev) _kc_netdev_get_num_tc(dev)
+extern u8 _kc_netdev_get_prio_tc_map(struct net_device *dev, u8 up);
+#define netdev_get_prio_tc_map(dev, up) _kc_netdev_get_prio_tc_map(dev, up)
+#define netdev_set_prio_tc_map(dev, up, tc) do {} while (0)
 #else /* RHEL6.1 or greater */
 #ifndef HAVE_MQPRIO
 #define HAVE_MQPRIO
@@ -2752,6 +2793,11 @@ extern u8 _kc_netdev_get_num_tc(struct net_device *dev);
 #ifndef HAVE_SETUP_TC
 #define HAVE_SETUP_TC
 #endif
+#ifdef CONFIG_DCB
+#ifndef HAVE_DCBNL_IEEE
+#define HAVE_DCBNL_IEEE
+#endif
+#endif /* CONFIG_DCB */
 #ifndef HAVE_NDO_SET_FEATURES
 #define HAVE_NDO_SET_FEATURES
 #endif
@@ -2810,8 +2856,63 @@ struct _kc_ethtool_rx_flow_spec {
 #ifndef __netdev_alloc_skb_ip_align
 #define __netdev_alloc_skb_ip_align(d,l,_g) netdev_alloc_skb_ip_align(d,l)
 #endif /* __netdev_alloc_skb_ip_align */
+#define dcb_ieee_setapp(dev, app) dcb_setapp(dev, app)
+#define dcb_ieee_delapp(dev, app) 0
+#define dcb_ieee_getapp_mask(dev, app) (1 << app->priority)
 #else /* < 3.1.0 */
 #define HAVE_NET_DEVICE_OPS
+#ifndef HAVE_DCBNL_IEEE_DELAPP
+#define HAVE_DCBNL_IEEE_DELAPP
+#endif
 #endif /* < 3.1.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0) )
+#ifdef ETHTOOL_GRXRINGS
+#define HAVE_ETHTOOL_GET_RXNFC_VOID_RULE_LOCS
+#endif /* ETHTOOL_GRXRINGS */
+
+#ifndef skb_frag_size
+#define skb_frag_size(frag)	_kc_skb_frag_size(frag)
+static inline unsigned int _kc_skb_frag_size(const skb_frag_t *frag)
+{
+	return frag->size;
+}
+#endif /* skb_frag_size */
+
+#ifndef skb_frag_size_sub
+#define skb_frag_size_sub(frag, delta)	_kc_skb_frag_size_sub(frag, delta)
+static inline void _kc_skb_frag_size_sub(skb_frag_t *frag, int delta)
+{
+	frag->size -= delta;
+}
+#endif /* skb_frag_size_sub */
+
+#ifndef skb_frag_page
+#define skb_frag_page(frag)	_kc_skb_frag_page(frag)
+static inline struct page *_kc_skb_frag_page(const skb_frag_t *frag)
+{
+	return frag->page;
+}
+#endif /* skb_frag_page */
+
+#ifndef skb_frag_dma_map
+#define skb_frag_dma_map(dev,frag,offset,size,dir) \
+		_kc_skb_frag_dma_map(dev,frag,offset,size,dir)
+static inline dma_addr_t _kc_skb_frag_dma_map(struct device *dev,
+					      const skb_frag_t *frag,
+					      size_t offset, size_t size,
+					      enum dma_data_direction dir)
+{
+	return dma_map_page(dev, skb_frag_page(frag),
+			    frag->page_offset + offset, size, dir);
+}
+#endif /* skb_frag_dma_map */
+#endif /* < 3.2.0 */
+
+#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE == RHEL_RELEASE_VERSION(6,2))
+#undef ixgbe_get_netdev_tc_txq
+#define ixgbe_get_netdev_tc_txq(dev, tc) (&netdev_extended(dev)->qos_data.tc_to_txq[tc])
+#endif
 
 #endif /* _KCOMPAT_H_ */

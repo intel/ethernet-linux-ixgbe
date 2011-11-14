@@ -74,6 +74,7 @@ struct ixgbe_fcoe_ddp {
 struct ixgbe_fcoe {
 	u8 tc;
 	u8 up;
+	u8 up_set;
 	unsigned long mode;
 	atomic_t refcnt;
 	spinlock_t lock;
@@ -81,6 +82,8 @@ struct ixgbe_fcoe {
 	struct ixgbe_fcoe_ddp ddp[IXGBE_FCOE_DDP_MAX];
 	unsigned char *extra_ddp_buffer;
 	dma_addr_t extra_ddp_buffer_dma;
+	u64 __percpu *pcpu_noddp;
+	u64 __percpu *pcpu_noddp_ext_buff;
 };
 #endif /* IXGBE_FCOE */
 
