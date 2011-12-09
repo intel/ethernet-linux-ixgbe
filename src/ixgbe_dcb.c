@@ -660,7 +660,7 @@ s32 ixgbe_dcb_hw_config_cee(struct ixgbe_hw *hw,
 	default:
 		break;
 	}
-	return 0;
+	return ret;
 }
 
 /* Helper routines to abstract HW specifics from DCB netlink ops */

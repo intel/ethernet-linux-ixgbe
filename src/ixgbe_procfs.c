@@ -790,18 +790,18 @@ void ixgbe_del_proc_entries(struct ixgbe_adapter *adapter)
 			 remove_proc_entry(ixgbe_internal_entries[index].name,
 					   adapter->therm_dir[i]);
 		}
-		snprintf(buf, sizeof(buf), "%d", i);
-		remove_proc_entry(buf ,adapter->stats_dir);
+		snprintf(buf, sizeof(buf), "sensor_%d", i);
+		remove_proc_entry(buf ,adapter->info_dir);
 	}
 
-	if (adapter->stats_dir != NULL) {
+	if (adapter->info_dir != NULL) {
 		for (index = 0; ; index++) {
 			if (ixgbe_proc_entries[index].read == NULL)
 				break;
 		        remove_proc_entry(ixgbe_proc_entries[index].name,
-					  adapter->stats_dir); 
+					  adapter->info_dir); 
 		}
-		remove_proc_entry("stats", adapter->eth_dir);
+		remove_proc_entry("info", adapter->eth_dir);
 	}
 
 	if (adapter->eth_dir != NULL) {
@@ -839,7 +839,7 @@ int ixgbe_procfs_init(struct ixgbe_adapter *adapter)
 	char buf[16];	/* much larger than the sensor number will ever be */
 
 	adapter->eth_dir = NULL;
-	adapter->stats_dir = NULL;
+	adapter->info_dir = NULL;
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++)
 		adapter->therm_dir[i] = NULL;
 
@@ -854,8 +854,8 @@ int ixgbe_procfs_init(struct ixgbe_adapter *adapter)
 		goto fail;
 	}
 
-	adapter->stats_dir = proc_mkdir("stats", adapter->eth_dir);
-	if (adapter->stats_dir == NULL) {
+	adapter->info_dir = proc_mkdir("info", adapter->eth_dir);
+	if (adapter->info_dir == NULL) {
 		rc = -ENOMEM;
 		goto fail;
 	}
@@ -865,7 +865,7 @@ int ixgbe_procfs_init(struct ixgbe_adapter *adapter)
 		}
 		if (!(create_proc_read_entry(ixgbe_proc_entries[index].name, 
 					   0444, 
-					   adapter->stats_dir, 
+					   adapter->info_dir, 
 					   ixgbe_proc_entries[index].read, 
 					   adapter))) {
 
@@ -881,8 +881,8 @@ int ixgbe_procfs_init(struct ixgbe_adapter *adapter)
 		 if (adapter->hw.mac.thermal_sensor_data.sensor[i].location== 0)
 			continue;
 
-		snprintf(buf, sizeof(buf), "%d", i);
-		adapter->therm_dir[i] = proc_mkdir(buf, adapter->stats_dir);
+		snprintf(buf, sizeof(buf), "sensor_%d", i);
+		adapter->therm_dir[i] = proc_mkdir(buf, adapter->info_dir);
 		if (adapter->therm_dir[i] == NULL) {
 			rc = -ENOMEM;
 			goto fail;

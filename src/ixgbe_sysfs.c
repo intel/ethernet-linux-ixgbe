@@ -104,12 +104,20 @@ bool ixgbe_thermal_present(struct kobject *kobj)
 /*
  * Convert the directory to the sensor offset.
  *
- * Note: We know the name will be '0' - 'IXGBE_MAX_SENSORS'.  And that
- * IXGBE_MAX_SENSORS < 10.  I don't expect that to ever chang but if
- *  it does so much this function.
+ * Note: We know the name will be of the form "sensor_n" where n is
+ * '0' - 'IXGBE_MAX_SENSORS'.  We also know that IXGBE_MAX_SENSORS < 10.
+ * I don't ever expect that to ever chang but if it does so much this function.
  */
-static int ixgbe_name_to_idx(const char *str) {
-	return ((int)(*str - '0'));
+static int ixgbe_name_to_idx(const char *c) {
+
+	/* find first digit */
+	while (*c < '0' || *c > '9') {
+		if (*c == '\n')
+			return -1;
+		c++;
+	}
+
+	return ((int)(*c - '0'));
 }
 
 /* 
@@ -730,6 +738,10 @@ static ssize_t ixgbe_sysfs_location(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
 	idx = ixgbe_name_to_idx(kobj->name);
+	if (idx == -1)
+		return snprintf(buf, PAGE_SIZE,
+				"error: invalid sensor name %s\n", kobj->name);
+
 	return snprintf(buf, PAGE_SIZE, "%d\n", 
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].location);
 }
@@ -747,6 +759,10 @@ static ssize_t ixgbe_sysfs_temp(struct kobject *kobj,
 				status);
 
 	idx = ixgbe_name_to_idx(kobj->name);
+	if (idx == -1)
+		return snprintf(buf, PAGE_SIZE,
+				"error: invalid sensor name %s\n", kobj->name);
+
 	return snprintf(buf, PAGE_SIZE, "%d\n",
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].temp);
 }
@@ -761,6 +777,10 @@ static ssize_t ixgbe_sysfs_maxopthresh(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
 	idx = ixgbe_name_to_idx(kobj->name);
+	if (idx == -1)
+		return snprintf(buf, PAGE_SIZE,
+				"error: invalid sensor name %s\n", kobj->name);
+
 	return snprintf(buf, PAGE_SIZE, "%d\n", 
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].max_op_thresh);
 }
@@ -775,6 +795,10 @@ static ssize_t ixgbe_sysfs_cautionthresh(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
 	idx = ixgbe_name_to_idx(kobj->name);
+	if (idx == -1)
+		return snprintf(buf, PAGE_SIZE,
+				"error: invalid sensor name %s\n", kobj->name);
+
 	return snprintf(buf, PAGE_SIZE, "%d\n", 
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].caution_thresh);
 }
@@ -931,9 +955,9 @@ void ixgbe_del_adapter(struct ixgbe_adapter *adapter)
 		sysfs_remove_group(adapter->therm_kobj[i], &therm_attr_group);
 		kobject_put(adapter->therm_kobj[i]);
 	}
-	if (adapter->stat_kobj != NULL) {
-		sysfs_remove_group(adapter->stat_kobj, &attr_group);
-		kobject_put(adapter->stat_kobj);
+	if (adapter->info_kobj != NULL) {
+		sysfs_remove_group(adapter->info_kobj, &attr_group);
+		kobject_put(adapter->info_kobj);
 	}
 }
 
@@ -957,20 +981,20 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 	if (netdev == NULL)
 		goto del_adapter;
 
-	adapter->stat_kobj = NULL;
+	adapter->info_kobj = NULL;
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++)
 		adapter->therm_kobj[i] = NULL;
 	
 	/* create stats kobj and attribute listings in kobj */
-	adapter->stat_kobj = kobject_create_and_add("stats", 
+	adapter->info_kobj = kobject_create_and_add("info", 
 					&(netdev->dev.kobj));
-	if (adapter->stat_kobj == NULL)
+	if (adapter->info_kobj == NULL)
 		goto del_adapter;
-	if (sysfs_create_group(adapter->stat_kobj, &attr_group))
+	if (sysfs_create_group(adapter->info_kobj, &attr_group))
 		goto del_adapter;
 
 	/* Don't create thermal subkobjs if no data present */
-	if (ixgbe_thermal_present(adapter->stat_kobj) != true)
+	if (ixgbe_thermal_present(adapter->info_kobj) != true)
 		goto exit;
 
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++) {
@@ -983,9 +1007,9 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 			continue;
 
 		/* directory named after sensor offset */
-		snprintf(buf, sizeof(buf), "%d", i);
+		snprintf(buf, sizeof(buf), "sensor_%d", i);
 		adapter->therm_kobj[i] = 
-			kobject_create_and_add(buf, adapter->stat_kobj);
+			kobject_create_and_add(buf, adapter->info_kobj);
 		if (adapter->therm_kobj[i] == NULL)
 			goto del_adapter;
 		if (sysfs_create_group(adapter->therm_kobj[i],

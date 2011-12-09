@@ -597,7 +597,8 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 
 	/* Disable drop for all queues */
 	for (q = 0; q < 128; q++)
-		IXGBE_WRITE_REG(hw, IXGBE_QDE, q << IXGBE_QDE_IDX_SHIFT);
+		IXGBE_WRITE_REG(hw, IXGBE_QDE,
+				(IXGBE_QDE_WRITE | (q << IXGBE_QDE_IDX_SHIFT)));
 
 	/* Enable the Tx desc arbiter */
 	reg = IXGBE_READ_REG(hw, IXGBE_RTTDCS);

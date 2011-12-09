@@ -730,12 +730,12 @@ struct ixgbe_adapter {
 	struct ixgbe_mac_addr *mac_table;
 #ifdef EXT_THERMAL_SENSOR_SUPPORT
 #ifdef IXGBE_SYSFS
-	struct kobject *stat_kobj;
+	struct kobject *info_kobj;
 	struct kobject *therm_kobj[IXGBE_MAX_SENSORS];
 #else /* IXGBE_SYSFS */
 #ifdef IXGBE_PROCFS
 	struct proc_dir_entry *eth_dir;
-	struct proc_dir_entry *stats_dir;
+	struct proc_dir_entry *info_dir;
 	struct proc_dir_entry *therm_dir[IXGBE_MAX_SENSORS];
 	struct ixgbe_therm_proc_data therm_data[IXGBE_MAX_SENSORS];
 #endif /* IXGBE_PROCFS */

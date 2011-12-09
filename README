@@ -256,10 +256,6 @@ newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
 CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26.  Other options 
 enable multiqueue in 2.6.27 and newer kernels.
 
-NOTE: The RSS parameter has no effect on 82599-based adapters unless the 
-FdirMode parameter is simultaneously used to disable Flow Director. See 
-Intel(R) Ethernet Flow Director section below for more detail.
-
 MQ - Multi Queue
 ----------------
 Valid Range: 0, 1
@@ -741,16 +737,23 @@ http://www.redhat.com/promo/summit/2008/downloads/pdf/Thursday/Mark_Wagner.pdf
 Known Issues/Troubleshooting
 ============================
 
-For known hardware and troubleshooting issues, refer to the following website.
+Hardware Issues:
+----------------
+For known hardware and troubleshooting issues, either refer to the "Release 
+Notes" in your User Guide, or for more detailed information, go to the 
+following website:
 
-     http://www.intel.com
+    http://www.intel.com
 
-In the search box enter your devices controller ID (i.e., 82599) spec update.
-The spec update file has complete information on known hardware issues.  
+In the search box enter your devices controller ID followed by "spec update" 
+(i.e., 82599 spec update). The spec update file has complete information on
+known hardware issues.
 
-  NOTE: After installing the driver, if your Intel Ethernet Network Connection 
-  is not working, verify in the "In This Release" section of the readme that 
-  you have installed the correct driver.
+Software Issues:
+----------------
+
+  NOTE: After installing the driver, if your Intel Ethernet Network Connection
+  is not working, verify that you have installed the correct driver.
 
   MSI-X Issues with Kernels between 2.6.19 - 2.6.21 (inclusive)
   ------------------------------------------------------------
