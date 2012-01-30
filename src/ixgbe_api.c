@@ -895,6 +895,24 @@ s32 ixgbe_set_vfta(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on)
 }
 
 /**
+ *  ixgbe_set_vlvf - Set VLAN Pool Filter
+ *  @hw: pointer to hardware structure
+ *  @vlan: VLAN id to write to VLAN filter
+ *  @vind: VMDq output index that maps queue to VLAN id in VFVFB
+ *  @vlan_on: boolean flag to turn on/off VLAN in VFVF
+ *  @vfta_changed: pointer to boolean flag which indicates whether VFTA
+ *                 should be changed
+ *
+ *  Turn on/off specified bit in VLVF table.
+ **/
+s32 ixgbe_set_vlvf(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on,
+		    bool *vfta_changed)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.set_vlvf, (hw, vlan, vind,
+			       vlan_on, vfta_changed), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
  *  ixgbe_fc_enable - Enable flow control
  *  @hw: pointer to hardware structure
  *  @packetbuf_num: packet buffer number (0-7)

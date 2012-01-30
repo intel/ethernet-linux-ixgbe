@@ -55,6 +55,7 @@
 #define IXGBE_DEV_ID_82599_CX4			0x10F9
 #define IXGBE_DEV_ID_82599_SFP			0x10FB
 #define IXGBE_SUBDEV_ID_82599_SFP		0x11A9
+#define IXGBE_SUBDEV_ID_82599_560FLR		0x17D0
 #define IXGBE_DEV_ID_82599_BACKPLANE_FCOE	0x152A
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
@@ -183,19 +184,19 @@ struct ixgbe_thermal_sensor_data {
 
 /* Receive DMA Registers */
 #define IXGBE_RDBAL(_i)	(((_i) < 64) ? (0x01000 + ((_i) * 0x40)) : \
-			 (0x0D000 + ((_i - 64) * 0x40)))
+			 (0x0D000 + (((_i) - 64) * 0x40)))
 #define IXGBE_RDBAH(_i)	(((_i) < 64) ? (0x01004 + ((_i) * 0x40)) : \
-			 (0x0D004 + ((_i - 64) * 0x40)))
+			 (0x0D004 + (((_i) - 64) * 0x40)))
 #define IXGBE_RDLEN(_i)	(((_i) < 64) ? (0x01008 + ((_i) * 0x40)) : \
-			 (0x0D008 + ((_i - 64) * 0x40)))
+			 (0x0D008 + (((_i) - 64) * 0x40)))
 #define IXGBE_RDH(_i)	(((_i) < 64) ? (0x01010 + ((_i) * 0x40)) : \
-			 (0x0D010 + ((_i - 64) * 0x40)))
+			 (0x0D010 + (((_i) - 64) * 0x40)))
 #define IXGBE_RDT(_i)	(((_i) < 64) ? (0x01018 + ((_i) * 0x40)) : \
-			 (0x0D018 + ((_i - 64) * 0x40)))
+			 (0x0D018 + (((_i) - 64) * 0x40)))
 #define IXGBE_RXDCTL(_i)	(((_i) < 64) ? (0x01028 + ((_i) * 0x40)) : \
-				 (0x0D028 + ((_i - 64) * 0x40)))
+				 (0x0D028 + (((_i) - 64) * 0x40)))
 #define IXGBE_RSCCTL(_i)	(((_i) < 64) ? (0x0102C + ((_i) * 0x40)) : \
-				 (0x0D02C + ((_i - 64) * 0x40)))
+				 (0x0D02C + (((_i) - 64) * 0x40)))
 #define IXGBE_RSCDBU	0x03028
 #define IXGBE_RDDCC	0x02F20
 #define IXGBE_RXMEMWRAP	0x03190
@@ -208,7 +209,7 @@ struct ixgbe_thermal_sensor_data {
  */
 #define IXGBE_SRRCTL(_i)	(((_i) <= 15) ? (0x02100 + ((_i) * 4)) : \
 				 (((_i) < 64) ? (0x01014 + ((_i) * 0x40)) : \
-				 (0x0D014 + ((_i - 64) * 0x40))))
+				 (0x0D014 + (((_i) - 64) * 0x40))))
 /*
  * Rx DCA Control Register:
  * 00-15 : 0x02200 + n*4
@@ -217,7 +218,7 @@ struct ixgbe_thermal_sensor_data {
  */
 #define IXGBE_DCA_RXCTRL(_i)	(((_i) <= 15) ? (0x02200 + ((_i) * 4)) : \
 				 (((_i) < 64) ? (0x0100C + ((_i) * 0x40)) : \
-				 (0x0D00C + ((_i - 64) * 0x40))))
+				 (0x0D00C + (((_i) - 64) * 0x40))))
 #define IXGBE_RDRXCTL		0x02F00
 #define IXGBE_RDRXCTL_RSC_PUSH	0x80
 /* 8 of these 0x03C00 - 0x03C1C */
@@ -2222,61 +2223,61 @@ enum {
 
 /* SR-IOV specific macros */
 #define IXGBE_MBVFICR_INDEX(vf_number)	(vf_number >> 4)
-#define IXGBE_MBVFICR(_i)		(0x00710 + (_i * 4))
+#define IXGBE_MBVFICR(_i)		(0x00710 + ((_i) * 4))
 #define IXGBE_VFLRE(_i)			(((_i & 1) ? 0x001C0 : 0x00600))
-#define IXGBE_VFLREC(_i)		 (0x00700 + (_i * 4))
+#define IXGBE_VFLREC(_i)		 (0x00700 + ((_i) * 4))
 /* Translated register #defines */
-#define IXGBE_PVFCTRL(P)	(0x00300 + (4 * P))
-#define IXGBE_PVFSTATUS(P)	(0x00008 + (0 * P))
-#define IXGBE_PVFLINKS(P)	(0x042A4 + (0 * P))
-#define IXGBE_PVFRTIMER(P)	(0x00048 + (0 * P))
-#define IXGBE_PVFMAILBOX(P)	(0x04C00 + (4 * P))
-#define IXGBE_PVFRXMEMWRAP(P)	(0x03190 + (0 * P))
-#define IXGBE_PVTEICR(P)	(0x00B00 + (4 * P))
-#define IXGBE_PVTEICS(P)	(0x00C00 + (4 * P))
-#define IXGBE_PVTEIMS(P)	(0x00D00 + (4 * P))
-#define IXGBE_PVTEIMC(P)	(0x00E00 + (4 * P))
-#define IXGBE_PVTEIAC(P)	(0x00F00 + (4 * P))
-#define IXGBE_PVTEIAM(P)	(0x04D00 + (4 * P))
+#define IXGBE_PVFCTRL(P)	(0x00300 + (4 * (P)))
+#define IXGBE_PVFSTATUS(P)	(0x00008 + (0 * (P)))
+#define IXGBE_PVFLINKS(P)	(0x042A4 + (0 * (P)))
+#define IXGBE_PVFRTIMER(P)	(0x00048 + (0 * (P)))
+#define IXGBE_PVFMAILBOX(P)	(0x04C00 + (4 * (P)))
+#define IXGBE_PVFRXMEMWRAP(P)	(0x03190 + (0 * (P)))
+#define IXGBE_PVTEICR(P)	(0x00B00 + (4 * (P)))
+#define IXGBE_PVTEICS(P)	(0x00C00 + (4 * (P)))
+#define IXGBE_PVTEIMS(P)	(0x00D00 + (4 * (P)))
+#define IXGBE_PVTEIMC(P)	(0x00E00 + (4 * (P)))
+#define IXGBE_PVTEIAC(P)	(0x00F00 + (4 * (P)))
+#define IXGBE_PVTEIAM(P)	(0x04D00 + (4 * (P)))
 #define IXGBE_PVTEITR(P)	(((P) < 24) ? (0x00820 + ((P) * 4)) : \
 				 (0x012300 + (((P) - 24) * 4)))
-#define IXGBE_PVTIVAR(P)	(0x12500 + (4 * P))
-#define IXGBE_PVTIVAR_MISC(P)	(0x04E00 + (4 * P))
-#define IXGBE_PVTRSCINT(P)	(0x12000 + (4 * P))
-#define IXGBE_VFPBACL(P)	(0x110C8 + (4 * P))
-#define IXGBE_PVFRDBAL(P)	((P < 64) ? (0x01000 + (0x40 * P)) \
-				 : (0x0D000 + (0x40 * (P - 64))))
-#define IXGBE_PVFRDBAH(P)	((P < 64) ? (0x01004 + (0x40 * P)) \
-				 : (0x0D004 + (0x40 * (P - 64))))
-#define IXGBE_PVFRDLEN(P)	((P < 64) ? (0x01008 + (0x40 * P)) \
-				 : (0x0D008 + (0x40 * (P - 64))))
-#define IXGBE_PVFRDH(P)		((P < 64) ? (0x01010 + (0x40 * P)) \
-				 : (0x0D010 + (0x40 * (P - 64))))
-#define IXGBE_PVFRDT(P)		((P < 64) ? (0x01018 + (0x40 * P)) \
-				 : (0x0D018 + (0x40 * (P - 64))))
-#define IXGBE_PVFRXDCTL(P)	((P < 64) ? (0x01028 + (0x40 * P)) \
-				 : (0x0D028 + (0x40 * (P - 64))))
-#define IXGBE_PVFSRRCTL(P)	((P < 64) ? (0x01014 + (0x40 * P)) \
-				 : (0x0D014 + (0x40 * (P - 64))))
-#define IXGBE_PVFPSRTYPE(P)	(0x0EA00 + (4 * P))
-#define IXGBE_PVFTDBAL(P)	(0x06000 + (0x40 * P))
-#define IXGBE_PVFTDBAH(P)	(0x06004 + (0x40 * P))
-#define IXGBE_PVFTTDLEN(P)	(0x06008 + (0x40 * P))
-#define IXGBE_PVFTDH(P)		(0x06010 + (0x40 * P))
-#define IXGBE_PVFTDT(P)		(0x06018 + (0x40 * P))
-#define IXGBE_PVFTXDCTL(P)	(0x06028 + (0x40 * P))
-#define IXGBE_PVFTDWBAL(P)	(0x06038 + (0x40 * P))
-#define IXGBE_PVFTDWBAH(P)	(0x0603C + (0x40 * P))
-#define IXGBE_PVFDCA_RXCTRL(P)	((P < 64) ? (0x0100C + (0x40 * P)) \
-				 : (0x0D00C + (0x40 * (P - 64))))
-#define IXGBE_PVFDCA_TXCTRL(P)	(0x0600C + (0x40 * P))
-#define IXGBE_PVFGPRC(x)	(0x0101C + (0x40 * x))
-#define IXGBE_PVFGPTC(x)	(0x08300 + (0x04 * x))
-#define IXGBE_PVFGORC_LSB(x)	(0x01020 + (0x40 * x))
-#define IXGBE_PVFGORC_MSB(x)	(0x0D020 + (0x40 * x))
-#define IXGBE_PVFGOTC_LSB(x)	(0x08400 + (0x08 * x))
-#define IXGBE_PVFGOTC_MSB(x)	(0x08404 + (0x08 * x))
-#define IXGBE_PVFMPRC(x)	(0x0D01C + (0x40 * x))
+#define IXGBE_PVTIVAR(P)	(0x12500 + (4 * (P)))
+#define IXGBE_PVTIVAR_MISC(P)	(0x04E00 + (4 * (P)))
+#define IXGBE_PVTRSCINT(P)	(0x12000 + (4 * (P)))
+#define IXGBE_VFPBACL(P)	(0x110C8 + (4 * (P)))
+#define IXGBE_PVFRDBAL(P)	((P < 64) ? (0x01000 + (0x40 * (P))) \
+				 : (0x0D000 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDBAH(P)	((P < 64) ? (0x01004 + (0x40 * (P))) \
+				 : (0x0D004 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDLEN(P)	((P < 64) ? (0x01008 + (0x40 * (P))) \
+				 : (0x0D008 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDH(P)		((P < 64) ? (0x01010 + (0x40 * (P))) \
+				 : (0x0D010 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDT(P)		((P < 64) ? (0x01018 + (0x40 * (P))) \
+				 : (0x0D018 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRXDCTL(P)	((P < 64) ? (0x01028 + (0x40 * (P))) \
+				 : (0x0D028 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFSRRCTL(P)	((P < 64) ? (0x01014 + (0x40 * (P))) \
+				 : (0x0D014 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFPSRTYPE(P)	(0x0EA00 + (4 * (P)))
+#define IXGBE_PVFTDBAL(P)	(0x06000 + (0x40 * (P)))
+#define IXGBE_PVFTDBAH(P)	(0x06004 + (0x40 * (P)))
+#define IXGBE_PVFTTDLEN(P)	(0x06008 + (0x40 * (P)))
+#define IXGBE_PVFTDH(P)		(0x06010 + (0x40 * (P)))
+#define IXGBE_PVFTDT(P)		(0x06018 + (0x40 * (P)))
+#define IXGBE_PVFTXDCTL(P)	(0x06028 + (0x40 * (P)))
+#define IXGBE_PVFTDWBAL(P)	(0x06038 + (0x40 * (P)))
+#define IXGBE_PVFTDWBAH(P)	(0x0603C + (0x40 * (P)))
+#define IXGBE_PVFDCA_RXCTRL(P)	(((P) < 64) ? (0x0100C + (0x40 * (P))) \
+				 : (0x0D00C + (0x40 * ((P) - 64))))
+#define IXGBE_PVFDCA_TXCTRL(P)	(0x0600C + (0x40 * (P)))
+#define IXGBE_PVFGPRC(x)	(0x0101C + (0x40 * (x)))
+#define IXGBE_PVFGPTC(x)	(0x08300 + (0x04 * (x)))
+#define IXGBE_PVFGORC_LSB(x)	(0x01020 + (0x40 * (x)))
+#define IXGBE_PVFGORC_MSB(x)	(0x0D020 + (0x40 * (x)))
+#define IXGBE_PVFGOTC_LSB(x)	(0x08400 + (0x08 * (x)))
+#define IXGBE_PVFGOTC_MSB(x)	(0x08404 + (0x08 * (x)))
+#define IXGBE_PVFMPRC(x)	(0x0D01C + (0x40 * (x)))
 
 /* Little Endian defines */
 #ifndef __le16
@@ -3037,6 +3038,7 @@ struct ixgbe_mac_operations {
 	s32 (*disable_mc)(struct ixgbe_hw *);
 	s32 (*clear_vfta)(struct ixgbe_hw *);
 	s32 (*set_vfta)(struct ixgbe_hw *, u32, u32, bool);
+	s32 (*set_vlvf)(struct ixgbe_hw *, u32, u32, bool, bool *);
 	s32 (*init_uta_tables)(struct ixgbe_hw *);
 	void (*set_mac_anti_spoofing)(struct ixgbe_hw *, bool, int);
 	void (*set_vlan_anti_spoofing)(struct ixgbe_hw *, bool, int);

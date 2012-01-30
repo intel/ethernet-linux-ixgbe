@@ -152,6 +152,7 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	mac->ops.set_vmdq = &ixgbe_set_vmdq_82598;
 	mac->ops.clear_vmdq = &ixgbe_clear_vmdq_82598;
 	mac->ops.set_vfta = &ixgbe_set_vfta_82598;
+	mac->ops.set_vlvf = NULL;
 	mac->ops.clear_vfta = &ixgbe_clear_vfta_82598;
 
 	/* Flow Control */

@@ -76,7 +76,7 @@ static const char ixgbe_driver_string[] =
 
 #define MAJ 3
 #define MIN 7
-#define BUILD 17 
+#define BUILD 21 
 #define DRV_VERSION __stringify(MAJ) "." __stringify(MIN) "." __stringify(BUILD) DRIVERNAPI DRV_HW_PERF FPGA VMDQ_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -4403,9 +4403,13 @@ void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
 	for (i = 0; i < hw->mac.num_rar_entries; i++) {
-		hw->mac.ops.set_rar(hw, i, adapter->mac_table[i].addr,
-				    adapter->mac_table[i].queue,
-				    IXGBE_RAH_AV);
+		if (adapter->mac_table[i].state & IXGBE_MAC_STATE_IN_USE) {
+			hw->mac.ops.set_rar(hw, i, adapter->mac_table[i].addr,
+						adapter->mac_table[i].queue,
+						IXGBE_RAH_AV);
+		} else {
+			hw->mac.ops.clear_rar(hw, i);
+		}
 	}
 }
 
@@ -4415,11 +4419,17 @@ void ixgbe_sync_mac_table(struct ixgbe_adapter *adapter)
 	int i;
 	for (i = 0; i < hw->mac.num_rar_entries; i++) {
 		if (adapter->mac_table[i].state & IXGBE_MAC_STATE_MODIFIED) {
-			hw->mac.ops.set_rar(hw, i, adapter->mac_table[i].addr,
-					    adapter->mac_table[i].queue,
-					    IXGBE_RAH_AV);
+			if (adapter->mac_table[i].state &
+					IXGBE_MAC_STATE_IN_USE) {
+				hw->mac.ops.set_rar(hw, i,
+						adapter->mac_table[i].addr,
+						adapter->mac_table[i].queue,
+						IXGBE_RAH_AV);
+			} else {
+				hw->mac.ops.clear_rar(hw, i);
+			}
 			adapter->mac_table[i].state &=
-					~(IXGBE_MAC_STATE_MODIFIED);
+				~(IXGBE_MAC_STATE_MODIFIED);
 		}
 	}
 }
@@ -4448,7 +4458,7 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter, u8 *addr, u16 queue)
 		if (adapter->mac_table[i].state & IXGBE_MAC_STATE_IN_USE)
 			continue;
 		adapter->mac_table[i].state = (IXGBE_MAC_STATE_MODIFIED |
-						   IXGBE_MAC_STATE_IN_USE);
+						IXGBE_MAC_STATE_IN_USE);
 		memcpy(adapter->mac_table[i].addr, addr, ETH_ALEN);
 		adapter->mac_table[i].queue = queue;
 		ixgbe_sync_mac_table(adapter);
@@ -4456,6 +4466,30 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter, u8 *addr, u16 queue)
 	}
 	return -ENOMEM;
 }
+
+void ixgbe_flush_sw_mac_table(struct ixgbe_adapter *adapter)
+{
+	int i;
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	for (i = 0; i < hw->mac.num_rar_entries; i++) {
+		adapter->mac_table[i].state |= IXGBE_MAC_STATE_MODIFIED;
+		adapter->mac_table[i].state &= ~IXGBE_MAC_STATE_IN_USE;
+		memset(adapter->mac_table[i].addr, 0, ETH_ALEN);
+		adapter->mac_table[i].queue = 0;
+	}
+	ixgbe_sync_mac_table(adapter);
+}
+
+void ixgbe_del_mac_filter_by_index(struct ixgbe_adapter *adapter, int index)
+{
+	adapter->mac_table[index].state |= IXGBE_MAC_STATE_MODIFIED;
+	adapter->mac_table[index].state &= ~IXGBE_MAC_STATE_IN_USE;
+	memset(adapter->mac_table[index].addr, 0, ETH_ALEN);
+	adapter->mac_table[index].queue = 0;
+	ixgbe_sync_mac_table(adapter);
+}
+
 int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter, u8* addr, u16 queue)
 {
 	/* search table for addr, if found, set to 0 and sync */
@@ -4467,7 +4501,8 @@ int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter, u8* addr, u16 queue)
 	for (i = 0; i < hw->mac.num_rar_entries; i++) {
 		if (!compare_ether_addr(addr, adapter->mac_table[i].addr) &&
 		    adapter->mac_table[i].queue == queue) {
-			adapter->mac_table[i].state = IXGBE_MAC_STATE_MODIFIED;
+			adapter->mac_table[i].state |= IXGBE_MAC_STATE_MODIFIED;
+			adapter->mac_table[i].state &= ~IXGBE_MAC_STATE_IN_USE;
 			memset(adapter->mac_table[i].addr, 0, ETH_ALEN);
 			adapter->mac_table[i].queue = 0;
 			ixgbe_sync_mac_table(adapter);
@@ -5302,6 +5337,7 @@ void ixgbe_up(struct ixgbe_adapter *adapter)
 void ixgbe_reset(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
+	struct net_device *netdev = adapter->netdev;
 	int err;
 
 	/* lock SFP init bit to prevent race conditions with the watchdog */
@@ -5338,6 +5374,14 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 	clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
 
 	ixgbe_full_sync_mac_table(adapter);
+	ixgbe_flush_sw_mac_table(adapter);
+	memcpy(&adapter->mac_table[0].addr, hw->mac.perm_addr,
+	       netdev->addr_len);
+	adapter->mac_table[0].queue = adapter->num_vfs;
+	adapter->mac_table[0].state = (IXGBE_MAC_STATE_DEFAULT |
+				       IXGBE_MAC_STATE_IN_USE);
+	hw->mac.ops.set_rar(hw, 0, adapter->mac_table[0].addr,
+			    adapter->mac_table[0].queue, IXGBE_RAH_AV);
 }
 
 /**

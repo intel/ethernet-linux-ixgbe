@@ -122,6 +122,7 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.disable_mc = &ixgbe_disable_mc_generic;
 	mac->ops.clear_vfta = NULL;
 	mac->ops.set_vfta = NULL;
+	mac->ops.set_vlvf = NULL;
 	mac->ops.init_uta_tables = NULL;
 
 	/* Flow Control */
@@ -337,10 +338,14 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 	if (hw->mac.type == ixgbe_mac_X540) {
 		if (hw->phy.id == 0)
 			ixgbe_identify_phy(hw);
-		hw->phy.ops.read_reg(hw, 0x3, IXGBE_PCRC8ECL, &i);
-		hw->phy.ops.read_reg(hw, 0x3, IXGBE_PCRC8ECH, &i);
-		hw->phy.ops.read_reg(hw, 0x3, IXGBE_LDPCECL, &i);
-		hw->phy.ops.read_reg(hw, 0x3, IXGBE_LDPCECH, &i);
+		hw->phy.ops.read_reg(hw, IXGBE_PCRC8ECL,
+				     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+		hw->phy.ops.read_reg(hw, IXGBE_PCRC8ECH,
+				     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+		hw->phy.ops.read_reg(hw, IXGBE_LDPCECL,
+				     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+		hw->phy.ops.read_reg(hw, IXGBE_LDPCECH,
+				     IXGBE_MDIO_PCS_DEV_TYPE, &i);
 	}
 
 	return 0;
@@ -3175,9 +3180,8 @@ s32 ixgbe_set_vfta_generic(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 	s32 regindex;
 	u32 bitindex;
 	u32 vfta;
-	u32 bits;
-	u32 vt;
 	u32 targetbit;
+	s32 ret_val = 0;
 	bool vfta_changed = false;
 
 	if (vlan > 4095)
@@ -3213,7 +3217,39 @@ s32 ixgbe_set_vfta_generic(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 	}
 
 	/* Part 2
-	 * If VT Mode is set
+	 * Call ixgbe_set_vlvf_generic to set VLVFB and VLVF
+	 */
+	ret_val = ixgbe_set_vlvf_generic(hw, vlan, vind, vlan_on,
+					 &vfta_changed);
+	if (ret_val != 0)
+		return ret_val;
+
+	if (vfta_changed)
+		IXGBE_WRITE_REG(hw, IXGBE_VFTA(regindex), vfta);
+
+	return 0;
+}
+
+/**
+ *  ixgbe_set_vlvf_generic - Set VLAN Pool Filter
+ *  @hw: pointer to hardware structure
+ *  @vlan: VLAN id to write to VLAN filter
+ *  @vind: VMDq output index that maps queue to VLAN id in VFVFB
+ *  @vlan_on: boolean flag to turn on/off VLAN in VFVF
+ *  @vfta_changed: pointer to boolean flag which indicates whether VFTA
+ *                 should be changed
+ *
+ *  Turn on/off specified bit in VLVF table.
+ **/
+s32 ixgbe_set_vlvf_generic(struct ixgbe_hw *hw, u32 vlan, u32 vind,
+			    bool vlan_on, bool *vfta_changed)
+{
+	u32 vt;
+
+	if (vlan > 4095)
+		return IXGBE_ERR_PARAM;
+
+	/* If VT Mode is set
 	 *   Either vlan_on
 	 *     make sure the vlan is in VLVF
 	 *     set the vind bit in the matching VLVFB
@@ -3223,6 +3259,7 @@ s32 ixgbe_set_vfta_generic(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 	vt = IXGBE_READ_REG(hw, IXGBE_VT_CTL);
 	if (vt & IXGBE_VT_CTL_VT_ENABLE) {
 		s32 vlvf_index;
+		u32 bits;
 
 		vlvf_index = ixgbe_find_vlvf_slot(hw, vlan);
 		if (vlvf_index < 0)
@@ -3286,18 +3323,15 @@ s32 ixgbe_set_vfta_generic(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 		if (bits) {
 			IXGBE_WRITE_REG(hw, IXGBE_VLVF(vlvf_index),
 					(IXGBE_VLVF_VIEN | vlan));
-			if (!vlan_on) {
+			if ((!vlan_on) && (vfta_changed != NULL)) {
 				/* someone wants to clear the vfta entry
 				 * but some pools/VFs are still using it.
 				 * Ignore it. */
-				vfta_changed = false;
+				*vfta_changed = false;
 			}
 		} else
 			IXGBE_WRITE_REG(hw, IXGBE_VLVF(vlvf_index), 0);
 	}
-
-	if (vfta_changed)
-		IXGBE_WRITE_REG(hw, IXGBE_VFTA(regindex), vfta);
 
 	return 0;
 }
@@ -3886,35 +3920,55 @@ s32 ixgbe_get_thermal_sensor_data_generic(struct ixgbe_hw *hw)
 
 	/* Only support thermal sensors attached to 82599 physical port 0 */
 	if ((hw->mac.type != ixgbe_mac_82599EB) ||
-	    (IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_LAN_ID_1))
-		return IXGBE_NOT_IMPLEMENTED;
+	    (IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_LAN_ID_1)) {
+		status = IXGBE_NOT_IMPLEMENTED;
+		goto out;
+	}
 
-	hw->eeprom.ops.read(hw, IXGBE_ETS_CFG, &ets_offset);
-	if ((ets_offset == 0x0000) || (ets_offset == 0xFFFF))
-		return IXGBE_NOT_IMPLEMENTED;
+	status = hw->eeprom.ops.read(hw, IXGBE_ETS_CFG, &ets_offset);
+	if (status)
+		goto out;
 
-	hw->eeprom.ops.read(hw, ets_offset, &ets_cfg);
+	if ((ets_offset == 0x0000) || (ets_offset == 0xFFFF)) {
+		status = IXGBE_NOT_IMPLEMENTED;
+		goto out;
+	}
+
+	status = hw->eeprom.ops.read(hw, ets_offset, &ets_cfg);
+	if (status)
+		goto out;
+
 	if (((ets_cfg & IXGBE_ETS_TYPE_MASK) >> IXGBE_ETS_TYPE_SHIFT)
-		!= IXGBE_ETS_TYPE_EMC)
-		return IXGBE_NOT_IMPLEMENTED;
+		!= IXGBE_ETS_TYPE_EMC) {
+		status = IXGBE_NOT_IMPLEMENTED;
+		goto out;
+	}
 
 	num_sensors = (ets_cfg & IXGBE_ETS_NUM_SENSORS_MASK);
 	if (num_sensors > IXGBE_MAX_SENSORS)
 		num_sensors = IXGBE_MAX_SENSORS;
 
 	for (i = 0; i < num_sensors; i++) {
-		hw->eeprom.ops.read(hw, (ets_offset + 1 + i), &ets_sensor);
+		status = hw->eeprom.ops.read(hw, (ets_offset + 1 + i),
+					     &ets_sensor);
+		if (status)
+			goto out;
+
 		sensor_index = ((ets_sensor & IXGBE_ETS_DATA_INDEX_MASK) >>
 				IXGBE_ETS_DATA_INDEX_SHIFT);
 		sensor_location = ((ets_sensor & IXGBE_ETS_DATA_LOC_MASK) >>
 				   IXGBE_ETS_DATA_LOC_SHIFT);
 
-		if (sensor_location != 0)
-			hw->phy.ops.read_i2c_byte(hw,
-				ixgbe_emc_temp_data[sensor_index],
-				IXGBE_I2C_THERMAL_SENSOR_ADDR,
-				&data->sensor[i].temp);
+		if (sensor_location != 0) {
+			status = hw->phy.ops.read_i2c_byte(hw,
+					ixgbe_emc_temp_data[sensor_index],
+					IXGBE_I2C_THERMAL_SENSOR_ADDR,
+					&data->sensor[i].temp);
+			if (status)
+				goto out;
+		}
 	}
+out:
 	return status;
 }
 

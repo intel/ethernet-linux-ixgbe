@@ -90,6 +90,7 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.insert_mac_addr = &ixgbe_insert_mac_addr_generic;
 	mac->rar_highwater = 1;
 	mac->ops.set_vfta = &ixgbe_set_vfta_generic;
+	mac->ops.set_vlvf = &ixgbe_set_vlvf_generic;
 	mac->ops.clear_vfta = &ixgbe_clear_vfta_generic;
 	mac->ops.init_uta_tables = &ixgbe_init_uta_tables_generic;
 	mac->ops.set_mac_anti_spoofing = &ixgbe_set_mac_anti_spoofing;

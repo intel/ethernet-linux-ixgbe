@@ -719,9 +719,12 @@ struct _kc_ethtool_pauseparam {
 /* SLES11 GA is 2.6.27 based */
 #if ( LINUX_VERSION_CODE == KERNEL_VERSION(2,6,27) )
 #define SLE_VERSION_CODE SLE_VERSION(11,0,0)
-#elif ( LINUX_VERSION_CODE == KERNEL_VERSION(2,6,32) )
 /* SLES11 SP1 is 2.6.32 based */
+#elif ( LINUX_VERSION_CODE == KERNEL_VERSION(2,6,32) )
 #define SLE_VERSION_CODE SLE_VERSION(11,1,0)
+/* SLES11 SP2 is 3.0.13 based */
+#elif ( LINUX_VERSION_CODE == KERNEL_VERSION(3,0,13) )
+#define SLE_VERSION_CODE SLE_VERSION(11,2,0)
 #else
 #define SLE_VERSION_CODE 0
 #endif
@@ -2859,6 +2862,9 @@ struct _kc_ethtool_rx_flow_spec {
 #define dcb_ieee_setapp(dev, app) dcb_setapp(dev, app)
 #define dcb_ieee_delapp(dev, app) 0
 #define dcb_ieee_getapp_mask(dev, app) (1 << app->priority)
+#if ( SLE_VERSION_CODE && SLE_VERSION_CODE == SLE_VERSION(11,2,0) )
+#define netdev_alloc_page(a) alloc_page(GFP_ATOMIC)
+#endif
 #else /* < 3.1.0 */
 #define HAVE_NET_DEVICE_OPS
 #ifndef HAVE_DCBNL_IEEE_DELAPP
