@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -60,6 +60,7 @@
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
 #define IXGBE_DEV_ID_82599_SFP_SF2		0x154D
+#define IXGBE_DEV_ID_82599_SFP_SF_QP		0x154A
 #define IXGBE_DEV_ID_82599EN_SFP		0x1557
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
@@ -111,7 +112,6 @@
 #define IXGBE_I2C_CLK_OUT	0x00000002
 #define IXGBE_I2C_DATA_IN	0x00000004
 #define IXGBE_I2C_DATA_OUT	0x00000008
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 #define IXGBE_I2C_THERMAL_SENSOR_ADDR	0xF8
 #define IXGBE_EMC_INTERNAL_DATA		0x00
 #define IXGBE_EMC_INTERNAL_THERM_LIMIT	0x20
@@ -132,7 +132,6 @@ struct ixgbe_thermal_diode_data {
 struct ixgbe_thermal_sensor_data {
 	struct ixgbe_thermal_diode_data sensor[IXGBE_MAX_SENSORS];
 };
-#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 
 /* Interrupt Registers */
 #define IXGBE_EICR		0x00800
@@ -1074,14 +1073,16 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_DCA_RXCTRL_HEAD_DCA_EN	(1 << 6) /* Rx Desc header ena */
 #define IXGBE_DCA_RXCTRL_DATA_DCA_EN	(1 << 7) /* Rx Desc payload ena */
 #define IXGBE_DCA_RXCTRL_DESC_RRO_EN	(1 << 9) /* Rx rd Desc Relax Order */
-#define IXGBE_DCA_RXCTRL_DESC_WRO_EN	(1 << 13) /* Rx wr Desc Relax Order */
-#define IXGBE_DCA_RXCTRL_DESC_HSRO_EN	(1 << 15) /* Rx Split Header RO */
+#define IXGBE_DCA_RXCTRL_DATA_WRO_EN	(1 << 13) /* Rx wr data Relax Order */
+#define IXGBE_DCA_RXCTRL_HEAD_WRO_EN	(1 << 15) /* Rx wr header RO */
 
 #define IXGBE_DCA_TXCTRL_CPUID_MASK	0x0000001F /* Tx CPUID Mask */
 #define IXGBE_DCA_TXCTRL_CPUID_MASK_82599	0xFF000000 /* Tx CPUID Mask */
 #define IXGBE_DCA_TXCTRL_CPUID_SHIFT_82599	24 /* Tx CPUID Shift */
 #define IXGBE_DCA_TXCTRL_DESC_DCA_EN	(1 << 5) /* DCA Tx Desc enable */
-#define IXGBE_DCA_TXCTRL_TX_WB_RO_EN	(1 << 11) /* Tx Desc writeback RO bit */
+#define IXGBE_DCA_TXCTRL_DESC_RRO_EN	(1 << 9) /* Tx rd Desc Relax Order */
+#define IXGBE_DCA_TXCTRL_DESC_WRO_EN	(1 << 11) /* Tx Desc writeback RO bit */
+#define IXGBE_DCA_TXCTRL_DATA_RRO_EN	(1 << 13) /* Tx rd data Relax Order */
 #define IXGBE_DCA_MAX_QUEUES_82598	16 /* DCA regs only on 16 queues */
 
 /* MSCA Bit Masks */
@@ -1576,8 +1577,13 @@ enum {
 #define IXGBE_ESDP_SDP4		0x00000010 /* SDP4 Data Value */
 #define IXGBE_ESDP_SDP5		0x00000020 /* SDP5 Data Value */
 #define IXGBE_ESDP_SDP6		0x00000040 /* SDP6 Data Value */
-#define IXGBE_ESDP_SDP4_DIR	0x00000004 /* SDP4 IO direction */
+#define IXGBE_ESDP_SDP0_DIR	0x00000100 /* SDP0 IO direction */
+#define IXGBE_ESDP_SDP1_DIR	0x00000200 /* SDP1 IO direction */
+#define IXGBE_ESDP_SDP4_DIR	0x00001000 /* SDP4 IO direction */
 #define IXGBE_ESDP_SDP5_DIR	0x00002000 /* SDP5 IO direction */
+#define IXGBE_ESDP_SDP0_NATIVE	0x00010000 /* SDP0 IO mode */
+#define IXGBE_ESDP_SDP1_NATIVE	0x00020000 /* SDP1 IO mode */
+
 
 /* LEDCTL Bit Masks */
 #define IXGBE_LED_IVRT_BASE		0x00000040
@@ -1775,7 +1781,6 @@ enum {
 #define IXGBE_PBANUM1_PTR	0x16
 #define IXGBE_ALT_MAC_ADDR_PTR	0x37
 #define IXGBE_FREE_SPACE_PTR	0X3E
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 
 /* External Thermal Sensor Config */
 #define IXGBE_ETS_CFG			0x26
@@ -1790,7 +1795,6 @@ enum {
 #define IXGBE_ETS_DATA_INDEX_MASK	0x0300
 #define IXGBE_ETS_DATA_INDEX_SHIFT	8
 #define IXGBE_ETS_DATA_HTHRESH_MASK	0x00FF
-#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 
 #define IXGBE_SAN_MAC_ADDR_PTR		0x28
 #define IXGBE_DEVICE_CAPS		0x2C
@@ -1895,6 +1899,7 @@ enum {
 #define IXGBE_PCI_LINK_SPEED		0xF
 #define IXGBE_PCI_LINK_SPEED_2500	0x1
 #define IXGBE_PCI_LINK_SPEED_5000	0x2
+#define IXGBE_PCI_LINK_SPEED_8000	0x3
 #define IXGBE_PCI_HEADER_TYPE_REGISTER	0x0E
 #define IXGBE_PCI_HEADER_TYPE_MULTIFUNC	0x80
 #define IXGBE_PCI_DEVICE_CONTROL2_16ms	0x0005
@@ -2000,6 +2005,7 @@ enum {
 #define IXGBE_MFLCN_DPF		0x00000002 /* Discard Pause Frame */
 #define IXGBE_MFLCN_RPFCE	0x00000004 /* Receive Priority FC Enable */
 #define IXGBE_MFLCN_RFCE	0x00000008 /* Receive FC Enable */
+#define IXGBE_MFLCN_RPFCM	0x00000004 /* Receive Priority FC Mode */
 #define IXGBE_MFLCN_RPFCE_MASK	0x00000FF0 /* Rx Priority FC bitmap mask */
 #define IXGBE_MFLCN_RPFCE_SHIFT	4 /* Rx Priority FC bitmap shift */
 
@@ -2836,6 +2842,7 @@ enum ixgbe_bus_speed {
 	ixgbe_bus_speed_133	= 133,
 	ixgbe_bus_speed_2500	= 2500,
 	ixgbe_bus_speed_5000	= 5000,
+	ixgbe_bus_speed_8000	= 8000,
 	ixgbe_bus_speed_reserved
 };
 
@@ -3001,6 +3008,8 @@ struct ixgbe_mac_operations {
 	s32 (*write_analog_reg8)(struct ixgbe_hw*, u32, u8);
 	s32 (*setup_sfp)(struct ixgbe_hw *);
 	s32 (*enable_rx_dma)(struct ixgbe_hw *, u32);
+	s32 (*disable_sec_rx_path)(struct ixgbe_hw *);
+	s32 (*enable_sec_rx_path)(struct ixgbe_hw *);
 	s32 (*acquire_swfw_sync)(struct ixgbe_hw *, u16);
 	void (*release_swfw_sync)(struct ixgbe_hw *, u16);
 
@@ -3048,10 +3057,8 @@ struct ixgbe_mac_operations {
 
 	/* Manageability interface */
 	s32 (*set_fw_drv_ver)(struct ixgbe_hw *, u8, u8, u8, u8);
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 	s32 (*get_thermal_sensor_data)(struct ixgbe_hw *);
 	s32 (*init_thermal_sensor_thresh)(struct ixgbe_hw *hw);
-#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 };
 
 struct ixgbe_phy_operations {
@@ -3112,9 +3119,7 @@ struct ixgbe_mac_info {
 	bool orig_link_settings_stored;
 	bool autotry_restart;
 	u8 flags;
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 	struct ixgbe_thermal_sensor_data  thermal_sensor_data;
-#endif
 };
 
 struct ixgbe_phy_info {

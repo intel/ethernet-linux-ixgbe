@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -42,9 +42,9 @@
 
 
 #ifndef msleep
-#define msleep(x)	do { if(in_interrupt()) { \
+#define msleep(x)	do { if (in_interrupt()) { \
 				/* Don't mdelay in interrupt context! */ \
-	                	BUG(); \
+				BUG(); \
 			} else { \
 				msleep(x); \
 			} } while (0)
@@ -56,7 +56,7 @@
 #ifdef DBG
 #define hw_dbg(hw, S, A...)	printk(KERN_DEBUG S, ## A)
 #else
-#define hw_dbg(hw, S, A...)      do {} while (0)
+#define hw_dbg(hw, S, A...)	do {} while (0)
 #endif
 
 #define e_dev_info(format, arg...) \
@@ -86,7 +86,7 @@
 	case IXGBE_EIAC: \
 	case IXGBE_EICR: \
 	case IXGBE_EICS: \
-		printk("%s: Reg - 0x%05X, value - 0x%08X\n", __FUNCTION__, \
+		printk("%s: Reg - 0x%05X, value - 0x%08X\n", __func__, \
 		       reg, (u32)(value)); \
 	default: \
 		break; \
@@ -100,14 +100,15 @@
 #define IXGBE_READ_REG(a, reg) readl((a)->hw_addr + (reg))
 
 #define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) ( \
-    writel((value), ((a)->hw_addr + (reg) + ((offset) << 2))))
+	writel((value), ((a)->hw_addr + (reg) + ((offset) << 2))))
 
 #define IXGBE_READ_REG_ARRAY(a, reg, offset) ( \
-    readl((a)->hw_addr + (reg) + ((offset) << 2)))
+	readl((a)->hw_addr + (reg) + ((offset) << 2)))
 
 #ifndef writeq
-#define writeq(val, addr) writel((u32) (val), addr); \
-	writel((u32) (val >> 32), (addr + 4));
+#define writeq(val, addr)	do { writel((u32) (val), addr); \
+				     writel((u32) (val >> 32), (addr + 4)); \
+				} while (0);
 #endif
 
 #define IXGBE_WRITE_REG64(a, reg, value) writeq((value), ((a)->hw_addr + (reg)))

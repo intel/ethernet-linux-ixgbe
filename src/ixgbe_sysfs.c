@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -29,7 +29,6 @@
 #include "ixgbe_common.h"
 #include "ixgbe_type.h"
 
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 #ifdef IXGBE_SYSFS
 
 #include <linux/module.h>
@@ -38,6 +37,11 @@
 #include <linux/kobject.h>
 #include <linux/device.h>
 #include <linux/netdevice.h>
+
+/*
+ * This file provides a sysfs interface to export information from the
+ * driver.  The information presented is READ-ONLY.
+ */
 
 static struct net_device_stats *sysfs_get_stats(struct net_device *netdev)
 {
@@ -58,24 +62,24 @@ static struct net_device_stats *sysfs_get_stats(struct net_device *netdev)
 #endif /* HAVE_NETDEV_STATS_IN_NETDEV */
 }
 
-struct net_device *ixgbe_get_netdev(struct kobject *kobj)
+static struct net_device *ixgbe_get_netdev(struct kobject *kobj)
 {
 	struct net_device *netdev;
 	struct kobject *parent = kobj->parent;
-	struct device *device_stat_kobj;
+	struct device *device_info_kobj;
 
 	if (kobj == NULL)
-	        return NULL;
-
-	device_stat_kobj = container_of(parent, struct device, kobj);
-	if (device_stat_kobj == NULL)
 		return NULL;
 
-	netdev = container_of(device_stat_kobj, struct net_device, dev);
+	device_info_kobj = container_of(parent, struct device, kobj);
+	if (device_info_kobj == NULL)
+		return NULL;
+
+	netdev = container_of(device_info_kobj, struct net_device, dev);
 	return netdev;
 }
 
-struct ixgbe_adapter *ixgbe_get_adapter(struct kobject *kobj)
+static struct ixgbe_adapter *ixgbe_get_adapter(struct kobject *kobj)
 {
 	struct ixgbe_adapter *adapter;
 	struct net_device *netdev = ixgbe_get_netdev(kobj);
@@ -85,31 +89,31 @@ struct ixgbe_adapter *ixgbe_get_adapter(struct kobject *kobj)
 	return adapter;
 }
 
-bool ixgbe_thermal_present(struct kobject *kobj)
+static bool ixgbe_thermal_present(struct kobject *kobj)
 {
 	s32 status;
 	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 
-	if (adapter == NULL){
+	if (adapter == NULL)
 		return false;
-	}
 
 	status = ixgbe_init_thermal_sensor_thresh_generic(&(adapter->hw));
 	if (status != 0)
-		return false; 
-	
+		return false;
+
 	return true;
 }
 
 /*
- * Convert the directory to the sensor offset.
+ * ixgbe_name_to_idx - Convert the directory name to the sensor offset.
+ * @ c: pointer to the directory name string
  *
- * Note: We know the name will be of the form "sensor_n" where n is
- * '0' - 'IXGBE_MAX_SENSORS'.  We also know that IXGBE_MAX_SENSORS < 10.
- * I don't ever expect that to ever chang but if it does so much this function.
+ * The directory name is in the form "sensor_n" where n is '0' -
+ * 'IXGBE_MAX_SENSORS'.  IXGBE_MAX_SENSORS will never be greater than
+ * 9.  This function takes advantage of that to keep it simple.
  */
-static int ixgbe_name_to_idx(const char *c) {
-
+static int ixgbe_name_to_idx(const char *c)
+{
 	/* find first digit */
 	while (*c < '0' || *c > '9') {
 		if (*c == '\n')
@@ -120,23 +124,12 @@ static int ixgbe_name_to_idx(const char *c) {
 	return ((int)(*c - '0'));
 }
 
-/* 
- * We are a statistics entry; we do not take in data-this should be the
- * same for all attributes
- */
-static ssize_t ixgbe_store(struct kobject *kobj,
-			   struct kobj_attribute *attr,
-			   const char *buf, size_t count)
-{
-	return -1;
-}
-
 static ssize_t ixgbe_fwbanner(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	int nvm_track_id;
-	
+
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 	nvm_track_id = (adapter->eeprom_verh << 16) | adapter->eeprom_verl;
@@ -147,11 +140,11 @@ static ssize_t ixgbe_fwbanner(struct kobject *kobj,
 static ssize_t ixgbe_porttype(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
-	return snprintf(buf, PAGE_SIZE, "%d\n", 
-			test_bit(__IXGBE_DOWN, &adapter->state));	
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			test_bit(__IXGBE_DOWN, &adapter->state));
 }
 
 static ssize_t ixgbe_portspeed(struct kobject *kobj,
@@ -162,7 +155,7 @@ static ssize_t ixgbe_portspeed(struct kobject *kobj,
 
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
-	
+
 	switch (adapter->link_speed) {
 	case IXGBE_LINK_SPEED_100_FULL:
 		speed = 1;
@@ -173,14 +166,14 @@ static ssize_t ixgbe_portspeed(struct kobject *kobj,
 	case IXGBE_LINK_SPEED_10GB_FULL:
 		speed = 100;
 		break;
-	}	
+	}
 	return snprintf(buf, PAGE_SIZE, "%d\n", speed);
 }
 
 static ssize_t ixgbe_wqlflag(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -207,7 +200,7 @@ static ssize_t ixgbe_rxdrops(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -215,7 +208,7 @@ static ssize_t ixgbe_rxdrops(struct kobject *kobj,
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
 
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->rx_dropped);
 }
 
@@ -223,7 +216,7 @@ static ssize_t ixgbe_rxerrors(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -237,7 +230,7 @@ static ssize_t ixgbe_rxupacks(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -252,7 +245,7 @@ static ssize_t ixgbe_rxmpacks(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -267,7 +260,7 @@ static ssize_t ixgbe_rxbpacks(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -282,7 +275,7 @@ static ssize_t ixgbe_txupacks(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -297,7 +290,7 @@ static ssize_t ixgbe_txmpacks(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -312,7 +305,7 @@ static ssize_t ixgbe_txbpacks(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -327,7 +320,7 @@ static ssize_t ixgbe_txerrors(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -335,7 +328,7 @@ static ssize_t ixgbe_txerrors(struct kobject *kobj,
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
 
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->tx_errors);
 }
 
@@ -343,14 +336,14 @@ static ssize_t ixgbe_txdrops(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
 	net_stats  = sysfs_get_stats(netdev);
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->tx_dropped);
 }
 
@@ -358,7 +351,7 @@ static ssize_t ixgbe_rxframes(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -366,7 +359,7 @@ static ssize_t ixgbe_rxframes(struct kobject *kobj,
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
 
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->rx_packets);
 }
 
@@ -374,7 +367,7 @@ static ssize_t ixgbe_rxbytes(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -382,7 +375,7 @@ static ssize_t ixgbe_rxbytes(struct kobject *kobj,
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
 
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->rx_bytes);
 }
 
@@ -390,7 +383,7 @@ static ssize_t ixgbe_txframes(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -398,7 +391,7 @@ static ssize_t ixgbe_txframes(struct kobject *kobj,
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
 
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->tx_packets);
 }
 
@@ -406,7 +399,7 @@ static ssize_t ixgbe_txbytes(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
 	struct net_device_stats *net_stats;
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -414,7 +407,7 @@ static ssize_t ixgbe_txbytes(struct kobject *kobj,
 	if (net_stats == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net stats\n");
 
-	return snprintf(buf, PAGE_SIZE, "%lu\n", 
+	return snprintf(buf, PAGE_SIZE, "%lu\n",
 			net_stats->tx_bytes);
 }
 
@@ -425,7 +418,7 @@ static ssize_t ixgbe_linkstat(struct kobject *kobj,
 	bool link_up = false;
 	int bitmask = 0;
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -434,16 +427,14 @@ static ssize_t ixgbe_linkstat(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE, "error: no hw data\n");
 
 
-	if (test_bit(__IXGBE_DOWN, &adapter->state)) 
+	if (test_bit(__IXGBE_DOWN, &adapter->state))
 		bitmask |= 1;
-	
-	if (hw->mac.ops.check_link) {
+
+	if (hw->mac.ops.check_link)
 		hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
-	}
-	else {
+	else
 		/* always assume link is up, if no check link function */
 		link_up = true;
-	}
 	if (link_up)
 		bitmask |= 2;
 	return snprintf(buf, PAGE_SIZE, "0x%X\n", bitmask);
@@ -452,7 +443,7 @@ static ssize_t ixgbe_linkstat(struct kobject *kobj,
 static ssize_t ixgbe_funcid(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	struct ixgbe_hw *hw;
 
 	if (adapter == NULL)
@@ -475,7 +466,7 @@ static ssize_t ixgbe_macburn(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -496,7 +487,7 @@ static ssize_t ixgbe_macadmn(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_hw *hw;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -521,7 +512,7 @@ static ssize_t ixgbe_maclla1(struct kobject *kobj,
 	int first_word = 0x37;
 	int word_count = 6;
 	int rc;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -529,19 +520,19 @@ static ssize_t ixgbe_maclla1(struct kobject *kobj,
 	if (hw == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no hw data\n");
 
-	rc = ixgbe_read_eeprom_buffer(hw, first_word, word_count, 
-					   eeprom_buff);
+	rc = ixgbe_read_eeprom_buffer(hw, first_word, word_count,
+				      eeprom_buff);
 	if (rc != 0)
 		return snprintf(buf, PAGE_SIZE, "error: reading buffer\n");
-	
+
 	switch (hw->bus.func) {
 	case 0:
-		return snprintf(buf, PAGE_SIZE, "0x%04X%04X%04X\n", 
+		return snprintf(buf, PAGE_SIZE, "0x%04X%04X%04X\n",
 				eeprom_buff[0],
 				eeprom_buff[1],
 				eeprom_buff[2]);
 	case 1:
-		return snprintf(buf, PAGE_SIZE, "0x%04X%04X%04X\n", 
+		return snprintf(buf, PAGE_SIZE, "0x%04X%04X%04X\n",
 				eeprom_buff[3],
 				eeprom_buff[4],
 				eeprom_buff[5]);
@@ -550,10 +541,10 @@ static ssize_t ixgbe_maclla1(struct kobject *kobj,
 }
 
 static ssize_t ixgbe_mtusize(struct kobject *kobj,
-			      struct kobj_attribute *attr, char *buf)
+			     struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -570,8 +561,8 @@ static ssize_t ixgbe_featflag(struct kobject *kobj,
 #ifndef HAVE_NDO_SET_FEATURES
 	struct ixgbe_ring *ring;
 #endif
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
@@ -581,7 +572,7 @@ static ssize_t ixgbe_featflag(struct kobject *kobj,
 #ifndef HAVE_NDO_SET_FEATURES
 	/* ixgbe_get_rx_csum(netdev) doesn't compile so hard code */
 	ring = adapter->rx_ring[0];
-	bitmask = test_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);	
+	bitmask = test_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
 	return snprintf(buf, PAGE_SIZE, "%d\n", bitmask);
 #else
 	if (netdev->features & NETIF_F_RXCSUM)
@@ -599,18 +590,18 @@ static ssize_t ixgbe_lsominct(struct kobject *kobj,
 static ssize_t ixgbe_prommode(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
-	struct net_device *netdev = ixgbe_get_netdev(kobj);	
+	struct net_device *netdev = ixgbe_get_netdev(kobj);
 	if (netdev == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no net device\n");
 
-	return snprintf(buf, PAGE_SIZE, "%d\n", 
+	return snprintf(buf, PAGE_SIZE, "%d\n",
 			netdev->flags & IFF_PROMISC);
 }
 
 static ssize_t ixgbe_txdscqsz(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -620,7 +611,7 @@ static ssize_t ixgbe_txdscqsz(struct kobject *kobj,
 static ssize_t ixgbe_rxdscqsz(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -634,10 +625,10 @@ static ssize_t ixgbe_rxqavg(struct kobject *kobj,
 	int diff = 0;
 	u16 ntc;
 	u16 ntu;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
-	
+
 	for (index = 0; index < adapter->num_rx_queues; index++) {
 		ntc = adapter->rx_ring[index]->next_to_clean;
 		ntu = adapter->rx_ring[index]->next_to_use;
@@ -648,9 +639,9 @@ static ssize_t ixgbe_rxqavg(struct kobject *kobj,
 			diff += (adapter->rx_ring[index]->count - ntu + ntc);
 	}
 	if (adapter->num_rx_queues <= 0)
-		return snprintf(buf, PAGE_SIZE, 
-				"can't calculate, number of queues %d\n", 
-				adapter->num_rx_queues);		
+		return snprintf(buf, PAGE_SIZE,
+				"can't calculate, number of queues %d\n",
+				adapter->num_rx_queues);
 	return snprintf(buf, PAGE_SIZE, "%d\n", diff/adapter->num_rx_queues);
 }
 
@@ -661,7 +652,7 @@ static ssize_t ixgbe_txqavg(struct kobject *kobj,
 	int diff = 0;
 	u16 ntc;
 	u16 ntu;
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -675,10 +666,10 @@ static ssize_t ixgbe_txqavg(struct kobject *kobj,
 			diff += (adapter->tx_ring[index]->count - ntu + ntc);
 	}
 	if (adapter->num_tx_queues <= 0)
-		return snprintf(buf, PAGE_SIZE, 
-				"can't calculate, number of queues %d\n", 
-				adapter->num_tx_queues);		
-	return snprintf(buf, PAGE_SIZE, "%d\n", 
+		return snprintf(buf, PAGE_SIZE,
+				"can't calculate, number of queues %d\n",
+				adapter->num_tx_queues);
+	return snprintf(buf, PAGE_SIZE, "%d\n",
 			diff/adapter->num_tx_queues);
 }
 
@@ -691,7 +682,7 @@ static ssize_t ixgbe_iovotype(struct kobject *kobj,
 static ssize_t ixgbe_funcnbr(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
@@ -701,14 +692,14 @@ static ssize_t ixgbe_funcnbr(struct kobject *kobj,
 static ssize_t ixgbe_pciebnbr(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", adapter->pdev->bus->number);
 }
 
-s32 ixgbe_sysfs_get_thermal_data(struct kobject *kobj, char *buf)
+static s32 ixgbe_sysfs_get_thermal_data(struct kobject *kobj, char *buf)
 {
 	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj->parent);
 	s32 status;
@@ -723,13 +714,13 @@ s32 ixgbe_sysfs_get_thermal_data(struct kobject *kobj, char *buf)
 		return 0;
 	}
 
-	status = ixgbe_get_thermal_sensor_data_generic(&(adapter->hw));
+	status = ixgbe_get_thermal_sensor_data_generic(&adapter->hw);
 
 	return status;
 }
 
-static ssize_t ixgbe_sysfs_location(struct kobject *kobj, 
-				    struct kobj_attribute *attr, char *buf) 
+static ssize_t ixgbe_sysfs_location(struct kobject *kobj,
+				    struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj->parent);
 	int idx;
@@ -742,7 +733,7 @@ static ssize_t ixgbe_sysfs_location(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE,
 				"error: invalid sensor name %s\n", kobj->name);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n", 
+	return snprintf(buf, PAGE_SIZE, "%d\n",
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].location);
 }
 
@@ -754,8 +745,8 @@ static ssize_t ixgbe_sysfs_temp(struct kobject *kobj,
 
 	s32 status = ixgbe_sysfs_get_thermal_data(kobj, buf);
 
-	if (status != 0) 
-	        return snprintf(buf, PAGE_SIZE, "error: status %d returned", 
+	if (status != 0)
+		return snprintf(buf, PAGE_SIZE, "error: status %d returned",
 				status);
 
 	idx = ixgbe_name_to_idx(kobj->name);
@@ -768,9 +759,9 @@ static ssize_t ixgbe_sysfs_temp(struct kobject *kobj,
 }
 
 static ssize_t ixgbe_sysfs_maxopthresh(struct kobject *kobj,
-				       struct kobj_attribute *attr, char *buf) 
+				       struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj->parent);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj->parent);
 	int idx;
 
 	if (adapter == NULL)
@@ -781,14 +772,14 @@ static ssize_t ixgbe_sysfs_maxopthresh(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE,
 				"error: invalid sensor name %s\n", kobj->name);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n", 
+	return snprintf(buf, PAGE_SIZE, "%d\n",
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].max_op_thresh);
 }
 
 static ssize_t ixgbe_sysfs_cautionthresh(struct kobject *kobj,
-					 struct kobj_attribute *attr, char *buf) 
+					 struct kobj_attribute *attr, char *buf)
 {
-	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj->parent);	
+	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj->parent);
 	int idx;
 
 	if (adapter == NULL)
@@ -799,92 +790,92 @@ static ssize_t ixgbe_sysfs_cautionthresh(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE,
 				"error: invalid sensor name %s\n", kobj->name);
 
-	return snprintf(buf, PAGE_SIZE, "%d\n", 
+	return snprintf(buf, PAGE_SIZE, "%d\n",
 		adapter->hw.mac.thermal_sensor_data.sensor[idx].caution_thresh);
 }
 
 /* Initialize the attributes */
-static struct kobj_attribute ixgbe_sysfs_location_attr = 
-	__ATTR(location, 0444, ixgbe_sysfs_location, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_temp_attr = 
-	__ATTR(temp, 0444, ixgbe_sysfs_temp, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_cautionthresh_attr = 
-	__ATTR(cautionthresh, 0444, ixgbe_sysfs_cautionthresh, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_maxopthresh_attr = 
-	__ATTR(maxopthresh, 0444, ixgbe_sysfs_maxopthresh, ixgbe_store);
+static struct kobj_attribute ixgbe_sysfs_location_attr =
+	__ATTR(location, 0444, ixgbe_sysfs_location, NULL);
+static struct kobj_attribute ixgbe_sysfs_temp_attr =
+	__ATTR(temp, 0444, ixgbe_sysfs_temp, NULL);
+static struct kobj_attribute ixgbe_sysfs_cautionthresh_attr =
+	__ATTR(cautionthresh, 0444, ixgbe_sysfs_cautionthresh, NULL);
+static struct kobj_attribute ixgbe_sysfs_maxopthresh_attr =
+	__ATTR(maxopthresh, 0444, ixgbe_sysfs_maxopthresh, NULL);
 
-static struct kobj_attribute ixgbe_sysfs_fwbanner_attr = 
-	__ATTR(fwbanner, 0444, ixgbe_fwbanner, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_porttype_attr = 
-	__ATTR(porttype, 0444, ixgbe_porttype, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_portspeed_attr = 
-	__ATTR(portspeed, 0444, ixgbe_portspeed, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_wqlflag_attr = 
-	__ATTR(wqlflag, 0444, ixgbe_wqlflag, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_xflowctl_attr = 
-	__ATTR(xflowctl, 0444, ixgbe_xflowctl, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxdrops_attr = 
-	__ATTR(rxdrops, 0444, ixgbe_rxdrops, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxerrors_attr = 
-	__ATTR(rxerrors, 0444, ixgbe_rxerrors, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxupacks_attr = 
-	__ATTR(rxupacks, 0444, ixgbe_rxupacks, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxmpacks_attr = 
-	__ATTR(rxmpacks, 0444, ixgbe_rxmpacks, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxbpacks_attr = 
-	__ATTR(rxbpacks, 0444, ixgbe_rxbpacks, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txupacks_attr = 
-	__ATTR(txupacks, 0444, ixgbe_txupacks, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txmpacks_attr = 
-	__ATTR(txmpacks, 0444, ixgbe_txmpacks, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txbpacks_attr = 
-	__ATTR(txbpacks, 0444, ixgbe_txbpacks, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txerrors_attr = 
-	__ATTR(txerrors, 0444, ixgbe_txerrors, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txdrops_attr = 
-	__ATTR(txdrops, 0444, ixgbe_txdrops, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxframes_attr = 
-	__ATTR(rxframes, 0444, ixgbe_rxframes, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxbytes_attr = 
-	__ATTR(rxbytes, 0444, ixgbe_rxbytes, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txframes_attr = 
-	__ATTR(txframes, 0444, ixgbe_txframes, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txbytes_attr = 
-	__ATTR(txbytes, 0444, ixgbe_txbytes, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_linkstat_attr = 
-	__ATTR(linkstat, 0444, ixgbe_linkstat, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_funcid_attr = 
-	__ATTR(funcid, 0444, ixgbe_funcid, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_funvers_attr = 
-	__ATTR(funcvers, 0444, ixgbe_funcvers, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_macburn_attr = 
-	__ATTR(macburn, 0444, ixgbe_macburn, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_macadmn_attr = 
-	__ATTR(macadmn, 0444, ixgbe_macadmn, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_maclla1_attr = 
-	__ATTR(maclla1, 0444, ixgbe_maclla1, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_mtusize_attr = 
-	__ATTR(mtusize, 0444, ixgbe_mtusize, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_featflag_attr = 
-	__ATTR(featflag, 0444, ixgbe_featflag, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_lsominct_attr = 
-	__ATTR(lsominct, 0444, ixgbe_lsominct, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_prommode_attr = 
-	__ATTR(prommode, 0444, ixgbe_prommode, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txdscqsz_attr = 
-	__ATTR(txdscqsz, 0444, ixgbe_txdscqsz, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxdscqsz_attr = 
-	__ATTR(rxdscqsz, 0444, ixgbe_rxdscqsz, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_txqavg_attr = 
-	__ATTR(txqavg, 0444, ixgbe_txqavg, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_rxqavg_attr = 
-	__ATTR(rxqavg, 0444, ixgbe_rxqavg, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_iovotype_attr = 
-	__ATTR(iovotype, 0444, ixgbe_iovotype, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_funcnbr_attr = 
-	__ATTR(funcnbr, 0444, ixgbe_funcnbr, ixgbe_store);
-static struct kobj_attribute ixgbe_sysfs_pciebnbr_attr = 
-	__ATTR(pciebnbr, 0444, ixgbe_pciebnbr, ixgbe_store);
+static struct kobj_attribute ixgbe_sysfs_fwbanner_attr =
+	__ATTR(fwbanner, 0444, ixgbe_fwbanner, NULL);
+static struct kobj_attribute ixgbe_sysfs_porttype_attr =
+	__ATTR(porttype, 0444, ixgbe_porttype, NULL);
+static struct kobj_attribute ixgbe_sysfs_portspeed_attr =
+	__ATTR(portspeed, 0444, ixgbe_portspeed, NULL);
+static struct kobj_attribute ixgbe_sysfs_wqlflag_attr =
+	__ATTR(wqlflag, 0444, ixgbe_wqlflag, NULL);
+static struct kobj_attribute ixgbe_sysfs_xflowctl_attr =
+	__ATTR(xflowctl, 0444, ixgbe_xflowctl, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxdrops_attr =
+	__ATTR(rxdrops, 0444, ixgbe_rxdrops, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxerrors_attr =
+	__ATTR(rxerrors, 0444, ixgbe_rxerrors, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxupacks_attr =
+	__ATTR(rxupacks, 0444, ixgbe_rxupacks, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxmpacks_attr =
+	__ATTR(rxmpacks, 0444, ixgbe_rxmpacks, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxbpacks_attr =
+	__ATTR(rxbpacks, 0444, ixgbe_rxbpacks, NULL);
+static struct kobj_attribute ixgbe_sysfs_txupacks_attr =
+	__ATTR(txupacks, 0444, ixgbe_txupacks, NULL);
+static struct kobj_attribute ixgbe_sysfs_txmpacks_attr =
+	__ATTR(txmpacks, 0444, ixgbe_txmpacks, NULL);
+static struct kobj_attribute ixgbe_sysfs_txbpacks_attr =
+	__ATTR(txbpacks, 0444, ixgbe_txbpacks, NULL);
+static struct kobj_attribute ixgbe_sysfs_txerrors_attr =
+	__ATTR(txerrors, 0444, ixgbe_txerrors, NULL);
+static struct kobj_attribute ixgbe_sysfs_txdrops_attr =
+	__ATTR(txdrops, 0444, ixgbe_txdrops, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxframes_attr =
+	__ATTR(rxframes, 0444, ixgbe_rxframes, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxbytes_attr =
+	__ATTR(rxbytes, 0444, ixgbe_rxbytes, NULL);
+static struct kobj_attribute ixgbe_sysfs_txframes_attr =
+	__ATTR(txframes, 0444, ixgbe_txframes, NULL);
+static struct kobj_attribute ixgbe_sysfs_txbytes_attr =
+	__ATTR(txbytes, 0444, ixgbe_txbytes, NULL);
+static struct kobj_attribute ixgbe_sysfs_linkstat_attr =
+	__ATTR(linkstat, 0444, ixgbe_linkstat, NULL);
+static struct kobj_attribute ixgbe_sysfs_funcid_attr =
+	__ATTR(funcid, 0444, ixgbe_funcid, NULL);
+static struct kobj_attribute ixgbe_sysfs_funvers_attr =
+	__ATTR(funcvers, 0444, ixgbe_funcvers, NULL);
+static struct kobj_attribute ixgbe_sysfs_macburn_attr =
+	__ATTR(macburn, 0444, ixgbe_macburn, NULL);
+static struct kobj_attribute ixgbe_sysfs_macadmn_attr =
+	__ATTR(macadmn, 0444, ixgbe_macadmn, NULL);
+static struct kobj_attribute ixgbe_sysfs_maclla1_attr =
+	__ATTR(maclla1, 0444, ixgbe_maclla1, NULL);
+static struct kobj_attribute ixgbe_sysfs_mtusize_attr =
+	__ATTR(mtusize, 0444, ixgbe_mtusize, NULL);
+static struct kobj_attribute ixgbe_sysfs_featflag_attr =
+	__ATTR(featflag, 0444, ixgbe_featflag, NULL);
+static struct kobj_attribute ixgbe_sysfs_lsominct_attr =
+	__ATTR(lsominct, 0444, ixgbe_lsominct, NULL);
+static struct kobj_attribute ixgbe_sysfs_prommode_attr =
+	__ATTR(prommode, 0444, ixgbe_prommode, NULL);
+static struct kobj_attribute ixgbe_sysfs_txdscqsz_attr =
+	__ATTR(txdscqsz, 0444, ixgbe_txdscqsz, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxdscqsz_attr =
+	__ATTR(rxdscqsz, 0444, ixgbe_rxdscqsz, NULL);
+static struct kobj_attribute ixgbe_sysfs_txqavg_attr =
+	__ATTR(txqavg, 0444, ixgbe_txqavg, NULL);
+static struct kobj_attribute ixgbe_sysfs_rxqavg_attr =
+	__ATTR(rxqavg, 0444, ixgbe_rxqavg, NULL);
+static struct kobj_attribute ixgbe_sysfs_iovotype_attr =
+	__ATTR(iovotype, 0444, ixgbe_iovotype, NULL);
+static struct kobj_attribute ixgbe_sysfs_funcnbr_attr =
+	__ATTR(funcnbr, 0444, ixgbe_funcnbr, NULL);
+static struct kobj_attribute ixgbe_sysfs_pciebnbr_attr =
+	__ATTR(pciebnbr, 0444, ixgbe_pciebnbr, NULL);
 
 /* Add the attributes into an array, to be added to a group */
 static struct attribute *therm_attrs[] = {
@@ -945,9 +936,12 @@ static struct attribute_group attr_group = {
 	.attrs = attrs,
 };
 
-void ixgbe_del_adapter(struct ixgbe_adapter *adapter)
+static void ixgbe_del_adapter(struct ixgbe_adapter *adapter)
 {
 	int i;
+
+	if (adapter == NULL)
+		return;
 
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++) {
 		if (adapter->therm_kobj[i] == NULL)
@@ -962,36 +956,36 @@ void ixgbe_del_adapter(struct ixgbe_adapter *adapter)
 }
 
 /* called from ixgbe_main.c */
-void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter) 
+void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter)
 {
 	ixgbe_del_adapter(adapter);
 }
 
 /* called from ixgbe_main.c */
-int ixgbe_sysfs_init(struct ixgbe_adapter *adapter) 
+int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 {
 	struct net_device *netdev;
 	int rc = 0;
 	int i;
 	char buf[16];
 
-	if ( adapter == NULL )
-		goto del_adapter;
-	netdev = adapter->netdev;	
+	if (adapter == NULL)
+		goto err;
+	netdev = adapter->netdev;
 	if (netdev == NULL)
-		goto del_adapter;
+		goto err;
 
 	adapter->info_kobj = NULL;
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++)
 		adapter->therm_kobj[i] = NULL;
-	
-	/* create stats kobj and attribute listings in kobj */
-	adapter->info_kobj = kobject_create_and_add("info", 
+
+	/* create info kobj and attribute listings in kobj */
+	adapter->info_kobj = kobject_create_and_add("info",
 					&(netdev->dev.kobj));
 	if (adapter->info_kobj == NULL)
-		goto del_adapter;
+		goto err;
 	if (sysfs_create_group(adapter->info_kobj, &attr_group))
-		goto del_adapter;
+		goto err;
 
 	/* Don't create thermal subkobjs if no data present */
 	if (ixgbe_thermal_present(adapter->info_kobj) != true)
@@ -1008,18 +1002,18 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 
 		/* directory named after sensor offset */
 		snprintf(buf, sizeof(buf), "sensor_%d", i);
-		adapter->therm_kobj[i] = 
+		adapter->therm_kobj[i] =
 			kobject_create_and_add(buf, adapter->info_kobj);
 		if (adapter->therm_kobj[i] == NULL)
-			goto del_adapter;
+			goto err;
 		if (sysfs_create_group(adapter->therm_kobj[i],
 				       &therm_attr_group))
-			goto del_adapter;
+			goto err;
 	}
 
 	goto exit;
 
-del_adapter:
+err:
 	ixgbe_del_adapter(adapter);
 	rc = -1;
 exit:
@@ -1027,4 +1021,3 @@ exit:
 }
 
 #endif /* IXGBE_SYSFS */
-#endif /* EXT_THERMAL_SENSOR_SUPPORT */

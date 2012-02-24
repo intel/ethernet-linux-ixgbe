@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -40,7 +40,7 @@ static void ixgbe_release_swfw_sync_semaphore(struct ixgbe_hw *hw);
  *  ixgbe_init_ops_X540 - Inits func ptrs and MAC type
  *  @hw: pointer to hardware structure
  *
- *  Initialize the function pointers and assign the MAC type for 82599.
+ *  Initialize the function pointers and assign the MAC type for X540.
  *  Does not touch the hardware.
  **/
 s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
@@ -83,6 +83,8 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.get_fcoe_boot_status = &ixgbe_get_fcoe_boot_status_generic;
 	mac->ops.acquire_swfw_sync = &ixgbe_acquire_swfw_sync_X540;
 	mac->ops.release_swfw_sync = &ixgbe_release_swfw_sync_X540;
+	mac->ops.disable_sec_rx_path = &ixgbe_disable_sec_rx_path_generic;
+	mac->ops.enable_sec_rx_path = &ixgbe_enable_sec_rx_path_generic;
 
 	/* RAR, Multicast, VLAN */
 	mac->ops.set_vmdq = &ixgbe_set_vmdq_generic;
@@ -920,5 +922,4 @@ s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index)
 
 	return 0;
 }
-
 

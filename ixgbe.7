@@ -4,7 +4,7 @@
 .\"
 .\" * Other names and brands may be claimed as the property of others.
 .\"
-.TH ixgbe 1 "September 2, 2011"
+.TH ixgbe 1 "January 5, 2012"
 
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
@@ -67,22 +67,6 @@ Intel(R) Ethernet Flow Director section in readme for more detail.
 .IP
 See the instructions in the README for enabling DCA.  If the driver is enabled for
 DCA this parameter allows load-time control of the feature.
-.LP
-.B RxBufferMode
-.IP
-.B Valid Range: 
-0-2
-.br
-.B Default Value: 
-2 (82598-based adapters); 0 (82599-based adapters)
-.IP
-0 = Driver will use single buffer for Rx packets.
-1 = Driver will use packet split mode for Rx. Packet header will be 
-received in header buffer and payload will be received in data buffer.
-2. = Optimal mode. Driver will use single buffer mode for non-Jumbo 
-configurations and packet split mode for Jumbo configurations.
-.IP
-NOTE: HeaderDataSplit is not supported in 82599-based adapters.
 .LP
 .B IntMode
 .IP

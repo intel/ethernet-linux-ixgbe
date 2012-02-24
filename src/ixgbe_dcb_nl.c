@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -33,18 +33,18 @@
 #include "ixgbe_dcb_82599.h"
 
 /* Callbacks for DCB netlink in the kernel */
-#define BIT_DCB_MODE    0x01
-#define BIT_PFC         0x02
-#define BIT_PG_RX       0x04
-#define BIT_PG_TX       0x08
-#define BIT_APP_UPCHG   0x10
-#define BIT_RESETLINK   0x40
-#define BIT_LINKSPEED   0x80
+#define BIT_DCB_MODE	0x01
+#define BIT_PFC		0x02
+#define BIT_PG_RX	0x04
+#define BIT_PG_TX	0x08
+#define BIT_APP_UPCHG	0x10
+#define BIT_RESETLINK	0x40
+#define BIT_LINKSPEED	0x80
 
 /* Responses for the DCB_C_SET_ALL command */
-#define DCB_HW_CHG_RST  0  /* DCB configuration changed with reset */
-#define DCB_NO_HW_CHG   1  /* DCB configuration did not change */
-#define DCB_HW_CHG      2  /* DCB configuration changed, no reset */
+#define DCB_HW_CHG_RST	0  /* DCB configuration changed with reset */
+#define DCB_NO_HW_CHG	1  /* DCB configuration did not change */
+#define DCB_HW_CHG	2  /* DCB configuration changed, no reset */
 
 /**
  * ixgbe_get_tc_from_up - get the TC UP is mapped to
@@ -157,61 +157,19 @@ static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 	u8 err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	if (state) {
-		/* Turn on DCB */
-		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED)
-			goto out;
+	/* Fail command if not in CEE mode */
+	if (!(adapter->dcbx_cap & DCB_CAP_DCBX_VER_CEE))
+		return 1;
 
-		if (!(adapter->flags & IXGBE_FLAG_MSIX_ENABLED)) {
-			e_err(drv, "Enable failed, needs MSI-X\n");
-			err = 1;
-			goto out;
-		}
+	/* verify there is something to do, if not then exit */
+	if (!!state != !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		return err;
 
-#ifndef HAVE_MQPRIO
-		adapter->flags &= ~IXGBE_FLAG_RSS_ENABLED;
+	if (state > 0)
+		err = ixgbe_setup_tc(netdev, adapter->dcb_cfg.num_tcs.pg_tcs);
+	else
+		err = ixgbe_setup_tc(netdev, 0);
 
-#endif
-		adapter->flags |= IXGBE_FLAG_DCB_ENABLED;
-
-		switch (adapter->hw.mac.type) {
-		case ixgbe_mac_82598EB:
-			adapter->last_lfc_mode = adapter->hw.fc.current_mode;
-			adapter->hw.fc.requested_mode = ixgbe_fc_none;
-			break;
-		case ixgbe_mac_82599EB:
-		case ixgbe_mac_X540:
-			e_info(drv, "DCB enabled, disabling ATR\n");
-			adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			break;
-		default:
-			break;
-		}
-
-		ixgbe_setup_tc(netdev, adapter->dcb_cfg.num_tcs.pg_tcs);
-	} else {
-		/* Turn off DCB */
-		if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
-			goto out;
-
-		adapter->hw.fc.requested_mode = adapter->last_lfc_mode;
-		adapter->temp_dcb_cfg.pfc_mode_enable = false;
-		adapter->dcb_cfg.pfc_mode_enable = false;
-		adapter->flags &= ~IXGBE_FLAG_DCB_ENABLED;
-		adapter->flags |= IXGBE_FLAG_RSS_ENABLED;
-		switch (adapter->hw.mac.type) {
-		case ixgbe_mac_82599EB:
-		case ixgbe_mac_X540:
-			if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
-				adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			break;
-		default:
-			break;
-		}
-		ixgbe_setup_tc(netdev, 0);
-	}
-
-out:
 	return err;
 }
 
@@ -266,7 +224,8 @@ static void ixgbe_dcbnl_set_pg_tc_cfg_tx(struct net_device *netdev, int tc,
 
 	if (adapter->temp_dcb_cfg.tc_config[tc].path[0].up_to_tc_bitmap !=
 	     adapter->dcb_cfg.tc_config[tc].path[0].up_to_tc_bitmap)
-		adapter->dcb_set_bitmap |= BIT_PFC;
+		adapter->dcb_set_bitmap |= BIT_PFC | BIT_APP_UPCHG;
+
 }
 
 static void ixgbe_dcbnl_set_pg_bwg_cfg_tx(struct net_device *netdev, int bwg_id,
@@ -391,12 +350,46 @@ static void ixgbe_dcbnl_get_pfc_cfg(struct net_device *netdev, int priority,
 	*setting = adapter->dcb_cfg.tc_config[tc].pfc;
 }
 
+#ifdef IXGBE_FCOE
+static void ixgbe_dcbnl_devreset(struct net_device *dev)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(dev);
+
+	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
+		usleep_range(1000, 2000);
+
+	if (netif_running(dev))
+#ifdef HAVE_NET_DEVICE_OPS
+		dev->netdev_ops->ndo_stop(dev);
+#else
+		dev->stop(dev);
+#endif
+
+	ixgbe_clear_interrupt_scheme(adapter);
+	ixgbe_init_interrupt_scheme(adapter);
+
+	if (netif_running(dev))
+#ifdef HAVE_NET_DEVICE_OPS
+		dev->netdev_ops->ndo_open(dev);
+#else
+		dev->open(dev);
+#endif
+
+	clear_bit(__IXGBE_RESETTING, &adapter->state);
+}
+#endif
+
 static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	int ret;
 	u8 prio_tc[IXGBE_DCB_MAX_USER_PRIORITY] = { 0 };
 	u8 pfc_en;
+
+
+	/* Fail command if not in CEE mode */
+	if (!(adapter->dcbx_cap & DCB_CAP_DCBX_VER_CEE))
+		return 1;
 
 	ret = ixgbe_copy_dcb_cfg(&adapter->temp_dcb_cfg, &adapter->dcb_cfg,
 				 IXGBE_DCB_MAX_TRAFFIC_CLASS);
@@ -440,7 +433,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		int i;
 #endif
 
-#ifdef IXGBE_FCOE 
+#ifdef IXGBE_FCOE
 		if (adapter->netdev->features & NETIF_F_FCOE_MTU)
 			max_frame = max(max_frame, IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif
@@ -473,9 +466,10 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		adapter->hw.fc.current_mode = ixgbe_fc_pfc;
 
 #ifdef IXGBE_FCOE
-	if (adapter->fcoe.up_set != adapter->fcoe.up) {
+	if ((adapter->fcoe.up_set != adapter->fcoe.up) ||
+	    (adapter->dcb_set_bitmap & BIT_APP_UPCHG)) {
 		adapter->fcoe.up_set = adapter->fcoe.up;
-		ixgbe_setup_tc(netdev, adapter->dcb_cfg.num_tcs.pg_tcs);
+		ixgbe_dcbnl_devreset(netdev);
 	}
 #endif /* IXGBE_FCOE */
 
@@ -485,46 +479,43 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 
 static u8 ixgbe_dcbnl_getcap(struct net_device *netdev, int capid, u8 *cap)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	u8 rval = 0;
-
-	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-		switch (capid) {
-		case DCB_CAP_ATTR_PG:
-			*cap = true;
-			break;
-		case DCB_CAP_ATTR_PFC:
-			*cap = true;
-			break;
-		case DCB_CAP_ATTR_UP2TC:
-			*cap = false;
-			break;
-		case DCB_CAP_ATTR_PG_TCS:
-			*cap = 0x80;
-			break;
-		case DCB_CAP_ATTR_PFC_TCS:
-			*cap = 0x80;
-			break;
-		case DCB_CAP_ATTR_GSP:
-			*cap = true;
-			break;
-		case DCB_CAP_ATTR_BCN:
-			*cap = false;
-			break;
 #ifdef HAVE_DCBNL_IEEE
-		case DCB_CAP_ATTR_DCBX:
-			*cap = adapter->dcbx_cap;
-			break;
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 #endif
-		default:
-			rval = -EINVAL;
-			break;
-		}
-	} else {
-		rval = -EINVAL;
+
+	switch (capid) {
+	case DCB_CAP_ATTR_PG:
+		*cap = true;
+		break;
+	case DCB_CAP_ATTR_PFC:
+		*cap = true;
+		break;
+	case DCB_CAP_ATTR_UP2TC:
+		*cap = false;
+		break;
+	case DCB_CAP_ATTR_PG_TCS:
+		*cap = 0x80;
+		break;
+	case DCB_CAP_ATTR_PFC_TCS:
+		*cap = 0x80;
+		break;
+	case DCB_CAP_ATTR_GSP:
+		*cap = true;
+		break;
+	case DCB_CAP_ATTR_BCN:
+		*cap = false;
+		break;
+#ifdef HAVE_DCBNL_IEEE
+	case DCB_CAP_ATTR_DCBX:
+		*cap = adapter->dcbx_cap;
+		break;
+#endif
+	default:
+		*cap = false;
+		break;
 	}
 
-	return rval;
+	return 0;
 }
 
 static u8 ixgbe_dcbnl_getnumtcs(struct net_device *netdev, int tcid, u8 *num)
@@ -587,7 +578,7 @@ static void ixgbe_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 	adapter->temp_dcb_cfg.pfc_mode_enable = state;
-	if (adapter->temp_dcb_cfg.pfc_mode_enable != 
+	if (adapter->temp_dcb_cfg.pfc_mode_enable !=
 	    adapter->dcb_cfg.pfc_mode_enable)
 		adapter->dcb_set_bitmap |= BIT_PFC;
 	return;
@@ -609,9 +600,9 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
 	u8 rval = 0;
 #ifdef HAVE_DCBNL_IEEE
 	struct dcb_app app = {
-				.selector = idtype,
-				.protocol = id,
-			     };
+		.selector = idtype,
+		.protocol = id,
+	};
 
 	rval = dcb_getapp(netdev, &app);
 #endif
@@ -642,7 +633,7 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
  * Returns : 0 on success or 1 on error
  */
 static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
-                             u8 idtype, u16 id, u8 up)
+			     u8 idtype, u16 id, u8 up)
 {
 	int err = 0;
 #ifdef HAVE_DCBNL_IEEE
@@ -780,22 +771,6 @@ static int ixgbe_dcbnl_ieee_setpfc(struct net_device *dev,
 	return ixgbe_dcb_config_pfc(&adapter->hw, pfc->pfc_en, prio_tc);
 }
 
-#ifdef IXGBE_FCOE 
-static void ixgbe_dcbnl_devreset(struct net_device *dev)
-{
-	struct ixgbe_adapter *adapter = netdev_priv(dev);
-
-	if (netif_running(dev))
-		dev->netdev_ops->ndo_stop(dev);
-
-	ixgbe_clear_interrupt_scheme(adapter);
-	ixgbe_init_interrupt_scheme(adapter);
-
-	if (netif_running(dev))
-		dev->netdev_ops->ndo_open(dev);
-}
-#endif
-
 static int ixgbe_dcbnl_ieee_setapp(struct net_device *dev,
 				   struct dcb_app *app)
 {
@@ -835,7 +810,7 @@ static int ixgbe_dcbnl_ieee_delapp(struct net_device *dev,
 
 	err = dcb_ieee_delapp(dev, app);
 
-#ifdef IXGBE_FCOE 
+#ifdef IXGBE_FCOE
 	if (!err && app->selector == IEEE_8021QAZ_APP_SEL_ETHERTYPE &&
 	    app->protocol == ETH_P_FCOE) {
 		u8 app_mask = dcb_ieee_getapp_mask(dev, app);
@@ -883,7 +858,9 @@ static u8 ixgbe_dcbnl_setdcbx(struct net_device *dev, u8 mode)
 		ixgbe_dcbnl_ieee_setets(dev, &ets);
 		ixgbe_dcbnl_ieee_setpfc(dev, &pfc);
 	} else if (mode & DCB_CAP_DCBX_VER_CEE) {
-		adapter->dcb_set_bitmap |= (BIT_PFC | BIT_PG_TX | BIT_PG_RX);
+		u8 mask = (BIT_PFC | BIT_PG_TX | BIT_PG_RX | BIT_APP_UPCHG);
+
+		adapter->dcb_set_bitmap |= mask;
 		ixgbe_dcbnl_set_all(dev);
 	} else {
 		/* Drop into single TC mode strict priority as this

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -485,10 +485,9 @@ _kc_alloc_etherdev(int sizeof_priv)
 	int alloc_size;
 
 	alloc_size = sizeof(*dev) + sizeof_priv + IFNAMSIZ + 31;
-	dev = kmalloc(alloc_size, GFP_KERNEL);
+	dev = kzalloc(alloc_size, GFP_KERNEL);
 	if (!dev)
 		return NULL;
-	memset(dev, 0, alloc_size);
 
 	if (sizeof_priv)
 		dev->priv = (void *) (((unsigned long)(dev + 1) + 31) & ~31);
@@ -588,6 +587,18 @@ found_first:
 		return result + size;	/* Nope. */
 found_middle:
 	return result + ffs(tmp);
+}
+
+size_t _kc_strlcpy(char *dest, const char *src, size_t size)
+{
+	size_t ret = strlen(src);
+
+	if (size) {
+		size_t len = (ret >= size) ? size - 1 : ret;
+		memcpy(dest, src, len);
+		dest[len] = '\0';
+	}
+	return ret;
 }
 
 #endif /* 2.6.0 => 2.4.6 */

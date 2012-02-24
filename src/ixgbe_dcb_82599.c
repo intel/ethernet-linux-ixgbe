@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -370,36 +370,34 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTH_82599(i), reg);
 	}
 
-	if (pfc_en) {
-		/* Configure pause time (2 TCs per register) */
-		reg = hw->fc.pause_time | (hw->fc.pause_time << 16);
-		for (i = 0; i < (IXGBE_DCB_MAX_TRAFFIC_CLASS / 2); i++)
-			IXGBE_WRITE_REG(hw, IXGBE_FCTTV(i), reg);
+	/* Configure pause time (2 TCs per register) */
+	reg = hw->fc.pause_time | (hw->fc.pause_time << 16);
+	for (i = 0; i < (IXGBE_DCB_MAX_TRAFFIC_CLASS / 2); i++)
+		IXGBE_WRITE_REG(hw, IXGBE_FCTTV(i), reg);
 
-		/* Configure flow control refresh threshold value */
-		IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
+	/* Configure flow control refresh threshold value */
+	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
 
-		/* Enable Transmit PFC */
+	/* Enable Transmit PFC */
+	reg = 0;
+	if (pfc_en)
 		reg = IXGBE_FCCFG_TFCE_PRIORITY;
-		IXGBE_WRITE_REG(hw, IXGBE_FCCFG, reg);
+	IXGBE_WRITE_REG(hw, IXGBE_FCCFG, reg);
 
-		/*
-		 * Enable Receive PFC
-		 * We will always honor XOFF frames we receive when
-		 * we are in PFC mode.
-		 */
-		reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
-		reg &= ~(IXGBE_MFLCN_RFCE | IXGBE_MFLCN_RPFCE_MASK);
-		reg |= IXGBE_MFLCN_RPFCE | IXGBE_MFLCN_DPF;
+	/* Enable Receive PFC */
+	reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
+	reg |= IXGBE_MFLCN_DPF;
+	reg &= ~(IXGBE_MFLCN_RFCE | IXGBE_MFLCN_RPFCE);
+	if (pfc_en)
+		reg |= IXGBE_MFLCN_RPFCE;
 
-		if (hw->mac.type == ixgbe_mac_X540)
-			reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
-
-		IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
-	} else {
-		for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++)
-			hw->mac.ops.fc_enable(hw, i);
+	if (hw->mac.type == ixgbe_mac_X540) {
+		reg |= IXGBE_MFLCN_RPFCM;
+		reg &= ~IXGBE_MFLCN_RPFCE_MASK;
+		reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
 	}
+
+	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
 
 	return 0;
 }

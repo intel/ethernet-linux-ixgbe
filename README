@@ -2,7 +2,7 @@ Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
 
-October 17, 2011
+January 5, 2012
 
 Contents
 ========
@@ -272,21 +272,6 @@ Default Value: 1 (when IXGBE_DCA is enabled)
 See the above instructions for enabling DCA.  If the driver is enabled for
 DCA this parameter allows load-time control of the feature.
 
-RxBufferMode
-------------
-Valid Range: 0 - 3
-Default Value: 2 (82598-based adapters); 0 (82599-based adapters)
-0 = Driver will use single buffer for Rx packets.
-1 = Driver will use packet split mode for Rx. Packet header will be 
-    received in header buffer and payload will be received in data buffer.
-2 = Optimal mode. Driver will use single buffer mode for non-Jumbo 
-    configurations and packet split mode for Jumbo configurations.
-3 = This buffer mode allows for a page only receive. This mode greatly
-    improves receive performance vs. one-buff or packet split when an
-    IOMMU is enabled.
-
-NOTE: HeaderDataSplit is not supported in 82599-based adapters.
-
 IntMode
 -------------
 Valid Range: 0 - 2 (0 = Legacy Int, 1 = MSI and 2 = MSI-X)
@@ -434,6 +419,9 @@ lead to Tx hangs.
 
 Intel(R) Ethernet Flow Director
 -------------------------------
+NOTE: Flow director parameters are only supported on kernel versions 2.6.30 
+or later.
+
 Supports advanced filters that direct receive packets by their flows to 
 different queues. Enables tight control on routing a flow in the platform. 
 Matches flows and CPU cores for flow affinity. Supports multiple parameters 
@@ -880,14 +868,14 @@ Software Issues:
 
       where ethX is the ethernet interface you're trying to modify.
 
-  Lower than expected performance on dual port 10GbE devices
-  ----------------------------------------------------------
+  Lower than expected performance on dual port and quad port 10GbE devices
+  ------------------------------------------------------------------------
   Some PCI-E x8 slots are actually configured as x4 slots. These slots have 
-  insufficient bandwidth for full 10Gbe line rate with dual port 10GbE devices.
-  The driver can detect this situation and will write the following message in
-  the system log: "PCI-Express bandwidth available for this card is not 
-  sufficient for optimal performance. For optimal performance a x8 PCI-Express
-  slot is required."
+  insufficient bandwidth for full 10Gbe line rate with dual port and quad port
+  10GbE devices. The driver can detect this situation and will write the
+  following message in the system log: "PCI-Express bandwidth available for
+  this card is not sufficient for optimal performance. For optimal performance
+  a x8 PCI-Express slot is required."
   If this error occurs, moving your adapter to a true x8 slot will resolve the 
   issue.
 
@@ -948,6 +936,24 @@ Software Issues:
 
        "-cpu qemu64,model=13"
 
+  Loading ixgbe driver in 3.2.x and above kernels displays kernel tainted 
+  message
+  -----------------------------------------------------------------------
+  Due to recent kernel changes, loading an out of tree driver will cause the
+  kernel to be tainted.
+
+  Unable to obtain DHCP lease on boot with RedHat
+  -----------------------------------------------
+  For configurations where the auto-negotiation process takes more than 5 
+  seconds, the boot script may fail with the following message:
+
+      "ethX: failed. No link present. Check cable?"
+
+  If this error appears even though the presence of a link can be confirmed
+  using ethtool ethX, try setting
+
+      "LINKDELAY=5" in /etc/sysconfig/network-scripts/ifcfg-ethX.
+
 
 Support
 =======
@@ -968,7 +974,7 @@ License
 =======
 
 Intel 10 Gigabit PCI Express Linux driver.
-Copyright(c) 1999 - 2011 Intel Corporation.
+Copyright(c) 1999 - 2012 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,

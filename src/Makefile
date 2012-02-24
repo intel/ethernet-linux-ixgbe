@@ -1,7 +1,7 @@
 ################################################################################
 #
 # Intel 10 Gigabit PCI Express Linux driver
-# Copyright(c) 1999 - 2011 Intel Corporation.
+# Copyright(c) 1999 - 2012 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -31,7 +31,7 @@
 # core driver files
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
-         ixgbe_82599.c \
+         ixgbe_82599.c ixgbe_ptp.c \
        ixgbe_x540.c \
          ixgbe_sriov.c ixgbe_mbx.c \
          ixgbe_dcb.c ixgbe_dcb_82598.c \
@@ -42,7 +42,7 @@ CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
          ixgbe_sriov.h ixgbe_mbx.h \
          ixgbe_dcb.h \
-         ixgbe_phy.h
+         ixgbe_phy.h ixgbe_ptp.h
 ifeq (,$(BUILD_KERNEL))
 BUILD_KERNEL=$(shell uname -r)
 endif

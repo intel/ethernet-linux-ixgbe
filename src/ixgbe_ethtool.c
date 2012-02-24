@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -33,6 +33,7 @@
 #include <linux/netdevice.h>
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
+#include <linux/highmem.h>
 #ifdef SIOCETHTOOL
 #include <asm/uaccess.h>
 
@@ -141,11 +142,11 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 };
 
 #define IXGBE_QUEUE_STATS_LEN \
-           ((((struct ixgbe_adapter *)netdev_priv(netdev))->num_tx_queues + \
-             ((struct ixgbe_adapter *)netdev_priv(netdev))->num_rx_queues) * \
-             (sizeof(struct ixgbe_queue_stats) / sizeof(u64)))
+	((((struct ixgbe_adapter *)netdev_priv(netdev))->num_tx_queues + \
+	 ((struct ixgbe_adapter *)netdev_priv(netdev))->num_rx_queues) * \
+	  (sizeof(struct ixgbe_queue_stats) / sizeof(u64)))
 #define IXGBE_GLOBAL_STATS_LEN	ARRAY_SIZE(ixgbe_gstrings_stats)
-#define IXGBE_NETDEV_STATS_LEN ARRAY_SIZE(ixgbe_gstrings_net_stats)
+#define IXGBE_NETDEV_STATS_LEN	ARRAY_SIZE(ixgbe_gstrings_net_stats)
 #define IXGBE_PB_STATS_LEN ( \
 		(((struct ixgbe_adapter *)netdev_priv(netdev))->flags & \
 		 IXGBE_FLAG_DCB_ENABLED) ? \
@@ -155,8 +156,8 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 		  sizeof(((struct ixgbe_adapter *)0)->stats.pxofftxc)) \
 		 / sizeof(u64) : 0)
 #define IXGBE_VF_STATS_LEN \
-        ((((struct ixgbe_adapter *)netdev_priv(netdev))->num_vfs) * \
-          (sizeof(struct vf_stats) / sizeof(u64)))
+	((((struct ixgbe_adapter *)netdev_priv(netdev))->num_vfs) * \
+	  (sizeof(struct vf_stats) / sizeof(u64)))
 #define IXGBE_STATS_LEN (IXGBE_GLOBAL_STATS_LEN + \
 			 IXGBE_NETDEV_STATS_LEN + \
 			 IXGBE_PB_STATS_LEN + \
@@ -170,11 +171,11 @@ static const char ixgbe_gstrings_test[][ETH_GSTRING_LEN] = {
 	"Interrupt test (offline)", "Loopback test  (offline)",
 	"Link test   (on/offline)"
 };
-#define IXGBE_TEST_LEN sizeof(ixgbe_gstrings_test) / ETH_GSTRING_LEN
+#define IXGBE_TEST_LEN	(sizeof(ixgbe_gstrings_test) / ETH_GSTRING_LEN)
 #endif /* ETHTOOL_TEST */
 
 int ixgbe_get_settings(struct net_device *netdev,
-                              struct ethtool_cmd *ecmd)
+		       struct ethtool_cmd *ecmd)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -187,7 +188,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 	if ((hw->phy.media_type == ixgbe_media_type_copper) ||
 	    (hw->phy.multispeed_fiber)) {
 		ecmd->supported |= (SUPPORTED_1000baseT_Full |
-		                    SUPPORTED_Autoneg);
+				    SUPPORTED_Autoneg);
 		switch (hw->mac.type) {
 		case ixgbe_mac_X540:
 			ecmd->supported |= SUPPORTED_100baseT_Full;
@@ -236,8 +237,8 @@ int ixgbe_get_settings(struct net_device *netdev,
 					     ADVERTISED_FIBRE);
 			ecmd->port = PORT_FIBRE;
 			ecmd->autoneg = AUTONEG_DISABLE;
-		} else if ((hw->device_id == IXGBE_DEV_ID_82599_COMBO_BACKPLANE) ||
-			   (hw->device_id == IXGBE_DEV_ID_82599_KX4_MEZZ)) {
+		} else if ((hw->device_id == IXGBE_DEV_ID_82599_COMBO_BACKPLANE)
+			  || (hw->device_id == IXGBE_DEV_ID_82599_KX4_MEZZ)) {
 			ecmd->supported |= (SUPPORTED_1000baseT_Full |
 					    SUPPORTED_Autoneg |
 					    SUPPORTED_FIBRE);
@@ -257,7 +258,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 	} else {
 		ecmd->supported |= SUPPORTED_FIBRE;
 		ecmd->advertising = (ADVERTISED_10000baseT_Full |
-		                     ADVERTISED_FIBRE);
+				     ADVERTISED_FIBRE);
 		ecmd->port = PORT_FIBRE;
 		ecmd->autoneg = AUTONEG_DISABLE;
 	}
@@ -357,7 +358,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 }
 
 static int ixgbe_set_settings(struct net_device *netdev,
-                              struct ethtool_cmd *ecmd)
+			      struct ethtool_cmd *ecmd)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -367,7 +368,7 @@ static int ixgbe_set_settings(struct net_device *netdev,
 	if ((hw->phy.media_type == ixgbe_media_type_copper) ||
 	    (hw->phy.multispeed_fiber)) {
 		/*
- 		 * this function does not support duplex forcing, but can
+		 * this function does not support duplex forcing, but can
 		 * limit the advertising of the adapter to the specified speed
 		 */
 		if (ecmd->autoneg == AUTONEG_DISABLE)
@@ -401,7 +402,7 @@ static int ixgbe_set_settings(struct net_device *netdev,
 }
 
 static void ixgbe_get_pauseparam(struct net_device *netdev,
-                                 struct ethtool_pauseparam *pause)
+				 struct ethtool_pauseparam *pause)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -427,7 +428,7 @@ static void ixgbe_get_pauseparam(struct net_device *netdev,
 }
 
 static int ixgbe_set_pauseparam(struct net_device *netdev,
-                                struct ethtool_pauseparam *pause)
+				struct ethtool_pauseparam *pause)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -488,11 +489,11 @@ static int ixgbe_get_regs_len(struct net_device *netdev)
 	return IXGBE_REGS_LEN * sizeof(u32);
 }
 
-#define IXGBE_GET_STAT(_A_, _R_) _A_->stats._R_
+#define IXGBE_GET_STAT(_A_, _R_)	(_A_->stats._R_)
 
 
 static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
-                           void *p)
+			   void *p)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -555,8 +556,10 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
-			regs_buff[35 + i] = IXGBE_READ_REG(hw, IXGBE_FCRTL_82599(i));
-			regs_buff[43 + i] = IXGBE_READ_REG(hw, IXGBE_FCRTH_82599(i));
+			regs_buff[35 + i] = IXGBE_READ_REG(hw,
+							  IXGBE_FCRTL_82599(i));
+			regs_buff[43 + i] = IXGBE_READ_REG(hw,
+							  IXGBE_FCRTH_82599(i));
 			break;
 		default:
 			break;
@@ -808,7 +811,7 @@ static int ixgbe_get_eeprom_len(struct net_device *netdev)
 }
 
 static int ixgbe_get_eeprom(struct net_device *netdev,
-                            struct ethtool_eeprom *eeprom, u8 *bytes)
+			    struct ethtool_eeprom *eeprom, u8 *bytes)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -844,7 +847,7 @@ static int ixgbe_get_eeprom(struct net_device *netdev,
 }
 
 static int ixgbe_set_eeprom(struct net_device *netdev,
-                            struct ethtool_eeprom *eeprom, u8 *bytes)
+			    struct ethtool_eeprom *eeprom, u8 *bytes)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -886,7 +889,7 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 		 * only the first byte of the word is being modified
 		 */
 		ret_val = ixgbe_read_eeprom(hw, last_word,
-		                  &eeprom_buff[last_word - first_word]);
+					  &eeprom_buff[last_word - first_word]);
 		if (ret_val)
 			goto err;
 	}
@@ -914,16 +917,16 @@ err:
 }
 
 static void ixgbe_get_drvinfo(struct net_device *netdev,
-                              struct ethtool_drvinfo *drvinfo)
+			      struct ethtool_drvinfo *drvinfo)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	char firmware_version[32];
 	u32 nvm_track_id;
 
 	strncpy(drvinfo->driver, ixgbe_driver_name,
-	        sizeof(drvinfo->driver) - 1);
+		sizeof(drvinfo->driver) - 1);
 	strncpy(drvinfo->version, ixgbe_driver_version,
-	        sizeof(drvinfo->version) - 1);
+		sizeof(drvinfo->version) - 1);
 
 	nvm_track_id = (adapter->eeprom_verh << 16) |
 			adapter->eeprom_verl;
@@ -931,16 +934,16 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 		 nvm_track_id);
 
 	strncpy(drvinfo->fw_version, firmware_version,
-	        sizeof(drvinfo->fw_version) -1);
+		sizeof(drvinfo->fw_version) - 1);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev),
-	        sizeof(drvinfo->bus_info) - 1);
+		sizeof(drvinfo->bus_info) - 1);
 	drvinfo->n_stats = IXGBE_STATS_LEN;
 	drvinfo->testinfo_len = IXGBE_TEST_LEN;
 	drvinfo->regdump_len = ixgbe_get_regs_len(netdev);
 }
 
 static void ixgbe_get_ringparam(struct net_device *netdev,
-                                struct ethtool_ringparam *ring)
+				struct ethtool_ringparam *ring)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_ring *tx_ring = adapter->tx_ring[0];
@@ -957,7 +960,7 @@ static void ixgbe_get_ringparam(struct net_device *netdev,
 }
 
 static int ixgbe_set_ringparam(struct net_device *netdev,
-                               struct ethtool_ringparam *ring)
+			       struct ethtool_ringparam *ring)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_ring *temp_tx_ring, *temp_rx_ring;
@@ -968,12 +971,12 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 	if ((ring->rx_mini_pending) || (ring->rx_jumbo_pending))
 		return -EINVAL;
 
-	new_rx_count = max(ring->rx_pending, (u32)IXGBE_MIN_RXD);
-	new_rx_count = min(new_rx_count, (u32)IXGBE_MAX_RXD);
+	new_rx_count = clamp_t(u32, ring->rx_pending,
+			       IXGBE_MIN_RXD, IXGBE_MAX_RXD);
 	new_rx_count = ALIGN(new_rx_count, IXGBE_REQ_RX_DESCRIPTOR_MULTIPLE);
 
-	new_tx_count = max(ring->tx_pending, (u32)IXGBE_MIN_TXD);
-	new_tx_count = min(new_tx_count, (u32)IXGBE_MAX_TXD);
+	new_tx_count = clamp_t(u32, ring->tx_pending,
+			       IXGBE_MIN_TXD, IXGBE_MAX_TXD);
 	new_tx_count = ALIGN(new_tx_count, IXGBE_REQ_TX_DESCRIPTOR_MULTIPLE);
 
 	if ((new_tx_count == adapter->tx_ring[0]->count) &&
@@ -995,7 +998,8 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 		goto clear_reset;
 	}
 
-	temp_tx_ring = vmalloc(adapter->num_tx_queues * sizeof(struct ixgbe_ring));
+	temp_tx_ring = vmalloc(adapter->num_tx_queues *
+			       sizeof(struct ixgbe_ring));
 	if (!temp_tx_ring) {
 		err = -ENOMEM;
 		goto clear_reset;
@@ -1010,7 +1014,8 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			if (err) {
 				while (i) {
 					i--;
-					ixgbe_free_tx_resources(&temp_tx_ring[i]);
+					ixgbe_free_tx_resources(
+							      &temp_tx_ring[i]);
 				}
 				goto clear_reset;
 			}
@@ -1018,7 +1023,8 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 		need_update = true;
 	}
 
-	temp_rx_ring = vmalloc(adapter->num_rx_queues * sizeof(struct ixgbe_ring));
+	temp_rx_ring = vmalloc(adapter->num_rx_queues *
+			       sizeof(struct ixgbe_ring));
 	if (!temp_rx_ring) {
 		err = -ENOMEM;
 		goto err_setup;
@@ -1033,7 +1039,8 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			if (err) {
 				while (i) {
 					i--;
-					ixgbe_free_rx_resources(&temp_rx_ring[i]);
+					ixgbe_free_rx_resources(
+							      &temp_rx_ring[i]);
 				}
 				goto err_setup;
 			}
@@ -1096,7 +1103,7 @@ static int ixgbe_get_sset_count(struct net_device *netdev, int sset)
 
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 static void ixgbe_get_ethtool_stats(struct net_device *netdev,
-                                    struct ethtool_stats *stats, u64 *data)
+				    struct ethtool_stats *stats, u64 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 #ifdef HAVE_NETDEV_STATS_IN_NETDEV
@@ -1119,7 +1126,7 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 	for (j = 0; j < IXGBE_GLOBAL_STATS_LEN; j++, i++) {
 		p = (char *)adapter + ixgbe_gstrings_stats[j].stat_offset;
 		data[i] = (ixgbe_gstrings_stats[j].sizeof_stat ==
-		           sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
+			   sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
 	}
 	for (j = 0; j < adapter->num_tx_queues; j++) {
 		queue_stat = (u64 *)&adapter->tx_ring[j]->stats;
@@ -1144,21 +1151,19 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		}
 	}
 	stat_count = sizeof(struct vf_stats) / sizeof(u64);
-	for(j = 0; j < adapter->num_vfs; j++) {
+	for (j = 0; j < adapter->num_vfs; j++) {
 		queue_stat = (u64 *)&adapter->vfinfo[j].vfstats;
-		for (k = 0; k < stat_count; k++) {
+		for (k = 0; k < stat_count; k++)
 			data[i + k] = queue_stat[k];
-		}
 		queue_stat = (u64 *)&adapter->vfinfo[j].saved_rst_vfstats;
-		for (k = 0; k < stat_count; k++) {
+		for (k = 0; k < stat_count; k++)
 			data[i + k] += queue_stat[k];
-		}
 		i += k;
 	}
 }
 
 static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
-                              u8 *data)
+			      u8 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	char *p = (char *)data;
@@ -1316,40 +1321,40 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 	{ 0, 0, 0, 0 }
 };
 
-#define REG_PATTERN_TEST(R, M, W)                                             \
-{                                                                             \
-	u32 pat, val, before;                                                 \
+#define REG_PATTERN_TEST(R, M, W)					      \
+{									      \
+	u32 pat, val, before;						      \
 	const u32 _test[] = {0x5A5A5A5A, 0xA5A5A5A5, 0x00000000, 0xFFFFFFFF}; \
-	for (pat = 0; pat < ARRAY_SIZE(_test); pat++) {                       \
-		before = readl(adapter->hw.hw_addr + R);                      \
-		writel((_test[pat] & W), (adapter->hw.hw_addr + R));          \
-		val = readl(adapter->hw.hw_addr + R);                         \
-		if (val != (_test[pat] & W & M)) {                            \
-			e_err(drv, "pattern test reg %04X failed: got "\
-			      "0x%08X expected 0x%08X\n",         \
-				R, val, (_test[pat] & W & M));                \
-			*data = R;                                            \
-			writel(before, adapter->hw.hw_addr + R);              \
-			return 1;                                             \
-		}                                                             \
-		writel(before, adapter->hw.hw_addr + R);                      \
-	}                                                                     \
+	for (pat = 0; pat < ARRAY_SIZE(_test); pat++) {			      \
+		before = readl(adapter->hw.hw_addr + R);		      \
+		writel((_test[pat] & W), (adapter->hw.hw_addr + R));	      \
+		val = readl(adapter->hw.hw_addr + R);			      \
+		if (val != (_test[pat] & W & M)) {			      \
+			e_err(drv, "pattern test reg %04X failed: got "	      \
+			      "0x%08X expected 0x%08X\n",		      \
+				R, val, (_test[pat] & W & M));		      \
+			*data = R;					      \
+			writel(before, adapter->hw.hw_addr + R);	      \
+			return 1;					      \
+		}							      \
+		writel(before, adapter->hw.hw_addr + R);		      \
+	}								      \
 }
 
-#define REG_SET_AND_CHECK(R, M, W)                                            \
-{                                                                             \
-	u32 val, before;                                                      \
-	before = readl(adapter->hw.hw_addr + R);                              \
-	writel((W & M), (adapter->hw.hw_addr + R));                           \
-	val = readl(adapter->hw.hw_addr + R);                                 \
-	if ((W & M) != (val & M)) {                                           \
-		e_err(drv, "set/check reg %04X test failed: got 0x%08X "\
-		      "expected 0x%08X\n", R, (val & M), (W & M)); \
-		*data = R;                                                    \
-		writel(before, (adapter->hw.hw_addr + R));                    \
-		return 1;                                                     \
-	}                                                                     \
-	writel(before, (adapter->hw.hw_addr + R));                            \
+#define REG_SET_AND_CHECK(R, M, W)					      \
+{									      \
+	u32 val, before;						      \
+	before = readl(adapter->hw.hw_addr + R);			      \
+	writel((W & M), (adapter->hw.hw_addr + R));			      \
+	val = readl(adapter->hw.hw_addr + R);				      \
+	if ((W & M) != (val & M)) {					      \
+		e_err(drv, "set/check reg %04X test failed: got 0x%08X "      \
+		      "expected 0x%08X\n", R, (val & M), (W & M));	      \
+		*data = R;						      \
+		writel(before, (adapter->hw.hw_addr + R));		      \
+		return 1;						      \
+	}								      \
+	writel(before, (adapter->hw.hw_addr + R));			      \
 }
 
 static int ixgbe_reg_test(struct ixgbe_adapter *adapter, u64 *data)
@@ -1478,10 +1483,10 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			return -1;
 		}
 	} else if (!request_irq(irq, &ixgbe_test_intr, IRQF_PROBE_SHARED,
-	                        netdev->name, netdev)) {
+				netdev->name, netdev)) {
 		shared_int = false;
 	} else if (request_irq(irq, &ixgbe_test_intr, IRQF_SHARED,
-	                       netdev->name, netdev)) {
+			       netdev->name, netdev)) {
 		*data = 1;
 		return -1;
 	}
@@ -1508,9 +1513,9 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			 */
 			adapter->test_icr = 0;
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC,
-			                ~mask & 0x00007FFF);
+					~mask & 0x00007FFF);
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS,
-			                ~mask & 0x00007FFF);
+					~mask & 0x00007FFF);
 			IXGBE_WRITE_FLUSH(&adapter->hw);
 			usleep_range(10000, 20000);
 
@@ -1532,7 +1537,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 		IXGBE_WRITE_FLUSH(&adapter->hw);
 		usleep_range(10000, 20000);
 
-		if (!(adapter->test_icr &mask)) {
+		if (!(adapter->test_icr & mask)) {
 			*data = 4;
 			break;
 		}
@@ -1547,9 +1552,9 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			 */
 			adapter->test_icr = 0;
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC,
-			                ~mask & 0x00007FFF);
+					~mask & 0x00007FFF);
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS,
-			                ~mask & 0x00007FFF);
+					~mask & 0x00007FFF);
 			IXGBE_WRITE_FLUSH(&adapter->hw);
 			usleep_range(10000, 20000);
 
@@ -1620,7 +1625,6 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 	tx_ring->dev = pci_dev_to_dev(adapter->pdev);
 	tx_ring->netdev = adapter->netdev;
 	tx_ring->reg_idx = adapter->tx_ring[0]->reg_idx;
-	tx_ring->numa_node = adapter->node;
 
 	err = ixgbe_setup_tx_resources(tx_ring);
 	if (err)
@@ -1645,8 +1649,9 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 	rx_ring->dev = pci_dev_to_dev(adapter->pdev);
 	rx_ring->netdev = adapter->netdev;
 	rx_ring->reg_idx = adapter->rx_ring[0]->reg_idx;
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	rx_ring->rx_buf_len = IXGBE_RXBUFFER_2K;
-	rx_ring->numa_node = adapter->node;
+#endif
 
 	err = ixgbe_setup_rx_resources(rx_ring);
 	if (err) {
@@ -1732,36 +1737,53 @@ static void ixgbe_loopback_cleanup(struct ixgbe_adapter *adapter)
 }
 
 static void ixgbe_create_lbtest_frame(struct sk_buff *skb,
-                                      unsigned int frame_size)
+				      unsigned int frame_size)
 {
 	memset(skb->data, 0xFF, frame_size);
-	frame_size &= ~1;
-	memset(&skb->data[frame_size / 2], 0xAA, frame_size / 2 - 1);
-	memset(&skb->data[frame_size / 2 + 10], 0xBE, 1);
-	memset(&skb->data[frame_size / 2 + 12], 0xAF, 1);
+	frame_size >>= 1;
+	memset(&skb->data[frame_size], 0xAA, frame_size / 2 - 1);
+	memset(&skb->data[frame_size + 10], 0xBE, 1);
+	memset(&skb->data[frame_size + 12], 0xAF, 1);
 }
 
-static int ixgbe_check_lbtest_frame(struct sk_buff *skb,
-                                    unsigned int frame_size)
+static bool ixgbe_check_lbtest_frame(struct ixgbe_rx_buffer *rx_buffer,
+				     unsigned int frame_size)
 {
-	frame_size &= ~1;
-	if (*(skb->data + 3) == 0xFF) {
-		if ((*(skb->data + frame_size / 2 + 10) == 0xBE) &&
-		    (*(skb->data + frame_size / 2 + 12) == 0xAF)) {
-			return 0;
-		}
-	}
-	return 13;
+	unsigned char *data;
+	bool match = true;
+
+	frame_size >>= 1;
+
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+	data = rx_buffer->skb->data;
+#else
+	data = kmap(rx_buffer->page) + rx_buffer->page_offset;
+#endif
+
+	if (data[3] != 0xFF ||
+	    data[frame_size + 10] != 0xBE ||
+	    data[frame_size + 12] != 0xAF)
+		match = false;
+
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+	kunmap(rx_buffer->page);
+
+#endif
+	return match;
 }
 
 static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
-                                  struct ixgbe_ring *tx_ring,
-                                  unsigned int size)
+				  struct ixgbe_ring *tx_ring,
+				  unsigned int size)
 {
 	union ixgbe_adv_rx_desc *rx_desc;
-	struct ixgbe_rx_buffer *rx_buffer_info;
-	struct ixgbe_tx_buffer *tx_buffer_info;
+	struct ixgbe_rx_buffer *rx_buffer;
+	struct ixgbe_tx_buffer *tx_buffer;
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	const int bufsz = rx_ring->rx_buf_len;
+#else
+	const int bufsz = PAGE_SIZE / 2;
+#endif
 	u16 rx_ntc, tx_ntc, count = 0;
 
 	/* initialize next to clean and descriptor values */
@@ -1770,23 +1792,28 @@ static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
 	rx_desc = IXGBE_RX_DESC(rx_ring, rx_ntc);
 
 	while (ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_DD)) {
-		/* check Rx buffer */
-		rx_buffer_info = &rx_ring->rx_buffer_info[rx_ntc];
+		/* unmap buffer on Tx side */
+		tx_buffer = &tx_ring->tx_buffer_info[tx_ntc];
+		ixgbe_unmap_and_free_tx_resource(tx_ring, tx_buffer);
 
-		/* unmap Rx buffer, will be remapped by alloc_rx_buffers */
-		dma_unmap_single(rx_ring->dev,
-		                 rx_buffer_info->dma,
-				 bufsz,
-				 DMA_FROM_DEVICE);
-		rx_buffer_info->dma = 0;
+		/* check Rx buffer */
+		rx_buffer = &rx_ring->rx_buffer_info[rx_ntc];
+
+		/* sync Rx buffer for CPU read */
+		dma_sync_single_for_cpu(rx_ring->dev,
+					rx_buffer->dma,
+					bufsz,
+					DMA_FROM_DEVICE);
 
 		/* verify contents of skb */
-		if (!ixgbe_check_lbtest_frame(rx_buffer_info->skb, size))
+		if (ixgbe_check_lbtest_frame(rx_buffer, size))
 			count++;
 
-		/* unmap buffer on Tx side */
-		tx_buffer_info = &tx_ring->tx_buffer_info[tx_ntc];
-		ixgbe_unmap_and_free_tx_resource(tx_ring, tx_buffer_info);
+		/* sync Rx buffer for device write */
+		dma_sync_single_for_device(rx_ring->dev,
+					   rx_buffer->dma,
+					   bufsz,
+					   DMA_FROM_DEVICE);
 
 		/* increment Rx/Tx next to clean counters */
 		rx_ntc++;
@@ -1897,7 +1924,7 @@ static int ixgbe_diag_test_count(struct net_device *netdev)
 
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 static void ixgbe_diag_test(struct net_device *netdev,
-                            struct ethtool_test *eth_test, u64 *data)
+			    struct ethtool_test *eth_test, u64 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	bool if_running = netif_running(netdev);
@@ -1992,21 +2019,30 @@ skip_ol_tests:
 }
 
 static int ixgbe_wol_exclusion(struct ixgbe_adapter *adapter,
-                               struct ethtool_wolinfo *wol)
+			       struct ethtool_wolinfo *wol)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	int retval = 1;
 	u16 wol_cap = adapter->eeprom_cap & IXGBE_DEVICE_CAPS_WOL_MASK;
 
 	/* WOL not supported except for the following */
-	switch(hw->device_id) {
+	switch (hw->device_id) {
 	case IXGBE_DEV_ID_82599_SFP:
-		/* Only this subdevice supports WOL */
-		if (hw->subsystem_device_id != IXGBE_SUBDEV_ID_82599_SFP) {
+		/* Only these subdevice could supports WOL */
+		switch (hw->subsystem_device_id) {
+		case IXGBE_SUBDEV_ID_82599_560FLR:
+			/* only support first port */
+			if (hw->bus.func != 0) {
+				wol->supported = 0;
+				break;
+			}
+		case IXGBE_SUBDEV_ID_82599_SFP:
+			retval = 0;
+			break;
+		default:
 			wol->supported = 0;
 			break;
 		}
-		retval = 0;
 		break;
 	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
 		/* All except this subdevice support WOL */
@@ -2040,12 +2076,12 @@ static int ixgbe_wol_exclusion(struct ixgbe_adapter *adapter,
 }
 
 static void ixgbe_get_wol(struct net_device *netdev,
-                          struct ethtool_wolinfo *wol)
+			  struct ethtool_wolinfo *wol)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 	wol->supported = WAKE_UCAST | WAKE_MCAST |
-	                 WAKE_BCAST | WAKE_MAGIC;
+			 WAKE_BCAST | WAKE_MAGIC;
 	wol->wolopts = 0;
 
 	if (ixgbe_wol_exclusion(adapter, wol) ||
@@ -2100,31 +2136,31 @@ static int ixgbe_nway_reset(struct net_device *netdev)
 
 #ifdef HAVE_ETHTOOL_SET_PHYS_ID
 static int ixgbe_set_phys_id(struct net_device *netdev,
-                             enum ethtool_phys_id_state state)
+			     enum ethtool_phys_id_state state)
 {
-        struct ixgbe_adapter *adapter = netdev_priv(netdev);
-        struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
 
-        switch (state) {
-        case ETHTOOL_ID_ACTIVE:
-                adapter->led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
-                return 2;
+	switch (state) {
+	case ETHTOOL_ID_ACTIVE:
+		adapter->led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
+		return 2;
 
-        case ETHTOOL_ID_ON:
-                hw->mac.ops.led_on(hw, IXGBE_LED_ON);
-                break;
+	case ETHTOOL_ID_ON:
+		hw->mac.ops.led_on(hw, IXGBE_LED_ON);
+		break;
 
-        case ETHTOOL_ID_OFF:
-                hw->mac.ops.led_off(hw, IXGBE_LED_ON);
-                break;
+	case ETHTOOL_ID_OFF:
+		hw->mac.ops.led_off(hw, IXGBE_LED_ON);
+		break;
 
-        case ETHTOOL_ID_INACTIVE:
-                /* Restore LED settings */
-                IXGBE_WRITE_REG(&adapter->hw, IXGBE_LEDCTL, adapter->led_reg);
-                break;
-        }
+	case ETHTOOL_ID_INACTIVE:
+		/* Restore LED settings */
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_LEDCTL, adapter->led_reg);
+		break;
+	}
 
-        return 0;
+	return 0;
 }
 #else
 static int ixgbe_phys_id(struct net_device *netdev, u32 data)
@@ -2152,7 +2188,7 @@ static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 #endif /* HAVE_ETHTOOL_SET_PHYS_ID */
 
 static int ixgbe_get_coalesce(struct net_device *netdev,
-                              struct ethtool_coalesce *ec)
+			      struct ethtool_coalesce *ec)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
@@ -2216,7 +2252,7 @@ static bool ixgbe_update_rsc(struct ixgbe_adapter *adapter)
 }
 
 static int ixgbe_set_coalesce(struct net_device *netdev,
-                              struct ethtool_coalesce *ec)
+			      struct ethtool_coalesce *ec)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_q_vector *q_vector;
@@ -2343,7 +2379,7 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 #else
 	feature_list = NETIF_F_IP_CSUM;
 #endif
-	switch(adapter->hw.mac.type) {
+	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 		feature_list |= NETIF_F_SCTP_CSUM;
@@ -2384,7 +2420,7 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 					v_netdev->features &= ~NETIF_F_TSO6;
 #endif
 					vlan_group_set_device(adapter->vlgrp, i,
-					                      v_netdev);
+							      v_netdev);
 				}
 			}
 		}
@@ -2786,7 +2822,7 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 
 	/* Don't allow indexes to exist outside of available space */
 	if (fsp->location >= ((1024 << adapter->fdir_pballoc) - 2)) {
-		DPRINTK(DRV, ERR, "Location out of range\n");
+		e_err(drv, "Location out of range\n");
 		return -EINVAL;
 	}
 
@@ -2802,7 +2838,7 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	/* record flow type */
 	if (!ixgbe_flowspec_to_flow_type(fsp,
 					 &input->filter.formatted.flow_type)) {
-		DPRINTK(DRV, ERR, "Unrecognized flow type\n");
+		e_err(drv, "Unrecognized flow type\n");
 		goto err_out;
 	}
 
@@ -2847,11 +2883,11 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 		memcpy(&adapter->fdir_mask, &mask, sizeof(mask));
 		err = ixgbe_fdir_set_input_mask_82599(hw, &mask);
 		if (err) {
-			DPRINTK(DRV, ERR, "Error writing mask\n");
+			e_err(drv, "Error writing mask\n");
 			goto err_out_w_lock;
 		}
 	} else if (memcmp(&adapter->fdir_mask, &mask, sizeof(mask))) {
-		DPRINTK(DRV, ERR, "Only one mask supported per port\n");
+		e_err(drv, "Only one mask supported per port\n");
 		goto err_out_w_lock;
 	}
 
@@ -2969,7 +3005,9 @@ static int ixgbe_set_rss_hash_opt(struct ixgbe_adapter *adapter,
 	case ESP_V6_FLOW:
 	case SCTP_V6_FLOW:
 		if (!(nfc->data & RXH_IP_SRC) ||
-		    !(nfc->data & RXH_IP_DST))
+		    !(nfc->data & RXH_IP_DST) ||
+		    (nfc->data & RXH_L4_B_0_1) ||
+		    (nfc->data & RXH_L4_B_2_3))
 			return -EINVAL;
 		break;
 	default:
@@ -3033,29 +3071,29 @@ static int ixgbe_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 
 #endif /* ETHTOOL_GRXRINGS */
 static struct ethtool_ops ixgbe_ethtool_ops = {
-	.get_settings           = ixgbe_get_settings,
-	.set_settings           = ixgbe_set_settings,
-	.get_drvinfo            = ixgbe_get_drvinfo,
-	.get_regs_len           = ixgbe_get_regs_len,
-	.get_regs               = ixgbe_get_regs,
-	.get_wol                = ixgbe_get_wol,
-	.set_wol                = ixgbe_set_wol,
-	.nway_reset             = ixgbe_nway_reset,
-	.get_link               = ethtool_op_get_link,
-	.get_eeprom_len         = ixgbe_get_eeprom_len,
-	.get_eeprom             = ixgbe_get_eeprom,
-	.set_eeprom             = ixgbe_set_eeprom,
-	.get_ringparam          = ixgbe_get_ringparam,
-	.set_ringparam          = ixgbe_set_ringparam,
-	.get_pauseparam         = ixgbe_get_pauseparam,
-	.set_pauseparam         = ixgbe_set_pauseparam,
-	.get_msglevel           = ixgbe_get_msglevel,
-	.set_msglevel           = ixgbe_set_msglevel,
+	.get_settings		= ixgbe_get_settings,
+	.set_settings		= ixgbe_set_settings,
+	.get_drvinfo		= ixgbe_get_drvinfo,
+	.get_regs_len		= ixgbe_get_regs_len,
+	.get_regs		= ixgbe_get_regs,
+	.get_wol		= ixgbe_get_wol,
+	.set_wol		= ixgbe_set_wol,
+	.nway_reset		= ixgbe_nway_reset,
+	.get_link		= ethtool_op_get_link,
+	.get_eeprom_len		= ixgbe_get_eeprom_len,
+	.get_eeprom		= ixgbe_get_eeprom,
+	.set_eeprom		= ixgbe_set_eeprom,
+	.get_ringparam		= ixgbe_get_ringparam,
+	.set_ringparam		= ixgbe_set_ringparam,
+	.get_pauseparam		= ixgbe_get_pauseparam,
+	.set_pauseparam		= ixgbe_set_pauseparam,
+	.get_msglevel		= ixgbe_get_msglevel,
+	.set_msglevel		= ixgbe_set_msglevel,
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
 	.self_test_count	= ixgbe_diag_test_count,
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
-	.self_test              = ixgbe_diag_test,
-	.get_strings            = ixgbe_get_strings,
+	.self_test		= ixgbe_diag_test,
+	.get_strings		= ixgbe_get_strings,
 #ifdef HAVE_ETHTOOL_SET_PHYS_ID
 	.set_phys_id		= ixgbe_set_phys_id,
 #else
@@ -3064,28 +3102,28 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
 	.get_stats_count	= ixgbe_get_stats_count,
 #else /* HAVE_ETHTOOL_GET_SSET_COUNT */
-	.get_sset_count         = ixgbe_get_sset_count,
+	.get_sset_count		= ixgbe_get_sset_count,
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 	.get_ethtool_stats      = ixgbe_get_ethtool_stats,
 #ifdef HAVE_ETHTOOL_GET_PERM_ADDR
-	.get_perm_addr          = ethtool_op_get_perm_addr,
+	.get_perm_addr		= ethtool_op_get_perm_addr,
 #endif
-	.get_coalesce           = ixgbe_get_coalesce,
-	.set_coalesce           = ixgbe_set_coalesce,
+	.get_coalesce		= ixgbe_get_coalesce,
+	.set_coalesce		= ixgbe_set_coalesce,
 #ifndef HAVE_NDO_SET_FEATURES
-	.get_rx_csum            = ixgbe_get_rx_csum,
-	.set_rx_csum            = ixgbe_set_rx_csum,
-	.get_tx_csum            = ixgbe_get_tx_csum,
-	.set_tx_csum            = ixgbe_set_tx_csum,
-	.get_sg                 = ethtool_op_get_sg,
-	.set_sg                 = ethtool_op_set_sg,
+	.get_rx_csum		= ixgbe_get_rx_csum,
+	.set_rx_csum		= ixgbe_set_rx_csum,
+	.get_tx_csum		= ixgbe_get_tx_csum,
+	.set_tx_csum		= ixgbe_set_tx_csum,
+	.get_sg			= ethtool_op_get_sg,
+	.set_sg			= ethtool_op_set_sg,
 #ifdef NETIF_F_TSO
-	.get_tso                = ethtool_op_get_tso,
-	.set_tso                = ixgbe_set_tso,
+	.get_tso		= ethtool_op_get_tso,
+	.set_tso		= ixgbe_set_tso,
 #endif
 #ifdef ETHTOOL_GFLAGS
-	.get_flags              = ethtool_op_get_flags,
-	.set_flags              = ixgbe_set_flags,
+	.get_flags		= ethtool_op_get_flags,
+	.set_flags		= ixgbe_set_flags,
 #endif
 #endif /* HAVE_NDO_SET_FEATURES */
 #ifdef ETHTOOL_GRXRINGS

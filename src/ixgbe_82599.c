@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -213,6 +213,8 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->ops.get_media_type = &ixgbe_get_media_type_82599;
 	mac->ops.get_supported_physical_layer =
 				    &ixgbe_get_supported_physical_layer_82599;
+	mac->ops.disable_sec_rx_path = &ixgbe_disable_sec_rx_path_generic;
+	mac->ops.enable_sec_rx_path = &ixgbe_enable_sec_rx_path_generic;
 	mac->ops.enable_rx_dma = &ixgbe_enable_rx_dma_82599;
 	mac->ops.read_analog_reg8 = &ixgbe_read_analog_reg8_82599;
 	mac->ops.write_analog_reg8 = &ixgbe_write_analog_reg8_82599;
@@ -262,12 +264,10 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	/* Manageability interface */
 	mac->ops.set_fw_drv_ver = &ixgbe_set_fw_drv_ver_generic;
 
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 	mac->ops.get_thermal_sensor_data =
 					 &ixgbe_get_thermal_sensor_data_generic;
 	mac->ops.init_thermal_sensor_thresh =
 				      &ixgbe_init_thermal_sensor_thresh_generic;
-#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 
 	return ret_val;
 }
@@ -404,6 +404,7 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_SFP_FCOE:
 	case IXGBE_DEV_ID_82599_SFP_EM:
 	case IXGBE_DEV_ID_82599_SFP_SF2:
+	case IXGBE_DEV_ID_82599_SFP_SF_QP:
 	case IXGBE_DEV_ID_82599EN_SFP:
 		media_type = ixgbe_media_type_fiber;
 		break;
@@ -1857,7 +1858,7 @@ s32 ixgbe_identify_phy_82599(struct ixgbe_hw *hw)
 		if (hw->mac.ops.get_media_type(hw) == ixgbe_media_type_copper)
 			goto out;
 		else
-			status = ixgbe_identify_sfp_module_generic(hw);
+			status = ixgbe_identify_module_generic(hw);
 	}
 
 	/* Set PHY type none if no PHY detected */
@@ -2001,9 +2002,6 @@ out:
  **/
 s32 ixgbe_enable_rx_dma_82599(struct ixgbe_hw *hw, u32 regval)
 {
-#define IXGBE_MAX_SECRX_POLL 30
-	int i;
-	int secrxreg;
 
 	/*
 	 * Workaround for 82599 silicon errata when enabling the Rx datapath.
@@ -2011,28 +2009,12 @@ s32 ixgbe_enable_rx_dma_82599(struct ixgbe_hw *hw, u32 regval)
 	 * the Rx DMA unit.  Therefore, make sure the security engine is
 	 * completely disabled prior to enabling the Rx unit.
 	 */
-	secrxreg = IXGBE_READ_REG(hw, IXGBE_SECRXCTRL);
-	secrxreg |= IXGBE_SECRXCTRL_RX_DIS;
-	IXGBE_WRITE_REG(hw, IXGBE_SECRXCTRL, secrxreg);
-	for (i = 0; i < IXGBE_MAX_SECRX_POLL; i++) {
-		secrxreg = IXGBE_READ_REG(hw, IXGBE_SECRXSTAT);
-		if (secrxreg & IXGBE_SECRXSTAT_SECRX_RDY)
-			break;
-		else
-			/* Use interrupt-safe sleep just in case */
-			udelay(10);
-	}
 
-	/* For informational purposes only */
-	if (i >= IXGBE_MAX_SECRX_POLL)
-		hw_dbg(hw, "Rx unit being enabled before security "
-			 "path fully disabled.  Continuing with init.\n");
+	hw->mac.ops.disable_sec_rx_path(hw);
 
 	IXGBE_WRITE_REG(hw, IXGBE_RXCTRL, regval);
-	secrxreg = IXGBE_READ_REG(hw, IXGBE_SECRXCTRL);
-	secrxreg &= ~IXGBE_SECRXCTRL_RX_DIS;
-	IXGBE_WRITE_REG(hw, IXGBE_SECRXCTRL, secrxreg);
-	IXGBE_WRITE_FLUSH(hw);
+
+	hw->mac.ops.enable_sec_rx_path(hw);
 
 	return 0;
 }
@@ -2187,3 +2169,5 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
 
 	return ret_val;
 }
+
+

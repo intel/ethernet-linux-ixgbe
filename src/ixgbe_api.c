@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -104,6 +104,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82599_SFP_FCOE:
 		case IXGBE_DEV_ID_82599_SFP_EM:
 		case IXGBE_DEV_ID_82599_SFP_SF2:
+		case IXGBE_DEV_ID_82599_SFP_SF_QP:
 		case IXGBE_DEV_ID_82599EN_SFP:
 		case IXGBE_DEV_ID_82599_CX4:
 		case IXGBE_DEV_ID_82599_LS:
@@ -941,7 +942,6 @@ s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
 }
 
 
-#ifdef EXT_THERMAL_SENSOR_SUPPORT
 /**
  *  ixgbe_get_thermal_sensor_data - Gathers thermal sensor data
  *  @hw: pointer to hardware structure
@@ -965,7 +965,6 @@ s32 ixgbe_init_thermal_sensor_thresh(struct ixgbe_hw *hw)
 	return ixgbe_call_func(hw, hw->mac.ops.init_thermal_sensor_thresh, (hw),
 				IXGBE_NOT_IMPLEMENTED);
 }
-#endif /* EXT_THERMAL_SENSOR_SUPPORT */
 /**
  *  ixgbe_read_analog_reg8 - Reads 8 bit analog register
  *  @hw: pointer to hardware structure
@@ -1092,6 +1091,30 @@ s32 ixgbe_enable_rx_dma(struct ixgbe_hw *hw, u32 regval)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.enable_rx_dma,
 			       (hw, regval), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_disable_sec_rx_path - Stops the receive data path
+ *  @hw: pointer to hardware structure
+ *
+ *  Stops the receive data path.
+ **/
+s32 ixgbe_disable_sec_rx_path(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.disable_sec_rx_path,
+				(hw), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_enable_sec_rx_path - Enables the receive data path
+ *  @hw: pointer to hardware structure
+ *
+ *  Enables the receive data path.
+ **/
+s32 ixgbe_enable_sec_rx_path(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.enable_sec_rx_path,
+				(hw), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
