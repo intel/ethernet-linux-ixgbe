@@ -174,8 +174,8 @@ void ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 #ifdef CONFIG_PCI_IOV
 	/* disable iov and allow time for transactions to clear */
 	pci_disable_sriov(adapter->pdev);
-#endif
 
+#endif
 	/* turn off device IOV mode */
 	gcr = IXGBE_READ_REG(hw, IXGBE_GCR_EXT);
 	gcr &= ~(IXGBE_GCR_EXT_SRIOV);
@@ -499,6 +499,9 @@ inline void ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 reg;
 	u32 reg_offset, vf_shift;
+        /* q_per_pool assumes that DCB is not enabled, hence in 64 pool mode */
+        u32 q_per_pool = 2;
+        int i;
 
 	vf_shift = vf % 32;
 	reg_offset = vf / 32;
@@ -515,6 +518,14 @@ inline void ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	reg = IXGBE_READ_REG(hw, IXGBE_VMECM(reg_offset));
 	reg |= (1 << vf_shift);
 	IXGBE_WRITE_REG(hw, IXGBE_VMECM(reg_offset), reg);
+
+        /* Reset the VFs TDWBAL and TDWBAH registers
+         * which are not cleared by an FLR
+         */
+        for (i = 0; i < q_per_pool; i++) {
+                IXGBE_WRITE_REG(hw, IXGBE_PVFTDWBAHn(q_per_pool, vf, i), 0);
+                IXGBE_WRITE_REG(hw, IXGBE_PVFTDWBALn(q_per_pool, vf, i), 0);
+        }
 
 	ixgbe_vf_reset_event(adapter, vf);
 }
@@ -553,7 +564,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 
 		if (is_valid_ether_addr(new_mac) &&
 		    !adapter->vfinfo[vf].pf_set_mac)
-			ixgbe_set_vf_mac(adapter, vf, vf_mac);
+			ixgbe_set_vf_mac(adapter, vf, new_mac);
 		else
 			ixgbe_set_vf_mac(adapter,
 				 vf, adapter->vfinfo[vf].vf_mac_addresses);
@@ -625,6 +636,13 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 	case IXGBE_VF_SET_MACVLAN:
 		index = (msgbuf[0] & IXGBE_VT_MSGINFO_MASK) >>
 			IXGBE_VT_MSGINFO_SHIFT;
+		if (adapter->vfinfo[vf].pf_set_mac && index > 0) {
+			e_warn(drv, "VF %d requested MACVLAN filter but is "
+				    "administratively denied\n", vf);
+			retval = -1;
+			break;
+		}
+
 #ifdef HAVE_VF_SPOOFCHK_CONFIGURE
 		/*
 		 * If the VF is allowed to set MAC filters then turn off
@@ -727,54 +745,82 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	dev_info(&adapter->pdev->dev, "Reload the VF driver to make this"
 				      " change effective.");
 	if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-		dev_warn(&adapter->pdev->dev, "The VF MAC address has been set,"
-			 " but the PF device is not up.\n");
-		dev_warn(&adapter->pdev->dev, "Bring the PF device up before"
-			 " attempting to use the VF device.\n");
+		dev_warn(&adapter->pdev->dev, "The VF MAC address has been set, but the PF device is not up.\n");
+		dev_warn(&adapter->pdev->dev, "Bring the PF device up before attempting to use the VF device.\n");
 	}
 	return ixgbe_set_vf_mac(adapter, vf, mac);
+}
+
+static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,
+				   int vf, u16 vlan, u8 qos)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	int err;
+
+	err = ixgbe_set_vf_vlan(adapter, true, vlan, vf);
+	if (err)
+		goto out;
+	ixgbe_set_vmvir(adapter, vlan | (qos << VLAN_PRIO_SHIFT), vf);
+	ixgbe_set_vmolr(hw, vf, false);
+	if (adapter->vfinfo[vf].spoofchk_enabled)
+		hw->mac.ops.set_vlan_anti_spoofing(hw, true, vf);
+	adapter->vfinfo[vf].vlan_count++;
+	adapter->vfinfo[vf].pf_vlan = vlan;
+	adapter->vfinfo[vf].pf_qos = qos;
+	dev_info(&adapter->pdev->dev,
+		 "Setting VLAN %d, QOS 0x%x on VF %d\n", vlan, qos, vf);
+	if (test_bit(__IXGBE_DOWN, &adapter->state)) {
+		dev_warn(&adapter->pdev->dev, "The VF VLAN has been set, but the PF device is not up.\n");
+		dev_warn(&adapter->pdev->dev, "Bring the PF device up before attempting to use the VF device.\n");
+	}
+
+out:
+	return err;
+}
+
+static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	int err;
+
+	err = ixgbe_set_vf_vlan(adapter, false,
+				adapter->vfinfo[vf].pf_vlan, vf);
+	ixgbe_set_vmvir(adapter, 0, vf);
+	ixgbe_set_vmolr(hw, vf, true);
+	hw->mac.ops.set_vlan_anti_spoofing(hw, false, vf);
+	if (adapter->vfinfo[vf].vlan_count)
+		adapter->vfinfo[vf].vlan_count--;
+	adapter->vfinfo[vf].pf_vlan = 0;
+	adapter->vfinfo[vf].pf_qos = 0;
+
+	return err;
 }
 
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 {
 	int err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_hw *hw = &adapter->hw;
 
 	/* VLAN IDs accepted range 0-4094 */
 	if ((vf >= adapter->num_vfs) || (vlan > VLAN_VID_MASK-1) || (qos > 7))
 		return -EINVAL;
 	if (vlan || qos) {
-		err = ixgbe_set_vf_vlan(adapter, true, vlan, vf);
+		/*
+		 * Check if there is already a port VLAN set, if so
+		 * we have to delete the old one first before we
+		 * can set the new one.  The usage model had
+		 * previously assumed the user would delete the
+		 * old port VLAN before setting a new one but this
+		 * is not necessarily the case.
+		 */
+		if (adapter->vfinfo[vf].pf_vlan)
+			err = ixgbe_disable_port_vlan(adapter, vf);
 		if (err)
 			goto out;
-		ixgbe_set_vmvir(adapter, vlan | (qos << VLAN_PRIO_SHIFT), vf);
-		ixgbe_set_vmolr(hw, vf, false);
-		if (adapter->vfinfo[vf].spoofchk_enabled)
-			hw->mac.ops.set_vlan_anti_spoofing(hw, true, vf);
-		adapter->vfinfo[vf].vlan_count++;
-		adapter->vfinfo[vf].pf_vlan = vlan;
-		adapter->vfinfo[vf].pf_qos = qos;
-		dev_info(&adapter->pdev->dev,
-			 "Setting VLAN %d, QOS 0x%x on VF %d\n", vlan, qos, vf);
-		if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-			dev_warn(&adapter->pdev->dev,
-				 "The VF VLAN has been set,"
-				 " but the PF device is not up.\n");
-			dev_warn(&adapter->pdev->dev,
-				 "Bring the PF device up before"
-				 " attempting to use the VF device.\n");
-		}
+		err = ixgbe_enable_port_vlan(adapter, vf, vlan, qos);
+
 	} else {
-		err = ixgbe_set_vf_vlan(adapter, false,
-					adapter->vfinfo[vf].pf_vlan, vf);
-		ixgbe_set_vmvir(adapter, vlan, vf);
-		ixgbe_set_vmolr(hw, vf, true);
-		hw->mac.ops.set_vlan_anti_spoofing(hw, false, vf);
-		if (adapter->vfinfo[vf].vlan_count)
-			adapter->vfinfo[vf].vlan_count--;
-		adapter->vfinfo[vf].pf_vlan = 0;
-		adapter->vfinfo[vf].pf_qos = 0;
+		err = ixgbe_disable_port_vlan(adapter, vf);
 	}
 out:
 	return err;

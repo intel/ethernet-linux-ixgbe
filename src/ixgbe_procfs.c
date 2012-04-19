@@ -75,14 +75,11 @@ static int ixgbe_fwbanner(char *page, char **start, off_t off, int count,
 			 int *eof, void *data)
 {
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	int nvm_track_id;
 
 	if (adapter == NULL)
 		return snprintf(page, count, "error: no adapter\n");
 
-	nvm_track_id = (adapter->eeprom_verh << 16) | adapter->eeprom_verl;
-
-	return snprintf(page, count, "0x%08x\n", nvm_track_id);
+	return snprintf(page, count, "%s\n", adapter->eeprom_id);
 }
 
 static int ixgbe_porttype(char *page, char **start, off_t off,

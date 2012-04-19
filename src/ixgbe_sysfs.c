@@ -128,13 +128,11 @@ static ssize_t ixgbe_fwbanner(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	struct ixgbe_adapter *adapter = ixgbe_get_adapter(kobj);
-	int nvm_track_id;
 
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
-	nvm_track_id = (adapter->eeprom_verh << 16) | adapter->eeprom_verl;
 
-	return snprintf(buf, PAGE_SIZE, "0x%08x\n", nvm_track_id);
+	return snprintf(buf, PAGE_SIZE, "%s\n", adapter->eeprom_id);
 }
 
 static ssize_t ixgbe_porttype(struct kobject *kobj,

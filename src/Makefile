@@ -42,7 +42,7 @@ CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
          ixgbe_sriov.h ixgbe_mbx.h \
          ixgbe_dcb.h \
-         ixgbe_phy.h ixgbe_ptp.h
+         ixgbe_phy.h
 ifeq (,$(BUILD_KERNEL))
 BUILD_KERNEL=$(shell uname -r)
 endif

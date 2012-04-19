@@ -1656,6 +1656,15 @@ extern void *_kc_kzalloc(size_t size, int flags);
 typedef unsigned gfp_t;
 #endif
 #endif /* !RHEL4.3->RHEL5.0 */
+
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,9) )
+#ifdef CONFIG_X86_64
+#define dma_sync_single_range_for_cpu(dev, dma_handle, offset, size, dir)       \
+	dma_sync_single_for_cpu(dev, dma_handle, size, dir)
+#define dma_sync_single_range_for_device(dev, dma_handle, offset, size, dir)    \
+	dma_sync_single_for_device(dev, dma_handle, size, dir)
+#endif
+#endif
 #endif /* < 2.6.14 */
 
 /*****************************************************************************/
@@ -2856,6 +2865,9 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 #define skb_checksum_start_offset(skb) _kc_skb_checksum_start_offset(skb)
 #endif /* 2.6.22 -> 2.6.37 */
 #ifdef CONFIG_DCB
+#ifndef IEEE_8021QAZ_MAX_TCS
+#define IEEE_8021QAZ_MAX_TCS 8
+#endif
 #ifndef DCB_CAP_DCBX_HOST
 #define DCB_CAP_DCBX_HOST		0x01
 #endif
@@ -2893,6 +2905,20 @@ extern u8 _kc_netdev_get_prio_tc_map(struct net_device *dev, u8 up);
 #ifndef HAVE_MQPRIO
 #define HAVE_MQPRIO
 #endif /* HAVE_MQPRIO */
+#ifdef CONFIG_DCB
+#ifndef HAVE_DCBNL_IEEE
+#define HAVE_DCBNL_IEEE
+#ifndef IEEE_8021QAZ_TSA_STRICT
+#define IEEE_8021QAZ_TSA_STRICT		0
+#endif
+#ifndef IEEE_8021QAZ_TSA_ETS
+#define IEEE_8021QAZ_TSA_ETS		2
+#endif
+#ifndef IEEE_8021QAZ_APP_SEL_ETHERTYPE
+#define IEEE_8021QAZ_APP_SEL_ETHERTYPE	1
+#endif
+#endif
+#endif /* CONFIG_DCB */
 #endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)) */
 #else /* < 2.6.39 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
@@ -3058,4 +3084,23 @@ typedef u32 netdev_features_t;
 #endif
 #endif /* < 3.3.0 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0) )
+#ifndef NETIF_F_RXFCS
+#define NETIF_F_RXFCS	0
+#endif /* NETIF_F_RXFCS */
+#ifndef NETIF_F_RXALL
+#define NETIF_F_RXALL	0
+#endif /* NETIF_F_RXALL */
+
+#define NUMTCS_RETURNS_U8
+
+
+#endif /* < 3.4.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0) )
+#else
+#define HAVE_FDB_OPS
+#endif /* < 3.5.0 */
 #endif /* _KCOMPAT_H_ */

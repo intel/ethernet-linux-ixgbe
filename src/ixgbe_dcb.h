@@ -101,8 +101,10 @@ struct ixgbe_dcb_tc_config {
 };
 
 enum ixgbe_dcb_pba {
-	ixgbe_dcb_pba_equal, /* PBA[0-7] each use 64KB FIFO */
-	ixgbe_dcb_pba_80_48 /* PBA[0-3] each use 80KB, PBA[4-7] each use 48KB */
+	/* PBA[0-7] each use 64KB FIFO */
+	ixgbe_dcb_pba_equal = PBA_STRATEGY_EQUAL,
+	/* PBA[0-3] each use 80KB, PBA[4-7] each use 48KB */
+	ixgbe_dcb_pba_80_48 = PBA_STRATEGY_WEIGHTED
 };
 
 struct ixgbe_dcb_num_tcs {

@@ -96,41 +96,6 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 }
 
 /**
- * ixgbe_dcb_config_packet_buffers_82598 - Configure packet buffers
- * @hw: pointer to hardware structure
- * @dcb_config: pointer to ixgbe_dcb_config structure
- *
- * Configure packet buffers for DCB mode.
- */
-s32 ixgbe_dcb_config_packet_buffers_82598(struct ixgbe_hw *hw,
-					  struct ixgbe_dcb_config *dcb_config)
-{
-	u32 value = IXGBE_RXPBSIZE_64KB;
-	u8  i = 0;
-
-	/* Setup Rx packet buffer sizes */
-	if (dcb_config->rx_pba_cfg == ixgbe_dcb_pba_80_48) {
-		/* Setup the first four at 80KB */
-		value = IXGBE_RXPBSIZE_80KB;
-
-		for (; i < 4; i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
-
-		/* Setup the last four at 48KB...don't re-init i */
-		value = IXGBE_RXPBSIZE_48KB;
-	}
-
-	for (; i < IXGBE_MAX_PACKET_BUFFERS; i++)
-		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), value);
-
-	/* Setup Tx packet buffer sizes */
-	for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++)
-		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), IXGBE_TXPBSIZE_40KB);
-
-	return 0;
-}
-
-/**
  * ixgbe_dcb_config_rx_arbiter_82598 - Config Rx data arbiter
  * @hw: pointer to hardware structure
  * @dcb_config: pointer to ixgbe_dcb_config structure
@@ -283,61 +248,46 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82598(struct ixgbe_hw *hw,
  */
 s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw, u8 pfc_en)
 {
-	u32 reg;
+	u32 fcrtl, reg;
 	u8 i;
 
-	if (!pfc_en)
-		goto out;
-
-#ifdef CONFIG_DCB
-	/* Block LFC now that we're configuring PFC */
-	hw->fc.requested_mode = ixgbe_fc_pfc;
-
-#endif /* CONFIG_DCB */
 	/* Enable Transmit Priority Flow Control */
 	reg = IXGBE_READ_REG(hw, IXGBE_RMCS);
 	reg &= ~IXGBE_RMCS_TFCE_802_3X;
-	/* correct the reporting of our flow control status */
 	reg |= IXGBE_RMCS_TFCE_PRIORITY;
 	IXGBE_WRITE_REG(hw, IXGBE_RMCS, reg);
 
 	/* Enable Receive Priority Flow Control */
 	reg = IXGBE_READ_REG(hw, IXGBE_FCTRL);
-	reg &= ~IXGBE_FCTRL_RFCE;
-	reg |= IXGBE_FCTRL_RPFCE;
+	reg &= ~(IXGBE_FCTRL_RPFCE | IXGBE_FCTRL_RFCE);
+
+	if (pfc_en)
+		reg |= IXGBE_FCTRL_RPFCE;
+
 	IXGBE_WRITE_REG(hw, IXGBE_FCTRL, reg);
 
-	/*
-	 * Configure flow control thresholds and enable priority flow control
-	 * for each traffic class.
-	 */
+	/* Configure PFC Tx thresholds per TC */
 	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		int enabled = pfc_en & (i << i);
+		if (!(pfc_en & (1 << i))) {
+			IXGBE_WRITE_REG(hw, IXGBE_FCRTL(i), 0);
+			IXGBE_WRITE_REG(hw, IXGBE_FCRTH(i), 0);
+			continue;
+		}
 
-		reg = hw->fc.low_water << 10;
-
-		if (enabled == ixgbe_dcb_pfc_enabled_txonly ||
-		    enabled == ixgbe_dcb_pfc_enabled)
-			reg |= IXGBE_FCRTL_XONE;
-
-		IXGBE_WRITE_REG(hw, IXGBE_FCRTL(i), reg);
-
-		reg = hw->fc.high_water[i] << 10;
-		if (enabled == ixgbe_dcb_pfc_enabled_txonly ||
-		    enabled == ixgbe_dcb_pfc_enabled)
-			reg |= IXGBE_FCRTH_FCEN;
-
+		fcrtl = (hw->fc.low_water[i] << 10) | IXGBE_FCRTL_XONE;
+		reg = (hw->fc.high_water[i] << 10) | IXGBE_FCRTH_FCEN;
+		IXGBE_WRITE_REG(hw, IXGBE_FCRTL(i), fcrtl);
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTH(i), reg);
 	}
 
 	/* Configure pause time */
-	for (i = 0; i < (IXGBE_DCB_MAX_TRAFFIC_CLASS >> 1); i++)
-		IXGBE_WRITE_REG(hw, IXGBE_FCTTV(i), 0x68006800);
+	reg = hw->fc.pause_time | (hw->fc.pause_time << 16);
+	for (i = 0; i < (IXGBE_DCB_MAX_TRAFFIC_CLASS / 2); i++)
+		IXGBE_WRITE_REG(hw, IXGBE_FCTTV(i), reg);
 
 	/* Configure flow control refresh threshold value */
-	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, 0x3400);
+	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
 
-out:
 	return 0;
 }
 
@@ -381,7 +331,7 @@ s32 ixgbe_dcb_config_tc_stats_82598(struct ixgbe_hw *hw)
  * Configure dcb settings and enable dcb mode.
  */
 s32 ixgbe_dcb_hw_config_82598(struct ixgbe_hw *hw, int link_speed,
-			      u8 pfc_en, u16 *refill, u16 *max, u8 *bwg_id,
+			      u16 *refill, u16 *max, u8 *bwg_id,
 			      u8 *tsa)
 {
 	ixgbe_dcb_config_rx_arbiter_82598(hw, refill, max, tsa);
@@ -389,7 +339,6 @@ s32 ixgbe_dcb_hw_config_82598(struct ixgbe_hw *hw, int link_speed,
 					       tsa);
 	ixgbe_dcb_config_tx_data_arbiter_82598(hw, refill, max, bwg_id,
 					       tsa);
-	ixgbe_dcb_config_pfc_82598(hw, pfc_en);
 	ixgbe_dcb_config_tc_stats_82598(hw);
 
 

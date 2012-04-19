@@ -95,64 +95,6 @@ s32 ixgbe_dcb_get_pfc_stats_82599(struct ixgbe_hw *hw,
 }
 
 /**
- * ixgbe_dcb_config_packet_buffers_82599 - Configure DCB packet buffers
- * @hw: pointer to hardware structure
- * @dcb_config: pointer to ixgbe_dcb_config structure
- *
- * Configure packet buffers for DCB mode.
- */
-s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *hw,
-					  struct ixgbe_dcb_config *dcb_config)
-{
-	int num_tcs = dcb_config->num_tcs.pg_tcs;
-	u32 rx_pb_size = hw->mac.rx_pb_size << IXGBE_RXPBSIZE_SHIFT;
-	u32 rxpktsize;
-	u32 txpktsize;
-	u32 txpbthresh;
-	u8  i = 0;
-
-	/*
-	 * This really means configure the first half of the TCs
-	 * (Traffic Classes) to use 5/8 of the Rx packet buffer
-	 * space.  To determine the size of the buffer for each TC,
-	 * we are multiplying the average size by 5/4 and applying
-	 * it to half of the traffic classes.
-	 */
-	if (dcb_config->rx_pba_cfg == ixgbe_dcb_pba_80_48) {
-		rxpktsize = (rx_pb_size * 5) / (num_tcs * 4);
-		rx_pb_size -= rxpktsize * (num_tcs / 2);
-		for (; i < (num_tcs / 2); i++)
-			IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize);
-	}
-
-	/* Divide the remaining Rx packet buffer evenly among the TCs */
-	rxpktsize = rx_pb_size / (num_tcs - i);
-	for (; i < num_tcs; i++)
-		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), rxpktsize);
-
-	/*
-	 * Setup Tx packet buffer and threshold equally for all TCs
-	 * TXPBTHRESH register is set in K so divide by 1024 and subtract
-	 * 10 since the largest packet we support is just over 9K.
-	 */
-	txpktsize = IXGBE_TXPBSIZE_MAX / num_tcs;
-	txpbthresh = (txpktsize / 1024) - IXGBE_TXPKT_SIZE_MAX;
-	for (i = 0; i < num_tcs; i++) {
-		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), txpktsize);
-		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), txpbthresh);
-	}
-
-	/* Clear unused TCs, if any, to zero buffer size*/
-	for (; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(i), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_TXPBTHRESH(i), 0);
-	}
-
-	return 0;
-}
-
-/**
  * ixgbe_dcb_config_rx_arbiter_82599 - Config Rx Data arbiter
  * @hw: pointer to hardware structure
  * @dcb_config: pointer to ixgbe_dcb_config structure
@@ -327,29 +269,40 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
  */
 s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 {
-	u32 i, j, reg;
+	u32 i, j, fcrtl, reg;
 	u8 max_tc = 0;
 
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+	/* Enable Transmit Priority Flow Control */
+	IXGBE_WRITE_REG(hw, IXGBE_FCCFG, IXGBE_FCCFG_TFCE_PRIORITY);
+
+	/* Enable Receive Priority Flow Control */
+	reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
+	reg |= IXGBE_MFLCN_DPF;
+
+	/*
+	 * X540 supports per TC Rx priority flow control.  So
+	 * clear all TCs and only enable those that should be
+	 * enabled.
+	 */
+	reg &= ~(IXGBE_MFLCN_RPFCE_MASK | IXGBE_MFLCN_RFCE);
+
+	if (hw->mac.type == ixgbe_mac_X540)
+		reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
+
+	if (pfc_en)
+		reg |= IXGBE_MFLCN_RPFCE;
+
+	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
+
+	for (i = 0; i < IXGBE_DCB_MAX_USER_PRIORITY; i++) {
 		if (map[i] > max_tc)
 			max_tc = map[i];
 	}
 
-#ifdef CONFIG_DCB
-	/* Block LFC now that we're configuring PFC */
-	hw->fc.requested_mode = ixgbe_fc_pfc;
 
-#endif /* CONFIG_DCB */
 	/* Configure PFC Tx thresholds per TC */
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+	for (i = 0; i <= max_tc; i++) {
 		int enabled = 0;
-
-		if (i > max_tc) {
-			reg = 0;
-			IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), reg);
-			IXGBE_WRITE_REG(hw, IXGBE_FCRTH_82599(i), reg);
-			continue;
-		}
 
 		for (j = 0; j < IXGBE_DCB_MAX_USER_PRIORITY; j++) {
 			if ((map[j] == i) && (pfc_en & (1 << j))) {
@@ -358,16 +311,21 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 			}
 		}
 
-		reg = hw->fc.low_water << 10;
+		if (enabled) {
+			reg = (hw->fc.high_water[i] << 10) | IXGBE_FCRTH_FCEN;
+			fcrtl = (hw->fc.low_water[i] << 10) | IXGBE_FCRTL_XONE;
+			IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), fcrtl);
+		} else {
+			reg = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i)) - 32;
+			IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), 0);
+		}
 
-		if (enabled)
-			reg |= IXGBE_FCRTL_XONE;
-		IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), reg);
-
-		reg = hw->fc.high_water[i] << 10;
-		if (enabled)
-			reg |= IXGBE_FCRTH_FCEN;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTH_82599(i), reg);
+	}
+
+	for (; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_FCRTL_82599(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_FCRTH_82599(i), 0);
 	}
 
 	/* Configure pause time (2 TCs per register) */
@@ -377,27 +335,6 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 
 	/* Configure flow control refresh threshold value */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
-
-	/* Enable Transmit PFC */
-	reg = 0;
-	if (pfc_en)
-		reg = IXGBE_FCCFG_TFCE_PRIORITY;
-	IXGBE_WRITE_REG(hw, IXGBE_FCCFG, reg);
-
-	/* Enable Receive PFC */
-	reg = IXGBE_READ_REG(hw, IXGBE_MFLCN);
-	reg |= IXGBE_MFLCN_DPF;
-	reg &= ~(IXGBE_MFLCN_RFCE | IXGBE_MFLCN_RPFCE);
-	if (pfc_en)
-		reg |= IXGBE_MFLCN_RPFCE;
-
-	if (hw->mac.type == ixgbe_mac_X540) {
-		reg |= IXGBE_MFLCN_RPFCM;
-		reg &= ~IXGBE_MFLCN_RPFCE_MASK;
-		reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
-	}
-
-	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, reg);
 
 	return 0;
 }
@@ -618,7 +555,7 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
  *
  * Configure dcb settings and enable dcb mode.
  */
-s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw, int link_speed, u8 pfc_en,
+s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw, int link_speed,
 			      u16 *refill, u16 *max, u8 *bwg_id, u8 *tsa,
 			      u8 *map)
 {
@@ -629,8 +566,6 @@ s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw, int link_speed, u8 pfc_en,
 					       tsa);
 	ixgbe_dcb_config_tx_data_arbiter_82599(hw, refill, max, bwg_id,
 					       tsa, map);
-	ixgbe_dcb_config_pfc_82599(hw, pfc_en, map);
-
 
 	return 0;
 }

@@ -117,6 +117,8 @@
 struct ixgbe_hw;
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
+extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
+
 #define IXGBE_READ_PCIE_WORD ixgbe_read_pci_cfg_word
 #define IXGBE_WRITE_PCIE_WORD ixgbe_write_pci_cfg_word
 #define IXGBE_EEPROM_GRANT_ATTEMPS 100
@@ -125,5 +127,6 @@ extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 #define IXGBE_NTOHS(_i) ntohs(_i)
 #define IXGBE_CPU_TO_LE32(_i) cpu_to_le32(_i)
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
+#define EWARN(H, W, S) ewarn(H, W, S) 
 
 #endif /* _IXGBE_OSDEP_H_ */

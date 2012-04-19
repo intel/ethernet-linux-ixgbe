@@ -114,7 +114,6 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 #ifndef IXGBE_NO_LRO
 	IXGBE_STAT("lro_aggregated", lro_stats.coal),
 	IXGBE_STAT("lro_flushed", lro_stats.flushed),
-	IXGBE_STAT("lro_recycled", lro_stats.recycled),
 #endif /* IXGBE_NO_LRO */
 	IXGBE_STAT("rx_no_dma_resources", hw_rx_no_dma_resources),
 	IXGBE_STAT("hw_rsc_aggregated", rsc_total_count),
@@ -298,8 +297,8 @@ int ixgbe_get_settings(struct net_device *netdev,
 		case ixgbe_sfp_type_not_present:
 			ecmd->port = PORT_NONE;
 			break;
-		case ixgbe_sfp_type_1g_cu_core0:
-		case ixgbe_sfp_type_1g_cu_core1:
+		case ixgbe_sfp_type_1g_core0:
+		case ixgbe_sfp_type_1g_core1:
 			ecmd->port = PORT_TP;
 			ecmd->supported = SUPPORTED_TP;
 			ecmd->advertising = (ADVERTISED_1000baseT_Full |
@@ -419,11 +418,6 @@ static void ixgbe_get_pauseparam(struct net_device *netdev,
 	} else if (hw->fc.current_mode == ixgbe_fc_full) {
 		pause->rx_pause = 1;
 		pause->tx_pause = 1;
-#ifdef CONFIG_DCB
-	} else if (hw->fc.current_mode == ixgbe_fc_pfc) {
-		pause->rx_pause = 0;
-		pause->tx_pause = 0;
-#endif
 	}
 }
 
@@ -432,32 +426,23 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct ixgbe_fc_info fc;
+	struct ixgbe_fc_info fc = hw->fc;
 
-	if (adapter->dcb_cfg.pfc_mode_enable ||
-		((hw->mac.type == ixgbe_mac_82598EB) &&
-		(adapter->flags & IXGBE_FLAG_DCB_ENABLED)))
+	/* 82598 does no support link flow control with DCB enabled */
+	if ((hw->mac.type == ixgbe_mac_82598EB) && 
+	    (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
 		return -EINVAL;
-
-	fc = hw->fc;
-
-	if (pause->autoneg != AUTONEG_ENABLE)
-		fc.disable_fc_autoneg = true;
-	else
-		fc.disable_fc_autoneg = false;
+	
+	fc.disable_fc_autoneg = (pause->autoneg != AUTONEG_ENABLE);
 
 	if ((pause->rx_pause && pause->tx_pause) || pause->autoneg)
 		fc.requested_mode = ixgbe_fc_full;
-	else if (pause->rx_pause && !pause->tx_pause)
+	else if (pause->rx_pause)
 		fc.requested_mode = ixgbe_fc_rx_pause;
-	else if (!pause->rx_pause && pause->tx_pause)
+	else if (pause->tx_pause)
 		fc.requested_mode = ixgbe_fc_tx_pause;
-	else if (!pause->rx_pause && !pause->tx_pause)
-		fc.requested_mode = ixgbe_fc_none;
 	else
-		return -EINVAL;
-
-	adapter->last_lfc_mode = fc.requested_mode;
+		fc.requested_mode = ixgbe_fc_none;
 
 	/* if the thing changed then we'll update and use new autoneg */
 	if (memcmp(&fc, &hw->fc, sizeof(struct ixgbe_fc_info))) {
@@ -920,20 +905,13 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 			      struct ethtool_drvinfo *drvinfo)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	char firmware_version[32];
-	u32 nvm_track_id;
 
 	strncpy(drvinfo->driver, ixgbe_driver_name,
 		sizeof(drvinfo->driver) - 1);
 	strncpy(drvinfo->version, ixgbe_driver_version,
 		sizeof(drvinfo->version) - 1);
 
-	nvm_track_id = (adapter->eeprom_verh << 16) |
-			adapter->eeprom_verl;
-	snprintf(firmware_version, sizeof(firmware_version), "0x%08x",
-		 nvm_track_id);
-
-	strncpy(drvinfo->fw_version, firmware_version,
+	strncpy(drvinfo->fw_version, adapter->eeprom_id,
 		sizeof(drvinfo->fw_version) - 1);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev),
 		sizeof(drvinfo->bus_info) - 1);
@@ -946,15 +924,13 @@ static void ixgbe_get_ringparam(struct net_device *netdev,
 				struct ethtool_ringparam *ring)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_ring *tx_ring = adapter->tx_ring[0];
-	struct ixgbe_ring *rx_ring = adapter->rx_ring[0];
 
 	ring->rx_max_pending = IXGBE_MAX_RXD;
 	ring->tx_max_pending = IXGBE_MAX_TXD;
 	ring->rx_mini_max_pending = 0;
 	ring->rx_jumbo_max_pending = 0;
-	ring->rx_pending = rx_ring->count;
-	ring->tx_pending = tx_ring->count;
+	ring->rx_pending = adapter->rx_ring_count;
+	ring->tx_pending = adapter->tx_ring_count;
 	ring->rx_mini_pending = 0;
 	ring->rx_jumbo_pending = 0;
 }
@@ -963,27 +939,25 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			       struct ethtool_ringparam *ring)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_ring *temp_tx_ring, *temp_rx_ring;
-	int i, err = 0;
+	struct ixgbe_ring *tx_ring = NULL, *rx_ring = NULL;
 	u32 new_rx_count, new_tx_count;
-	bool need_update = false;
+	int i, err = 0;
 
 	if ((ring->rx_mini_pending) || (ring->rx_jumbo_pending))
 		return -EINVAL;
-
-	new_rx_count = clamp_t(u32, ring->rx_pending,
-			       IXGBE_MIN_RXD, IXGBE_MAX_RXD);
-	new_rx_count = ALIGN(new_rx_count, IXGBE_REQ_RX_DESCRIPTOR_MULTIPLE);
 
 	new_tx_count = clamp_t(u32, ring->tx_pending,
 			       IXGBE_MIN_TXD, IXGBE_MAX_TXD);
 	new_tx_count = ALIGN(new_tx_count, IXGBE_REQ_TX_DESCRIPTOR_MULTIPLE);
 
-	if ((new_tx_count == adapter->tx_ring[0]->count) &&
-	    (new_rx_count == adapter->rx_ring[0]->count)) {
-		/* nothing to do */
+	new_rx_count = clamp_t(u32, ring->rx_pending,
+			       IXGBE_MIN_RXD, IXGBE_MAX_RXD);
+	new_rx_count = ALIGN(new_rx_count, IXGBE_REQ_RX_DESCRIPTOR_MULTIPLE);
+
+	/* if nothing to do return success */
+	if ((new_tx_count == adapter->tx_ring_count) &&
+	    (new_rx_count == adapter->rx_ring_count))
 		return 0;
-	}
 
 	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
 		usleep_range(1000, 2000);
@@ -998,86 +972,98 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 		goto clear_reset;
 	}
 
-	temp_tx_ring = vmalloc(adapter->num_tx_queues *
-			       sizeof(struct ixgbe_ring));
-	if (!temp_tx_ring) {
-		err = -ENOMEM;
-		goto clear_reset;
-	}
-
+	/* alloc updated Tx resources */
 	if (new_tx_count != adapter->tx_ring_count) {
+		tx_ring = vmalloc(adapter->num_tx_queues * sizeof(*tx_ring));
+		if (!tx_ring) {
+			err = -ENOMEM;
+			goto clear_reset;
+		}
+
 		for (i = 0; i < adapter->num_tx_queues; i++) {
-			memcpy(&temp_tx_ring[i], adapter->tx_ring[i],
-			       sizeof(struct ixgbe_ring));
-			temp_tx_ring[i].count = new_tx_count;
-			err = ixgbe_setup_tx_resources(&temp_tx_ring[i]);
+			/* clone ring and setup updated count */
+			tx_ring[i] = *adapter->tx_ring[i];
+			tx_ring[i].count = new_tx_count;
+			err = ixgbe_setup_tx_resources(&tx_ring[i]);
 			if (err) {
 				while (i) {
 					i--;
-					ixgbe_free_tx_resources(
-							      &temp_tx_ring[i]);
+					ixgbe_free_tx_resources(&tx_ring[i]);
 				}
+
+				vfree(tx_ring);
+				tx_ring = NULL;
+
 				goto clear_reset;
 			}
 		}
-		need_update = true;
 	}
 
-	temp_rx_ring = vmalloc(adapter->num_rx_queues *
-			       sizeof(struct ixgbe_ring));
-	if (!temp_rx_ring) {
-		err = -ENOMEM;
-		goto err_setup;
-	}
-
+	/* alloc updated Rx resources */
 	if (new_rx_count != adapter->rx_ring_count) {
+		rx_ring = vmalloc(adapter->num_rx_queues * sizeof(*rx_ring));
+		if (!rx_ring) {
+			err = -ENOMEM;
+			goto clear_reset;
+		}
+
 		for (i = 0; i < adapter->num_rx_queues; i++) {
-			memcpy(&temp_rx_ring[i], adapter->rx_ring[i],
-			       sizeof(struct ixgbe_ring));
-			temp_rx_ring[i].count = new_rx_count;
-			err = ixgbe_setup_rx_resources(&temp_rx_ring[i]);
+			/* clone ring and setup updated count */
+			rx_ring[i] = *adapter->rx_ring[i];
+			rx_ring[i].count = new_rx_count;
+			err = ixgbe_setup_rx_resources(&rx_ring[i]);
 			if (err) {
 				while (i) {
 					i--;
-					ixgbe_free_rx_resources(
-							      &temp_rx_ring[i]);
+					ixgbe_free_rx_resources(&rx_ring[i]);
 				}
-				goto err_setup;
+
+				vfree(rx_ring);
+				rx_ring = NULL;
+
+				goto clear_reset;
 			}
 		}
-		need_update = true;
 	}
 
-	/* if rings need to be updated, here's the place to do it in one shot */
-	if (need_update) {
-		ixgbe_down(adapter);
+	/* bring interface down to prepare for update */
+	ixgbe_down(adapter);
 
-		/* tx */
-		if (new_tx_count != adapter->tx_ring_count) {
-			for (i = 0; i < adapter->num_tx_queues; i++) {
-				ixgbe_free_tx_resources(adapter->tx_ring[i]);
-				memcpy(adapter->tx_ring[i], &temp_tx_ring[i],
-				       sizeof(struct ixgbe_ring));
-			}
-			adapter->tx_ring_count = new_tx_count;
+	/* Tx */
+	if (tx_ring) {
+		for (i = 0; i < adapter->num_tx_queues; i++) {
+			ixgbe_free_tx_resources(adapter->tx_ring[i]);
+			*adapter->tx_ring[i] = tx_ring[i];
 		}
+		adapter->tx_ring_count = new_tx_count;
 
-		/* rx */
-		if (new_rx_count != adapter->rx_ring_count) {
-			for (i = 0; i < adapter->num_rx_queues; i++) {
-				ixgbe_free_rx_resources(adapter->rx_ring[i]);
-				memcpy(adapter->rx_ring[i], &temp_rx_ring[i],
-				       sizeof(struct ixgbe_ring));
-			}
-			adapter->rx_ring_count = new_rx_count;
-		}
-		ixgbe_up(adapter);
+		vfree(tx_ring);
+		tx_ring = NULL;
 	}
 
-	vfree(temp_rx_ring);
-err_setup:
-	vfree(temp_tx_ring);
+	/* Rx */
+	if (rx_ring) {
+		for (i = 0; i < adapter->num_rx_queues; i++) {
+			ixgbe_free_rx_resources(adapter->rx_ring[i]);
+			*adapter->rx_ring[i] = rx_ring[i];
+		}
+		adapter->rx_ring_count = new_rx_count;
+
+		vfree(rx_ring);
+		rx_ring = NULL;
+	}
+
+	/* restore interface using new values */
+	ixgbe_up(adapter);
+
 clear_reset:
+	/* free Tx resources if Rx error is encountered */
+	if (tx_ring) {
+		for (i = 0; i < adapter->num_tx_queues; i++)
+			ixgbe_free_tx_resources(&tx_ring[i]);
+		vfree(tx_ring);
+	}
+
 	clear_bit(__IXGBE_RESETTING, &adapter->state);
 	return err;
 }
@@ -1782,7 +1768,7 @@ static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
 #ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	const int bufsz = rx_ring->rx_buf_len;
 #else
-	const int bufsz = PAGE_SIZE / 2;
+	const int bufsz = ixgbe_rx_bufsz(rx_ring);
 #endif
 	u16 rx_ntc, tx_ntc, count = 0;
 
@@ -2071,7 +2057,6 @@ static int ixgbe_wol_exclusion(struct ixgbe_adapter *adapter,
 	default:
 		wol->supported = 0;
 	}
-
 	return retval;
 }
 

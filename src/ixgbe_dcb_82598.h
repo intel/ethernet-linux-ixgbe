@@ -89,8 +89,5 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82598(struct ixgbe_hw *, u16 *, u16 *,
 s32 ixgbe_dcb_config_rx_arbiter_82598(struct ixgbe_hw *, u16 *, u16 *, u8 *);
 
 /* DCB initialization */
-s32 ixgbe_dcb_config_packet_buffers_82598(struct ixgbe_hw *,
-					  struct ixgbe_dcb_config *);
-s32 ixgbe_dcb_hw_config_82598(struct ixgbe_hw *, int, u8, u16 *, u16 *, u8 *,
-			      u8 *);
+s32 ixgbe_dcb_hw_config_82598(struct ixgbe_hw *, int, u16 *, u16 *, u8 *, u8 *);
 #endif /* _IXGBE_DCB_82958_H_ */

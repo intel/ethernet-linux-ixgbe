@@ -113,12 +113,9 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *, u16 *, u16 *, u8 *,
 				      u8 *, u8 *);
 
 /* DCB initialization */
-/* TODO - expose Linux's config packet buffers functions at API level */
-s32 ixgbe_dcb_config_packet_buffers_82599(struct ixgbe_hw *,
-					  struct ixgbe_dcb_config *);
 s32 ixgbe_dcb_config_82599(struct ixgbe_hw *,
 			   struct ixgbe_dcb_config *);
 
-s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *, int, u8, u16 *, u16 *, u8 *,
+s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *, int, u16 *, u16 *, u8 *,
 			      u8 *, u8 *);
 #endif /* _IXGBE_DCB_82959_H_ */

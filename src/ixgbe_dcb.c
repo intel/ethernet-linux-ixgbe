@@ -457,7 +457,7 @@ s32 ixgbe_dcb_config_rx_arbiter_cee(struct ixgbe_hw *hw,
 	s32 ret = IXGBE_NOT_IMPLEMENTED;
 	u8 tsa[IXGBE_DCB_MAX_TRAFFIC_CLASS]	= { 0 };
 	u8 bwgid[IXGBE_DCB_MAX_TRAFFIC_CLASS]	= { 0 };
-	u8 map[IXGBE_DCB_MAX_TRAFFIC_CLASS]	= { 0 };
+	u8 map[IXGBE_DCB_MAX_USER_PRIORITY]	= { 0 };
 	u16 refill[IXGBE_DCB_MAX_TRAFFIC_CLASS]	= { 0 };
 	u16 max[IXGBE_DCB_MAX_TRAFFIC_CLASS]	= { 0 };
 
@@ -532,7 +532,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter_cee(struct ixgbe_hw *hw,
 	s32 ret = IXGBE_NOT_IMPLEMENTED;
 	u8 tsa[IXGBE_DCB_MAX_TRAFFIC_CLASS];
 	u8 bwgid[IXGBE_DCB_MAX_TRAFFIC_CLASS];
-	u8 map[IXGBE_DCB_MAX_TRAFFIC_CLASS] = { 0 };
+	u8 map[IXGBE_DCB_MAX_USER_PRIORITY] = { 0 };
 	u16 refill[IXGBE_DCB_MAX_TRAFFIC_CLASS];
 	u16 max[IXGBE_DCB_MAX_TRAFFIC_CLASS];
 
@@ -571,7 +571,7 @@ s32 ixgbe_dcb_config_pfc_cee(struct ixgbe_hw *hw,
 {
 	s32 ret = IXGBE_NOT_IMPLEMENTED;
 	u8 pfc_en;
-	u8 map[IXGBE_DCB_MAX_TRAFFIC_CLASS] = { 0 };
+	u8 map[IXGBE_DCB_MAX_USER_PRIORITY] = { 0 };
 
 	ixgbe_dcb_unpack_map_cee(dcb_config, IXGBE_DCB_TX_CONFIG, map);
 	ixgbe_dcb_unpack_pfc_cee(dcb_config, map, &pfc_en);
@@ -628,7 +628,7 @@ s32 ixgbe_dcb_hw_config_cee(struct ixgbe_hw *hw,
 	u8 pfc_en;
 	u8 tsa[IXGBE_DCB_MAX_TRAFFIC_CLASS];
 	u8 bwgid[IXGBE_DCB_MAX_TRAFFIC_CLASS];
-	u8 map[IXGBE_DCB_MAX_TRAFFIC_CLASS] = { 0 };
+	u8 map[IXGBE_DCB_MAX_USER_PRIORITY] = { 0 };
 	u16 refill[IXGBE_DCB_MAX_TRAFFIC_CLASS];
 	u16 max[IXGBE_DCB_MAX_TRAFFIC_CLASS];
 
@@ -638,21 +638,17 @@ s32 ixgbe_dcb_hw_config_cee(struct ixgbe_hw *hw,
 	ixgbe_dcb_unpack_bwgid_cee(dcb_config, IXGBE_DCB_TX_CONFIG, bwgid);
 	ixgbe_dcb_unpack_tsa_cee(dcb_config, IXGBE_DCB_TX_CONFIG, tsa);
 	ixgbe_dcb_unpack_map_cee(dcb_config, IXGBE_DCB_TX_CONFIG, map);
-	ixgbe_dcb_unpack_pfc_cee(dcb_config, map, &pfc_en);
 
 	switch (hw->mac.type) {
 	case ixgbe_mac_82598EB:
-		ixgbe_dcb_config_packet_buffers_82598(hw, dcb_config);
 		ret = ixgbe_dcb_hw_config_82598(hw, dcb_config->link_speed,
-						pfc_en, refill, max, bwgid,
-						tsa);
+						refill, max, bwgid, tsa);
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
-		ixgbe_dcb_config_packet_buffers_82599(hw, dcb_config);
 		ixgbe_dcb_config_82599(hw, dcb_config);
 		ret = ixgbe_dcb_hw_config_82599(hw, dcb_config->link_speed,
-						pfc_en, refill, max, bwgid,
+						refill, max, bwgid,
 						tsa, map);
 
 		ixgbe_dcb_config_tc_stats_82599(hw, dcb_config);
@@ -660,6 +656,12 @@ s32 ixgbe_dcb_hw_config_cee(struct ixgbe_hw *hw,
 	default:
 		break;
 	}
+
+	if (!ret && dcb_config->pfc_mode_enable) {
+		ixgbe_dcb_unpack_pfc_cee(dcb_config, map, &pfc_en);
+		ret = ixgbe_dcb_config_pfc(hw, pfc_en, map);
+	}
+
 	return ret;
 }
 

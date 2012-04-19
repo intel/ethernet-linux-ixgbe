@@ -2,7 +2,7 @@ Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
 
-January 5, 2012
+March 15, 2012
 
 Contents
 ========
@@ -59,7 +59,7 @@ Configurations" later in this document.
 Identifying Your Adapter
 ========================
 
-The driver in this release is compatible with 82598 and 82599-based Intel 
+The driver in this release is compatible with 82598, 82599 and X540-based Intel 
 Ethernet Network Connections.
 
 For more information on how to identify your adapter, go to the Adapter &
@@ -297,10 +297,10 @@ parameter.
 0 = Setting InterruptThrottleRate to 0 turns off any interrupt moderation and 
 may improve small packet latency, but is generally not suitable for bulk 
 throughput traffic due to the increased cpu utilization of the higher interrupt
-rate. Please note that on 82599-based adapters, disabling InterruptThrottleRate
-will also result in the driver disabling HW RSC. On 82598-based adapters, 
-disabling InterruptThrottleRate will also result in disabling LRO (Large Receive
-Offloads).
+rate. Please note that on 82599 and X540-based adapters, disabling 
+InterruptThrottleRate will also result in the driver disabling HW RSC. On 
+82598-based adapters, disabling InterruptThrottleRate will also result in 
+disabling LRO (Large Receive Offloads).
 
 LLI (Low Latency Interrupts)
 ---------------------------- 
@@ -356,18 +356,6 @@ Default Value: 0 (disabled)
 
   Low Latency Interrupt on VLAN priority threshold.
 
-Node
-----
-Valid Range:   0-n
-Default Value: -1 (off)
-
-  0 - n: where n is the number of NUMA nodes (i.e. 0 - 3) currently online in 
-  your system
-  -1: turns this option off
-
-  The Node parameter will allow you to pick which NUMA node you want to have 
-  the adapter allocate memory on.
-
 max_vfs
 -------
 Valid Range:   1-63
@@ -380,17 +368,18 @@ Default Value: 0
   max_vfs worth of virtual function.  
 
 The parameters for the driver are referenced by position.  So, if you have a 
-dual port 82599-based adapter and you want N virtual functions per port, you 
-must specify a number for each port with each parameter separated by a comma.
+dual port 82599 or X540-based adapter and you want N virtual functions per 
+port, you must specify a number for each port with each parameter separated by
+a comma.
 
 For example:
   insmod ixgbe max_vfs=63,63
 
-NOTE: If both 82598 and 82599-based adapters are installed on the same machine,
-you must be careful in loading the driver with the parameters. Depending on 
-system configuration, number of slots, etc. it's impossible to predict in all
-cases where the positions would be on the command line and the user
-will have to specify zero in those positions occupied by an 82598 port.
+NOTE: If both 82598 and 82599 or X540-based adapters are installed on the same 
+machine, you must be careful in loading the driver with the parameters. 
+Depending on system configuration, number of slots, etc. it's impossible to 
+predict in all cases where the positions would be on the command line and the 
+user will have to specify zero in those positions occupied by an 82598 port.
 
 L2LBen
 ------
@@ -656,11 +645,11 @@ Additional Configurations
 
   HW RSC
   ------
-  82599-based adapters support HW based receive side coalescing (RSC) which can
-  merge multiple frames from the same IPv4 TCP/IP flow into a single structure 
-  that can span one or more descriptors. It works similarly to SW Large receive 
-  offload technique. By default HW RSC is enabled and SW LRO can not be used 
-  for 82599-based adapters unless HW RSC is disabled.
+  82599 and X540-based adapters support HW based receive side coalescing (RSC) 
+  which can merge multiple frames from the same IPv4 TCP/IP flow into a single
+  structure that can span one or more descriptors. It works similarly to SW
+  Large receive offload technique. By default HW RSC is enabled and SW LRO 
+  cannot be used for 82599 or X540-based adapters unless HW RSC is disabled.
  
   IXGBE_NO_HW_RSC is a compile time flag. The user can enable it at compile 
   time to remove support for HW RSC from the driver. The flag is used by adding 
@@ -857,7 +846,7 @@ Software Issues:
   Due to known hardware limitations, RSS can only filter in a maximum of 16 
   receive queues.
 
-  82599-based network connections support up to 64 queues.
+  82599 and X540-based network connections support up to 64 queues.
 
   Disable GRO when routing/bridging
   ---------------------------------
@@ -914,12 +903,12 @@ Software Issues:
   will lead to the issue.
 
   Enabling SR-IOV in a 32-bit or 64-bit Microsoft* Windows* Server 2008/R2 
-  Guest OS using Intel (R) 82576-based GbE or Intel (R) 82599-based 10GbE 
-  controller under KVM
+  Guest OS using Intel (R) 82576-based GbE, Intel (R) 82599-based or X540-based 
+  10GbE controller under KVM
   -----------------------------------------------------------------------------
   KVM Hypervisor/VMM supports direct assignment of a PCIe device to a VM.  This 
   includes traditional PCIe devices, as well as SR-IOV-capable devices using
-  Intel 82576-based and 82599-based controllers.
+  Intel 82576-based, 82599-based and X540-based controllers.
 
   While direct assignment of a PCIe device or an SR-IOV Virtual Function (VF)
   to a Linux-based VM running 2.6.32 or later kernel works fine, there is a
@@ -929,8 +918,8 @@ Software Issues:
   CPU model for the guests, and this older CPU model does not support MSI-X
   interrupts, which is a requirement for Intel SR-IOV.  
 
-  If you wish to use the Intel 82576 or 82599-based controllers in SR-IOV mode
-  with KVM and a Microsoft Windows Server 2008/R2 guest try the following 
+  If you wish to use the Intel 82576, 82599 or X540-based controllers in SR-IOV
+  mode with KVM and a Microsoft Windows Server 2008/R2 guest try the following 
   workaround. The workaround is to tell KVM to emulate a different model of CPU
   when using qemu to create the KVM guest: 
 
@@ -953,7 +942,14 @@ Software Issues:
   using ethtool ethX, try setting
 
       "LINKDELAY=5" in /etc/sysconfig/network-scripts/ifcfg-ethX.
+      NOTE: Link time can take up to 30 seconds. Adjust LINKDELAY value 
+      accordingly.
 
+  Host may reboot after removing PF when VF is active in guest
+  ------------------------------------------------------------
+  Using kernel versions earlier than 3.2, do not unload the PF driver with 
+  active VFs. Doing this will cause your VFs to stop working until you reload
+  the PF driver and may cause a spontaneous reboot of your system.
 
 Support
 =======

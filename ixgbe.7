@@ -4,7 +4,7 @@
 .\"
 .\" * Other names and brands may be claimed as the property of others.
 .\"
-.TH ixgbe 1 "January 5, 2012"
+.TH ixgbe 1 "February 15, 2012"
 
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
@@ -37,11 +37,9 @@ The following optional parameters are used by entering them on the command line 
 2-16 = enables RSS, with 2-16 queues
 .IP
 RSS also effects the number of transmit queues allocated on 2.6.23 and
-newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file.
-.IP
-NOTE: The RSS parameter has no effect on 82599-based adapters unless the 
-FdirMode parameter is simultaneously used to disable Flow Director. See 
-Intel(R) Ethernet Flow Director section in readme for more detail.
+newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file. 
+CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26.  Other options 
+enable multiqueue in 2.6.27 and newer kernels.
 .LP
 .B MQ - Multi Queue
 .IP
@@ -198,21 +196,6 @@ Flow Director allocated packet buffer size.
 Software ATR Tx packet sample rate. For example, when set to 20, every 20th
 packet, looks to see if the packet will create a new flow.
 .LP
-.B Node
-.IP
-.B Valid Range:
-0-n
-.br
-.B Default Value:
--1 (off)
-.IP
-0 - n: where n is the number of NUMA nodes (i.e. 0 - 3) currently online in 
-your system
--1: turns this option off
-.IP
-The Node parameter will allow you to pick which NUMA node you want to have 
-the adapter allocate memory on.
-.IP
 .B L2LBen
 .IP
 .B Valid Range: 

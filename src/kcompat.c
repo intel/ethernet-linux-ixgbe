@@ -903,8 +903,7 @@ int ixgbe_dcb_netlink_unregister(void)
 	return 0;
 }
 
-int ixgbe_copy_dcb_cfg(struct ixgbe_dcb_config *src_dcb_cfg,
-		       struct ixgbe_dcb_config *dst_dcb_cfg, int tc_max)
+int ixgbe_copy_dcb_cfg(struct ixgbe_adapter *adapter, int tc_max)
 {
 	return 0;
 }

@@ -871,7 +871,7 @@ out_disable:
 #ifdef HAVE_DCBNL_OPS_GETAPP
 /**
  * ixgbe_fcoe_getapp - retrieves current user priority bitmap for FCoE
- * @adapter : ixgbe adapter
+ * @netdev: the corresponding net_device
  *
  * Finds out the corresponding user priority bitmap from the current
  * traffic class that FCoE belongs to. Returns 0 as the invalid user
@@ -879,8 +879,9 @@ out_disable:
  *
  * Returns : 802.1p user priority bitmap for FCoE
  */
-u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter)
+u8 ixgbe_fcoe_getapp(struct net_device *netdev)
 {
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	return 1 << adapter->fcoe.up;
 }
 

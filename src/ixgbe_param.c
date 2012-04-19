@@ -162,8 +162,7 @@ IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable, "
  *
  * Valid Range: 0-63
  *  - 0 Disables SR-IOV
- *  - 1 Enables SR-IOV to default number of VFs enabled
- *  - 2-63 - enables SR-IOV and sets the number of VFs enabled
+ *  - 1-63 - enables SR-IOV and sets the number of VFs enabled
  *
  * Default Value: 0
  */
@@ -171,7 +170,7 @@ IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable, "
 #define MAX_SRIOV_VFS 63
 
 IXGBE_PARAM(max_vfs, "Number of Virtual Functions: 0 = disable (default), "
-	    "1 = default settings, 2-" XSTRINGIFY(MAX_SRIOV_VFS) " = enable "
+	    "1-" XSTRINGIFY(MAX_SRIOV_VFS) " = enable "
 	    "this many VFs");
 
 /* L2LBen - L2 Loopback enable
@@ -332,6 +331,15 @@ IXGBE_PARAM(FCoE, "Disable or enable FCoE Offload, default 1");
  * Default Value: 1
  */
 IXGBE_PARAM(LRO, "Large Receive Offload (0,1), default 1 = on");
+
+/* Enable/disable support for untested SFP+ modules on 82599-based adapters
+ *
+ * Valid Values: 0(Disable), 1(Enable)
+ *
+ * Default Value: 0
+ */
+IXGBE_PARAM(allow_unsupported_sfp, "Allow unsupported and untested "
+	    "SFP+ modules on 82599 based adapters, default 0 = Disable");
 
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
@@ -631,7 +639,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 					"queues are disabled.  "
 					"Disabling RSS.\n");
 				*aflags &= ~IXGBE_FLAG_RSS_ENABLED;
-				*aflags &= ~IXGBE_FLAG_DCB_CAPABLE;
 				feature[RING_F_RSS].indices = 0;
 			}
 		}
@@ -673,13 +680,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 		/* Check Interoperability */
 		if (*aflags & IXGBE_FLAG_VMDQ_ENABLED) {
-			if (!(*aflags & IXGBE_FLAG_VMDQ_CAPABLE)) {
-				DPRINTK(PROBE, INFO,
-					"VMDQ is not supported on this "
-					"hardware.  Disabling VMDQ.\n");
-				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-				feature[RING_F_VMDQ].indices = 0;
-			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
+			if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
 				DPRINTK(PROBE, INFO,
 					"VMDQ is not supported while multiple "
 					"queues are disabled.  "
@@ -707,15 +708,22 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.err  = "defaulting to Disabled",
 			.def  = OPTION_DISABLED,
 			.arg  = { .r = { .min = OPTION_DISABLED,
-					 .max = IXGBE_MAX_VF_FUNCTIONS} }
+					 .max = MAX_SRIOV_VFS} }
 		};
 
 #ifdef module_param_array
 		if (num_max_vfs > bd) {
 #endif
 			unsigned int vfs = max_vfs[bd];
-			ixgbe_validate_option(&vfs, &opt);
+			if (ixgbe_validate_option(&vfs, &opt)) {
+				vfs = 0;
+				DPRINTK(PROBE, INFO,
+					"max_vfs out of range "
+					"Disabling SR-IOV.\n");
+			}
+
 			adapter->num_vfs = vfs;
+
 			if (vfs)
 				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
 			else
@@ -1185,5 +1193,33 @@ no_fdir_sample:
 		}
 #endif
 	}
+	{ /*
+	   * allow_unsupported_sfp - Enable/Disable support for unsupported
+	   * and untested SFP+ modules.
+	   */
+	struct ixgbe_option opt = {
+			.type = enable_option,
+			.name = "allow_unsupported_sfp",
+			.err  = "defaulting to Disabled",
+			.def  = OPTION_DISABLED
+		};
+#ifdef module_param_array
+		if (num_allow_unsupported_sfp > bd) {
+#endif
+			unsigned int enable_unsupported_sfp =
+						      allow_unsupported_sfp[bd];
+			ixgbe_validate_option(&enable_unsupported_sfp, &opt);
+			if (enable_unsupported_sfp) {
+				adapter->hw.allow_unsupported_sfp = true;
+			} else {
+				adapter->hw.allow_unsupported_sfp = false;
+			}
+#ifdef module_param_array
+		} else if (opt.def == OPTION_ENABLED) {
+				adapter->hw.allow_unsupported_sfp = true;
+		} else {
+				adapter->hw.allow_unsupported_sfp = false;
+		}
+#endif
+	}
 }
-
