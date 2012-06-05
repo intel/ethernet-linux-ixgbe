@@ -76,7 +76,7 @@ static const char ixgbe_driver_string[] =
 
 #define MAJ 3
 #define MIN 9
-#define BUILD 15
+#define BUILD 17
 #define DRV_VERSION	__stringify(MAJ) "." __stringify(MIN) "." \
 			__stringify(BUILD) DRIVERNAPI DRV_HW_PERF FPGA VMDQ_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
@@ -119,6 +119,7 @@ DEFINE_PCI_DEVICE_TABLE(ixgbe_pci_tbl) = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_SFP_SF2)},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_LS)},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599EN_SFP)},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_QSFP_SF_QP)},
 	/* required last entry */
 	{0, }
 };
@@ -9843,7 +9844,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		snprintf(adapter->eeprom_id, sizeof(adapter->eeprom_id),
 			 "0x%08x", etrack_id);
 	}
-	
+
 	/* reset the hardware with the new settings */
 	err = hw->mac.ops.start_hw(hw);
 	if (err == IXGBE_ERR_EEPROM_VERSION) {
@@ -10116,7 +10117,7 @@ void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value)
 	pci_write_config_word(adapter->pdev, reg, value);
 }
 
-void ewarn(struct ixgbe_hw *hw, const char *st, u32 status) 
+void ewarn(struct ixgbe_hw *hw, const char *st, u32 status)
 {
 	struct ixgbe_adapter *adapter = hw->back;
 

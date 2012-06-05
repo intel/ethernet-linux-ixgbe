@@ -30,16 +30,15 @@ The following optional parameters are used by entering them on the command line 
 0 - 16
 .br
 .B Default Value:
-1
+0
 .IP
-0 = disables RSS
-1 = enables RSS and sets the descriptor queue count to 16 or the number of online cpus, whichever is less.
-2-16 = enables RSS, with 2-16 queues
+0 = Sets the descriptor queue count to whichever is less, number of CPUS or 16
+1-16 = Sets the descriptor queue count to 1-16
 .IP
-RSS also effects the number of transmit queues allocated on 2.6.23 and
-newer kernels with CONFIG_NET_MULTIQUEUE set in the kernel .config file. 
+RSS also effects the number of transmit queues allocated on 2.6.23 and      
+newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
 CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26.  Other options 
-enable multiqueue in 2.6.27 and newer kernels.
+enable multiqueue in 2.6.27 and newer kernels.     
 .LP
 .B MQ - Multi Queue
 .IP

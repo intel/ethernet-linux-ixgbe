@@ -297,12 +297,19 @@ int ixgbe_get_settings(struct net_device *netdev,
 		case ixgbe_sfp_type_not_present:
 			ecmd->port = PORT_NONE;
 			break;
-		case ixgbe_sfp_type_1g_core0:
-		case ixgbe_sfp_type_1g_core1:
+		case ixgbe_sfp_type_1g_cu_core0:
+		case ixgbe_sfp_type_1g_cu_core1:
 			ecmd->port = PORT_TP;
 			ecmd->supported = SUPPORTED_TP;
 			ecmd->advertising = (ADVERTISED_1000baseT_Full |
 				ADVERTISED_TP);
+			break;
+		case ixgbe_sfp_type_1g_sx_core0:
+		case ixgbe_sfp_type_1g_sx_core1:
+			ecmd->port = PORT_FIBRE;
+			ecmd->supported = SUPPORTED_FIBRE;
+			ecmd->advertising = (ADVERTISED_1000baseT_Full |
+				ADVERTISED_FIBRE);
 			break;
 		case ixgbe_sfp_type_unknown:
 		default:
@@ -429,10 +436,10 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 	struct ixgbe_fc_info fc = hw->fc;
 
 	/* 82598 does no support link flow control with DCB enabled */
-	if ((hw->mac.type == ixgbe_mac_82598EB) && 
+	if ((hw->mac.type == ixgbe_mac_82598EB) &&
 	    (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
 		return -EINVAL;
-	
+
 	fc.disable_fc_autoneg = (pause->autoneg != AUTONEG_ENABLE);
 
 	if ((pause->rx_pause && pause->tx_pause) || pause->autoneg)

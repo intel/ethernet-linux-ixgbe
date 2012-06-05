@@ -3069,7 +3069,9 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #endif
 #endif /* < 3.2.0 */
 
-#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE == RHEL_RELEASE_VERSION(6,2))
+#if (RHEL_RELEASE_CODE && \
+	(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,2)) && \
+	(RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))
 #undef ixgbe_get_netdev_tc_txq
 #define ixgbe_get_netdev_tc_txq(dev, tc) (&netdev_extended(dev)->qos_data.tc_to_txq[tc])
 #endif
