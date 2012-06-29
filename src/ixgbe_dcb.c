@@ -177,8 +177,8 @@ out:
 	return ret_val;
 }
 
-/* ixgbe_dcb_unpack_pfc_cee - Unpack dcb_config PFC info
- *
+/**
+ * ixgbe_dcb_unpack_pfc_cee - Unpack dcb_config PFC info
  * @cfg: dcb configuration to unpack into hardware consumable fields
  * @map: user priority to traffic class map
  * @pfc_up: u8 to store user priority PFC bitmask
@@ -190,111 +190,88 @@ out:
  */
 void ixgbe_dcb_unpack_pfc_cee(struct ixgbe_dcb_config *cfg, u8 *map, u8 *pfc_up)
 {
-	int tc, up;
+	struct ixgbe_dcb_tc_config *tc_config = &cfg->tc_config[0];
+	int up;
 
-	*pfc_up = 0;
-	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++) {
-		if (cfg->tc_config[tc].pfc == ixgbe_dcb_pfc_disabled)
-			continue;
-
-		/* PFC is enabled on 'tc' mark each user priority bit
-		 * in 'pfc_up' that has a user priority mapped to this
-		 * traffic class.
-		 */
-		for (up = 0; up < IXGBE_DCB_MAX_USER_PRIORITY; up++) {
-			if (map[up] == tc)
-				*pfc_up |= 1 << up;
-		}
+	/*
+	 * If the TC for this user priority has PFC enabled then set the
+	 * matching bit in 'pfc_up' to reflect that PFC is enabled.
+	 */
+	for (*pfc_up = 0, up = 0; up < IXGBE_DCB_MAX_USER_PRIORITY; up++) {
+		if (tc_config[map[up]].pfc != ixgbe_dcb_pfc_disabled)
+			*pfc_up |= 1 << up;
 	}
 }
 
 void ixgbe_dcb_unpack_refill_cee(struct ixgbe_dcb_config *cfg, int direction,
 			     u16 *refill)
 {
-	struct ixgbe_dcb_tc_path *p;
-	int i;
+	struct ixgbe_dcb_tc_config *tc_config = &cfg->tc_config[0];
+	int tc;
 
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		p = &cfg->tc_config[i].path[direction];
-		refill[i] = p->data_credits_refill;
-	}
+	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++)
+		refill[tc] = tc_config[tc].path[direction].data_credits_refill;
 }
 
 void ixgbe_dcb_unpack_max_cee(struct ixgbe_dcb_config *cfg, u16 *max)
 {
-	int i;
+	struct ixgbe_dcb_tc_config *tc_config = &cfg->tc_config[0];
+	int tc;
 
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++)
-		max[i] = cfg->tc_config[i].desc_credits_max;
+	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++)
+		max[tc] = tc_config[tc].desc_credits_max;
 }
 
 void ixgbe_dcb_unpack_bwgid_cee(struct ixgbe_dcb_config *cfg, int direction,
 			    u8 *bwgid)
 {
-	struct ixgbe_dcb_tc_path *p;
-	int i;
+	struct ixgbe_dcb_tc_config *tc_config = &cfg->tc_config[0];
+	int tc;
 
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		p = &cfg->tc_config[i].path[direction];
-		bwgid[i] = p->bwg_id;
-	}
+	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++)
+		bwgid[tc] = tc_config[tc].path[direction].bwg_id;
 }
 
 void ixgbe_dcb_unpack_tsa_cee(struct ixgbe_dcb_config *cfg, int direction,
 			   u8 *tsa)
 {
-	struct ixgbe_dcb_tc_path *p;
-	int i;
+	struct ixgbe_dcb_tc_config *tc_config = &cfg->tc_config[0];
+	int tc;
 
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		p = &cfg->tc_config[i].path[direction];
-		tsa[i] = p->tsa;
-	}
+	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++)
+		tsa[tc] = tc_config[tc].path[direction].tsa;
 }
 
-/* ixgbe_dcb_bitmap_to_up - find first set user priority of bitmap
- * @bitmap: bitmap with each bit representing a UP
- *
- * returns the user priority of the bit set 1-8 or 0 if no bits
- * are set.
- */
-static u8 ixgbe_dcb_bitmap_to_up(u8 bitmap)
+u8 ixgbe_dcb_get_tc_from_up(struct ixgbe_dcb_config *cfg, int direction, u8 up)
 {
-	int j;
-	int up = -1;
+	struct ixgbe_dcb_tc_config *tc_config = &cfg->tc_config[0];
+	u8 prio_mask = 1 << up;
+	u8 tc = cfg->num_tcs.pg_tcs;
 
-	for (j = 0; j < IXGBE_DCB_MAX_TRAFFIC_CLASS; j++) {
-		if (bitmap & (1 << j)) {
-			up = j;
+	/* If tc is 0 then DCB is likely not enabled or supported */
+	if (!tc)
+		goto out;
+
+	/*
+	 * Test from maximum TC to 1 and report the first match we find.  If
+	 * we find no match we can assume that the TC is 0 since the TC must
+	 * be set for all user priorities
+	 */
+	for (tc--; tc; tc--) {
+		if (prio_mask & tc_config[tc].path[direction].up_to_tc_bitmap)
 			break;
-		}
 	}
-
-	return up < 0 ? 0 : up + 1;
+out:
+	return tc;
 }
 
 void ixgbe_dcb_unpack_map_cee(struct ixgbe_dcb_config *cfg, int direction,
 			      u8 *map)
 {
-	struct ixgbe_dcb_tc_path *p;
-	int up;
-	u8 i;
-	u8 tmap;
+	u8 up;
 
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		up = 0;
-		p = &cfg->tc_config[i].path[direction];
-		tmap = p->up_to_tc_bitmap;
-
-		up = ixgbe_dcb_bitmap_to_up(tmap);
-
-		while (up > 0) {
-			up--;
-			map[up] = i;
-			tmap &= ~(1 << up);
-			up = ixgbe_dcb_bitmap_to_up(tmap);
-		}
-	}
+	for (up = 0; up < IXGBE_DCB_MAX_USER_PRIORITY; up++)
+		map[up] = ixgbe_dcb_get_tc_from_up(cfg, direction, up);
 }
 
 /**

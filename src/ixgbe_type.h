@@ -60,7 +60,7 @@
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
 #define IXGBE_DEV_ID_82599_SFP_SF2		0x154D
-#define IXGBE_DEV_ID_82599_QSFP_SF_QP		0x1558
+#define IXGBE_DEV_ID_82599_SFP_SF_QP		0x154A
 #define IXGBE_DEV_ID_82599EN_SFP		0x1557
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
@@ -836,6 +836,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_GCR_EXT_VT_MODE_64	0x00000003
 #define IXGBE_GCR_EXT_SRIOV		(IXGBE_GCR_EXT_MSIX_EN | \
 					 IXGBE_GCR_EXT_VT_MODE_64)
+#define IXGBE_GCR_EXT_VT_MODE_MASK	0x00000003
 /* Time Sync Registers */
 #define IXGBE_TSYNCRXCTL	0x05188 /* Rx Time Sync Control register - RW */
 #define IXGBE_TSYNCTXCTL	0x08C00 /* Tx Time Sync Control register - RW */
@@ -856,6 +857,8 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_TRGTTIMH0	0x08C28 /* Target Time Register 0 High - RW */
 #define IXGBE_TRGTTIML1	0x08C2C /* Target Time Register 1 Low - RW */
 #define IXGBE_TRGTTIMH1	0x08C30 /* Target Time Register 1 High - RW */
+#define IXGBE_CLKTIML	0x08C34 /* Clock Out Time Register Low - RW */
+#define IXGBE_CLKTIMH	0x08C38 /* Clock Out Time Register High - RW */
 #define IXGBE_FREQOUT0	0x08C34 /* Frequency Out 0 Control register - RW */
 #define IXGBE_FREQOUT1	0x08C38 /* Frequency Out 1 Control register - RW */
 #define IXGBE_AUXSTMPL0	0x08C3C /* Auxiliary Time Stamp 0 register Low - RO */
@@ -1388,6 +1391,7 @@ enum {
 #define IXGBE_EICR_LINKSEC	0x00200000 /* PN Threshold */
 #define IXGBE_EICR_MNG		0x00400000 /* Manageability Event Interrupt */
 #define IXGBE_EICR_TS		0x00800000 /* Thermal Sensor Event */
+#define IXGBE_EICR_TIMESYNC	0x01000000 /* Timesync Event */
 #define IXGBE_EICR_GPI_SDP0	0x01000000 /* Gen Purpose Interrupt on SDP0 */
 #define IXGBE_EICR_GPI_SDP1	0x02000000 /* Gen Purpose Interrupt on SDP1 */
 #define IXGBE_EICR_GPI_SDP2	0x04000000 /* Gen Purpose Interrupt on SDP2 */
@@ -1405,6 +1409,7 @@ enum {
 #define IXGBE_EICS_MAILBOX	IXGBE_EICR_MAILBOX   /* VF to PF Mailbox Int */
 #define IXGBE_EICS_LSC		IXGBE_EICR_LSC /* Link Status Change */
 #define IXGBE_EICS_MNG		IXGBE_EICR_MNG /* MNG Event Interrupt */
+#define IXGBE_EICS_TIMESYNC	IXGBE_EICR_TIMESYNC /* Timesync Event */
 #define IXGBE_EICS_GPI_SDP0	IXGBE_EICR_GPI_SDP0 /* SDP0 Gen Purpose Int */
 #define IXGBE_EICS_GPI_SDP1	IXGBE_EICR_GPI_SDP1 /* SDP1 Gen Purpose Int */
 #define IXGBE_EICS_GPI_SDP2	IXGBE_EICR_GPI_SDP2 /* SDP2 Gen Purpose Int */
@@ -1423,6 +1428,7 @@ enum {
 #define IXGBE_EIMS_LSC		IXGBE_EICR_LSC /* Link Status Change */
 #define IXGBE_EIMS_MNG		IXGBE_EICR_MNG /* MNG Event Interrupt */
 #define IXGBE_EIMS_TS		IXGBE_EICR_TS /* Thermal Sensor Event */
+#define IXGBE_EIMS_TIMESYNC	IXGBE_EICR_TIMESYNC /* Timesync Event */
 #define IXGBE_EIMS_GPI_SDP0	IXGBE_EICR_GPI_SDP0 /* SDP0 Gen Purpose Int */
 #define IXGBE_EIMS_GPI_SDP1	IXGBE_EICR_GPI_SDP1 /* SDP1 Gen Purpose Int */
 #define IXGBE_EIMS_GPI_SDP2	IXGBE_EICR_GPI_SDP2 /* SDP2 Gen Purpose Int */
@@ -1440,6 +1446,7 @@ enum {
 #define IXGBE_EIMC_MAILBOX	IXGBE_EICR_MAILBOX /* VF to PF Mailbox Int */
 #define IXGBE_EIMC_LSC		IXGBE_EICR_LSC /* Link Status Change */
 #define IXGBE_EIMC_MNG		IXGBE_EICR_MNG /* MNG Event Interrupt */
+#define IXGBE_EIMC_TIMESYNC	IXGBE_EICR_TIMESYNC /* Timesync Event */
 #define IXGBE_EIMC_GPI_SDP0	IXGBE_EICR_GPI_SDP0 /* SDP0 Gen Purpose Int */
 #define IXGBE_EIMC_GPI_SDP1	IXGBE_EICR_GPI_SDP1 /* SDP1 Gen Purpose Int */
 #define IXGBE_EIMC_GPI_SDP2	IXGBE_EICR_GPI_SDP2  /* SDP2 Gen Purpose Int */
@@ -1525,6 +1532,7 @@ enum {
 #define IXGBE_ETQF_1588			0x40000000 /* bit 30 */
 #define IXGBE_ETQF_FILTER_EN		0x80000000 /* bit 31 */
 #define IXGBE_ETQF_POOL_ENABLE		(1 << 26) /* bit 26 */
+#define IXGBE_ETQF_POOL_SHIFT		20
 
 #define IXGBE_ETQS_RX_QUEUE		0x007F0000 /* bits 22:16 */
 #define IXGBE_ETQS_RX_QUEUE_SHIFT	16
@@ -1965,6 +1973,10 @@ enum {
 #define IXGBE_RXDCTL_RLPMLMASK		0x00003FFF /* X540 supported only */
 #define IXGBE_RXDCTL_RLPML_EN		0x00008000
 #define IXGBE_RXDCTL_VME		0x40000000 /* VLAN mode enable */
+
+#define IXGBE_TSAUXC_EN_CLK		0x00000004
+#define IXGBE_TSAUXC_SYNCLK		0x00000008
+#define IXGBE_TSAUXC_SDP0_INT		0x00000040
 
 #define IXGBE_TSYNCTXCTL_VALID		0x00000001 /* Tx timestamp valid */
 #define IXGBE_TSYNCTXCTL_ENABLED	0x00000010 /* Tx timestamping enabled */
@@ -2814,7 +2826,6 @@ enum ixgbe_sfp_type {
 enum ixgbe_media_type {
 	ixgbe_media_type_unknown = 0,
 	ixgbe_media_type_fiber,
-	ixgbe_media_type_fiber_qsfp,
 	ixgbe_media_type_fiber_lco,
 	ixgbe_media_type_copper,
 	ixgbe_media_type_backplane,
@@ -3154,7 +3165,6 @@ struct ixgbe_phy_info {
 	bool smart_speed_active;
 	bool multispeed_fiber;
 	bool reset_if_overtemp;
-	bool qsfp_shared_i2c_bus;
 };
 
 #include "ixgbe_mbx.h"

@@ -1051,70 +1051,32 @@ void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
 }
 #endif /* < 2.6.28 */
 
-/*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30) )
-#ifdef HAVE_NETDEV_SELECT_QUEUE
-#include <net/ip.h>
-static u32 _kc_simple_tx_hashrnd;
-static u32 _kc_simple_tx_hashrnd_initialized;
-
-u16 _kc_skb_tx_hash(struct net_device *dev, struct sk_buff *skb)
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
+int _kc_pci_num_vf(struct pci_dev *dev)
 {
-	u32 addr1, addr2, ports;
-	u32 hash, ihl;
-	u8 ip_proto = 0;
+	int num_vf = 0;
+#ifdef CONFIG_PCI_IOV
+	struct pci_dev *vfdev;
 
-	if (unlikely(!_kc_simple_tx_hashrnd_initialized)) {
-		get_random_bytes(&_kc_simple_tx_hashrnd, 4);
-		_kc_simple_tx_hashrnd_initialized = 1;
+	/* loop through all ethernet devices starting at PF dev */
+	vfdev = pci_get_class(PCI_CLASS_NETWORK_ETHERNET << 8, NULL);
+	while (vfdev) {
+		if (vfdev->is_virtfn && vfdev->physfn == dev)
+			num_vf++;
+
+		vfdev = pci_get_class(PCI_CLASS_NETWORK_ETHERNET << 8, vfdev);
 	}
 
-	switch (skb->protocol) {
-	case htons(ETH_P_IP):
-		if (!(ip_hdr(skb)->frag_off & htons(IP_MF | IP_OFFSET)))
-			ip_proto = ip_hdr(skb)->protocol;
-		addr1 = ip_hdr(skb)->saddr;
-		addr2 = ip_hdr(skb)->daddr;
-		ihl = ip_hdr(skb)->ihl;
-		break;
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-	case htons(ETH_P_IPV6):
-		ip_proto = ipv6_hdr(skb)->nexthdr;
-		addr1 = ipv6_hdr(skb)->saddr.s6_addr32[3];
-		addr2 = ipv6_hdr(skb)->daddr.s6_addr32[3];
-		ihl = (40 >> 2);
-		break;
 #endif
-	default:
-		return 0;
-	}
-
-
-	switch (ip_proto) {
-	case IPPROTO_TCP:
-	case IPPROTO_UDP:
-	case IPPROTO_DCCP:
-	case IPPROTO_ESP:
-	case IPPROTO_AH:
-	case IPPROTO_SCTP:
-	case IPPROTO_UDPLITE:
-		ports = *((u32 *) (skb_network_header(skb) + (ihl * 4)));
-		break;
-
-	default:
-		ports = 0;
-		break;
-	}
-
-	hash = jhash_3words(addr1, addr2, ports, _kc_simple_tx_hashrnd);
-
-	return (u16) (((u64) hash * dev->real_num_tx_queues) >> 32);
+	return num_vf;
 }
-#endif /* HAVE_NETDEV_SELECT_QUEUE */
-#endif /* < 2.6.30 */
+#endif /* RHEL_RELEASE_CODE */
+#endif /* < 2.6.34 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
 #ifdef HAVE_TX_MQ
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
 #ifndef CONFIG_NETDEVICES_MULTIQUEUE
 void _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
 {
@@ -1139,6 +1101,7 @@ void _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
 	}
 }
 #endif /* CONFIG_NETDEVICES_MULTIQUEUE */
+#endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) */
 #endif /* HAVE_TX_MQ */
 #endif /* < 2.6.35 */
 
@@ -1163,6 +1126,46 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 }
 #endif /* < 2.6.36 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38) )
+#ifdef HAVE_NETDEV_SELECT_QUEUE
+#include <net/ip.h>
+static u32 _kc_simple_tx_hashrnd;
+static u32 _kc_simple_tx_hashrnd_initialized;
+
+u16 ___kc_skb_tx_hash(struct net_device *dev, const struct sk_buff *skb,
+		      u16 num_tx_queues)
+{
+	u32 hash;
+
+	if (skb_rx_queue_recorded(skb)) {
+		hash = skb_get_rx_queue(skb);
+		while (unlikely(hash >= num_tx_queues))
+			hash -= num_tx_queues;
+		return hash;
+	}
+
+	if (unlikely(!_kc_simple_tx_hashrnd_initialized)) {
+		get_random_bytes(&_kc_simple_tx_hashrnd, 4);
+		_kc_simple_tx_hashrnd_initialized = 1;
+	}
+
+	if (skb->sk && skb->sk->sk_hash)
+		hash = skb->sk->sk_hash;
+	else
+#ifdef NETIF_F_RXHASH
+		hash = (__force u16) skb->protocol ^ skb->rxhash;
+#else
+		hash = skb->protocol;
+#endif
+
+	hash = jhash_1word(hash, _kc_simple_tx_hashrnd);
+
+	return (u16) (((u64) hash * num_tx_queues) >> 32);
+}
+#endif /* HAVE_NETDEV_SELECT_QUEUE */
+#endif /* < 2.6.38 */
+
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
@@ -1175,20 +1178,23 @@ u8 _kc_netdev_get_num_tc(struct net_device *dev)
 		return 0;
 }
 
+int _kc_netdev_set_num_tc(struct net_device *dev, u8 num_tc)
+{
+	struct adapter_struct *kc_adapter = netdev_priv(dev);
+
+	if (num_tc > IXGBE_DCB_MAX_TRAFFIC_CLASS)
+		return -EINVAL;
+
+	kc_adapter->tc = num_tc;
+
+	return 0;
+}
+
 u8 _kc_netdev_get_prio_tc_map(struct net_device *dev, u8 up)
 {
 	struct adapter_struct *kc_adapter = netdev_priv(dev);
-	int tc;
-	u8 map;
 
-	for (tc = 0; tc < IXGBE_DCB_MAX_TRAFFIC_CLASS; tc++) {
-		map = kc_adapter->dcb_cfg.tc_config[tc].path[0].up_to_tc_bitmap;
-
-		if (map & (1 << up))
-			return tc;	
-	}
-
-	return 0;
+	return ixgbe_dcb_get_tc_from_up(&kc_adapter->dcb_cfg, 0, up);
 }
 #endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)) */
 #endif /* < 2.6.39 */

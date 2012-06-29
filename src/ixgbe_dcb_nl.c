@@ -46,30 +46,6 @@
 #define DCB_NO_HW_CHG	1  /* DCB configuration did not change */
 #define DCB_HW_CHG	2  /* DCB configuration changed, no reset */
 
-/**
- * ixgbe_get_tc_from_up - get the TC UP is mapped to
- * @netdev : the corresponding netdev
- * @up: the 802.1p user priority value
- *
- * Returns : TC, UP is mapped to
- */
-static u8 ixgbe_get_tc_from_up(struct net_device *netdev, u8 up)
-{
-	struct ixgbe_adapter *adapter;
-	struct ixgbe_dcb_tc_config *tc_cfg;
-	u32 i;
-
-	adapter = netdev_priv(netdev);
-	/* cache should contain current or pending configuration */
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		tc_cfg = &adapter->temp_dcb_cfg.tc_config[i];
-		if (tc_cfg->path[0].up_to_tc_bitmap & (1 << up))
-			return i;
-	}
-	return 0;
-}
-
-
 int ixgbe_copy_dcb_cfg(struct ixgbe_adapter *adapter, int tc_max)
 {
 	struct ixgbe_dcb_config *scfg = &adapter->temp_dcb_cfg;
@@ -80,13 +56,12 @@ int ixgbe_copy_dcb_cfg(struct ixgbe_adapter *adapter, int tc_max)
 	int tx = IXGBE_DCB_TX_CONFIG;
 	int rx = IXGBE_DCB_RX_CONFIG;
 	int changes = 0;
+
 #ifdef IXGBE_FCOE
-	u8 up = ixgbe_fcoe_getapp(adapter->netdev);
-
-	if (up && !(up & (1 << adapter->fcoe.up_set)))
+	if (adapter->fcoe.up_set != adapter->fcoe.up)
 		changes |= BIT_APP_UPCHG;
-#endif /* IXGBE_FCOE */
 
+#endif /* IXGBE_FCOE */
 	for (i = DCB_PG_ATTR_TC_0; i < tc_max + DCB_PG_ATTR_TC_0; i++) {
 		src = &scfg->tc_config[i - DCB_PG_ATTR_TC_0];
 		dst = &dcfg->tc_config[i - DCB_PG_ATTR_TC_0];
@@ -174,32 +149,21 @@ static u8 ixgbe_dcbnl_get_state(struct net_device *netdev)
 
 static u8 ixgbe_dcbnl_set_state(struct net_device *netdev, u8 state)
 {
-	u8 err = 0;
-	u8 prio_tc[IXGBE_DCB_MAX_USER_PRIORITY] = {0};
-	int i;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	int err = 0;
 
 	/* Fail command if not in CEE mode */
 	if (!(adapter->dcbx_cap & DCB_CAP_DCBX_VER_CEE))
 		return 1;
 
 	/* verify there is something to do, if not then exit */
-	if (!!state != !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
-		return err;
+	if (!state == !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		goto out;
 
-	if (state > 0) {
-		err = ixgbe_setup_tc(netdev, adapter->dcb_cfg.num_tcs.pg_tcs);
-		ixgbe_dcb_unpack_map_cee(&adapter->dcb_cfg,
-					 IXGBE_DCB_TX_CONFIG,
-					 prio_tc);
-	} else {
-		err = ixgbe_setup_tc(netdev, 0);
-	}
-
-	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++)
-		netdev_set_prio_tc_map(netdev, i, prio_tc[i]);
-
-	return err;
+	err = ixgbe_setup_tc(netdev,
+			     state ? adapter->dcb_cfg.num_tcs.pg_tcs : 0);
+out:
+	return !!err;
 }
 
 static void ixgbe_dcbnl_get_perm_hw_addr(struct net_device *netdev,
@@ -316,28 +280,22 @@ static void ixgbe_dcbnl_get_pg_bwg_cfg_rx(struct net_device *netdev, int bwg_id,
 	*bw_pct = adapter->dcb_cfg.bw_percentage[1][bwg_id];
 }
 
-static void ixgbe_dcbnl_set_pfc_cfg(struct net_device *netdev, int priority,
-				    u8 setting)
+static void ixgbe_dcbnl_set_pfc_cfg(struct net_device *netdev, int up, u8 pfc)
 {
-	u8 tc = priority;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	u8 tc = ixgbe_dcb_get_tc_from_up(&adapter->temp_dcb_cfg, 0, up);
 
-	tc = ixgbe_get_tc_from_up(netdev, priority);
-
-	adapter->temp_dcb_cfg.tc_config[tc].pfc = setting;
+	adapter->temp_dcb_cfg.tc_config[tc].pfc = pfc;
 	if (adapter->temp_dcb_cfg.tc_config[tc].pfc !=
 	    adapter->dcb_cfg.tc_config[tc].pfc)
 		adapter->temp_dcb_cfg.pfc_mode_enable = true;
 }
 
-static void ixgbe_dcbnl_get_pfc_cfg(struct net_device *netdev, int priority,
-				    u8 *setting)
+static void ixgbe_dcbnl_get_pfc_cfg(struct net_device *netdev, int up, u8 *pfc)
 {
-	u8 tc = priority;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-
-	tc = ixgbe_get_tc_from_up(netdev, priority);
-	*setting = adapter->dcb_cfg.tc_config[tc].pfc;
+	u8 tc = ixgbe_dcb_get_tc_from_up(&adapter->dcb_cfg, 0, up);
+	*pfc = adapter->dcb_cfg.tc_config[tc].pfc;
 }
 
 #ifdef IXGBE_FCOE
@@ -367,8 +325,8 @@ static void ixgbe_dcbnl_devreset(struct net_device *dev)
 
 	clear_bit(__IXGBE_RESETTING, &adapter->state);
 }
-#endif
 
+#endif
 static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -382,7 +340,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		return ret;
 
 	adapter->dcb_set_bitmap |= ixgbe_copy_dcb_cfg(adapter,
-						IXGBE_DCB_MAX_TRAFFIC_CLASS);
+						      IXGBE_DCB_MAX_TRAFFIC_CLASS);
 	if (!adapter->dcb_set_bitmap)
 		return ret;
 
@@ -434,9 +392,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 	 * changes or the up2tc mapping is updated.
 	 */
 	if (adapter->dcb_set_bitmap & BIT_APP_UPCHG) {
-		u8 up = ixgbe_fcoe_getapp(adapter->netdev);
-
-		adapter->fcoe.up_set = ffs(up) - 1;
+		adapter->fcoe.up_set = adapter->fcoe.up;
 		ixgbe_dcbnl_devreset(netdev);
 		ret = DCB_HW_CHG_RST;
 	}
@@ -585,7 +541,7 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
 	case DCB_APP_IDTYPE_ETHTYPE:
 #ifdef IXGBE_FCOE
 		if (id == ETH_P_FCOE)
-			rval = ixgbe_fcoe_getapp(netdev_priv(netdev));
+			rval = ixgbe_fcoe_getapp(netdev);
 #endif
 		break;
 	case DCB_APP_IDTYPE_PORTNUM:
@@ -664,7 +620,7 @@ static int ixgbe_dcbnl_ieee_setets(struct net_device *dev,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	int max_frame = dev->mtu + ETH_HLEN + ETH_FCS_LEN;
-	int i;
+	int i, err = 0;
 	__u8 max_tc = 0;
 
 	if (!(adapter->dcbx_cap & DCB_CAP_DCBX_VER_IEEE))
@@ -691,12 +647,14 @@ static int ixgbe_dcbnl_ieee_setets(struct net_device *dev,
 		return -EINVAL;
 
 	if (max_tc != netdev_get_num_tc(dev))
-		ixgbe_setup_tc(dev, max_tc);
+		err = ixgbe_setup_tc(dev, max_tc);
 
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++)
-		netdev_set_prio_tc_map(dev, i, ets->prio_tc[i]);
+	if (err)
+		goto err_out;
 
-	return ixgbe_dcb_hw_ets(&adapter->hw, ets, max_frame);
+	err = ixgbe_dcb_hw_ets(&adapter->hw, ets, max_frame);
+err_out:
+	return err;
 }
 
 static int ixgbe_dcbnl_ieee_getpfc(struct net_device *dev,
@@ -805,7 +763,7 @@ static int ixgbe_dcbnl_ieee_delapp(struct net_device *dev,
 			return err;
 
 		adapter->fcoe.up = app_mask ?
-				   ffs(app_mask) - 1 : IXGBE_FCOE_DEFTC;
+				   ffs(app_mask) - 1 : IXGBE_FCOE_DEFUP;
 		ixgbe_dcbnl_devreset(dev);
 	}
 #endif

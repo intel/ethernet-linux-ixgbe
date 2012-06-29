@@ -30,9 +30,8 @@
 
 # core driver files
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
-         ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
-         ixgbe_82599.c ixgbe_ptp.c \
-       ixgbe_x540.c \
+         ixgbe_lib.c ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
+         ixgbe_82599.c ixgbe_ptp.c ixgbe_x540.c \
          ixgbe_sriov.c ixgbe_mbx.c \
          ixgbe_dcb.c ixgbe_dcb_82598.c \
          ixgbe_dcb_82599.c \

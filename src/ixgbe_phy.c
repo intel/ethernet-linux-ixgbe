@@ -886,9 +886,6 @@ s32 ixgbe_identify_module_generic(struct ixgbe_hw *hw)
 		status = ixgbe_identify_sfp_module_generic(hw);
 		break;
 
-	case ixgbe_media_type_fiber_qsfp:
-		status = ixgbe_identify_qsfp_module_generic(hw);
-		break;
 
 	default:
 		hw->phy.sfp_type = ixgbe_sfp_type_not_present;
@@ -1190,23 +1187,6 @@ err_read_i2c_eeprom:
 	return IXGBE_ERR_SFP_NOT_PRESENT;
 }
 
-/**
- *  ixgbe_identify_qsfp_module_generic - Identifies QSFP modules
- *  @hw: pointer to hardware structure
- *
- *  Searches for and identifies the QSFP module and assigns appropriate PHY type
- **/
-s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
-{
-	s32 status = 0;
-
-	if (hw->mac.ops.get_media_type(hw) != ixgbe_media_type_fiber_qsfp) {
-		hw->phy.sfp_type = ixgbe_sfp_type_not_present;
-		status = IXGBE_ERR_SFP_NOT_PRESENT;
-	}
-
-	return status;
-}
 
 
 /**

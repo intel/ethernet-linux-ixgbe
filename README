@@ -597,22 +597,7 @@ Additional Configurations
 
   NAPI
   ----
-  NAPI (Rx polling mode) is supported in the ixgbe driver.  NAPI is enabled
-  or disabled based on the configuration of the kernel.  To override the 
-  default, use the following compile-time flags.
-
-  You can tell if NAPI is enabled in the driver by looking at the version 
-  number of the driver.  It will contain the string -NAPI if NAPI is enabled.
-
-  To enable NAPI, compile the driver module, passing in a configuration option:
-
-            make CFLAGS_EXTRA=-DIXGBE_NAPI install
-  NOTE: This will not do anything if NAPI is disabled in the kernel. 
-
-  To disable NAPI, compile the driver module, passing in a configuration 
-  option:
-
-            make CFLAGS_EXTRA=-DIXGBE_NO_NAPI install
+  NAPI (Rx polling mode) is supported in the ixgbe driver. 
 
   See ftp://robur.slu.se/pub/Linux/net-development/NAPI/usenix-paper.tgz for 
   more information on NAPI.

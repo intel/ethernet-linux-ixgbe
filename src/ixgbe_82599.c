@@ -40,10 +40,6 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
 				   u16 offset, u16 *data);
 static s32 ixgbe_read_eeprom_buffer_82599(struct ixgbe_hw *hw, u16 offset,
 					  u16 words, u16 *data);
-static s32 ixgbe_read_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
-					u8 dev_addr, u8 *data);
-static s32 ixgbe_write_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
-					u8 dev_addr, u8 data);
 
 void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 {
@@ -92,25 +88,7 @@ s32 ixgbe_init_phy_ops_82599(struct ixgbe_hw *hw)
 	struct ixgbe_mac_info *mac = &hw->mac;
 	struct ixgbe_phy_info *phy = &hw->phy;
 	s32 ret_val = 0;
-	u32 esdp;
 
-	if (hw->device_id == IXGBE_DEV_ID_82599_QSFP_SF_QP) {
-		/* Store flag indicating I2C bus access control unit. */
-		hw->phy.qsfp_shared_i2c_bus = TRUE;
-
-		/* Initialize access to QSFP+ I2C bus */
-		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-		esdp |= IXGBE_ESDP_SDP0_DIR;
-		esdp &= ~IXGBE_ESDP_SDP1_DIR;
-		esdp &= ~IXGBE_ESDP_SDP0;
-		esdp &= ~IXGBE_ESDP_SDP0_NATIVE;
-		esdp &= ~IXGBE_ESDP_SDP1_NATIVE;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp);
-		IXGBE_WRITE_FLUSH(hw);
-
-		phy->ops.read_i2c_byte = &ixgbe_read_i2c_byte_82599;
-		phy->ops.write_i2c_byte = &ixgbe_write_i2c_byte_82599;
-	}
 	/* Identify the PHY or SFP module */
 	ret_val = phy->ops.identify(hw);
 	if (ret_val == IXGBE_ERR_SFP_NOT_SUPPORTED)
@@ -429,6 +407,7 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_SFP_FCOE:
 	case IXGBE_DEV_ID_82599_SFP_EM:
 	case IXGBE_DEV_ID_82599_SFP_SF2:
+	case IXGBE_DEV_ID_82599_SFP_SF_QP:
 	case IXGBE_DEV_ID_82599EN_SFP:
 		media_type = ixgbe_media_type_fiber;
 		break;
@@ -440,9 +419,6 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 		break;
 	case IXGBE_DEV_ID_82599_LS:
 		media_type = ixgbe_media_type_fiber_lco;
-		break;
-	case IXGBE_DEV_ID_82599_QSFP_SF_QP:
-		media_type = ixgbe_media_type_fiber_qsfp;
 		break;
 	default:
 		media_type = ixgbe_media_type_unknown;
@@ -2202,113 +2178,4 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
 	return ret_val;
 }
 
-/**
- *  ixgbe_read_i2c_byte_82599 - Reads 8 bit word over I2C
- *  @hw: pointer to hardware structure
- *  @byte_offset: byte offset to read
- *  @data: value read
- *
- *  Performs byte read operation to SFP module's EEPROM over I2C interface at
- *  a specified device address.
- **/
-static s32 ixgbe_read_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
-				u8 dev_addr, u8 *data)
-{
-	u32 esdp;
-	s32 status;
-	s32 timeout = 200;
-
-	if (hw->phy.qsfp_shared_i2c_bus == TRUE) {
-		/* Acquire I2C bus ownership. */
-		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-		esdp |= IXGBE_ESDP_SDP0;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp);
-		IXGBE_WRITE_FLUSH(hw);
-
-		while (timeout) {
-			esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-			if (esdp & IXGBE_ESDP_SDP1)
-				break;
-
-			msleep(5);
-			timeout--;
-		}
-
-		if (!timeout) {
-			hw_dbg(hw, "Driver can't access resource,"
-				 " acquiring I2C bus timeout.\n");
-			status = IXGBE_ERR_I2C;
-			goto release_i2c_access;
-		}
-	}
-
-	status = ixgbe_read_i2c_byte_generic(hw, byte_offset, dev_addr, data);
-
-release_i2c_access:
-
-	if (hw->phy.qsfp_shared_i2c_bus == TRUE) {
-		/* Release I2C bus ownership. */
-		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-		esdp &= ~IXGBE_ESDP_SDP0;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp);
-		IXGBE_WRITE_FLUSH(hw);
-	}
-
-	return status;
-}
-
-/**
- *  ixgbe_write_i2c_byte_82599 - Writes 8 bit word over I2C
- *  @hw: pointer to hardware structure
- *  @byte_offset: byte offset to write
- *  @data: value to write
- *
- *  Performs byte write operation to SFP module's EEPROM over I2C interface at
- *  a specified device address.
- **/
-static s32 ixgbe_write_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
-				 u8 dev_addr, u8 data)
-{
-	u32 esdp;
-	s32 status;
-	s32 timeout = 200;
-
-	if (hw->phy.qsfp_shared_i2c_bus == TRUE) {
-		/* Acquire I2C bus ownership. */
-		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-		esdp |= IXGBE_ESDP_SDP0;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp);
-		IXGBE_WRITE_FLUSH(hw);
-
-		while (timeout) {
-			esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-			if (esdp & IXGBE_ESDP_SDP1)
-				break;
-
-			msleep(5);
-			timeout--;
-		}
-
-		if (!timeout) {
-			hw_dbg(hw, "Driver can't access resource,"
-				 " acquiring I2C bus timeout.\n");
-			status = IXGBE_ERR_I2C;
-			goto release_i2c_access;
-		}
-	}
-
-	status = ixgbe_write_i2c_byte_generic(hw, byte_offset, dev_addr, data);
-
-release_i2c_access:
-
-	if (hw->phy.qsfp_shared_i2c_bus == TRUE) {
-		/* Release I2C bus ownership. */
-		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
-		esdp &= ~IXGBE_ESDP_SDP0;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp);
-		IXGBE_WRITE_FLUSH(hw);
-	}
-
-	return status;
-}
 

@@ -48,8 +48,8 @@
 #define IXGBE_FCBUFF_MIN	4096	/* 4KB min */
 #define IXGBE_FCOE_DDP_MAX	512	/* 9 bits xid */
 
-/* Default traffic class to use for FCoE */
-#define IXGBE_FCOE_DEFTC	3
+/* Default user priority to use for FCoE */
+#define IXGBE_FCOE_DEFUP	3
 
 /* fcerr */
 #define IXGBE_FCERR_BADCRC	0x00100000
@@ -69,20 +69,24 @@ struct ixgbe_fcoe_ddp {
 	struct scatterlist *sgl;
 	dma_addr_t udp;
 	u64 *udl;
-	struct pci_pool *pool;
+	struct dma_pool *pool;
+};
+
+/* per cpu variables */
+struct ixgbe_fcoe_ddp_pool {
+	struct dma_pool *pool;
+	u64 noddp;
+	u64 noddp_ext_buff;
 };
 
 struct ixgbe_fcoe {
-	struct pci_pool **pool;
+	struct ixgbe_fcoe_ddp_pool __percpu *ddp_pool;
 	atomic_t refcnt;
 	spinlock_t lock;
 	struct ixgbe_fcoe_ddp ddp[IXGBE_FCOE_DDP_MAX];
-	unsigned char *extra_ddp_buffer;
+	void *extra_ddp_buffer;
 	dma_addr_t extra_ddp_buffer_dma;
-	u64 __percpu *pcpu_noddp;
-	u64 __percpu *pcpu_noddp_ext_buff;
 	unsigned long mode;
-	u8 tc;
 	u8 up;
 	u8 up_set;
 };

@@ -51,13 +51,12 @@ int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 #endif
 int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 			    int vf, struct ifla_vf_info *ivi);
-#endif
+#endif /* IFLA_VF_MAX */
 void ixgbe_disable_sriov(struct ixgbe_adapter *adapter);
 #ifdef CONFIG_PCI_IOV
 int ixgbe_vf_configuration(struct pci_dev *pdev, unsigned int event_mask);
 void ixgbe_enable_sriov(struct ixgbe_adapter *adapter);
 #endif
-int ixgbe_check_vf_assignment(struct ixgbe_adapter *adapter);
 #ifdef IFLA_VF_MAX
 void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter);
 #endif /* IFLA_VF_MAX */

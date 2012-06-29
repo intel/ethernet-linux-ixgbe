@@ -108,10 +108,10 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 			udelay(100);
 	}
 	if (ddp->sgl)
-		pci_unmap_sg(adapter->pdev, ddp->sgl, ddp->sgc,
+		dma_unmap_sg(&adapter->pdev->dev, ddp->sgl, ddp->sgc,
 			     DMA_FROM_DEVICE);
 	if (ddp->pool) {
-		pci_pool_free(ddp->pool, ddp->udl, ddp->udp);
+		dma_pool_free(ddp->pool, ddp->udl, ddp->udp);
 		ddp->pool = NULL;
 	}
 
@@ -138,6 +138,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	struct ixgbe_hw *hw;
 	struct ixgbe_fcoe *fcoe;
 	struct ixgbe_fcoe_ddp *ddp;
+	struct ixgbe_fcoe_ddp_pool *ddp_pool;
 	struct scatterlist *sg;
 	unsigned int i, j, dmacount;
 	unsigned int len;
@@ -148,8 +149,6 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	unsigned int thislen = 0;
 	u32 fcbuff, fcdmarw, fcfltrw, fcrxctl;
 	dma_addr_t addr = 0;
-	struct pci_pool *pool;
-	unsigned int cpu;
 
 	if (!netdev || !sgl || !sgc)
 		return 0;
@@ -166,11 +165,6 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 		return 0;
 
 	fcoe = &adapter->fcoe;
-	if (!fcoe->pool) {
-		e_warn(drv, "xid=0x%x no ddp pool for fcoe\n", xid);
-		return 0;
-	}
-
 	ddp = &fcoe->ddp[xid];
 	if (ddp->sgl) {
 		e_err(drv, "xid 0x%x w/ non-null sgl=%p nents=%d\n",
@@ -179,21 +173,32 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	}
 	ixgbe_fcoe_clear_ddp(ddp);
 
-	/* setup dma from scsi command sgl */
-	dmacount = pci_map_sg(adapter->pdev, sgl, sgc, DMA_FROM_DEVICE);
-	if (dmacount == 0) {
-		e_err(drv, "xid 0x%x DMA map error\n", xid);
+
+	if (!fcoe->ddp_pool) {
+		e_warn(drv, "No ddp_pool resources allocated\n");
 		return 0;
 	}
 
+	ddp_pool = per_cpu_ptr(fcoe->ddp_pool, get_cpu());
+	if (!ddp_pool->pool) {
+		e_warn(drv, "xid=0x%x no ddp pool for fcoe\n", xid);
+		goto out_noddp;
+	}
+
+	/* setup dma from scsi command sgl */
+	dmacount = dma_map_sg(&adapter->pdev->dev, sgl, sgc, DMA_FROM_DEVICE);
+	if (dmacount == 0) {
+		e_err(drv, "xid 0x%x DMA map error\n", xid);
+		goto out_noddp;
+	}
+
 	/* alloc the udl from per cpu ddp pool */
-	pool = *per_cpu_ptr(fcoe->pool, get_cpu());
-	ddp->udl = pci_pool_alloc(pool, GFP_ATOMIC, &ddp->udp);
+	ddp->udl = dma_pool_alloc(ddp_pool->pool, GFP_ATOMIC, &ddp->udp);
 	if (!ddp->udl) {
 		e_err(drv, "failed allocated ddp context\n");
 		goto out_noddp_unmap;
 	}
-	ddp->pool = pool;
+	ddp->pool = ddp_pool->pool;
 	ddp->sgl = sgl;
 	ddp->sgc = sgc;
 
@@ -204,8 +209,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 		while (len) {
 			/* max number of buffers allowed in one DDP context */
 			if (j >= IXGBE_BUFFCNT_MAX) {
-				cpu = get_cpu();
-				*per_cpu_ptr(fcoe->pcpu_noddp, cpu) += 1;
+				ddp_pool->noddp++;
 				goto out_noddp_free;
 			}
 
@@ -246,8 +250,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	 */
 	if (lastsize == bufflen) {
 		if (j >= IXGBE_BUFFCNT_MAX) {
-			cpu = get_cpu();
-			*per_cpu_ptr(fcoe->pcpu_noddp_ext_buff,	cpu) += 1;
+			ddp_pool->noddp_ext_buff++;
 			goto out_noddp_free;
 		}
 
@@ -299,12 +302,12 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	return 1;
 
 out_noddp_free:
-	put_cpu();
-	pci_pool_free(pool, ddp->udl, ddp->udp);
+	dma_pool_free(ddp->pool, ddp->udl, ddp->udp);
 	ixgbe_fcoe_clear_ddp(ddp);
 
 out_noddp_unmap:
-	pci_unmap_sg(adapter->pdev, sgl, sgc, DMA_FROM_DEVICE);
+	dma_unmap_sg(&adapter->pdev->dev, sgl, sgc, DMA_FROM_DEVICE);
+out_noddp:
 	put_cpu();
 	return 0;
 }
@@ -417,7 +420,7 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		break;
 	/* unmap the sg list when FCPRSP is received */
 	case __constant_cpu_to_le32(IXGBE_RXDADV_STAT_FCSTAT_FCPRSP):
-		pci_unmap_sg(adapter->pdev, ddp->sgl,
+		dma_unmap_sg(&adapter->pdev->dev, ddp->sgl,
 			     ddp->sgc, DMA_FROM_DEVICE);
 		ddp->err = ddp_err;
 		ddp->sgl = NULL;
@@ -446,6 +449,7 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	if ((fh->fh_r_ctl == FC_RCTL_DD_SOL_DATA) &&
 	    (fctl & FC_FC_END_SEQ)) {
 		struct fcoe_crc_eof *crc;
+		skb_linearize(skb);
 		crc = (struct fcoe_crc_eof *)skb_put(skb, sizeof(*crc));
 		crc->fcoe_eof = FC_EOF_T;
 	}
@@ -573,44 +577,37 @@ int ixgbe_fso(struct ixgbe_ring *tx_ring,
 	return 0;
 }
 
-static void ixgbe_fcoe_ddp_pools_free(struct ixgbe_fcoe *fcoe)
+static void ixgbe_fcoe_dma_pool_free(struct ixgbe_fcoe *fcoe, unsigned int cpu)
 {
-	unsigned int cpu;
-	struct pci_pool **pool;
+	struct ixgbe_fcoe_ddp_pool *ddp_pool;
 
-	for_each_possible_cpu(cpu) {
-	pool = per_cpu_ptr(fcoe->pool, cpu);
-		if (*pool)
-			pci_pool_destroy(*pool);
-	}
-	free_percpu(fcoe->pool);
-	fcoe->pool = NULL;
+	ddp_pool = per_cpu_ptr(fcoe->ddp_pool, cpu);
+	if (ddp_pool->pool)
+		dma_pool_destroy(ddp_pool->pool);
+	ddp_pool->pool = NULL;
 }
 
-static void ixgbe_fcoe_ddp_pools_alloc(struct ixgbe_adapter *adapter)
+static int ixgbe_fcoe_dma_pool_alloc(struct ixgbe_fcoe *fcoe,
+				     struct device *dev,
+				     unsigned int cpu)
 {
-	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
-	unsigned int cpu;
-	struct pci_pool **pool;
+	struct ixgbe_fcoe_ddp_pool *ddp_pool;
+	struct dma_pool *pool;
 	char pool_name[32];
 
-	fcoe->pool = alloc_percpu(struct pci_pool *);
-	if (!fcoe->pool)
-		return;
+	snprintf(pool_name, 32, "ixgbe_fcoe_ddp_%d", cpu);
 
-	/* allocate pci pool for each cpu */
-	for_each_possible_cpu(cpu) {
-		snprintf(pool_name, 32, "ixgbe_fcoe_ddp_%d", cpu);
-		pool = per_cpu_ptr(fcoe->pool, cpu);
-		*pool = pci_pool_create(pool_name,
-					adapter->pdev, IXGBE_FCPTR_MAX,
-					IXGBE_FCPTR_ALIGN, PAGE_SIZE);
-		if (!*pool) {
-			e_err(drv, "failed to alloc DDP pool on cpu:%d\n", cpu);
-			ixgbe_fcoe_ddp_pools_free(fcoe);
-			return;
-		}
-	}
+	pool = dma_pool_create(pool_name, dev, IXGBE_FCPTR_MAX,
+			       IXGBE_FCPTR_ALIGN, PAGE_SIZE);
+	if (!pool)
+		return -ENOMEM;
+
+	ddp_pool = per_cpu_ptr(fcoe->ddp_pool, cpu);
+	ddp_pool->pool = pool;
+	ddp_pool->noddp = 0;
+	ddp_pool->noddp_ext_buff = 0;
+
+	return 0;
 }
 
 /**
@@ -623,155 +620,180 @@ static void ixgbe_fcoe_ddp_pools_alloc(struct ixgbe_adapter *adapter)
  */
 void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 {
-	int i, fcoe_q, fcoe_i;
+	struct ixgbe_ring_feature *fcoe = &adapter->ring_feature[RING_F_FCOE];
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
-	struct ixgbe_ring_feature *f = &adapter->ring_feature[RING_F_FCOE];
-	unsigned int cpu;
-#ifdef CONFIG_DCB
-	u8 tc;
-	u32 up2tc;
+	int i, fcoe_q, fcoe_i;
+	u32 etqf;
 
-#endif /* CONFIG_DCB */
-	if (!fcoe->pool) {
-		spin_lock_init(&fcoe->lock);
+	/* Minimal funcionality for FCoE requires at least CRC offloads */
+	if (!(adapter->netdev->features & NETIF_F_FCOE_CRC))
+		return;
 
-		ixgbe_fcoe_ddp_pools_alloc(adapter);
-		if (!fcoe->pool) {
-			e_err(drv, "failed to alloc percpu fcoe DDP pools\n");
-			return;
-		}
-
-		/* Extra buffer to be shared by all DDPs for HW work around */
-		fcoe->extra_ddp_buffer = kmalloc(IXGBE_FCBUFF_MIN, GFP_ATOMIC);
-		if (fcoe->extra_ddp_buffer == NULL) {
-			e_err(drv, "failed to allocated extra DDP buffer\n");
-			goto out_ddp_pools;
-		}
-
-		fcoe->extra_ddp_buffer_dma =
-			dma_map_single(&adapter->pdev->dev,
-				       fcoe->extra_ddp_buffer,
-				       IXGBE_FCBUFF_MIN,
-				       DMA_FROM_DEVICE);
-		if (dma_mapping_error(&adapter->pdev->dev,
-				      fcoe->extra_ddp_buffer_dma)) {
-			e_err(drv, "failed to map extra DDP buffer\n");
-			goto out_extra_ddp_buffer;
-		}
-
-		/* Alloc per cpu mem to count the ddp alloc failure number */
-		fcoe->pcpu_noddp = alloc_percpu(u64);
-		if (!fcoe->pcpu_noddp) {
-			e_err(drv, "failed to alloc noddp counter\n");
-			goto out_pcpu_noddp_alloc_fail;
-		}
-
-		fcoe->pcpu_noddp_ext_buff = alloc_percpu(u64);
-		if (!fcoe->pcpu_noddp_ext_buff) {
-			e_err(drv, "failed to alloc noddp extra buff cnt\n");
-			goto out_pcpu_noddp_extra_buff_alloc_fail;
-		}
-
-		for_each_possible_cpu(cpu) {
-			*per_cpu_ptr(fcoe->pcpu_noddp, cpu) = 0;
-			*per_cpu_ptr(fcoe->pcpu_noddp_ext_buff, cpu) = 0;
-		}
+	/* Enable L2 EtherType filter for FCoE, needed for FCoE CRC and DDP */
+	etqf = ETH_P_FCOE | IXGBE_ETQF_FCOE | IXGBE_ETQF_FILTER_EN;
+	if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
+		etqf |= IXGBE_ETQF_POOL_ENABLE;
+		etqf |= VMDQ_P(0) << IXGBE_ETQF_POOL_SHIFT;
 	}
+	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FCOE), etqf);
+	IXGBE_WRITE_REG(hw, IXGBE_ETQS(IXGBE_ETQF_FILTER_FCOE), 0);
 
-	/* Enable L2 eth type filter for FCoE */
-	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FCOE),
-			(ETH_P_FCOE | IXGBE_ETQF_FCOE | IXGBE_ETQF_FILTER_EN));
-	/* Enable L2 eth type filter for FIP */
-	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FIP),
-			(ETH_P_FIP | IXGBE_ETQF_FILTER_EN));
-	if (adapter->ring_feature[RING_F_FCOE].indices) {
-		/* Use multiple rx queues for FCoE by redirection table */
-		for (i = 0; i < IXGBE_FCRETA_SIZE; i++) {
-			fcoe_i = f->mask + i % f->indices;
-			fcoe_i &= IXGBE_FCRETA_ENTRY_MASK;
-			fcoe_q = adapter->rx_ring[fcoe_i]->reg_idx;
-			IXGBE_WRITE_REG(hw, IXGBE_FCRETA(i), fcoe_q);
-		}
-		IXGBE_WRITE_REG(hw, IXGBE_FCRECTL, IXGBE_FCRECTL_ENA);
-		IXGBE_WRITE_REG(hw, IXGBE_ETQS(IXGBE_ETQF_FILTER_FCOE), 0);
-	} else  {
-		/* Use single rx queue for FCoE */
-		fcoe_i = f->mask;
+	/* leave remaining registers unconfigued if FCoE is disabled */
+	if (!(adapter->flags & IXGBE_FLAG_FCOE_ENABLED))
+		return;
+
+	/* Use one or more Rx queues for FCoE by redirection table */
+	for (i = 0; i < IXGBE_FCRETA_SIZE; i++) {
+		fcoe_i = fcoe->offset + (i % fcoe->indices);
+		fcoe_i &= IXGBE_FCRETA_ENTRY_MASK;
 		fcoe_q = adapter->rx_ring[fcoe_i]->reg_idx;
-		IXGBE_WRITE_REG(hw, IXGBE_FCRECTL, 0);
-		IXGBE_WRITE_REG(hw, IXGBE_ETQS(IXGBE_ETQF_FILTER_FCOE),
-				IXGBE_ETQS_QUEUE_EN |
-				(fcoe_q << IXGBE_ETQS_RX_QUEUE_SHIFT));
+		IXGBE_WRITE_REG(hw, IXGBE_FCRETA(i), fcoe_q);
 	}
-	/* Enable L2 eth type filter for FIP */
-	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FIP),
-			(ETH_P_FIP | IXGBE_ETQF_FILTER_EN));
-	/* send FIP frames to the first FCoE queue */
-	fcoe_i = f->mask;
-	fcoe_q = adapter->rx_ring[fcoe_i]->reg_idx;
+	IXGBE_WRITE_REG(hw, IXGBE_FCRECTL, IXGBE_FCRECTL_ENA);
+
+	/* Enable L2 EtherType filter for FIP */
+	etqf = ETH_P_FIP | IXGBE_ETQF_FILTER_EN;
+	if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
+		etqf |= IXGBE_ETQF_POOL_ENABLE;
+		etqf |= VMDQ_P(0) << IXGBE_ETQF_POOL_SHIFT;
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FIP), etqf);
+
+	/* Send FIP frames to the first FCoE queue */
+	fcoe_q = adapter->rx_ring[fcoe->offset]->reg_idx;
 	IXGBE_WRITE_REG(hw, IXGBE_ETQS(IXGBE_ETQF_FILTER_FIP),
 			IXGBE_ETQS_QUEUE_EN |
 			(fcoe_q << IXGBE_ETQS_RX_QUEUE_SHIFT));
 
+	/* Configure FCoE Rx control */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRXCTRL,
 			IXGBE_FCRXCTRL_FCOELLI |
 			IXGBE_FCRXCTRL_FCCRCBO |
 			(FC_FCOE_VER << IXGBE_FCRXCTRL_FCOEVER_SHIFT));
-#ifdef CONFIG_DCB
-
-	up2tc = IXGBE_READ_REG(&adapter->hw, IXGBE_RTTUP2TC);
-	for (i = 0; i < IXGBE_DCB_MAX_USER_PRIORITY; i++) {
-		tc = (u8)(up2tc >> (i * IXGBE_RTTUP2TC_UP_SHIFT));
-		tc &= (IXGBE_DCB_MAX_TRAFFIC_CLASS - 1);
-		if (fcoe->tc == tc) {
-			fcoe->up = i;
-			break;
-		}
-	}
-#endif /* CONFIG_DCB */
-
-	return;
-
-out_pcpu_noddp_extra_buff_alloc_fail:
-	free_percpu(fcoe->pcpu_noddp);
-out_pcpu_noddp_alloc_fail:
-	dma_unmap_single(&adapter->pdev->dev,
-			 fcoe->extra_ddp_buffer_dma,
-			 IXGBE_FCBUFF_MIN,
-			 DMA_FROM_DEVICE);
-out_extra_ddp_buffer:
-	kfree(fcoe->extra_ddp_buffer);
-out_ddp_pools:
-	ixgbe_fcoe_ddp_pools_free(fcoe);
 }
 
 /**
- * ixgbe_cleanup_fcoe - release all fcoe ddp context resources
+ * ixgbe_free_fcoe_ddp_resources - release all fcoe ddp context resources
  * @adapter : ixgbe adapter
  *
  * Cleans up outstanding ddp context resources
  *
  * Returns : none
  */
-void ixgbe_cleanup_fcoe(struct ixgbe_adapter *adapter)
+void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
 {
-	int i;
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
+	int cpu, i;
 
-	if (!fcoe->pool)
+	/* do nothing if no DDP pools were allocated */
+	if (!fcoe->ddp_pool)
 		return;
 
 	for (i = 0; i < IXGBE_FCOE_DDP_MAX; i++)
 		ixgbe_fcoe_ddp_put(adapter->netdev, i);
+
+	for_each_possible_cpu(cpu)
+		ixgbe_fcoe_dma_pool_free(fcoe, cpu);
+
 	dma_unmap_single(&adapter->pdev->dev,
 			 fcoe->extra_ddp_buffer_dma,
 			 IXGBE_FCBUFF_MIN,
 			 DMA_FROM_DEVICE);
 	kfree(fcoe->extra_ddp_buffer);
-		free_percpu(fcoe->pcpu_noddp);
-		free_percpu(fcoe->pcpu_noddp_ext_buff);
-	ixgbe_fcoe_ddp_pools_free(fcoe);
+
+	fcoe->extra_ddp_buffer = NULL;
+	fcoe->extra_ddp_buffer_dma = 0;
+}
+
+/**
+ * ixgbe_setup_fcoe_ddp_resources - setup all fcoe ddp context resources
+ * @adapter: ixgbe adapter
+ *
+ * Sets up ddp context resouces
+ *
+ * Returns : 0 indicates success or -EINVAL on failure
+ */
+int ixgbe_setup_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
+	struct device *dev = &adapter->pdev->dev;
+	void *buffer;
+	dma_addr_t dma;
+	unsigned int cpu;
+
+	/* do nothing if no DDP pools were allocated */
+	if (!fcoe->ddp_pool)
+		return 0;
+
+	/* Extra buffer to be shared by all DDPs for HW work around */
+	buffer = kmalloc(IXGBE_FCBUFF_MIN, GFP_ATOMIC);
+	if (!buffer) {
+		e_err(drv, "failed to allocate extra DDP buffer\n");
+		return -ENOMEM;
+	}
+
+	dma = dma_map_single(dev, buffer, IXGBE_FCBUFF_MIN, DMA_FROM_DEVICE);
+	if (dma_mapping_error(dev, dma)) {
+		e_err(drv, "failed to map extra DDP buffer\n");
+		kfree(buffer);
+		return -ENOMEM;
+	}
+
+	fcoe->extra_ddp_buffer = buffer;
+	fcoe->extra_ddp_buffer_dma = dma;
+
+	/* allocate pci pool for each cpu */
+	for_each_possible_cpu(cpu) {
+		int err = ixgbe_fcoe_dma_pool_alloc(fcoe, dev, cpu);
+		if (!err)
+			continue;
+
+		e_err(drv, "failed to alloc DDP pool on cpu:%d\n", cpu);
+		ixgbe_free_fcoe_ddp_resources(adapter);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+#ifndef HAVE_NETDEV_OPS_FCOE_ENABLE
+int ixgbe_fcoe_ddp_enable(struct ixgbe_adapter *adapter)
+#else
+static int ixgbe_fcoe_ddp_enable(struct ixgbe_adapter *adapter)
+#endif
+{
+	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
+
+	if (!(adapter->flags & IXGBE_FLAG_FCOE_CAPABLE))
+		return -EINVAL;
+
+	fcoe->ddp_pool = alloc_percpu(struct ixgbe_fcoe_ddp_pool);
+
+	if (!fcoe->ddp_pool) {
+		e_err(drv, "failed to allocate percpu DDP resources\n");
+		return -ENOMEM;
+	}
+
+	adapter->netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX - 1;
+
+	return 0;
+}
+
+#ifndef HAVE_NETDEV_OPS_FCOE_ENABLE
+void ixgbe_fcoe_ddp_disable(struct ixgbe_adapter *adapter)
+#else
+static void ixgbe_fcoe_ddp_disable(struct ixgbe_adapter *adapter)
+#endif
+{
+	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
+
+	adapter->netdev->fcoe_ddp_xid = 0;
+
+	if (!fcoe->ddp_pool)
+		return;
+
+	free_percpu(fcoe->ddp_pool);
+	fcoe->ddp_pool = NULL;
 }
 
 #ifdef HAVE_NETDEV_OPS_FCOE_ENABLE
@@ -785,40 +807,37 @@ void ixgbe_cleanup_fcoe(struct ixgbe_adapter *adapter)
  */
 int ixgbe_fcoe_enable(struct net_device *netdev)
 {
-	int rc = -EINVAL;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 
+	atomic_inc(&fcoe->refcnt);
 
 	if (!(adapter->flags & IXGBE_FLAG_FCOE_CAPABLE))
-		goto out_enable;
+		return -EINVAL;
 
-	atomic_inc(&fcoe->refcnt);
 	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
-		goto out_enable;
+		return -EINVAL;
 
 	e_info(drv, "Enabling FCoE offload features.\n");
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_stop(netdev);
 
-	ixgbe_clear_interrupt_scheme(adapter);
+	/* Allocate per CPU memory to track DDP pools */
+	ixgbe_fcoe_ddp_enable(adapter);
 
+	/* enable FCoE and notify stack */
 	adapter->flags |= IXGBE_FLAG_FCOE_ENABLED;
-	adapter->ring_feature[RING_F_FCOE].indices = IXGBE_FCRETA_SIZE;
-	netdev->features |= NETIF_F_FCOE_CRC;
-	netdev->features |= NETIF_F_FSO;
 	netdev->features |= NETIF_F_FCOE_MTU;
-	netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX - 1;
-
-	ixgbe_init_interrupt_scheme(adapter);
 	netdev_features_change(netdev);
+
+	/* release existing queues and reallocate them */
+	ixgbe_clear_interrupt_scheme(adapter);
+	ixgbe_init_interrupt_scheme(adapter);
 
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_open(netdev);
-	rc = 0;
 
-out_enable:
-	return rc;
+	return 0;
 }
 
 /**
@@ -831,39 +850,35 @@ out_enable:
  */
 int ixgbe_fcoe_disable(struct net_device *netdev)
 {
-	int rc = -EINVAL;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 
-	if (!(adapter->flags & IXGBE_FLAG_FCOE_CAPABLE) ||
-	    !(adapter->flags & IXGBE_FLAG_FCOE_ENABLED))
-		goto out_disable;
+	if (!atomic_dec_and_test(&adapter->fcoe.refcnt))
+		return -EINVAL;
 
-	if (!atomic_dec_and_test(&fcoe->refcnt))
-		goto out_disable;
+	if (!(adapter->flags & IXGBE_FLAG_FCOE_ENABLED))
+		return -EINVAL;
 
 	e_info(drv, "Disabling FCoE offload features.\n");
-	netdev->features &= ~NETIF_F_FCOE_CRC;
-	netdev->features &= ~NETIF_F_FSO;
-	netdev->features &= ~NETIF_F_FCOE_MTU;
-	netdev->fcoe_ddp_xid = 0;
-	netdev_features_change(netdev);
-
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_stop(netdev);
 
-	ixgbe_clear_interrupt_scheme(adapter);
+	/* Free per CPU memory to track DDP pools */
+	ixgbe_fcoe_ddp_disable(adapter);
+
+	/* disable FCoE and notify stack */
 	adapter->flags &= ~IXGBE_FLAG_FCOE_ENABLED;
-	adapter->ring_feature[RING_F_FCOE].indices = 0;
-	ixgbe_cleanup_fcoe(adapter);
+	netdev->features &= ~NETIF_F_FCOE_MTU;
+
+	netdev_features_change(netdev);
+
+	/* release existing queues and reallocate them */
+	ixgbe_clear_interrupt_scheme(adapter);
 	ixgbe_init_interrupt_scheme(adapter);
 
 	if (netif_running(netdev))
 		netdev->netdev_ops->ndo_open(netdev);
-	rc = 0;
 
-out_disable:
-	return rc;
+	return 0;
 }
 #endif /* HAVE_NETDEV_OPS_FCOE_ENABLE */
 
@@ -887,7 +902,6 @@ u8 ixgbe_fcoe_getapp(struct net_device *netdev)
 
 #endif /* HAVE_DCBNL_OPS_GETAPP */
 #endif /* CONFIG_DCB */
-
 #ifdef HAVE_NETDEV_OPS_FCOE_GETWWN
 /**
  * ixgbe_fcoe_get_wwn - get world wide name for the node or the port
@@ -932,5 +946,16 @@ int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type)
 	}
 	return rc;
 }
+
 #endif /* HAVE_NETDEV_OPS_FCOE_GETWWN */
+/**
+ * ixgbe_fcoe_get_tc - get the current TC that fcoe is mapped to
+ * @adapter - pointer to the device adapter structure
+ *
+ * Return : TC that FCoE is mapped to
+ */
+u8 ixgbe_fcoe_get_tc(struct ixgbe_adapter *adapter)
+{
+	return netdev_get_prio_tc_map(adapter->netdev, adapter->fcoe.up);
+}
 #endif /* IXGBE_FCOE */

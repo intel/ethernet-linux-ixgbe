@@ -95,9 +95,6 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("lsc_int", lsc_int),
 	IXGBE_STAT("tx_busy", tx_busy),
 	IXGBE_STAT("non_eop_descs", non_eop_descs),
-#ifndef CONFIG_IXGBE_NAPI
-	IXGBE_STAT("rx_dropped_backlog", rx_dropped_backlog),
-#endif
 	IXGBE_STAT("broadcast", stats.bprc),
 	IXGBE_STAT("rx_no_buffer_count", stats.rnbc[0]) ,
 	IXGBE_STAT("tx_timeout_count", tx_timeout_count),
@@ -2015,55 +2012,15 @@ static int ixgbe_wol_exclusion(struct ixgbe_adapter *adapter,
 			       struct ethtool_wolinfo *wol)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	int retval = 1;
-	u16 wol_cap = adapter->eeprom_cap & IXGBE_DEVICE_CAPS_WOL_MASK;
+	int retval = 0;
 
-	/* WOL not supported except for the following */
-	switch (hw->device_id) {
-	case IXGBE_DEV_ID_82599_SFP:
-		/* Only these subdevice could supports WOL */
-		switch (hw->subsystem_device_id) {
-		case IXGBE_SUBDEV_ID_82599_560FLR:
-			/* only support first port */
-			if (hw->bus.func != 0) {
-				wol->supported = 0;
-				break;
-			}
-		case IXGBE_SUBDEV_ID_82599_SFP:
-			retval = 0;
-			break;
-		default:
-			wol->supported = 0;
-			break;
-		}
-		break;
-	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
-		/* All except this subdevice support WOL */
-		if (hw->subsystem_device_id ==
-		    IXGBE_SUBDEV_ID_82599_KX4_KR_MEZZ) {
-			wol->supported = 0;
-			break;
-		}
-		retval = 0;
-		break;
-	case IXGBE_DEV_ID_82599_KX4:
-		retval = 0;
-		break;
-	case IXGBE_DEV_ID_X540T:
-		/* check eeprom to see if enabled wol */
-		if ((wol_cap == IXGBE_DEVICE_CAPS_WOL_PORT0_1) ||
-		    ((wol_cap == IXGBE_DEVICE_CAPS_WOL_PORT0) &&
-		     (hw->bus.func == 0))) {
-			retval = 0;
-			break;
-		}
-
-		/* All others not supported */
-		wol->supported = 0;
-		break;
-	default:
+	/* WOL not supported for all devices */
+	if (!ixgbe_wol_supported(adapter, hw->device_id,
+				 hw->subsystem_device_id)) {
+		retval = 1;
 		wol->supported = 0;
 	}
+
 	return retval;
 }
 
@@ -2185,9 +2142,6 @@ static int ixgbe_get_coalesce(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 	ec->tx_max_coalesced_frames_irq = adapter->tx_work_limit;
-#ifndef CONFIG_IXGBE_NAPI
-	ec->rx_max_coalesced_frames_irq = adapter->rx_work_limit;
-#endif /* CONFIG_IXGBE_NAPI */
 	/* only valid if in constant ITR mode */
 	if (adapter->rx_itr_setting <= 1)
 		ec->rx_coalesce_usecs = adapter->rx_itr_setting;
@@ -2249,7 +2203,6 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_q_vector *q_vector;
 	int i;
-	int num_vectors;
 	u16 tx_itr_param, rx_itr_param;
 	bool need_reset = false;
 
@@ -2261,11 +2214,6 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	if (ec->tx_max_coalesced_frames_irq)
 		adapter->tx_work_limit = ec->tx_max_coalesced_frames_irq;
 
-#ifndef CONFIG_IXGBE_NAPI
-	if (ec->rx_max_coalesced_frames_irq)
-		adapter->rx_work_limit = ec->rx_max_coalesced_frames_irq;
-
-#endif
 	if ((ec->rx_coalesce_usecs > (IXGBE_MAX_EITR >> 2)) ||
 	    (ec->tx_coalesce_usecs > (IXGBE_MAX_EITR >> 2)))
 		return -EINVAL;
@@ -2293,12 +2241,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	/* check the old value and enable RSC if necessary */
 	need_reset = ixgbe_update_rsc(adapter);
 
-	if (adapter->flags & IXGBE_FLAG_MSIX_ENABLED)
-		num_vectors = adapter->num_msix_vectors - NON_Q_VECTORS;
-	else
-		num_vectors = 1;
-
-	for (i = 0; i < num_vectors; i++) {
+	for (i = 0; i < adapter->num_q_vectors; i++) {
 		q_vector = adapter->q_vector[i];
 		q_vector->tx.work_limit = adapter->tx_work_limit;
 		q_vector->rx.work_limit = adapter->rx_work_limit;
@@ -2442,10 +2385,6 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 		return -EINVAL;
 
 #endif
-#ifdef NETIF_F_RXHASH
-	if (adapter->flags & IXGBE_FLAG_RSS_ENABLED)
-		supported_flags |= ETH_FLAG_RXHASH;
-#endif
 #ifdef IXGBE_NO_LRO
 	if (adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE)
 #endif
@@ -2459,6 +2398,10 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 	default:
 		break;
 	}
+
+#endif
+#ifdef NETIF_F_RXHASH
+	supported_flags |= ETH_FLAG_RXHASH;
 
 #endif
 	rc = ethtool_op_set_flags(netdev, data, supported_flags);
@@ -2497,20 +2440,40 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 	 * Check if Flow Director n-tuple support was enabled or disabled.  If
 	 * the state changed, we need to reset.
 	 */
-	if (!(netdev->features & NETIF_F_NTUPLE)) {
-		if (adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE) {
-			/* turn off Flow Director, set ATR and reset */
-			if ((adapter->flags & IXGBE_FLAG_RSS_ENABLED) &&
-			    !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
-				adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			need_reset = true;
-		}
-		adapter->flags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-	} else if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
+	switch (netdev->features & NETIF_F_NTUPLE) {
+	case NETIF_F_NTUPLE:
 		/* turn off ATR, enable perfect filters and reset */
+		if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
+			need_reset = true;
+
 		adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
 		adapter->flags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-		need_reset = true;
+		break;
+	default:
+		/* turn off perfect filters, enable ATR and reset */
+		if (adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)
+			need_reset = true;
+
+		adapter->flags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+
+		/* We cannot enable ATR if VMDq is enabled */
+		if (adapter->flags & IXGBE_FLAG_VMDQ_ENABLED)
+			break;
+
+		/* We cannot enable ATR if we have 2 or more traffic classes */
+		if (netdev_get_num_tc(netdev) > 1)
+			break;
+
+		/* We cannot enable ATR if RSS is disabled */
+		if (adapter->ring_feature[RING_F_RSS].limit <= 1)
+			break;
+
+		/* A sample rate of 0 indicates ATR disabled */
+		if (!adapter->atr_sample_rate)
+			break;
+
+		adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+		break;
 	}
 
 #endif /* ETHTOOL_GRXRINGS */
@@ -2620,10 +2583,6 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 				   struct ethtool_rxnfc *cmd)
 {
 	cmd->data = 0;
-
-	/* if RSS is disabled then report no hashing */
-	if (!(adapter->flags & IXGBE_FLAG_RSS_ENABLED))
-		return 0;
 
 	/* Report default options for RSS on ixgbe */
 	switch (cmd->flow_type) {
@@ -3132,3 +3091,4 @@ void ixgbe_set_ethtool_ops(struct net_device *netdev)
 	SET_ETHTOOL_OPS(netdev, &ixgbe_ethtool_ops);
 }
 #endif /* SIOCETHTOOL */
+

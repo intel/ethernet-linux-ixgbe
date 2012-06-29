@@ -104,7 +104,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82599_SFP_FCOE:
 		case IXGBE_DEV_ID_82599_SFP_EM:
 		case IXGBE_DEV_ID_82599_SFP_SF2:
-		case IXGBE_DEV_ID_82599_QSFP_SF_QP:
+		case IXGBE_DEV_ID_82599_SFP_SF_QP:
 		case IXGBE_DEV_ID_82599EN_SFP:
 		case IXGBE_DEV_ID_82599_CX4:
 		case IXGBE_DEV_ID_82599_LS:

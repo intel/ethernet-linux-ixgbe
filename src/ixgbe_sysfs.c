@@ -89,6 +89,7 @@ static struct ixgbe_adapter *ixgbe_get_adapter(struct kobject *kobj)
 	return adapter;
 }
 
+
 static bool ixgbe_thermal_present(struct kobject *kobj)
 {
 	s32 status;
@@ -793,6 +794,7 @@ static ssize_t ixgbe_sysfs_cautionthresh(struct kobject *kobj,
 }
 
 /* Initialize the attributes */
+
 static struct kobj_attribute ixgbe_sysfs_location_attr =
 	__ATTR(location, 0444, ixgbe_sysfs_location, NULL);
 static struct kobj_attribute ixgbe_sysfs_temp_attr =
@@ -876,6 +878,7 @@ static struct kobj_attribute ixgbe_sysfs_pciebnbr_attr =
 	__ATTR(pciebnbr, 0444, ixgbe_pciebnbr, NULL);
 
 /* Add the attributes into an array, to be added to a group */
+
 static struct attribute *therm_attrs[] = {
 	&ixgbe_sysfs_location_attr.attr,
 	&ixgbe_sysfs_temp_attr.attr,
@@ -925,6 +928,7 @@ static struct attribute *attrs[] = {
 };
 
 /* add attributes to a group */
+
 static struct attribute_group therm_attr_group = {
 	.attrs = therm_attrs,
 };
@@ -965,7 +969,6 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 	struct net_device *netdev;
 	int rc = 0;
 	int i;
-	char buf[16];
 
 	if (adapter == NULL)
 		goto err;
@@ -990,6 +993,8 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 		goto exit;
 
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++) {
+
+		char buf[16];
 
 		/*
 		 * Likewise only create individual kobjs that have
