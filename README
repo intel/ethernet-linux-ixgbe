@@ -1,8 +1,7 @@
 Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
-
-April 24, 2012
+September 25, 2012
 
 Contents
 ========
@@ -108,8 +107,10 @@ Finisar    DUAL RATE 1G/10G SFP+ SR (No Bail)	             FTLX8571D3QCV-IT
 Avago	   DUAL RATE 1G/10G SFP+ SR (No Bail)	             AFBR-703SDZ-IN1	
 Finisar	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             FTLX1471D3QCV-IT
 Avago	   DUAL RATE 1G/10G SFP+ LR (No Bail)	             AFCT-701SDZ-IN1
+
 Finisar    1000BASE-T SFP                                    FCLF8522P2BTL
 Avago      1000BASE-T SFP                                    ABCU-5710RZ
+HP         1000BASE-SX SFP                                   453153-001
 		
 82599-based adapters support all passive and active limiting direct attach 
 cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
@@ -379,6 +380,39 @@ Depending on system configuration, number of slots, etc. it's impossible to
 predict in all cases where the positions would be on the command line and the 
 user will have to specify zero in those positions occupied by an 82598 port.
 
+With kernel 3.6, the driver supports the simultaneous usage of max_vfs and DCB 
+features, subject to the constraints described below. Prior to kernel 3.6, the 
+driver did not support the simultaneous operation of max_vfs > 0 and the DCB 
+features (multiple traffic classes utilizing Priority Flow Control and Extended 
+Transmission Selection).
+
+When DCB is enabled, network traffic is transmitted and received through multiple 
+traffic classes (packet buffers in the NIC). The traffic is associated with a 
+specific class based on priority, which has a value of 0 through 7 used in the 
+VLAN tag. When SR-IOV is not enabled, each traffic class is associated with a set 
+of RX/TX descriptor queue pairs. The number of queue pairs for a given traffic 
+class depends on the hardware configuration. When SR-IOV is enabled, the descriptor 
+queue pairs are grouped into pools. The Physical Function (PF) and each Virtual 
+Function (VF) is allocated a pool of RX/TX descriptor queue pairs. When multiple 
+traffic classes are configured (for example, DCB is enabled), each pool contains a 
+queue pair from each traffic class. When a single traffic class is configured in 
+the hardware, the pools contain multiple queue pairs from the single traffic class.
+
+The number of VFs that can be allocated depends on the number of traffic classes 
+that can be enabled. The configurable number of traffic classes for each enabled 
+VF is as follows:
+
+  0 - 15 VFs = Up to 8 traffic classes, depending on device support
+
+  16 - 31 VFs = Up to 4 traffic classes
+
+  32 - 63 = 1 traffic class 
+
+When VFs are configured, the PF is allocated one pool as well. The PF supports 
+the DCB features with the constraint that each traffic class will only use a 
+single queue pair. When zero VFs are configured, the PF can support multiple 
+queue pairs per traffic class.
+
 L2LBen
 ------
 Valid Range: 0 = disable, 1 = enable (default)
@@ -431,29 +465,23 @@ To add a filter
 To see the list of filters currently present:
 	ethtool -u ethX
 
-The following three parameters impact Flow Director.
-
-FdirMode
---------
-Valid Range: 0-2 (0=off, 1=ATR, 2=Perfect filter mode)
-Default Value: 1
-
-  Flow Director filtering modes.
+The following two parameters impact Flow Director.
 
 FdirPballoc
 -----------
-Valid Range: 0-2 (0=64k, 1=128k, 2=256k)
-Default Value: 0
+Valid Range: 1-3 (1=64k, 2=128k, 3=256k)
+Default Value: 1
 
   Flow Director allocated packet buffer size.
 
 AtrSampleRate
 --------------
-Valid Range: 1-100
+Valid Range: 0-255
 Default Value: 20
 
   Software ATR Tx packet sample rate. For example, when set to 20, every 20th
-  packet, looks to see if the packet will create a new flow.
+  packet, looks to see if the packet will create a new flow. A value of 0 
+  indicates that ATR should be disabled and no samples will be taken.
 
 Perfect Filter
 -------------- 
@@ -929,7 +957,12 @@ Software Issues:
       NOTE: Link time can take up to 30 seconds. Adjust LINKDELAY value 
       accordingly.
 
-  Host may reboot after removing PF when VF is active in guest
+  Host may reboot after removing PF when VF is active in guest.
+
+  Alternatively, NetworkManager can be used to configure the interfaces, 
+  which avoids the set timeout. For configuration instructions of 
+  NetworkManager refer to the documentation provided by your distribution.
+
   ------------------------------------------------------------
   Using kernel versions earlier than 3.2, do not unload the PF driver with 
   active VFs. Doing this will cause your VFs to stop working until you reload

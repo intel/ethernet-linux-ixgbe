@@ -200,8 +200,12 @@ ifeq ($(FCOE), 1)
   HFILES += ixgbe_fcoe.h
 endif
 
-# set the install path
+# set the install path before and after 3.2.0
+ifeq (1,$(shell [ $(KVER_CODE) -lt 197120 ] && echo 1 || echo 0))
 INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/$(DRIVER_NAME)
+else
+INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/ethernet/intel/$(DRIVER_NAME)
+endif
 
 # look for SMP in config.h
 SMP := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(CONFIG_FILE) | \

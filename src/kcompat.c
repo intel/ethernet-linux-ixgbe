@@ -1040,15 +1040,6 @@ _kc_pci_wake_from_d3(struct pci_dev *dev, bool enable)
 out:
 	return err;
 }
-
-void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
-			 int off, int size)
-{
-	skb_fill_page_desc(skb, i, page, off, size);
-	skb->len += size;
-	skb->data_len += size;
-	skb->truesize += size;
-}
 #endif /* < 2.6.28 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
@@ -1173,7 +1164,7 @@ u8 _kc_netdev_get_num_tc(struct net_device *dev)
 {
 	struct adapter_struct *kc_adapter = netdev_priv(dev);
 	if (kc_adapter->flags & IXGBE_FLAG_DCB_ENABLED)
-		return kc_adapter->tc;
+		return kc_adapter->dcb_tc;
 	else
 		return 0;
 }
@@ -1185,7 +1176,7 @@ int _kc_netdev_set_num_tc(struct net_device *dev, u8 num_tc)
 	if (num_tc > IXGBE_DCB_MAX_TRAFFIC_CLASS)
 		return -EINVAL;
 
-	kc_adapter->tc = num_tc;
+	kc_adapter->dcb_tc = num_tc;
 
 	return 0;
 }
@@ -1196,5 +1187,19 @@ u8 _kc_netdev_get_prio_tc_map(struct net_device *dev, u8 up)
 
 	return ixgbe_dcb_get_tc_from_up(&kc_adapter->dcb_cfg, 0, up);
 }
+
+
 #endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)) */
 #endif /* < 2.6.39 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0) )
+void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
+			 int off, int size, unsigned int truesize)
+{
+	skb_fill_page_desc(skb, i, page, off, size);
+	skb->len += size;
+	skb->data_len += size;
+	skb->truesize += truesize;
+}
+#endif /* < 3.4.0 */
