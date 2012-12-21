@@ -31,13 +31,20 @@
 # core driver files
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_lib.c ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
-         ixgbe_82599.c ixgbe_ptp.c ixgbe_x540.c \
+         ixgbe_82599.c ixgbe_x540.c \
          ixgbe_sriov.c ixgbe_mbx.c \
          ixgbe_dcb.c ixgbe_dcb_82598.c \
          ixgbe_dcb_82599.c \
          ixgbe_sysfs.c \
          ixgbe_procfs.c \
          ixgbe_phy.c
+
+# PTP support is set by CFLAGS compile directive, so we don't need to compile
+# ixgbe_ptp.c unless it is set.
+ifneq (,$(findstring -DIXGBE_PTP, $(CFLAGS_EXTRA)))
+CFILES += ixgbe_ptp.c
+endif
+
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
          ixgbe_sriov.h ixgbe_mbx.h \
          ixgbe_dcb.h \
@@ -88,6 +95,7 @@ endif
 VSP :=  $(KOBJ)/include/generated/utsrelease.h \
         $(KOBJ)/include/linux/utsrelease.h \
         $(KOBJ)/include/linux/version.h \
+	$(KOBJ)/include/generated/uapi/linux/version.h \
         /boot/vmlinuz.version.h
 
 # Config file Search Path
@@ -152,7 +160,7 @@ EXTRA_CFLAGS += -DDRIVER_NAME=$(DRIVER_NAME)
 EXTRA_CFLAGS += -DDRIVER_NAME_CAPS=$(shell echo $(DRIVER_NAME) | tr '[a-z]' '[A-Z]')
 # standard flags for module builds
 EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -O2 -pipe -Wall
-EXTRA_CFLAGS += -I$(KSRC)/include -I.
+EXTRA_CFLAGS += -I$(KSRC)/generated/uapi -I$(KSRC)/include -I.
 EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
             echo "-DMODVERSIONS -DEXPORT_SYMTAB \
                   -include $(KSRC)/include/linux/modversions.h")

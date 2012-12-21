@@ -65,13 +65,15 @@
 
 #include "ixgbe_api.h"
 
+#include "ixgbe_common.h"
+
 #define PFX "ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
 	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
 		__func__ , ## args)))
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 #include <linux/clocksource.h>
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
@@ -358,6 +360,10 @@ struct ixgbe_ring {
 	u16 next_to_use;
 	u16 next_to_clean;
 
+#ifdef HAVE_PTP_1588_CLOCK
+	unsigned long last_rx_timestamp;
+
+#endif
 	union {
 #ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 		u16 rx_buf_len;
@@ -620,6 +626,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_SRIOV_REPLICATION_ENABLE	(u32)(1 << 21)
 #define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE	(u32)(1 << 22)
 #define IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE	(u32)(1 << 23)
+#define IXGBE_FLAG_RX_HWTSTAMP_ENABLED          (u32)(1 << 24)
 
 	u32 flags2;
 #ifndef IXGBE_NO_HW_RSC
@@ -748,16 +755,19 @@ struct ixgbe_adapter {
 	u32 led_reg;
 #endif
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_caps;
+	struct work_struct ptp_tx_work;
+	struct sk_buff *ptp_tx_skb;
+	unsigned long ptp_tx_start;
 	unsigned long last_overflow_check;
+	unsigned long last_rx_ptp_check;
 	spinlock_t tmreg_lock;
 	struct cyclecounter hw_cc;
 	struct timecounter hw_tc;
-	int rx_hwtstamp_filter;
 	u32 base_incval;
-#endif /* CONFIG_IXGBE_PTP */
+#endif /* HAVE_PTP_1588_CLOCK */
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
 	unsigned int num_vfs;
@@ -953,21 +963,35 @@ extern int ixgbe_available_rars(struct ixgbe_adapter *adapter);
 extern void ixgbe_vlan_mode(struct net_device *, u32);
 #endif
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 extern void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
-extern void ixgbe_ptp_tx_hwtstamp(struct ixgbe_q_vector *q_vector,
-				  struct sk_buff *skb);
-extern void ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
-				  union ixgbe_adv_rx_desc *rx_desc,
-				  struct sk_buff *skb);
+extern void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
+extern void __ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
+				    struct sk_buff *skb);
+static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
+					 union ixgbe_adv_rx_desc *rx_desc,
+					 struct sk_buff *skb)
+{
+	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
+		return;
+
+	__ixgbe_ptp_rx_hwtstamp(rx_ring->q_vector, skb);
+
+	/*
+	 * Update the last_rx_timestamp timer in order to enable watchdog check
+	 * for error case of latched timestamp on a dropped packet.
+	 */
+	rx_ring->last_rx_timestamp = jiffies;
+}
+
 extern int ixgbe_ptp_hwtstamp_ioctl(struct ixgbe_adapter *adapter,
 				    struct ifreq *ifr, int cmd);
 extern void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter, u32 eicr);
-#endif /* CONFIG_IXGBE_PTP */
+#endif /* HAVE_PTP_1588_CLOCK */
 
 extern void ixgbe_set_rx_drop_en(struct ixgbe_adapter *adapter);
 #endif /* _IXGBE_H_ */

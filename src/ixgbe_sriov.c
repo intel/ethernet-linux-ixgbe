@@ -738,14 +738,15 @@ static int ixgbe_set_vf_mac_addr(struct ixgbe_adapter *adapter,
 	if (adapter->vfinfo[vf].pf_set_mac &&
 	    memcmp(adapter->vfinfo[vf].vf_mac_addresses, new_mac,
 		   ETH_ALEN)) {
+		u8 *pm = adapter->vfinfo[vf].vf_mac_addresses;
 		e_warn(drv,
-		       "VF %d attempted to override administratively set MAC address\n"
-		       "Reload the VF driver to resume operations\n",
-		       vf);
+		       "VF %d attempted to set a new MAC address but it already has an administratively set MAC address %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X\n",
+		       vf, pm[0], pm[1], pm[2], pm[3], pm[4], pm[5]);
+		e_warn(drv, "Check the VF driver and if it is not using the correct MAC address you may need to reload the VF driver\n");
 		return -1;
 	}
 
-	return !!(ixgbe_set_vf_mac(adapter, vf, new_mac) < 0);
+	return ixgbe_set_vf_mac(adapter, vf, new_mac) < 0;
 }
 
 static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
@@ -814,7 +815,7 @@ static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
 		       "VF %d has requested a MACVLAN filter but there is no space for it\n",
 		       vf);
 
-	return !!err < 0;
+	return err < 0;
 }
 
 static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)

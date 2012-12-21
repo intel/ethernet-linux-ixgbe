@@ -31,7 +31,6 @@
 #include "ixgbe_type.h"
 
 u16 ixgbe_get_pcie_msix_count_generic(struct ixgbe_hw *hw);
-
 s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw_generic(struct ixgbe_hw *hw);
 s32 ixgbe_start_hw_generic(struct ixgbe_hw *hw);
@@ -83,6 +82,7 @@ s32 ixgbe_disable_sec_rx_path_generic(struct ixgbe_hw *hw);
 s32 ixgbe_enable_sec_rx_path_generic(struct ixgbe_hw *hw);
 
 s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw);
+s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw);
 void ixgbe_fc_autoneg(struct ixgbe_hw *hw);
 
 s32 ixgbe_validate_mac_addr(u8 *mac_addr);

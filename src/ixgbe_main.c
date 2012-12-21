@@ -70,7 +70,7 @@ static const char ixgbe_driver_string[] =
 
 #define BYPASS_TAG
 
-#define DRV_VERSION	__stringify(3.11.33) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(3.12.6) DRIVERIOV DRV_HW_PERF FPGA \
 			VMDQ_TAG BYPASS_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -395,6 +395,7 @@ static void ixgbe_tx_timeout_reset(struct ixgbe_adapter *adapter)
 	/* Do the reset outside of interrupt context */
 	if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
 		adapter->flags2 |= IXGBE_FLAG2_RESET_REQUESTED;
+		e_warn(drv, "initiating reset due to Tx timeout\n");
 		ixgbe_service_event_schedule(adapter);
 	}
 }
@@ -471,14 +472,6 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 		total_bytes += tx_buffer->bytecount;
 		total_packets += tx_buffer->gso_segs;
 
-#ifdef CONFIG_IXGBE_PTP
-		if (unlikely(tx_buffer->tx_flags &
-			     IXGBE_TX_FLAGS_TSTAMP))
-			ixgbe_ptp_tx_hwtstamp(q_vector,
-					      tx_buffer->skb);
-
-
-#endif
 		/* free the skb */
 		dev_kfree_skb_any(tx_buffer->skb);
 
@@ -1507,9 +1500,9 @@ static unsigned int ixgbe_get_headlen(unsigned char *data,
 		if (hlen < sizeof(struct iphdr))
 			return hdr.network - data;
 
-		/* record next protocol */
-		nexthdr = hdr.ipv4->protocol;
-		hdr.network += hlen;
+		/* record next protocol if header is present */
+		if (!hdr.ipv4->frag_off)
+			nexthdr = hdr.ipv4->protocol;
 #ifdef NETIF_F_TSO6
 	} else if (protocol == __constant_htons(ETH_P_IPV6)) {
 		if ((hdr.network - data) > (max_len - sizeof(struct ipv6hdr)))
@@ -1517,17 +1510,20 @@ static unsigned int ixgbe_get_headlen(unsigned char *data,
 
 		/* record next protocol */
 		nexthdr = hdr.ipv6->nexthdr;
-		hdr.network += sizeof(struct ipv6hdr);
+		hlen = sizeof(struct ipv6hdr);
 #endif /* NETIF_F_TSO6 */
 #ifdef IXGBE_FCOE
 	} else if (protocol == __constant_htons(ETH_P_FCOE)) {
 		if ((hdr.network - data) > (max_len - FCOE_HEADER_LEN))
 			return max_len;
-		hdr.network += FCOE_HEADER_LEN;
+		hlen = FCOE_HEADER_LEN;
 #endif
 	} else {
 		return hdr.network - data;
 	}
+
+	/* relocate pointer to start of L4 header */
+	hdr.network += hlen;
 
 	/* finally sort out TCP/UDP */
 	if (nexthdr == IPPROTO_TCP) {
@@ -1626,6 +1622,10 @@ static void ixgbe_process_skb_fields(struct ixgbe_ring *rx_ring,
 				     union ixgbe_adv_rx_desc *rx_desc,
 				     struct sk_buff *skb)
 {
+#ifdef HAVE_PTP_1588_CLOCK
+	u32 flags = rx_ring->q_vector->adapter->flags;
+
+#endif
 	ixgbe_update_rsc_stats(rx_ring, skb);
 
 #ifdef NETIF_F_RXHASH
@@ -1633,8 +1633,9 @@ static void ixgbe_process_skb_fields(struct ixgbe_ring *rx_ring,
 
 #endif /* NETIF_F_RXHASH */
 	ixgbe_rx_checksum(rx_ring, rx_desc, skb);
-#ifdef CONFIG_IXGBE_PTP
-	ixgbe_ptp_rx_hwtstamp(rx_ring->q_vector, rx_desc, skb);
+#ifdef HAVE_PTP_1588_CLOCK
+	if (unlikely(flags & IXGBE_FLAG_RX_HWTSTAMP_ENABLED))
+		ixgbe_ptp_rx_hwtstamp(rx_ring, rx_desc, skb);
 
 #endif
 	ixgbe_rx_vlan(rx_ring, rx_desc, skb);
@@ -2347,20 +2348,6 @@ static void ixgbe_configure_msix(struct ixgbe_adapter *adapter)
 		ixgbe_for_each_ring(ring, q_vector->tx)
 			ixgbe_set_ivar(adapter, 1, ring->reg_idx, v_idx);
 
-		if (q_vector->tx.ring && !q_vector->rx.ring) {
-			/* tx only vector */
-			if (adapter->tx_itr_setting == 1)
-				q_vector->itr = IXGBE_10K_ITR;
-			else
-				q_vector->itr = adapter->tx_itr_setting;
-		} else {
-			/* rx or rx/tx vector */
-			if (adapter->rx_itr_setting == 1)
-				q_vector->itr = IXGBE_20K_ITR;
-			else
-				q_vector->itr = adapter->rx_itr_setting;
-		}
-
 		ixgbe_write_eitr(q_vector);
 	}
 
@@ -2758,7 +2745,7 @@ static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter, bool queues,
 		break;
 	}
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (adapter->hw.mac.type == ixgbe_mac_X540)
 		mask |= IXGBE_EIMS_TIMESYNC;
 #endif
@@ -2836,7 +2823,7 @@ static irqreturn_t ixgbe_msix_other(int irq, void *data)
 
 	ixgbe_check_fan_failure(adapter, eicr);
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (unlikely(eicr & IXGBE_EICR_TIMESYNC))
 	    ixgbe_ptp_check_pps_event(adapter, eicr);
 #endif
@@ -3039,7 +3026,7 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	}
 
 	ixgbe_check_fan_failure(adapter, eicr);
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (unlikely(eicr & IXGBE_EICR_TIMESYNC))
 	    ixgbe_ptp_check_pps_event(adapter, eicr);
 #endif
@@ -3151,12 +3138,6 @@ static inline void ixgbe_irq_disable(struct ixgbe_adapter *adapter)
 static void ixgbe_configure_msi_and_legacy(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_q_vector *q_vector = adapter->q_vector[0];
-
-	/* rx/tx vector */
-	if (adapter->rx_itr_setting == 1)
-		q_vector->itr = IXGBE_20K_ITR;
-	else
-		q_vector->itr = adapter->rx_itr_setting;
 
 	ixgbe_write_eitr(q_vector);
 
@@ -5189,11 +5170,8 @@ static void ixgbe_up_complete(struct ixgbe_adapter *adapter)
 	else
 		ixgbe_configure_msi_and_legacy(adapter);
 
-	/* enable the optics for both mult-speed fiber and 82599 SFP+ fiber */
-	if (hw->mac.ops.enable_tx_laser &&
-	    ((hw->phy.multispeed_fiber) ||
-	     ((hw->mac.ops.get_media_type(hw) == ixgbe_media_type_fiber) &&
-	      (hw->mac.type == ixgbe_mac_82599EB))))
+	/* enable the optics for 82599 SFP+ fiber */
+	if (hw->mac.ops.enable_tx_laser)
 		hw->mac.ops.enable_tx_laser(hw);
 
 	clear_bit(__IXGBE_DOWN, &adapter->state);
@@ -5323,7 +5301,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 	if (hw->mac.san_mac_rar_index)
 		hw->mac.ops.set_vmdq_san_mac(hw, VMDQ_P(0));
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (adapter->flags2 & IXGBE_FLAG2_PTP_ENABLED)
 		ixgbe_ptp_reset(adapter);
 #endif
@@ -5540,11 +5518,8 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	if (!pci_channel_offline(adapter->pdev))
 #endif
 		ixgbe_reset(adapter);
-	/* power down the optics for multispeed fiber and 82599 SFP+ fiber */
-	if (hw->mac.ops.disable_tx_laser &&
-	    ((hw->phy.multispeed_fiber) ||
-	     ((hw->mac.ops.get_media_type(hw) == ixgbe_media_type_fiber) &&
-	      (hw->mac.type == ixgbe_mac_82599EB))))
+	/* power down the optics for 82599 SFP+ fiber */
+	if (hw->mac.ops.disable_tx_laser)
 		hw->mac.ops.disable_tx_laser(hw);
 
 	ixgbe_clean_all_tx_rings(adapter);
@@ -5712,7 +5687,8 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	ixgbe_pbthresh_setup(adapter);
 	hw->fc.pause_time = IXGBE_DEFAULT_FCPAUSE;
 	hw->fc.send_xon = true;
-	hw->fc.disable_fc_autoneg = false;
+	hw->fc.disable_fc_autoneg =
+		(ixgbe_device_supports_autoneg_fc(hw) == 0) ? false : true;
 
 	/* set default ring sizes */
 	adapter->tx_ring_count = IXGBE_DEFAULT_TXD;
@@ -5977,7 +5953,7 @@ static void ixgbe_free_all_rx_resources(struct ixgbe_adapter *adapter)
 static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	int max_frame = new_mtu + ETH_HLEN + ETH_FCS_LEN;
+	int max_frame = new_mtu + ETH_HLEN + VLAN_HLEN + ETH_FCS_LEN;
 
 	/* MTU < 68 is an error and causes problems on some kernels */
 	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE))
@@ -6054,9 +6030,9 @@ static int ixgbe_open(struct net_device *netdev)
 	if (err)
 		goto err_set_queues;
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	ixgbe_ptp_init(adapter);
-#endif /* CONFIG_IXGBE_PTP*/
+#endif /* HAVE_PTP_1588_CLOCK*/
 
 	ixgbe_up_complete(adapter);
 
@@ -6089,7 +6065,7 @@ static int ixgbe_close(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	ixgbe_ptp_stop(adapter);
 #endif
 
@@ -6193,14 +6169,8 @@ static int __ixgbe_shutdown(struct pci_dev *pdev, bool *enable_wake)
 	if (wufc) {
 		ixgbe_set_rx_mode(netdev);
 
-		/*
-		 * enable the optics for both mult-speed fiber and
-		 * 82599 SFP+ fiber as we can WoL.
-		 */
-		if (hw->mac.ops.enable_tx_laser &&
-		    (hw->phy.multispeed_fiber ||
-		    (hw->mac.ops.get_media_type(hw) == ixgbe_media_type_fiber &&
-		     hw->mac.type == ixgbe_mac_82599EB)))
+		/* enable the optics for 82599 SFP+ fiber as we can WoL */
+		if (hw->mac.ops.enable_tx_laser)
 			hw->mac.ops.enable_tx_laser(hw);
 
 		/* turn on all-multi mode if wake on multicast is enabled */
@@ -6752,7 +6722,9 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 		break;
 	}
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
+	adapter->last_rx_ptp_check = jiffies;
+
 	if (adapter->flags2 & IXGBE_FLAG2_PTP_ENABLED)
 		ixgbe_ptp_start_cyclecounter(adapter);
 
@@ -6803,7 +6775,7 @@ static void ixgbe_watchdog_link_is_down(struct ixgbe_adapter *adapter)
 	if (ixgbe_is_sfp(hw) && hw->mac.type == ixgbe_mac_82598EB)
 		adapter->flags2 |= IXGBE_FLAG2_SEARCH_FOR_SFP;
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (adapter->flags2 & IXGBE_FLAG2_PTP_ENABLED)
 		ixgbe_ptp_start_cyclecounter(adapter);
 
@@ -6840,6 +6812,7 @@ static void ixgbe_watchdog_flush_tx(struct ixgbe_adapter *adapter)
 			 * to get done, so reset controller to flush Tx.
 			 * (Do the reset outside of interrupt context).
 			 */
+			e_warn(drv, "initiating reset due to lost link with pending Tx work\n");
 			adapter->flags2 |= IXGBE_FLAG2_RESET_REQUESTED;
 		}
 	}
@@ -7114,8 +7087,11 @@ static void ixgbe_service_task(struct work_struct *work)
 	ixgbe_fdir_reinit_subtask(adapter);
 #endif
 	ixgbe_check_hang_subtask(adapter);
-#ifdef CONFIG_IXGBE_PTP
-	ixgbe_ptp_overflow_check(adapter);
+#ifdef HAVE_PTP_1588_CLOCK
+	if (adapter->flags2 & IXGBE_FLAG2_PTP_ENABLED) {
+		ixgbe_ptp_overflow_check(adapter);
+		ixgbe_ptp_rx_hang(adapter);
+	}
 #endif
 
 	ixgbe_service_event_complete(adapter);
@@ -7276,7 +7252,7 @@ static __le32 ixgbe_tx_cmd_type(u32 tx_flags)
 	/* set HW vlan bit if vlan is present */
 	if (tx_flags & IXGBE_TX_FLAGS_HW_VLAN)
 		cmd_type |= cpu_to_le32(IXGBE_ADVTXD_DCMD_VLE);
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (tx_flags & IXGBE_TX_FLAGS_TSTAMP)
 		cmd_type |= cpu_to_le32(IXGBE_ADVTXD_MAC_TSTAMP);
 
@@ -7713,10 +7689,15 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 		tx_flags |= IXGBE_TX_FLAGS_SW_VLAN;
 	}
 
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
 		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		tx_flags |= IXGBE_TX_FLAGS_TSTAMP;
+
+		/* schedule check for Tx timestamp */
+		adapter->ptp_tx_skb = skb_get(skb);
+		adapter->ptp_tx_start = jiffies;
+		schedule_work(&adapter->ptp_tx_work);
 	}
 
 #endif
@@ -7961,12 +7942,12 @@ static int ixgbe_mii_ioctl(struct net_device *netdev, struct ifreq *ifr,
 
 static int ixgbe_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 {
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 #endif
 	switch (cmd) {
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	case SIOCSHWTSTAMP:
 		return ixgbe_ptp_hwtstamp_ioctl(adapter, ifr, cmd);
 #endif
@@ -8681,6 +8662,12 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 #endif
 		}
 	}
+#ifdef IFF_UNICAST_FLT
+	netdev->priv_flags |= IFF_UNICAST_FLT;
+#endif
+#ifdef IFF_SUPP_NOFCS
+	netdev->priv_flags |= IFF_SUPP_NOFCS;
+#endif
 #ifdef CONFIG_DCB
 	netdev->dcbnl_ops = &dcbnl_ops;
 #endif
@@ -8773,10 +8760,6 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 	device_set_wakeup_enable(&adapter->pdev->dev, adapter->wol);
 
-#ifdef CONFIG_IXGBE_PTP
-	ixgbe_ptp_init(adapter);
-
-#endif
 	/*
 	 * Save off EEPROM version number and Option Rom version which
 	 * together make a unique identify for the eeprom
@@ -8832,11 +8815,8 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 	adapter->netdev_registered = true;
 
-	/* power down the optics for multispeed fiber and 82599 SFP+ fiber */
-	if (hw->mac.ops.disable_tx_laser &&
-	    ((hw->phy.multispeed_fiber) ||
-	     ((hw->mac.ops.get_media_type(hw) == ixgbe_media_type_fiber) &&
-	      (hw->mac.type == ixgbe_mac_82599EB))))
+	/* power down the optics for 82599 SFP+ fiber */
+	if (hw->mac.ops.disable_tx_laser)
 		hw->mac.ops.disable_tx_laser(hw);
 
 	/* carrier off reporting is important to ethtool even BEFORE open */
@@ -9108,7 +9088,7 @@ static pci_ers_result_t ixgbe_io_error_detected(struct pci_dev *pdev,
 		goto skip_bad_vf_detection;
 
 	bdev = pdev->bus->self;
-	while (bdev && (bdev->pcie_type != PCI_EXP_TYPE_ROOT_PORT))
+	while (bdev && (pci_pcie_type(bdev) != PCI_EXP_TYPE_ROOT_PORT))
 		bdev = bdev->bus->self;
 
 	if (!bdev)

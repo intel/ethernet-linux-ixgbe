@@ -406,6 +406,12 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 	    (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
 		return -EINVAL;
 
+
+	/* some devices do not support autoneg of flow control */
+	if ((pause->autoneg == AUTONEG_ENABLE) &&
+	    (ixgbe_device_supports_autoneg_fc(hw) != 0))
+	    return -EINVAL;
+
 	fc.disable_fc_autoneg = (pause->autoneg != AUTONEG_ENABLE);
 
 	if ((pause->rx_pause && pause->tx_pause) || pause->autoneg)
@@ -912,9 +918,9 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			       struct ethtool_ringparam *ring)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_ring *tx_ring = NULL, *rx_ring = NULL;
-	u32 new_rx_count, new_tx_count;
+	struct ixgbe_ring *temp_ring;
 	int i, err = 0;
+	u32 new_rx_count, new_tx_count;
 
 	if ((ring->rx_mini_pending) || (ring->rx_jumbo_pending))
 		return -EINVAL;
@@ -927,10 +933,11 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			       IXGBE_MIN_RXD, IXGBE_MAX_RXD);
 	new_rx_count = ALIGN(new_rx_count, IXGBE_REQ_RX_DESCRIPTOR_MULTIPLE);
 
-	/* if nothing to do return success */
 	if ((new_tx_count == adapter->tx_ring_count) &&
-	    (new_rx_count == adapter->rx_ring_count))
+	    (new_rx_count == adapter->rx_ring_count)) {
+		/* nothing to do */
 		return 0;
+	}
 
 	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
 		usleep_range(1000, 2000);
@@ -945,98 +952,81 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 		goto clear_reset;
 	}
 
-	/* alloc updated Tx resources */
-	if (new_tx_count != adapter->tx_ring_count) {
-		tx_ring = vmalloc(adapter->num_tx_queues * sizeof(*tx_ring));
-		if (!tx_ring) {
-			err = -ENOMEM;
-			goto clear_reset;
-		}
+	/* allocate temporary buffer to store rings in */
+	i = max_t(int, adapter->num_tx_queues, adapter->num_rx_queues);
+	temp_ring = vmalloc(i * sizeof(struct ixgbe_ring));
 
-		for (i = 0; i < adapter->num_tx_queues; i++) {
-			/* clone ring and setup updated count */
-			tx_ring[i] = *adapter->tx_ring[i];
-			tx_ring[i].count = new_tx_count;
-			err = ixgbe_setup_tx_resources(&tx_ring[i]);
-			if (err) {
-				while (i) {
-					i--;
-					ixgbe_free_tx_resources(&tx_ring[i]);
-				}
-
-				vfree(tx_ring);
-				tx_ring = NULL;
-
-				goto clear_reset;
-			}
-		}
+	if (!temp_ring) {
+		err = -ENOMEM;
+		goto clear_reset;
 	}
 
-	/* alloc updated Rx resources */
-	if (new_rx_count != adapter->rx_ring_count) {
-		rx_ring = vmalloc(adapter->num_rx_queues * sizeof(*rx_ring));
-		if (!rx_ring) {
-			err = -ENOMEM;
-			goto clear_reset;
-		}
-
-		for (i = 0; i < adapter->num_rx_queues; i++) {
-			/* clone ring and setup updated count */
-			rx_ring[i] = *adapter->rx_ring[i];
-			rx_ring[i].count = new_rx_count;
-			err = ixgbe_setup_rx_resources(&rx_ring[i]);
-			if (err) {
-				while (i) {
-					i--;
-					ixgbe_free_rx_resources(&rx_ring[i]);
-				}
-
-				vfree(rx_ring);
-				rx_ring = NULL;
-
-				goto clear_reset;
-			}
-		}
-	}
-
-	/* bring interface down to prepare for update */
 	ixgbe_down(adapter);
 
-	/* Tx */
-	if (tx_ring) {
+	/*
+	 * Setup new Tx resources and free the old Tx resources in that order.
+	 * We can then assign the new resources to the rings via a memcpy.
+	 * The advantage to this approach is that we are guaranteed to still
+	 * have resources even in the case of an allocation failure.
+	 */
+	if (new_tx_count != adapter->tx_ring_count) {
+		for (i = 0; i < adapter->num_tx_queues; i++) {
+			memcpy(&temp_ring[i], adapter->tx_ring[i],
+			       sizeof(struct ixgbe_ring));
+
+			temp_ring[i].count = new_tx_count;
+			err = ixgbe_setup_tx_resources(&temp_ring[i]);
+			if (err) {
+				while (i) {
+					i--;
+					ixgbe_free_tx_resources(&temp_ring[i]);
+				}
+				goto err_setup;
+			}
+		}
+
 		for (i = 0; i < adapter->num_tx_queues; i++) {
 			ixgbe_free_tx_resources(adapter->tx_ring[i]);
-			*adapter->tx_ring[i] = tx_ring[i];
-		}
-		adapter->tx_ring_count = new_tx_count;
 
-		vfree(tx_ring);
-		tx_ring = NULL;
+			memcpy(adapter->tx_ring[i], &temp_ring[i],
+			       sizeof(struct ixgbe_ring));
+		}
+
+		adapter->tx_ring_count = new_tx_count;
 	}
 
-	/* Rx */
-	if (rx_ring) {
+	/* Repeat the process for the Rx rings if needed */
+	if (new_rx_count != adapter->rx_ring_count) {
+		for (i = 0; i < adapter->num_rx_queues; i++) {
+			memcpy(&temp_ring[i], adapter->rx_ring[i],
+			       sizeof(struct ixgbe_ring));
+
+			temp_ring[i].count = new_rx_count;
+			err = ixgbe_setup_rx_resources(&temp_ring[i]);
+			if (err) {
+				while (i) {
+					i--;
+					ixgbe_free_rx_resources(&temp_ring[i]);
+				}
+				goto err_setup;
+			}
+		}
+
+
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			ixgbe_free_rx_resources(adapter->rx_ring[i]);
-			*adapter->rx_ring[i] = rx_ring[i];
+
+			memcpy(adapter->rx_ring[i], &temp_ring[i],
+			       sizeof(struct ixgbe_ring));
 		}
+
 		adapter->rx_ring_count = new_rx_count;
-
-		vfree(rx_ring);
-		rx_ring = NULL;
 	}
 
-	/* restore interface using new values */
+err_setup:
 	ixgbe_up(adapter);
-
+	vfree(temp_ring);
 clear_reset:
-	/* free Tx resources if Rx error is encountered */
-	if (tx_ring) {
-		for (i = 0; i < adapter->num_tx_queues; i++)
-			ixgbe_free_tx_resources(&tx_ring[i]);
-		vfree(tx_ring);
-	}
-
 	clear_bit(__IXGBE_RESETTING, &adapter->state);
 	return err;
 }
@@ -1887,19 +1877,11 @@ static void ixgbe_diag_test(struct net_device *netdev,
 			    struct ethtool_test *eth_test, u64 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
 	bool if_running = netif_running(netdev);
 
 	set_bit(__IXGBE_TESTING, &adapter->state);
 	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
-		/* Offline tests */
-
-		e_info(hw, "offline testing starting\n");
-
-		/* Link test performed before hardware reset so autoneg doesn't
-		 * interfere with test result */
-		if (ixgbe_link_test(adapter, &data[4]))
-			eth_test->flags |= ETH_TEST_FL_FAILED;
-
 		if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
 			int i;
 			for (i = 0; i < adapter->num_vfs; i++) {
@@ -1920,12 +1902,23 @@ static void ixgbe_diag_test(struct net_device *netdev,
 			}
 		}
 
+		/* Offline tests */
+		e_info(hw, "offline testing starting\n");
+
 		if (if_running)
 			/* indicate we're in test mode */
 			dev_close(netdev);
-		else
-			ixgbe_reset(adapter);
 
+		/* bringing the adapter down disables SFP+ Optics */
+		if (hw->mac.ops.enable_tx_laser)
+			hw->mac.ops.enable_tx_laser(hw);
+
+		/* Link test performed before hardware reset so autoneg doesn't
+		 * interfere with test result */
+		if (ixgbe_link_test(adapter, &data[4]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+
+		ixgbe_reset(adapter);
 		e_info(hw, "register testing starting\n");
 		if (ixgbe_reg_test(adapter, &data[0]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
@@ -1957,16 +1950,21 @@ static void ixgbe_diag_test(struct net_device *netdev,
 skip_loopback:
 		ixgbe_reset(adapter);
 
+		/* clear testing bit and return adapter to previous state */
 		clear_bit(__IXGBE_TESTING, &adapter->state);
 		if (if_running)
 			dev_open(netdev);
 	} else {
 		e_info(hw, "online testing starting\n");
+		/* if adapter is down, SFP+ optics will be disabled */
+		if (!if_running && hw->mac.ops.enable_tx_laser)
+			hw->mac.ops.enable_tx_laser(hw);
+
 		/* Online tests */
 		if (ixgbe_link_test(adapter, &data[4]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
-		/* Online tests aren't run; pass by default */
+		/* Offline tests aren't run; pass by default */
 		data[0] = 0;
 		data[1] = 0;
 		data[2] = 0;
@@ -1974,6 +1972,11 @@ skip_loopback:
 
 		clear_bit(__IXGBE_TESTING, &adapter->state);
 	}
+
+	/* if adapter was down, disable SFP+ optics again */
+	if (!if_running && hw->mac.ops.disable_tx_laser)
+		hw->mac.ops.disable_tx_laser(hw);
+
 skip_ol_tests:
 	msleep_interruptible(4 * 1000);
 }
@@ -2997,7 +3000,7 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 
 	switch (adapter->hw.mac.type) {
-#ifdef CONFIG_IXGBE_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	case ixgbe_mac_X540:
 	case ixgbe_mac_82599EB:
 		info->so_timestamping =
@@ -3021,9 +3024,17 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 			(1 << HWTSTAMP_FILTER_NONE) |
 			(1 << HWTSTAMP_FILTER_PTP_V1_L4_SYNC) |
 			(1 << HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L2_EVENT) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L4_EVENT) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_SYNC) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L2_SYNC) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L4_SYNC) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_DELAY_REQ) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ) |
 			(1 << HWTSTAMP_FILTER_PTP_V2_EVENT);
 		break;
-#endif /* CONFIG_IXGBE_PTP */
+#endif /* HAVE_PTP_1588_CLOCK */
 	default:
 		return ethtool_op_get_ts_info(dev, info);
 		break;

@@ -371,6 +371,7 @@ struct ixgbe_thermal_sensor_data {
 
 #define IXGBE_WUPL	0x05900
 #define IXGBE_WUPM	0x05A00 /* wake up pkt memory 0x5A00-0x5A7C */
+
 #define IXGBE_FHFT(_n)	(0x09000 + (_n * 0x100)) /* Flex host filter table */
 /* Ext Flexible Host Filter Table */
 #define IXGBE_FHFT_EXT(_n)	(0x09800 + (_n * 0x100))
@@ -431,7 +432,6 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_WUS_FLX5		IXGBE_WUFC_FLX5
 #define IXGBE_WUS_FLX_FILTERS	IXGBE_WUFC_FLX_FILTERS
 
-/* Wake Up Packet Length */
 #define IXGBE_WUPL_LENGTH_MASK	0xFFFF
 
 /* DCB registers */
@@ -572,6 +572,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RTTBCNRC_RF_INT_MASK \
 	(IXGBE_RTTBCNRC_RF_DEC_MASK << IXGBE_RTTBCNRC_RF_INT_SHIFT)
 #define IXGBE_RTTBCNRM	0x04980
+
 
 /* FCoE DMA Context Registers */
 #define IXGBE_FCPTRL		0x02410 /* FC User Desc. PTR Low */
@@ -1669,6 +1670,7 @@ enum {
 #define IXGBE_AUTOC2_10G_KR	(0x0 << IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_SHIFT)
 #define IXGBE_AUTOC2_10G_XFI	(0x1 << IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_SHIFT)
 #define IXGBE_AUTOC2_10G_SFI	(0x2 << IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_SHIFT)
+#define IXGBE_AUTOC2_LINK_DISABLE_MASK	0x70000000
 
 #define IXGBE_MACC_FLU		0x00000001
 #define IXGBE_MACC_FSV_10G	0x00030000
@@ -1853,7 +1855,7 @@ enum {
 #define IXGBE_ETH_LENGTH_OF_ADDRESS	6
 
 #define IXGBE_EEPROM_PAGE_SIZE_MAX	128
-#define IXGBE_EEPROM_RD_BUFFER_MAX_COUNT	512 /* words rd in burst */
+#define IXGBE_EEPROM_RD_BUFFER_MAX_COUNT	256 /* words rd in burst */
 #define IXGBE_EEPROM_WR_BUFFER_MAX_COUNT	256 /* words wr in burst */
 
 #ifndef IXGBE_EEPROM_GRANT_ATTEMPTS
@@ -2599,7 +2601,6 @@ typedef u32 ixgbe_link_speed;
 #define IXGBE_LINK_SPEED_82599_AUTONEG	(IXGBE_LINK_SPEED_100_FULL | \
 					 IXGBE_LINK_SPEED_1GB_FULL | \
 					 IXGBE_LINK_SPEED_10GB_FULL)
-
 
 /* Physical layer type */
 typedef u32 ixgbe_physical_layer;

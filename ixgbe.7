@@ -4,7 +4,7 @@
 .\"
 .\" * Other names and brands may be claimed as the property of others.
 .\"
-.TH ixgbe 1 "February 15, 2012"
+.TH ixgbe 1 "October 17, 2012"
 
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
@@ -165,15 +165,6 @@ Low Latency Interrupt Ethernet Protocol Type.
 .IP
 Low Latency Interrupt on VLAN priority threshold.
 .LP
-.B FdirMode
-.IP
-.B Valid Range: 
-0-2 (0=off, 1=ATR, 2=Perfect filter mode)
-.br
-.B Default Value: 1
-.IP
-Flow Director filtering modes.
-.LP
 .B FdirPballoc
 .IP
 .B Valid Range: 
@@ -187,7 +178,7 @@ Flow Director allocated packet buffer size.
 .B AtrSampleRate
 .IP
 .B Valid Range: 
-1-100
+0-255
 .br
 .B Default Value: 
 20
@@ -219,8 +210,8 @@ The driver supports Jumbo Frames for all adapters. Jumbo Frames support is enabl
 .IP
 ifconfig eth<x> mtu 9000 up
 .IP
-The maximum MTU setting for Jumbo Frames is 16110.  This value coincides
-with the maximum Jumbo Frames size of 16128. This driver will attempt to
+The maximum MTU setting for Jumbo Frames is 9706.  This value coincides
+with the maximum Jumbo Frames size of 9728. This driver will attempt to
 use multiple page sized buffers to receive each jumbo packet.  This
 should help to avoid buffer starvation issues when allocating receive
 packets.

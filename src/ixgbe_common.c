@@ -138,13 +138,12 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
  *  function check the device id to see if the associated phy supports
  *  autoneg flow control.
  **/
-static s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
+s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
 {
 
 	switch (hw->device_id) {
-	case IXGBE_DEV_ID_X540T:
-		return 0;
 	case IXGBE_DEV_ID_82599_T3_LOM:
+	case IXGBE_DEV_ID_X540T:
 		return 0;
 	default:
 		return IXGBE_ERR_FC_NOT_SUPPORTED;
@@ -4146,5 +4145,4 @@ s32 ixgbe_init_thermal_sensor_thresh_generic(struct ixgbe_hw *hw)
 	}
 	return status;
 }
-
 

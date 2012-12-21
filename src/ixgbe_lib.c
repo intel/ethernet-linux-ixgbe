@@ -914,6 +914,21 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	/* initialize pointer to rings */
 	ring = q_vector->ring;
 
+	/* intialize ITR */
+	if (txr_count && !rxr_count) {
+		/* tx only vector */
+		if (adapter->tx_itr_setting == 1)
+			q_vector->itr = IXGBE_10K_ITR;
+		else
+			q_vector->itr = adapter->tx_itr_setting;
+	} else {
+		/* rx or rx/tx vector */
+		if (adapter->rx_itr_setting == 1)
+			q_vector->itr = IXGBE_20K_ITR;
+		else
+			q_vector->itr = adapter->rx_itr_setting;
+	}
+
 	while (txr_count) {
 		/* assign generic ring traits */
 		ring->dev = pci_dev_to_dev(adapter->pdev);
@@ -1180,11 +1195,9 @@ try_msi:
 
 	/* disable VMDq */
 	adapter->flags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-
 #ifdef CONFIG_PCI_IOV
 	/* disable SR-IOV */
 	ixgbe_disable_sriov(adapter);
-
 #endif /* CONFIG_PCI_IOV */
 	/* disable RSS */
 	adapter->ring_feature[RING_F_RSS].limit = 1;

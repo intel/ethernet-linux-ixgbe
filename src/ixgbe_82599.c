@@ -1076,6 +1076,14 @@ mac_reset_top:
 	 */
 	autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 	autoc2 = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
+
+	/* Enable link if disabled in NVM */
+	if (autoc2 & IXGBE_AUTOC2_LINK_DISABLE_MASK) {
+		autoc2 &= ~IXGBE_AUTOC2_LINK_DISABLE_MASK;
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC2, autoc2);
+		IXGBE_WRITE_FLUSH(hw);
+	}
+
 	if (hw->mac.orig_link_settings_stored == false) {
 		hw->mac.orig_autoc = autoc;
 		hw->mac.orig_autoc2 = autoc2;
@@ -2258,8 +2266,16 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
  **/
 s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
 {
-	s32 i, autoc_reg, ret_val;
+	s32 i, autoc_reg, autoc2_reg, ret_val;
 	s32 anlp1_reg = 0;
+
+	/* Enable link if disabled in NVM */
+	autoc2_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
+	if (autoc2_reg & IXGBE_AUTOC2_LINK_DISABLE_MASK) {
+		autoc2_reg &= ~IXGBE_AUTOC2_LINK_DISABLE_MASK;
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC2, autoc2_reg);
+		IXGBE_WRITE_FLUSH(hw);
+	}
 
 	autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 	autoc_reg |= IXGBE_AUTOC_AN_RESTART;

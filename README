@@ -1,7 +1,7 @@
 Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
-September 25, 2012
+November 28, 2012
 
 Contents
 ========
@@ -226,23 +226,40 @@ To manually build this driver:
 To build ixgbe driver with DCA:
 ------------------------------
 
-If your kernel supports DCA, the driver will build by default with DCA enabled. 
+If your kernel supports DCA, the driver will build by default with DCA 
+enabled. 
 
 Command Line Parameters
 =======================
-
-If the driver is built as a module, the  following optional parameters are
-used by entering them on the command line with the modprobe command using
+If the driver is built as a module, the  following optional parameters are 
+used by entering them on the command line with the modprobe command using 
 this syntax:
 
      modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
+
+There needs to be a <VAL#> for each network port in the system supported 
+by this driver. The values will be applied to each instance, in function 
+order. 
 
 For example:
 
      modprobe ixgbe InterruptThrottleRate=16000,16000
 
-The default value for each parameter is generally the recommended setting,
+In this case, there are two network ports supported by ixgbe in the system. 
+The default value for each parameter is generally the recommended setting, 
 unless otherwise noted.
+
+
+NOTES:  For more information about the AutoNeg, Duplex, and Speed parameters, 
+        see the Speed and Duplex Configuration section in this document.
+        
+        For more information about the InterruptThrottleRate,
+        parameter, see the application note at:
+        http://www.intel.com/design/network/applnots/ap450.htm
+
+        A descriptor describes a data buffer and attributes related to
+        the data buffer.  This information is accessed by the hardware.
+
 
 RSS - Receive Side Scaling (or multiple queues for receives)
 ------------------------------------------------------------
@@ -603,16 +620,20 @@ Additional Configurations
   ------------
   The driver supports Jumbo Frames for all adapters. Jumbo Frames support is
   enabled by changing the MTU to a value larger than the default of 1500.
-  The maximum value for the MTU is 16110.  Use the ifconfig command to
+  The maximum value for the MTU is 9706.  Use the ifconfig command to
   increase the MTU size.  For example:
 
         ifconfig ethX mtu 9000 up
 
-  The maximum MTU setting for Jumbo Frames is 16110.  This value coincides
-  with the maximum Jumbo Frames size of 16128. This driver will attempt to
+  The maximum MTU setting for Jumbo Frames is 9706.  This value coincides
+  with the maximum Jumbo Frames size of 9728. This driver will attempt to
   use multiple page sized buffers to receive each jumbo packet.  This
   should help to avoid buffer starvation issues when allocating receive
   packets.
+
+  For 82599-based network connections, if you are enabling jumbo frames in a
+  virtual function (VF), jumbo frames must first be enabled in the physical 
+  function (PF). The VF MTU setting cannot be larger than the PF MTU.
 
   ethtool
   -------
@@ -699,6 +720,8 @@ Additional Configurations
        ixgbe ethX: ixgbe_spoof_check: n spoofed packets detected
 
        Where x=the PF interface#  n=the number of spoofed packets
+
+  Note that this feature can be disabled for a specific Virtual Function (VF).
 
   Setting MAC Address, VLAN and Rate Limit Using IProute2 Tool
   ------------------------------------------------------------
@@ -893,9 +916,12 @@ Software Issues:
   hot-plug the VF device out of the VM it is assigned to or else shut down the
   VM.
 
-  Unloading Physical Function (PF) Driver Causes System Reboots When VM is
-  Running and VF is Loaded on the VM
-  -----------------------------------------------------------------------------
+  Unloading Physical Function (PF) Driver Might Cause Kernel Panick or System 
+  Reboots When VM is Running and VF is Loaded on the VM
+  ---------------------------------------------------------------------------
+  On pre-3.2 Linux kernels unloading the Physical Function (PF) driver causes system 
+  reboots when the VM is running and VF is loaded on the VM.
+
   Do not unload the PF driver (ixgbe) while VFs are assigned to guests.
 
   Running ethtool -t ethX command causes break between PF and test client
@@ -957,16 +983,17 @@ Software Issues:
       NOTE: Link time can take up to 30 seconds. Adjust LINKDELAY value 
       accordingly.
 
-  Host may reboot after removing PF when VF is active in guest.
-
   Alternatively, NetworkManager can be used to configure the interfaces, 
   which avoids the set timeout. For configuration instructions of 
   NetworkManager refer to the documentation provided by your distribution.
 
+  Host may reboot after removing PF when VF is active in guest
   ------------------------------------------------------------
   Using kernel versions earlier than 3.2, do not unload the PF driver with 
   active VFs. Doing this will cause your VFs to stop working until you reload
-  the PF driver and may cause a spontaneous reboot of your system.
+  the PF driver and may cause a spontaneous reboot of your system. Prior to 
+  unloading the ixgbe PF driver, shutdown all VMs to ensure VFs are no longer 
+  active and unloading ixgbevf driver first. 
 
   Software bridging does not work with SR-IOV Virtual Functions
   -------------------------------------------------------------
