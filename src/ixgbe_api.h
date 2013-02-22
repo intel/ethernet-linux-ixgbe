@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -62,13 +62,12 @@ s32 ixgbe_check_phy_link(struct ixgbe_hw *hw,
 			 bool *link_up);
 s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw,
 			       ixgbe_link_speed speed,
-			       bool autoneg,
 			       bool autoneg_wait_to_complete);
 void ixgbe_disable_tx_laser(struct ixgbe_hw *hw);
 void ixgbe_enable_tx_laser(struct ixgbe_hw *hw);
 void ixgbe_flap_tx_laser(struct ixgbe_hw *hw);
 s32 ixgbe_setup_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
-		     bool autoneg, bool autoneg_wait_to_complete);
+		     bool autoneg_wait_to_complete);
 s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 		     bool *link_up, bool link_up_wait_to_complete);
 s32 ixgbe_get_link_capabilities(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
@@ -77,6 +76,7 @@ s32 ixgbe_led_on(struct ixgbe_hw *hw, u32 index);
 s32 ixgbe_led_off(struct ixgbe_hw *hw, u32 index);
 s32 ixgbe_blink_led_start(struct ixgbe_hw *hw, u32 index);
 s32 ixgbe_blink_led_stop(struct ixgbe_hw *hw, u32 index);
+bool ixgbe_mng_fw_enabled(struct ixgbe_hw *hw);
 
 s32 ixgbe_init_eeprom_params(struct ixgbe_hw *hw);
 s32 ixgbe_write_eeprom(struct ixgbe_hw *hw, u16 offset, u16 data);

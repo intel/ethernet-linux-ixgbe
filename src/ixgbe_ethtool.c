@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -177,7 +177,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 	struct ixgbe_hw *hw = &adapter->hw;
 	ixgbe_link_speed supported_link;
 	u32 link_speed = 0;
-	bool autoneg;
+	bool autoneg = false;
 	bool link_up;
 
 	hw->mac.ops.get_link_capabilities(hw, &supported_link, &autoneg);
@@ -364,10 +364,10 @@ static int ixgbe_set_settings(struct net_device *netdev,
 			return err;
 		/* this sets the link speed and restarts auto-neg */
 		hw->mac.autotry_restart = true;
-		err = hw->mac.ops.setup_link(hw, advertised, true, true);
+		err = hw->mac.ops.setup_link(hw, advertised, true);
 		if (err) {
 			e_info(probe, "setup link failed with code %d\n", err);
-			hw->mac.ops.setup_link(hw, old, true, true);
+			hw->mac.ops.setup_link(hw, old, true);
 		}
 	}
 	return err;

@@ -1,7 +1,7 @@
 Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
-November 28, 2012
+February 12, 2013
 
 Contents
 ========
@@ -467,7 +467,7 @@ for flexible flow classification and load balancing.
 
 Flow director is enabled only if the kernel is multiple TX queue capable.
 
-An included script (set_irq_affinity.sh) automates setting the IRQ to CPU 
+An included script (set_irq_affinity) automates setting the IRQ to CPU 
 affinity.
 
 You can verify that the driver is using Flow Director by looking at the counter
@@ -620,12 +620,12 @@ Additional Configurations
   ------------
   The driver supports Jumbo Frames for all adapters. Jumbo Frames support is
   enabled by changing the MTU to a value larger than the default of 1500.
-  The maximum value for the MTU is 9706.  Use the ifconfig command to
+  The maximum value for the MTU is 9710.  Use the ifconfig command to
   increase the MTU size.  For example:
 
         ifconfig ethX mtu 9000 up
 
-  The maximum MTU setting for Jumbo Frames is 9706.  This value coincides
+  The maximum MTU setting for Jumbo Frames is 9710.  This value coincides
   with the maximum Jumbo Frames size of 9728. This driver will attempt to
   use multiple page sized buffers to receive each jumbo packet.  This
   should help to avoid buffer starvation issues when allocating receive
@@ -1021,7 +1021,7 @@ License
 =======
 
 Intel 10 Gigabit PCI Express Linux driver.
-Copyright(c) 1999 - 2012 Intel Corporation.
+Copyright(c) 1999 - 2013 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms and conditions of the GNU General Public License,

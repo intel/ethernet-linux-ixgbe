@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -167,15 +167,13 @@ enum ixgbe_media_type ixgbe_get_media_type_X540(struct ixgbe_hw *hw)
  *  ixgbe_setup_mac_link_X540 - Sets the auto advertised capabilities
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: true if autonegotiation enabled
  *  @autoneg_wait_to_complete: true when waiting for completion is needed
  **/
 s32 ixgbe_setup_mac_link_X540(struct ixgbe_hw *hw,
-			      ixgbe_link_speed speed, bool autoneg,
+			      ixgbe_link_speed speed,
 			      bool autoneg_wait_to_complete)
 {
-	return hw->phy.ops.setup_link_speed(hw, speed, autoneg,
-					    autoneg_wait_to_complete);
+	return hw->phy.ops.setup_link_speed(hw, speed, autoneg_wait_to_complete);
 }
 
 /**

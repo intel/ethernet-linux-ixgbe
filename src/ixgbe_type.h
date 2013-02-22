@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -59,7 +59,6 @@
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
 #define IXGBE_DEV_ID_82599_SFP_SF2		0x154D
-#define IXGBE_DEV_ID_82599_SFP_SF_QP		0x154A
 #define IXGBE_DEV_ID_82599EN_SFP		0x1557
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
@@ -291,6 +290,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RETA(_i)		(0x05C00 + ((_i) * 4))  /* 32 of these (0-31) */
 #define IXGBE_RSSRK(_i)		(0x05C80 + ((_i) * 4))  /* 10 of these (0-9) */
 
+
 /* Flow Director registers */
 #define IXGBE_FDIRCTRL	0x0EE00
 #define IXGBE_FDIRHKEY	0x0EE68
@@ -376,7 +376,11 @@ struct ixgbe_thermal_sensor_data {
 /* Ext Flexible Host Filter Table */
 #define IXGBE_FHFT_EXT(_n)	(0x09800 + (_n * 0x100))
 
+/* Four Flexible Filters are supported */
 #define IXGBE_FLEXIBLE_FILTER_COUNT_MAX		4
+
+/* Six Flexible Filters are supported */
+#define IXGBE_FLEXIBLE_FILTER_COUNT_MAX_6	6
 #define IXGBE_EXT_FLEXIBLE_FILTER_COUNT_MAX	2
 
 /* Each Flexible Filter is at most 128 (0x80) bytes in length */
@@ -408,10 +412,11 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_WUFC_FLX3	0x00080000 /* Flexible Filter 3 Enable */
 #define IXGBE_WUFC_FLX4	0x00100000 /* Flexible Filter 4 Enable */
 #define IXGBE_WUFC_FLX5	0x00200000 /* Flexible Filter 5 Enable */
-#define IXGBE_WUFC_FLX_FILTERS	0x000F0000 /* Mask for 4 flex filters */
+#define IXGBE_WUFC_FLX_FILTERS		0x000F0000 /* Mask for 4 flex filters */
 /* Mask for Ext. flex filters */
 #define IXGBE_WUFC_EXT_FLX_FILTERS	0x00300000
-#define IXGBE_WUFC_ALL_FILTERS	0x003F00FF /* Mask for all wakeup filters */
+#define IXGBE_WUFC_ALL_FILTERS		0x000F00FF /* Mask all 4 flex filters */
+#define IXGBE_WUFC_ALL_FILTERS_6	0x003F00FF /* Mask all 6 flex filters */
 #define IXGBE_WUFC_FLX_OFFSET	16 /* Offset to the Flexible Filters bits */
 
 /* Wake Up Status */
@@ -754,11 +759,14 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_BMCIP_IPADDR_VALID	0x00000002
 
 /* Management Bit Fields and Masks */
+#define IXGBE_MANC_RCV_TCO_EN	0x00020000 /* Rcv TCO packet enable */
 #define IXGBE_MANC_EN_BMC2OS	0x10000000 /* Ena BMC2OS and OS2BMC traffic */
 #define IXGBE_MANC_EN_BMC2OS_SHIFT	28
 
 /* Firmware Semaphore Register */
 #define IXGBE_FWSM_MODE_MASK	0xE
+#define IXGBE_FWSM_TS_ENABLED	0x1
+#define IXGBE_FWSM_FW_MODE_PT	0x4
 
 /* ARC Subsystem registers */
 #define IXGBE_HICR		0x15F00
@@ -1053,6 +1061,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_CTRL_RST_MASK	(IXGBE_CTRL_LNK_RST | IXGBE_CTRL_RST)
 
 /* FACTPS */
+#define IXGBE_FACTPS_MNGCG	0x20000000 /* Manageblility Clock Gated */
 #define IXGBE_FACTPS_LFS	0x40000000 /* LAN Function Select */
 
 /* MHADD Bit Masks */
@@ -3050,10 +3059,11 @@ struct ixgbe_mac_operations {
 	void (*disable_tx_laser)(struct ixgbe_hw *);
 	void (*enable_tx_laser)(struct ixgbe_hw *);
 	void (*flap_tx_laser)(struct ixgbe_hw *);
-	s32 (*setup_link)(struct ixgbe_hw *, ixgbe_link_speed, bool, bool);
+	s32 (*setup_link)(struct ixgbe_hw *, ixgbe_link_speed, bool);
 	s32 (*check_link)(struct ixgbe_hw *, ixgbe_link_speed *, bool *, bool);
 	s32 (*get_link_capabilities)(struct ixgbe_hw *, ixgbe_link_speed *,
 				     bool *);
+	bool (*mng_enabled) (struct ixgbe_hw *hw);
 
 	/* Packet Buffer manipulation */
 	void (*setup_rxpba)(struct ixgbe_hw *, int, u32, int);
@@ -3103,12 +3113,12 @@ struct ixgbe_phy_operations {
 	s32 (*read_reg)(struct ixgbe_hw *, u32, u32, u16 *);
 	s32 (*write_reg)(struct ixgbe_hw *, u32, u32, u16);
 	s32 (*setup_link)(struct ixgbe_hw *);
-	s32 (*setup_link_speed)(struct ixgbe_hw *, ixgbe_link_speed, bool,
-				bool);
+	s32 (*setup_link_speed)(struct ixgbe_hw *, ixgbe_link_speed, bool);
 	s32 (*check_link)(struct ixgbe_hw *, ixgbe_link_speed *, bool *);
 	s32 (*get_firmware_version)(struct ixgbe_hw *, u16 *);
 	s32 (*read_i2c_byte)(struct ixgbe_hw *, u8, u8, u8 *);
 	s32 (*write_i2c_byte)(struct ixgbe_hw *, u8, u8, u8);
+	s32 (*read_i2c_sff8472)(struct ixgbe_hw *, u8 , u8 *);
 	s32 (*read_i2c_eeprom)(struct ixgbe_hw *, u8 , u8 *);
 	s32 (*write_i2c_eeprom)(struct ixgbe_hw *, u8, u8);
 	void (*i2c_bus_clear)(struct ixgbe_hw *);
@@ -3154,6 +3164,7 @@ struct ixgbe_mac_info {
 	bool autotry_restart;
 	u8 flags;
 	struct ixgbe_thermal_sensor_data  thermal_sensor_data;
+	bool thermal_sensor_enabled;
 };
 
 struct ixgbe_phy_info {
@@ -3223,6 +3234,7 @@ struct ixgbe_hw {
 	int api_version;
 	bool force_full_reset;
 	bool allow_unsupported_sfp;
+	bool mng_fw_enabled;
 };
 
 #define ixgbe_call_func(hw, func, params, error) \
@@ -3263,6 +3275,7 @@ struct ixgbe_hw {
 #define IXGBE_ERR_INVALID_ARGUMENT		-32
 #define IXGBE_ERR_HOST_INTERFACE_COMMAND	-33
 #define IXGBE_ERR_OUT_OF_MEM			-34
+#define IXGBE_ERR_FEATURE_NOT_SUPPORTED		-36
 
 #define IXGBE_NOT_IMPLEMENTED			0x7FFFFFFF
 

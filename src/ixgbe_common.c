@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -3728,7 +3728,7 @@ s32 ixgbe_get_device_caps_generic(struct ixgbe_hw *hw, u16 *device_caps)
  *  Calculates the checksum for some buffer on a specified length.  The
  *  checksum calculated is returned.
  **/
-static u8 ixgbe_calculate_checksum(u8 *buffer, u32 length)
+u8 ixgbe_calculate_checksum(u8 *buffer, u32 length)
 {
 	u32 i;
 	u8 sum = 0;
@@ -3751,8 +3751,8 @@ static u8 ixgbe_calculate_checksum(u8 *buffer, u32 length)
  *  Communicates with the manageability block.  On success return 0
  *  else return IXGBE_ERR_HOST_INTERFACE_COMMAND.
  **/
-static s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
-					u32 length)
+s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
+				 u32 length)
 {
 	u32 hicr, i, bi;
 	u32 hdr_size = sizeof(struct ixgbe_hic_hdr);

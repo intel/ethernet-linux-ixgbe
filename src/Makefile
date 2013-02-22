@@ -1,7 +1,7 @@
 ################################################################################
 #
 # Intel 10 Gigabit PCI Express Linux driver
-# Copyright(c) 1999 - 2012 Intel Corporation.
+# Copyright(c) 1999 - 2013 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -206,6 +206,13 @@ FCOE := $(shell grep -wE 'CONFIG_FCOE|CONFIG_FCOE_MODULE' $(CONFIG_FILE) | \
 ifeq ($(FCOE), 1)
   CFILES += ixgbe_fcoe.c
   HFILES += ixgbe_fcoe.h
+endif
+
+# Add Debug FS source if DEBUG_FS is supported by the kernel
+DEBUGFS := $(shell grep -wE 'CONFIG_DEBUG_FS' $(CONFIG_FILE) | \
+	awk '{print $$3}')
+ifeq ($(DEBUGFS), 1)
+  CFILES += ixgbe_debugfs.c
 endif
 
 # set the install path before and after 3.2.0

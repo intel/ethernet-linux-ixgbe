@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -99,11 +99,11 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCDMARW,
 				(xid | IXGBE_FCDMARW_WE));
 
-		/* guaranteed to be invalidated after 100us */
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCDMARW,
 				(xid | IXGBE_FCDMARW_RE));
 		fcbuff = IXGBE_READ_REG(&adapter->hw, IXGBE_FCBUFF);
 		spin_unlock_bh(&fcoe->lock);
+		/* guaranteed to be invalidated after 100us */
 		if (fcbuff & IXGBE_FCBUFF_VALID)
 			udelay(100);
 	}
@@ -553,15 +553,14 @@ int ixgbe_fso(struct ixgbe_ring *tx_ring,
 		first->gso_segs = DIV_ROUND_UP(skb->len - *hdr_len,
 					       skb_shinfo(skb)->gso_size);
 		first->bytecount += (first->gso_segs - 1) * *hdr_len;
-		first->tx_flags |= IXGBE_TX_FLAGS_FSO;
+		first->tx_flags |= IXGBE_TX_FLAGS_TSO;
 	}
 
 	/* set flag indicating FCOE to ixgbe_tx_map call */
-	first->tx_flags |= IXGBE_TX_FLAGS_FCOE;
+	first->tx_flags |= IXGBE_TX_FLAGS_FCOE | IXGBE_TX_FLAGS_CC;
 
-	/* mss_l4len_id: use 1 for FSO as TSO, no need for L4LEN */
+	/* mss_l4len_id: use 0 for FSO as TSO, no need for L4LEN */
 	mss_l4len_idx = skb_shinfo(skb)->gso_size << IXGBE_ADVTXD_MSS_SHIFT;
-	mss_l4len_idx |= 1 << IXGBE_ADVTXD_IDX_SHIFT;
 
 	/* vlan_macip_lens: HEADLEN, MACLEN, VLAN tag */
 	vlan_macip_lens = skb_transport_offset(skb) +
@@ -622,8 +621,10 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_ring_feature *fcoe = &adapter->ring_feature[RING_F_FCOE];
 	struct ixgbe_hw *hw = &adapter->hw;
-	int i, fcoe_q, fcoe_i;
+	int i, fcoe_i;
+	u32 fcoe_q, fcoe_q_h = 0;
 	u32 etqf;
+	int fcreta_size;
 
 	/* Minimal funcionality for FCoE requires at least CRC offloads */
 	if (!(adapter->netdev->features & NETIF_F_FCOE_CRC))
@@ -643,10 +644,13 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 		return;
 
 	/* Use one or more Rx queues for FCoE by redirection table */
-	for (i = 0; i < IXGBE_FCRETA_SIZE; i++) {
+	fcreta_size = IXGBE_FCRETA_SIZE;
+
+	for (i = 0; i < fcreta_size; i++) {
 		fcoe_i = fcoe->offset + (i % fcoe->indices);
 		fcoe_i &= IXGBE_FCRETA_ENTRY_MASK;
 		fcoe_q = adapter->rx_ring[fcoe_i]->reg_idx;
+		fcoe_q |= fcoe_q_h;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRETA(i), fcoe_q);
 	}
 	IXGBE_WRITE_REG(hw, IXGBE_FCRECTL, IXGBE_FCRECTL_ENA);

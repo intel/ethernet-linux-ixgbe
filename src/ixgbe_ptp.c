@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -822,6 +822,9 @@ void ixgbe_ptp_reset(struct ixgbe_adapter *adapter)
 			 ktime_to_ns(ktime_get_real()));
 
 	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
+
+	/* reset the overflow timer */
+	adapter->last_overflow_check = jiffies;
 
 	/*
 	 * Now that the shift has been calculated and the systime
