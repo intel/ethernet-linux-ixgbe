@@ -737,6 +737,17 @@ Additional Configurations
 
         ethtool ethX
 
+  IEEE 1588 PTP
+  -------------
+  Precision Time Protocol (PTP) is used to synchronize clocks in a computer 
+  network and is supported in the ixgbe driver. 
+
+  The IXGBE_PTP is a compile time flag. The user may enable PTP at compile 
+  time by adding CFLAGS_EXTRA="-DIXGBE_PTP" to the make file when it is being 
+  compiled.
+
+        make CFLAGS_EXTRA="-DIXGBE_PTP" install
+
 
 Performance Tuning
 ==================

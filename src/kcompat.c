@@ -1175,17 +1175,19 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 }
 #endif /* < 2.6.36 */
 
-/*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38) )
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
 #ifdef HAVE_NETDEV_SELECT_QUEUE
 #include <net/ip.h>
-static u32 _kc_simple_tx_hashrnd;
-static u32 _kc_simple_tx_hashrnd_initialized;
+#include <linux/pkt_sched.h>
 
 u16 ___kc_skb_tx_hash(struct net_device *dev, const struct sk_buff *skb,
 		      u16 num_tx_queues)
 {
 	u32 hash;
+	u16 qoffset = 0;
+	u16 qcount = num_tx_queues;
 
 	if (skb_rx_queue_recorded(skb)) {
 		hash = skb_get_rx_queue(skb);
@@ -1194,9 +1196,19 @@ u16 ___kc_skb_tx_hash(struct net_device *dev, const struct sk_buff *skb,
 		return hash;
 	}
 
-	if (unlikely(!_kc_simple_tx_hashrnd_initialized)) {
-		get_random_bytes(&_kc_simple_tx_hashrnd, 4);
-		_kc_simple_tx_hashrnd_initialized = 1;
+	if (netdev_get_num_tc(dev)) {
+		struct adapter_struct *kc_adapter = netdev_priv(dev);
+
+		if (skb->priority == TC_PRIO_CONTROL) {
+			qoffset = kc_adapter->dcb_tc - 1;
+		} else {
+			qoffset = skb->vlan_tci;
+			qoffset &= IXGBE_TX_FLAGS_VLAN_PRIO_MASK;
+			qoffset >>= 13;
+		}
+
+		qcount = kc_adapter->ring_feature[RING_F_RSS].indices;
+		qoffset *= qcount;
 	}
 
 	if (skb->sk && skb->sk->sk_hash)
@@ -1208,16 +1220,12 @@ u16 ___kc_skb_tx_hash(struct net_device *dev, const struct sk_buff *skb,
 		hash = skb->protocol;
 #endif
 
-	hash = jhash_1word(hash, _kc_simple_tx_hashrnd);
+	hash = jhash_1word(hash, _kc_hashrnd);
 
-	return (u16) (((u64) hash * num_tx_queues) >> 32);
+	return (u16) (((u64) hash * qcount) >> 32) + qoffset;
 }
 #endif /* HAVE_NETDEV_SELECT_QUEUE */
-#endif /* < 2.6.38 */
 
-/******************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
 u8 _kc_netdev_get_num_tc(struct net_device *dev)
 {
 	struct adapter_struct *kc_adapter = netdev_priv(dev);
@@ -1273,6 +1281,7 @@ int _kc_simple_open(struct inode *inode, struct file *file)
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0) )
+#if !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0))
 static inline int __kc_pcie_cap_version(struct pci_dev *dev)
 {
 	int pos;
@@ -1285,7 +1294,7 @@ static inline int __kc_pcie_cap_version(struct pci_dev *dev)
 	return reg16 & PCI_EXP_FLAGS_VERS;
 }
 
-static inline bool __kc_pcie_cap_has_devctl(const struct pci_dev *dev)
+static inline bool __kc_pcie_cap_has_devctl(const struct pci_dev __always_unused *dev)
 {
 	return true;
 }
@@ -1427,4 +1436,162 @@ int __kc_pcie_capability_clear_and_set_word(struct pci_dev *dev, int pos,
 
 	return ret;
 }
+#endif /* !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0)) */
 #endif /* < 3.7.0 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0) )
+#ifdef CONFIG_XPS
+#if NR_CPUS < 64
+#define _KC_MAX_XPS_CPUS	NR_CPUS
+#else
+#define _KC_MAX_XPS_CPUS	64
+#endif
+
+/*
+ * netdev_queue sysfs structures and functions.
+ */
+struct _kc_netdev_queue_attribute {
+	struct attribute attr;
+	ssize_t (*show)(struct netdev_queue *queue,
+	    struct _kc_netdev_queue_attribute *attr, char *buf);
+	ssize_t (*store)(struct netdev_queue *queue,
+	    struct _kc_netdev_queue_attribute *attr, const char *buf, size_t len);
+};
+
+#define to_kc_netdev_queue_attr(_attr) container_of(_attr,		\
+    struct _kc_netdev_queue_attribute, attr)
+
+int __kc_netif_set_xps_queue(struct net_device *dev, struct cpumask *mask,
+			     u16 index)
+{
+	struct netdev_queue *txq = netdev_get_tx_queue(dev, index);
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38) )
+	/* Redhat requires some odd extended netdev structures */
+	struct netdev_tx_queue_extended *txq_ext =
+					netdev_extended(dev)->_tx_ext + index;
+	struct kobj_type *ktype = txq_ext->kobj.ktype;
+#else
+	struct kobj_type *ktype = txq->kobj.ktype;
+#endif
+	struct _kc_netdev_queue_attribute *xps_attr;
+	struct attribute *attr = NULL;
+	int i, len, err;
+#define _KC_XPS_BUFLEN	(DIV_ROUND_UP(_KC_MAX_XPS_CPUS, 32) * 9)
+	char buf[_KC_XPS_BUFLEN];
+
+	if (!ktype)
+		return -ENOMEM;
+	
+	/* attempt to locate the XPS attribute in the Tx queue */
+	for (i = 0; (attr = ktype->default_attrs[i]); i++) {
+		if (!strcmp("xps_cpus", attr->name))
+			break;
+	}
+	
+	/* if we did not find it return an error */
+	if (!attr)
+		return -EINVAL;
+	
+	/* copy the mask into a string */
+	len = bitmap_scnprintf(buf, _KC_XPS_BUFLEN,
+			       cpumask_bits(mask), _KC_MAX_XPS_CPUS);
+	if (!len)
+		return -ENOMEM;
+
+	xps_attr = to_kc_netdev_queue_attr(attr);
+
+	/* Store the XPS value using the SYSFS store call */
+	err = xps_attr->store(txq, xps_attr, buf, len);	
+
+	/* we only had an error on err < 0 */
+	return (err < 0) ? err : 0;
+}
+#endif /* CONFIG_XPS */
+#ifdef HAVE_NETDEV_SELECT_QUEUE
+static inline int kc_get_xps_queue(struct net_device *dev, struct sk_buff *skb)
+{
+#ifdef CONFIG_XPS
+	struct xps_dev_maps *dev_maps;
+	struct xps_map *map;
+	int queue_index = -1;
+
+	rcu_read_lock();
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38) )
+	/* Redhat requires some odd extended netdev structures */
+	dev_maps = rcu_dereference(netdev_extended(dev)->xps_maps);
+#else
+	dev_maps = rcu_dereference(dev->xps_maps);
+#endif
+	if (dev_maps) {
+		map = rcu_dereference(
+		    dev_maps->cpu_map[raw_smp_processor_id()]);
+		if (map) {
+			if (map->len == 1)
+				queue_index = map->queues[0];
+			else {
+				u32 hash;
+				if (skb->sk && skb->sk->sk_hash)
+					hash = skb->sk->sk_hash;
+				else
+					hash = (__force u16) skb->protocol ^
+					    skb->rxhash;
+				hash = jhash_1word(hash, _kc_hashrnd);
+				queue_index = map->queues[
+				    ((u64)hash * map->len) >> 32];
+			}
+			if (unlikely(queue_index >= dev->real_num_tx_queues))
+				queue_index = -1;
+		}
+	}
+	rcu_read_unlock();
+
+	return queue_index;
+#else
+	struct adapter_struct *kc_adapter = netdev_priv(dev);
+	int queue_index = -1;
+
+	if (kc_adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE) {
+		queue_index = skb_rx_queue_recorded(skb) ?
+					   skb_get_rx_queue(skb) :
+					   smp_processor_id();
+		while (unlikely(queue_index >= dev->real_num_tx_queues))
+			queue_index -= dev->real_num_tx_queues;
+		return queue_index;
+	}
+
+	return -1;
+#endif
+}
+
+u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
+{
+	struct sock *sk = skb->sk;
+	int queue_index = sk_tx_queue_get(sk);
+	int new_index;
+
+	if (queue_index >= 0 && queue_index < dev->real_num_tx_queues) {
+#ifdef CONFIG_XPS
+		if (!skb->ooo_okay)
+#endif
+			return queue_index;
+	}
+
+	new_index = kc_get_xps_queue(dev, skb);
+	if (new_index < 0)
+		new_index = skb_tx_hash(dev, skb);
+
+	if (queue_index != new_index && sk) {
+		struct dst_entry *dst =
+			    rcu_dereference(sk->sk_dst_cache);
+
+		if (dst && skb_dst(skb) == dst)
+			sk_tx_queue_set(sk, queue_index);
+
+	}
+
+	return new_index;
+}
+
+#endif /* HAVE_NETDEV_SELECT_QUEUE */
+#endif /* 3.9.0 */

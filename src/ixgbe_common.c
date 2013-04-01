@@ -27,6 +27,8 @@
 
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
+#include "ixgbe_dcb.h"
+#include "ixgbe_dcb_82599.h"
 #include "ixgbe_api.h"
 
 static s32 ixgbe_acquire_eeprom(struct ixgbe_hw *hw);
@@ -672,20 +674,17 @@ s32 ixgbe_get_mac_addr_generic(struct ixgbe_hw *hw, u8 *mac_addr)
 }
 
 /**
- *  ixgbe_get_bus_info_generic - Generic set PCI bus info
+ *  ixgbe_set_pci_config_data_generic - Generic store PCI bus info
  *  @hw: pointer to hardware structure
+ *  @link_status: the link status returned by the PCI config space
  *
- *  Sets the PCI bus info (speed, width, type) within the ixgbe_hw structure
+ *  Stores the PCI bus info (speed, width, type) within the ixgbe_hw structure
  **/
-s32 ixgbe_get_bus_info_generic(struct ixgbe_hw *hw)
+void ixgbe_set_pci_config_data_generic(struct ixgbe_hw *hw, u16 link_status)
 {
 	struct ixgbe_mac_info *mac = &hw->mac;
-	u16 link_status;
 
 	hw->bus.type = ixgbe_bus_type_pci_express;
-
-	/* Get the negotiated link width and speed from PCI config space */
-	link_status = IXGBE_READ_PCIE_WORD(hw, IXGBE_PCI_LINK_STATUS);
 
 	switch (link_status & IXGBE_PCI_LINK_WIDTH) {
 	case IXGBE_PCI_LINK_WIDTH_1:
@@ -721,6 +720,23 @@ s32 ixgbe_get_bus_info_generic(struct ixgbe_hw *hw)
 	}
 
 	mac->ops.set_lan_id(hw);
+}
+
+/**
+ *  ixgbe_get_bus_info_generic - Generic set PCI bus info
+ *  @hw: pointer to hardware structure
+ *
+ *  Gets the PCI bus info (speed, width, type) then calls helper function to
+ *  store this data within the ixgbe_hw structure.
+ **/
+s32 ixgbe_get_bus_info_generic(struct ixgbe_hw *hw)
+{
+	u16 link_status;
+
+	/* Get the negotiated link width and speed from PCI config space */
+	link_status = IXGBE_READ_PCIE_WORD(hw, IXGBE_PCI_LINK_STATUS);
+
+	ixgbe_set_pci_config_data_generic(hw, link_status);
 
 	return 0;
 }
@@ -1205,7 +1221,7 @@ s32 ixgbe_read_eerd_buffer_generic(struct ixgbe_hw *hw, u16 offset,
 	}
 
 	for (i = 0; i < words; i++) {
-		eerd = ((offset + i) << IXGBE_EEPROM_RW_ADDR_SHIFT) +
+		eerd = ((offset + i) << IXGBE_EEPROM_RW_ADDR_SHIFT) |
 		       IXGBE_EEPROM_RW_REG_START;
 
 		IXGBE_WRITE_REG(hw, IXGBE_EERD, eerd);
@@ -2625,6 +2641,53 @@ out:
 	}
 }
 
+/*
+ * ixgbe_pcie_timeout_poll - Return number of times to poll for completion
+ * @hw: pointer to hardware structure
+ *
+ * System-wide timeout range is encoded in PCIe Device Control2 register.
+ *
+ * Add 10% to specified maximum and return the number of times to poll for
+ * completion timeout, in units of 100 microsec.  Never return less than
+ * 800 = 80 millisec.
+ */
+static u32 ixgbe_pcie_timeout_poll(struct ixgbe_hw *hw)
+{
+	s16 devctl2;
+	u32 pollcnt;
+
+	devctl2 = IXGBE_READ_PCIE_WORD(hw, IXGBE_PCI_DEVICE_CONTROL2);
+	devctl2 &= IXGBE_PCIDEVCTRL2_TIMEO_MASK;
+
+	switch (devctl2) {
+	case IXGBE_PCIDEVCTRL2_65_130ms:
+		pollcnt = 1300;		/* 130 millisec */
+		break;
+	case IXGBE_PCIDEVCTRL2_260_520ms:
+		pollcnt = 5200;		/* 520 millisec */
+		break;
+	case IXGBE_PCIDEVCTRL2_1_2s:
+		pollcnt = 20000;	/* 2 sec */
+		break;
+	case IXGBE_PCIDEVCTRL2_4_8s:
+		pollcnt = 80000;	/* 8 sec */
+		break;
+	case IXGBE_PCIDEVCTRL2_17_34s:
+		pollcnt = 34000;	/* 34 sec */
+		break;
+	case IXGBE_PCIDEVCTRL2_50_100us:	/* 100 microsecs */
+	case IXGBE_PCIDEVCTRL2_1_2ms:		/* 2 millisecs */
+	case IXGBE_PCIDEVCTRL2_16_32ms:		/* 32 millisec */
+	case IXGBE_PCIDEVCTRL2_16_32ms_def:	/* 32 millisec default */
+	default:
+		pollcnt = 800;		/* 80 millisec minimum */
+		break;
+	}
+
+	/* add 10% to spec maximum */
+	return (pollcnt * 11) / 10;
+}
+
 /**
  *  ixgbe_disable_pcie_master - Disable PCI-express master access
  *  @hw: pointer to hardware structure
@@ -2637,12 +2700,12 @@ out:
 s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 {
 	s32 status = 0;
-	u32 i;
+	u32 i, poll;
 
 	/* Always set this bit to ensure any future transactions are blocked */
 	IXGBE_WRITE_REG(hw, IXGBE_CTRL, IXGBE_CTRL_GIO_DIS);
 
-	/* Exit if master requets are blocked */
+	/* Exit if master requests are blocked */
 	if (!(IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_GIO))
 		goto out;
 
@@ -2668,7 +2731,8 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 	 * Before proceeding, make sure that the PCIe block does not have
 	 * transactions pending.
 	 */
-	for (i = 0; i < IXGBE_PCI_MASTER_DISABLE_TIMEOUT; i++) {
+	poll = ixgbe_pcie_timeout_poll(hw);
+	for (i = 0; i < poll; i++) {
 		udelay(100);
 		if (!(IXGBE_READ_PCIE_WORD(hw, IXGBE_PCI_DEVICE_STATUS) &
 		    IXGBE_PCI_DEVICE_STATUS_TRANSACTION_PENDING))
@@ -4146,3 +4210,21 @@ s32 ixgbe_init_thermal_sensor_thresh_generic(struct ixgbe_hw *hw)
 	return status;
 }
 
+
+/**     
+ * ixgbe_dcb_get_rtrup2tc_generic - read rtrup2tc reg
+ * @hw: pointer to hardware structure
+ * @map: pointer to u8 arr for returning map
+ *
+ * Read the rtrup2tc HW register and resolve its content into map
+ **/
+void ixgbe_dcb_get_rtrup2tc_generic(struct ixgbe_hw *hw, u8 *map)
+{       
+	u32 reg, i;
+
+	reg = IXGBE_READ_REG(hw, IXGBE_RTRUP2TC);
+	for (i = 0; i < IXGBE_DCB_MAX_USER_PRIORITY; i++)
+		map[i] = IXGBE_RTRUP2TC_UP_MASK &
+			(reg >> (i * IXGBE_RTRUP2TC_UP_SHIFT));
+	return;
+}

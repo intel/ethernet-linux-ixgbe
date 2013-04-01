@@ -261,10 +261,12 @@ struct ixgbe_lro_list {
 
 /* Tx Descriptors needed, worst case */
 #define TXD_USE_COUNT(S)	DIV_ROUND_UP((S), IXGBE_MAX_DATA_PER_TXD)
-#ifdef MAX_SKB_FRAGS
+#ifndef MAX_SKB_FRAGS
+#define DESC_NEEDED	4
+#elif (MAX_SKB_FRAGS < 16)
 #define DESC_NEEDED	((MAX_SKB_FRAGS * TXD_USE_COUNT(PAGE_SIZE)) + 4)
 #else
-#define DESC_NEEDED	4
+#define DESC_NEEDED	(MAX_SKB_FRAGS + 4)
 #endif
 
 /* wrapper around a pointer to a socket buffer,
@@ -312,6 +314,7 @@ struct ixgbe_rx_queue_stats {
 
 enum ixgbe_ring_state_t {
 	__IXGBE_TX_FDIR_INIT_DONE,
+	__IXGBE_TX_XPS_INIT_DONE,
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
 	__IXGBE_RX_RSC_ENABLED,
@@ -511,6 +514,26 @@ struct ixgbe_q_vector {
 	/* for dynamic allocation of rings associated with this q_vector */
 	struct ixgbe_ring ring[0] ____cacheline_internodealigned_in_smp;
 };
+#ifdef IXGBE_HWMON
+
+#define IXGBE_HWMON_TYPE_LOC		0
+#define IXGBE_HWMON_TYPE_TEMP		1
+#define IXGBE_HWMON_TYPE_CAUTION	2
+#define IXGBE_HWMON_TYPE_MAX		3
+
+struct hwmon_attr {
+	struct device_attribute dev_attr;
+	struct ixgbe_hw *hw;
+	struct ixgbe_thermal_diode_data *sensor;
+	char name[12];
+};
+
+struct hwmon_buff {
+	struct device *device;
+	struct hwmon_attr *hwmon_list;
+	unsigned int n_hwmon;
+};
+#endif /* IXGBE_HWMON */
 
 /*
  * microsecond values for various ITR rates shifted by 2 to fit itr register
@@ -809,8 +832,9 @@ struct ixgbe_adapter {
 #endif
 	struct ixgbe_mac_addr *mac_table;
 #ifdef IXGBE_SYSFS
-	struct kobject *info_kobj;
-	struct kobject *therm_kobj[IXGBE_MAX_SENSORS];
+#ifdef IXGBE_HWMON
+	struct hwmon_buff ixgbe_hwmon_buff;
+#endif /* IXGBE_HWMON */
 #else /* IXGBE_SYSFS */
 #ifdef IXGBE_PROCFS
 	struct proc_dir_entry *eth_dir;

@@ -28,6 +28,19 @@
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
 
+/**     
+ * ixgbe_dcb_get_rtrup2tc - read rtrup2tc reg
+ * @hw: pointer to hardware structure
+ * @map: pointer to u8 arr for returning map
+ *
+ * Read the rtrup2tc HW register and resolve its content into map
+ **/
+void ixgbe_dcb_get_rtrup2tc(struct ixgbe_hw *hw, u8 *map)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_rtrup2tc,(hw, map),
+			IXGBE_NOT_IMPLEMENTED);
+}
+
 /**
  *  ixgbe_init_shared_code - Initialize the shared code
  *  @hw: pointer to hardware structure

@@ -79,7 +79,7 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 	if (!netdev)
 		goto out_ddp_put;
 
-	if (xid >= IXGBE_FCOE_DDP_MAX)
+	if (xid > netdev->fcoe_ddp_xid)
 		goto out_ddp_put;
 
 	adapter = netdev_priv(netdev);
@@ -154,7 +154,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 		return 0;
 
 	adapter = netdev_priv(netdev);
-	if (xid >= IXGBE_FCOE_DDP_MAX) {
+	if (xid > netdev->fcoe_ddp_xid) {
 		e_warn(drv, "xid=0x%x out-of-range\n", xid);
 		return 0;
 	}
@@ -374,7 +374,7 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
 	struct ixgbe_fcoe_ddp *ddp;
 	struct fc_frame_header *fh;
-	int rc = -EINVAL;
+	int rc = -EINVAL, ddp_max;
 	__le32 fcerr = ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_ERR_FCERR);
 	__le32 ddp_err;
 	u32 fctl;
@@ -399,7 +399,9 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 	else
 		xid =  ntohs(fh->fh_rx_id);
 
-	if (xid >= IXGBE_FCOE_DDP_MAX)
+	ddp_max = IXGBE_FCOE_DDP_MAX;
+
+	if (xid >= ddp_max)
 		goto ddp_out;
 
 	ddp = &fcoe->ddp[xid];
@@ -671,7 +673,6 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 
 	/* Configure FCoE Rx control */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRXCTRL,
-			IXGBE_FCRXCTRL_FCOELLI |
 			IXGBE_FCRXCTRL_FCCRCBO |
 			(FC_FCOE_VER << IXGBE_FCRXCTRL_FCOEVER_SHIFT));
 }
@@ -687,13 +688,15 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
-	int cpu, i;
+	int cpu, i, ddp_max;
 
 	/* do nothing if no DDP pools were allocated */
 	if (!fcoe->ddp_pool)
 		return;
 
-	for (i = 0; i < IXGBE_FCOE_DDP_MAX; i++)
+	ddp_max = IXGBE_FCOE_DDP_MAX;
+
+	for (i = 0; i < ddp_max; i++)
 		ixgbe_fcoe_ddp_put(adapter->netdev, i);
 
 	for_each_possible_cpu(cpu)
@@ -779,6 +782,7 @@ static int ixgbe_fcoe_ddp_enable(struct ixgbe_adapter *adapter)
 	}
 
 	adapter->netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX - 1;
+
 
 	return 0;
 }

@@ -40,7 +40,8 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
 static s32 ixgbe_read_eeprom_buffer_82599(struct ixgbe_hw *hw, u16 offset,
 					  u16 words, u16 *data);
 
-bool ixgbe_mng_enabled(struct ixgbe_hw *hw) {
+static bool ixgbe_mng_enabled(struct ixgbe_hw *hw)
+{
 	u32 fwsm, manc, factps;
 
 	fwsm = IXGBE_READ_REG(hw, IXGBE_FWSM);
@@ -67,7 +68,7 @@ void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 	 * and MNG not enabled
 	 */
 	if ((mac->ops.get_media_type(hw) == ixgbe_media_type_fiber) &&
-	    !hw->mng_fw_enabled){
+	    !hw->mng_fw_enabled) {
 		mac->ops.disable_tx_laser =
 				       &ixgbe_disable_tx_laser_multispeed_fiber;
 		mac->ops.enable_tx_laser =
@@ -194,8 +195,9 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 		}
 
 		/* Restart DSP and set SFI mode */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, (IXGBE_READ_REG(hw,
-				IXGBE_AUTOC) | IXGBE_AUTOC_LMS_10G_SERIAL));
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, ((hw->mac.orig_autoc) |
+				IXGBE_AUTOC_LMS_10G_SERIAL));
+		hw->mac.cached_autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 		ret_val = ixgbe_reset_pipeline_82599(hw);
 
 		if (got_lock) {
@@ -231,7 +233,7 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	struct ixgbe_eeprom_info *eeprom = &hw->eeprom;
 	s32 ret_val;
 
-	ret_val = ixgbe_init_phy_ops_generic(hw);
+	ixgbe_init_phy_ops_generic(hw);
 	ret_val = ixgbe_init_ops_generic(hw);
 
 	/* PHY */
@@ -300,6 +302,8 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 					 &ixgbe_get_thermal_sensor_data_generic;
 	mac->ops.init_thermal_sensor_thresh =
 				      &ixgbe_init_thermal_sensor_thresh_generic;
+
+	mac->ops.get_rtrup2tc = &ixgbe_dcb_get_rtrup2tc_generic;
 
 	return ret_val;
 }
@@ -582,6 +586,7 @@ void ixgbe_flap_tx_laser_multispeed_fiber(struct ixgbe_hw *hw)
 	}
 }
 
+
 /**
  *  ixgbe_setup_mac_link_multispeed_fiber - Set MAC link speed
  *  @hw: pointer to hardware structure
@@ -851,12 +856,9 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 {
 	bool autoneg = false;
 	s32 status = 0;
-	u32 autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	u32 autoc, pma_pmd_1g, link_mode, start_autoc;
 	u32 autoc2 = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
-	u32 start_autoc = autoc;
 	u32 orig_autoc = 0;
-	u32 link_mode = autoc & IXGBE_AUTOC_LMS_MASK;
-	u32 pma_pmd_1g = autoc & IXGBE_AUTOC_1G_PMA_PMD_MASK;
 	u32 pma_pmd_10g_serial = autoc2 & IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_MASK;
 	u32 links_reg;
 	u32 i;
@@ -877,9 +879,14 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 
 	/* Use stored value (EEPROM defaults) of AUTOC to find KR/KX4 support*/
 	if (hw->mac.orig_link_settings_stored)
-		orig_autoc = hw->mac.orig_autoc;
+		autoc = hw->mac.orig_autoc;
 	else
-		orig_autoc = autoc;
+		autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+
+	orig_autoc = autoc;
+	start_autoc = hw->mac.cached_autoc;
+	link_mode = autoc & IXGBE_AUTOC_LMS_MASK;
+	pma_pmd_1g = autoc & IXGBE_AUTOC_1G_PMA_PMD_MASK;
 
 	if (link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR ||
 	    link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR_1G_AN ||
@@ -935,6 +942,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 
 		/* Restart link */
 		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc);
+		hw->mac.cached_autoc = autoc;
 		ixgbe_reset_pipeline_82599(hw);
 
 		if (got_lock) {
@@ -1007,7 +1015,7 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 {
 	ixgbe_link_speed link_speed;
 	s32 status;
-	u32 ctrl, i, autoc, autoc2;
+	u32 ctrl, i, autoc2;
 	u32 curr_lms;
 	bool link_up = false;
 
@@ -1041,7 +1049,11 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 		hw->phy.ops.reset(hw);
 
 	/* remember AUTOC from before we reset */
-	curr_lms = IXGBE_READ_REG(hw, IXGBE_AUTOC) & IXGBE_AUTOC_LMS_MASK;
+	if (hw->mac.cached_autoc)
+		curr_lms = hw->mac.cached_autoc & IXGBE_AUTOC_LMS_MASK;
+	else
+		curr_lms = IXGBE_READ_REG(hw, IXGBE_AUTOC) &
+				IXGBE_AUTOC_LMS_MASK;
 
 mac_reset_top:
 	/*
@@ -1091,7 +1103,7 @@ mac_reset_top:
 	 * stored off yet.  Otherwise restore the stored original
 	 * values since the reset operation sets back to defaults.
 	 */
-	autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	hw->mac.cached_autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 	autoc2 = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
 
 	/* Enable link if disabled in NVM */
@@ -1102,7 +1114,7 @@ mac_reset_top:
 	}
 
 	if (hw->mac.orig_link_settings_stored == false) {
-		hw->mac.orig_autoc = autoc;
+		hw->mac.orig_autoc = hw->mac.cached_autoc;
 		hw->mac.orig_autoc2 = autoc2;
 		hw->mac.orig_link_settings_stored = true;
 	} else {
@@ -1110,13 +1122,16 @@ mac_reset_top:
 		/* If MNG FW is running on a multi-speed device that
 		 * doesn't autoneg with out driver support we need to
 		 * leave LMS in the state it was before we MAC reset.
+		 * Likewise if we support WoL we don't want change the
+		 * LMS state.
 		 */
-		if (hw->phy.multispeed_fiber && hw->mng_fw_enabled)
+		if ((hw->phy.multispeed_fiber && hw->mng_fw_enabled) ||
+		    hw->wol_supported)
 			hw->mac.orig_autoc =
 				(hw->mac.orig_autoc & ~IXGBE_AUTOC_LMS_MASK) |
 				curr_lms;
 
-		if (autoc != hw->mac.orig_autoc) {
+		if (hw->mac.cached_autoc != hw->mac.orig_autoc) {
 			/* Need SW/FW semaphore around AUTOC writes if LESM is
 			 * on, likewise reset_pipeline requires us to hold
 			 * this lock as it also writes to AUTOC.
@@ -1134,6 +1149,7 @@ mac_reset_top:
 			}
 
 			IXGBE_WRITE_REG(hw, IXGBE_AUTOC, hw->mac.orig_autoc);
+			hw->mac.cached_autoc = hw->mac.orig_autoc;
 			ixgbe_reset_pipeline_82599(hw);
 
 			if (got_lock)
@@ -2293,8 +2309,9 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
  **/
 s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
 {
-	s32 i, autoc_reg, autoc2_reg, ret_val;
-	s32 anlp1_reg = 0;
+	s32 ret_val;
+	u32 anlp1_reg = 0;
+	u32 i, autoc_reg, autoc2_reg;
 
 	/* Enable link if disabled in NVM */
 	autoc2_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
@@ -2304,7 +2321,7 @@ s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
 		IXGBE_WRITE_FLUSH(hw);
 	}
 
-	autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	autoc_reg = hw->mac.cached_autoc;
 	autoc_reg |= IXGBE_AUTOC_AN_RESTART;
 	/* Write AUTOC register with toggled LMS[2] bit and Restart_AN */
 	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg ^ IXGBE_AUTOC_LMS_1G_AN);

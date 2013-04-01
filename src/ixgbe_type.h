@@ -55,6 +55,7 @@
 #define IXGBE_SUBDEV_ID_82599_RNDC		0x1F72
 #define IXGBE_SUBDEV_ID_82599_560FLR		0x17D0
 #define IXGBE_SUBDEV_ID_82599_ECNA_DP		0x0470
+#define IXGBE_SUBDEV_ID_82599_SP_560FLR		0x211B
 #define IXGBE_DEV_ID_82599_BACKPLANE_FCOE	0x152A
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
@@ -219,7 +220,6 @@ struct ixgbe_thermal_sensor_data {
 				 (((_i) < 64) ? (0x0100C + ((_i) * 0x40)) : \
 				 (0x0D00C + (((_i) - 64) * 0x40))))
 #define IXGBE_RDRXCTL		0x02F00
-#define IXGBE_RDRXCTL_RSC_PUSH	0x80
 /* 8 of these 0x03C00 - 0x03C1C */
 #define IXGBE_RXPBSIZE(_i)	(0x03C00 + ((_i) * 4))
 #define IXGBE_RXCTRL		0x03000
@@ -1032,7 +1032,9 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RDRXCTL_RDMTS_1_2		0x00000000 /* Rx Desc Min THLD Size */
 #define IXGBE_RDRXCTL_CRCSTRIP		0x00000002 /* CRC Strip */
 #define IXGBE_RDRXCTL_MVMEN		0x00000020
+#define IXGBE_RDRXCTL_RSC_PUSH_DIS	0x00000020
 #define IXGBE_RDRXCTL_DMAIDONE		0x00000008 /* DMA init cycle done */
+#define IXGBE_RDRXCTL_RSC_PUSH		0x00000080
 #define IXGBE_RDRXCTL_AGGDIS		0x00010000 /* Aggregation disable */
 #define IXGBE_RDRXCTL_RSCFRSTSIZE	0x003E0000 /* RSC First packet size */
 #define IXGBE_RDRXCTL_RSCLLIDIS		0x00800000 /* Disable RSC compl on LLI*/
@@ -1932,6 +1934,17 @@ enum {
 #define IXGBE_PCI_HEADER_TYPE_MULTIFUNC	0x80
 #define IXGBE_PCI_DEVICE_CONTROL2_16ms	0x0005
 
+#define IXGBE_PCIDEVCTRL2_TIMEO_MASK	0xf
+#define IXGBE_PCIDEVCTRL2_16_32ms_def	0x0
+#define IXGBE_PCIDEVCTRL2_50_100us	0x1
+#define IXGBE_PCIDEVCTRL2_1_2ms		0x2
+#define IXGBE_PCIDEVCTRL2_16_32ms	0x5
+#define IXGBE_PCIDEVCTRL2_65_130ms	0x6
+#define IXGBE_PCIDEVCTRL2_260_520ms	0x9
+#define IXGBE_PCIDEVCTRL2_1_2s		0xa
+#define IXGBE_PCIDEVCTRL2_4_8s		0xd
+#define IXGBE_PCIDEVCTRL2_17_34s	0xe
+
 /* Number of 100 microseconds we wait for PCI Express master disable */
 #define IXGBE_PCI_MASTER_DISABLE_TIMEOUT	800
 
@@ -2418,6 +2431,14 @@ enum ixgbe_fdir_pballoc_type {
 #define IXGBE_FDIR_DROP_QUEUE			127
 
 #define IXGBE_STATUS_OVERHEATING_BIT		20 /* STATUS overtemp bit num */
+/* iTS sensor related defines*/
+#define IXGBE_TEMP_STATUS_ADDR_X540		0xC830
+#define IXGBE_TEMP_VALUE_ADDR_X540		0xC820
+#define IXGBE_TEMP_PROV_2_ADDR_X540		0xC421
+#define IXGBE_TEMP_PROV_4_ADDR_X540		0xC423
+#define IXGBE_TEMP_STATUS_PAGE_X540		0x1E
+#define IXGBE_TEMP_HIGH_FAILURE_BIT_X540	0xE
+#define IXGBE_TEMP_HIGH_WARNING_BIT_X540	0xC
 
 /* Manageablility Host Interface defines */
 #define IXGBE_HI_MAX_BLOCK_BYTE_LENGTH	1792 /* Num of bytes in range */
@@ -3103,6 +3124,7 @@ struct ixgbe_mac_operations {
 	s32 (*set_fw_drv_ver)(struct ixgbe_hw *, u8, u8, u8, u8);
 	s32 (*get_thermal_sensor_data)(struct ixgbe_hw *);
 	s32 (*init_thermal_sensor_thresh)(struct ixgbe_hw *hw);
+	void (*get_rtrup2tc)(struct ixgbe_hw *hw, u8 *map);
 };
 
 struct ixgbe_phy_operations {
@@ -3156,7 +3178,9 @@ struct ixgbe_mac_info {
 	u32 max_tx_queues;
 	u32 max_rx_queues;
 	u32 orig_autoc;
+	u32 cached_autoc;
 	u8  san_mac_rar_index;
+	bool get_link_status;
 	u32 orig_autoc2;
 	u16 max_msix_vectors;
 	bool arc_subsystem_valid;
@@ -3235,6 +3259,7 @@ struct ixgbe_hw {
 	bool force_full_reset;
 	bool allow_unsupported_sfp;
 	bool mng_fw_enabled;
+	bool wol_supported;
 };
 
 #define ixgbe_call_func(hw, func, params, error) \
@@ -3276,9 +3301,9 @@ struct ixgbe_hw {
 #define IXGBE_ERR_HOST_INTERFACE_COMMAND	-33
 #define IXGBE_ERR_OUT_OF_MEM			-34
 #define IXGBE_ERR_FEATURE_NOT_SUPPORTED		-36
+#define IXGBE_ERR_EEPROM_PROTECTED_REGION	-37
 
 #define IXGBE_NOT_IMPLEMENTED			0x7FFFFFFF
 
 #define UNREFERENCED_XPARAMETER
-
 #endif /* _IXGBE_TYPE_H_ */
