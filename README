@@ -1,7 +1,8 @@
 Linux* Base Driver for the Intel(R) Ethernet 10 Gigabit PCI Express Family of
 Adapters
 =============================================================================
-February 12, 2013
+
+April 22, 2013
 
 Contents
 ========
@@ -202,11 +203,6 @@ To manually build this driver:
    For kernel 2.6.x, use the modprobe command:
      modprobe ixgbe <parameter>=<value>
 
-   Note that for 2.6 kernels the insmod command can be used if the full
-   path to the driver module is specified.  For example:
-
-     insmod /lib/modules/<KERNEL VERSION>/kernel/drivers/net/ixgbe/ixgbe.ko
-
    With 2.6 based kernels also make sure that older ixgbe drivers are
    removed from the kernel, before loading the new module:
 
@@ -383,13 +379,22 @@ Default Value: 0
   This parameter adds support for SR-IOV.  It causes the driver to spawn up to 
   max_vfs worth of virtual function.  
 
+  NOTE: When either SR-IOV mode or VMDq mode is enabled, hardware VLAN 
+  filtering and VLAN tag stripping/insertion will remain enabled.
+  Please remove the old VLAN filter before the new VLAN filter is added.
+  For example, 
+  
+    ip link set eth0 vf 0 vlan 100     // set vlan 100 for VF 0
+    ip link set eth0 vf 0 vlan 0       // Delete vlan 100 
+    ip link set eth0 vf 0 vlan 200     // set a new vlan 200 for VF 0
+  
 The parameters for the driver are referenced by position.  So, if you have a 
 dual port 82599 or X540-based adapter and you want N virtual functions per 
 port, you must specify a number for each port with each parameter separated by
 a comma.
 
 For example:
-  insmod ixgbe max_vfs=63,63
+  modprobe ixgbe max_vfs=63,63
 
 NOTE: If both 82598 and 82599 or X540-based adapters are installed on the same 
 machine, you must be careful in loading the driver with the parameters. 
@@ -904,7 +909,7 @@ Software Issues:
 
   Lower than expected performance on dual port and quad port 10GbE devices
   ------------------------------------------------------------------------
-  Some PCI-E x8 slots are actually configured as x4 slots. These slots have 
+  Some PCIe x8 slots are actually configured as x4 slots. These slots have 
   insufficient bandwidth for full 10Gbe line rate with dual port and quad port
   10GbE devices. In addition, if you put a PCIe Gen 3-capable adapter into a
   PCIe Gen 2  slot, you can not get full bandwidth. The driver can detect this
