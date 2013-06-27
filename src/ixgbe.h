@@ -41,7 +41,7 @@
 #ifdef SIOCETHTOOL
 #include <linux/ethtool.h>
 #endif
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 #include <linux/if_vlan.h>
 #endif
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
@@ -317,9 +317,6 @@ enum ixgbe_ring_state_t {
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
 	__IXGBE_RX_RSC_ENABLED,
-#ifndef HAVE_NDO_SET_FEATURES
-	__IXGBE_RX_CSUM_ENABLED,
-#endif
 	__IXGBE_RX_CSUM_UDP_ZERO_ERR,
 #ifdef IXGBE_FCOE
 	__IXGBE_RX_FCOE,
@@ -607,13 +604,13 @@ struct ixgbe_therm_proc_data {
 
 /* board specific private data structure */
 struct ixgbe_adapter {
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 #ifdef HAVE_VLAN_RX_REGISTER
 	struct vlan_group *vlgrp; /* must be first, see ixgbe_receive_skb */
 #else
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
 #endif
-#endif /* NETIF_F_HW_VLAN_TX */
+#endif /* NETIF_F_HW_VLAN_TX || NETIF_F_HW_VLAN_CTAG_TX */
 	/* OS defined structs */
 	struct net_device *netdev;
 	struct pci_dev *pdev;

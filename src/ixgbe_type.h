@@ -28,6 +28,44 @@
 #ifndef _IXGBE_TYPE_H_
 #define _IXGBE_TYPE_H_
 
+/*
+ * The following is a brief description of the error categories used by the
+ * ERROR_REPORT* macros.
+ *
+ * - IXGBE_ERROR_INVALID_STATE
+ * This category is for errors which represent a serious failure state that is
+ * unexpected, and could be potentially harmful to device operation. It should
+ * not be used for errors relating to issues that can be worked around or
+ * ignored.
+ *
+ * - IXGBE_ERROR_POLLING
+ * This category is for errors related to polling/timeout issues and should be
+ * used in any case where the timeout occured, or a failure to obtain a lock, or
+ * failure to receive data within the time limit.
+ *
+ * - IXGBE_ERROR_CAUTION
+ * This category should be used for reporting issues that may be the cause of
+ * other errors, such as temperature warnings. It should indicate an event which
+ * could be serious, but hasn't necessarily caused problems yet.
+ *
+ * - IXGBE_ERROR_SOFTWARE
+ * This category is intended for errors due to software state preventing
+ * something. The category is not intended for errors due to bad arguments, or
+ * due to unsupported features. It should be used when a state occurs which
+ * prevents action but is not a serious issue.
+ *
+ * - IXGBE_ERROR_ARGUMENT
+ * This category is for when a bad or invalid argument is passed. It should be
+ * used whenever a function is called and error checking has detected the
+ * argument is wrong or incorrect.
+ *
+ * - IXGBE_ERROR_UNSUPPORTED
+ * This category is for errors which are due to unsupported circumstances or
+ * configuration issues. It should not be used when the issue is due to an
+ * invalid argument, but for when something has occurred that is unsupported
+ * (Ex: Flow control autonegotiation or an unsupported SFP+ module.)
+ */
+
 #include "ixgbe_osdep.h"
 
 
@@ -593,8 +631,6 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_FCPTRH		0x02414 /* FC USer Desc. PTR High */
 #define IXGBE_FCBUFF		0x02418 /* FC Buffer Control */
 #define IXGBE_FCDMARW		0x02420 /* FC Receive DMA RW */
-#define IXGBE_FCINVST0		0x03FC0 /* FC Invalid DMA Context Status Reg 0*/
-#define IXGBE_FCINVST(_i)	(IXGBE_FCINVST0 + ((_i) * 4))
 #define IXGBE_FCBUFF_VALID	(1 << 0)   /* DMA Context Valid */
 #define IXGBE_FCBUFF_BUFFSIZE	(3 << 3)   /* User Buffer Size */
 #define IXGBE_FCBUFF_WRCONTX	(1 << 7)   /* 0: Initiator, 1: Target */
@@ -3160,6 +3196,8 @@ struct ixgbe_phy_operations {
 	s32 (*reset)(struct ixgbe_hw *);
 	s32 (*read_reg)(struct ixgbe_hw *, u32, u32, u16 *);
 	s32 (*write_reg)(struct ixgbe_hw *, u32, u32, u16);
+	s32 (*read_reg_mdi)(struct ixgbe_hw *, u32, u32, u16 *);
+	s32 (*write_reg_mdi)(struct ixgbe_hw *, u32, u32, u16);
 	s32 (*setup_link)(struct ixgbe_hw *);
 	s32 (*setup_link_speed)(struct ixgbe_hw *, ixgbe_link_speed, bool);
 	s32 (*check_link)(struct ixgbe_hw *, ixgbe_link_speed *, bool *);

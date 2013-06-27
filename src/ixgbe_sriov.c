@@ -775,7 +775,8 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 	 * be wiped completely.
 	 */
 	if (!add && adapter->netdev->flags & IFF_PROMISC) {
-		u32 bits, reg_ndx, vlvf;
+		u32 bits, vlvf;
+		s32 reg_ndx;
 
 		reg_ndx = ixgbe_find_vlvf_entry(hw, vid);
 		if (reg_ndx < 0)
@@ -857,7 +858,7 @@ static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
 static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 {
 	u32 mbx_size = IXGBE_VFMAILBOX_SIZE;
-	u32 msgbuf[mbx_size];
+	u32 msgbuf[IXGBE_VFMAILBOX_SIZE];
 	struct ixgbe_hw *hw = &adapter->hw;
 	s32 retval;
 	retval = ixgbe_read_mbx(hw, msgbuf, mbx_size, vf);

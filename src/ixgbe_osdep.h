@@ -59,6 +59,9 @@
 #define hw_dbg(hw, S, A...)	do {} while (0)
 #endif
 
+struct ixgbe_hw;
+struct net_device *ixgbe_hw_to_netdev(const struct ixgbe_hw *hw);
+
 #define e_dev_info(format, arg...) \
 	dev_info(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_warn(format, arg...) \
@@ -67,6 +70,8 @@
 	dev_err(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_notice(format, arg...) \
 	dev_notice(pci_dev_to_dev(adapter->pdev), format, ## arg)
+#define e_dbg(msglvl, format, arg...) \
+	netif_dbg(adapter, msglvl, adapter->netdev, format, ## arg)
 #define e_info(msglvl, format, arg...) \
 	netif_info(adapter, msglvl, adapter->netdev, format, ## arg)
 #define e_err(msglvl, format, arg...) \
@@ -114,7 +119,6 @@
 #define IXGBE_WRITE_REG64(a, reg, value) writeq((value), ((a)->hw_addr + (reg)))
 
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_STATUS)
-struct ixgbe_hw;
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
@@ -127,7 +131,7 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
 #define IXGBE_NTOHS(_i) ntohs(_i)
 #define IXGBE_CPU_TO_LE32(_i) cpu_to_le32(_i)
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
-#define EWARN(H, W, S) ewarn(H, W, S) 
+#define EWARN(H, W, S) ewarn(H, W, S)
 
 #define ERROR_REPORT(...) do {} while (0)
 #define ERROR_REPORT1(...) do {} while (0)

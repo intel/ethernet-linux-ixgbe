@@ -304,7 +304,7 @@ struct msix_entry {
 #define IS_ENABLED(option) \
 	(config_enabled(option) || config_enabled(option##_MODULE))
 
-#ifndef NETIF_F_HW_VLAN_TX
+#if !defined(NETIF_F_HW_VLAN_TX) && !defined(NETIF_F_HW_VLAN_CTAG_TX)
 struct _kc_vlan_ethhdr {
 	unsigned char	h_dest[ETH_ALEN];
 	unsigned char	h_source[ETH_ALEN];
@@ -320,7 +320,7 @@ struct _kc_vlan_hdr {
 #define vlan_hdr _kc_vlan_hdr
 #define vlan_tx_tag_present(_skb) 0
 #define vlan_tx_tag_get(_skb) 0
-#endif
+#endif /* NETIF_F_HW_VLAN_TX && NETIF_F_HW_VLAN_CTAG_TX */
 
 #ifndef VLAN_PRIO_SHIFT
 #define VLAN_PRIO_SHIFT 13
@@ -3239,6 +3239,9 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
+#ifndef NETIF_F_RXCSUM
+#define NETIF_F_RXCSUM		(1 << 29)
+#endif
 #ifndef skb_queue_reverse_walk_safe
 #define skb_queue_reverse_walk_safe(queue, skb, tmp)				\
 		for (skb = (queue)->prev, tmp = skb->prev;			\
@@ -3459,6 +3462,14 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 typedef u32 netdev_features_t;
 #undef PCI_EXP_TYPE_RC_EC
 #define  PCI_EXP_TYPE_RC_EC	0xa	/* Root Complex Event Collector */
+#ifndef CONFIG_BQL
+#define netdev_tx_completed_queue(_q, _p, _b) do {} while (0)
+#define netdev_completed_queue(_n, _p, _b) do {} while (0)
+#define netdev_tx_sent_queue(_q, _b) do {} while (0)
+#define netdev_sent_queue(_n, _b) do {} while (0)
+#define netdev_tx_reset_queue(_q) do {} while (0)
+#define netdev_reset_queue(_n) do {} while (0)
+#endif
 #else /* ! < 3.3.0 */
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #ifdef ETHTOOL_SRXNTUPLE
@@ -3764,5 +3775,20 @@ static inline int __kc_pci_vfs_assigned(struct pci_dev *dev)
 #endif
 #define pci_vfs_assigned(dev) __kc_pci_vfs_assigned(dev)
 #endif /* < 3.10.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0) )
+#ifndef HAVE_VLAN_RX_REGISTER
+static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
+							 __be16 vlan_proto,
+							 u16 vlan_tci)
+{
+        skb->vlan_tci = VLAN_TAG_PRESENT | vlan_tci;
+        return skb;
+}
+#define __vlan_hwaccel_put_tag(skb, vlan_proto, vlan_tci) \
+	__kc__vlan_hwaccel_put_tag(skb, vlan_proto, vlan_tci)
+#endif /* HAVE_VLAN_RX_REGISTER */
+#endif /* < 3.11.0 */
 
 #endif /* _KCOMPAT_H_ */

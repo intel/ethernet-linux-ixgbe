@@ -970,11 +970,6 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		if (adapter->hw.mac.type == ixgbe_mac_82599EB)
 			set_bit(__IXGBE_RX_CSUM_UDP_ZERO_ERR, &ring->state);
 
-#ifndef HAVE_NDO_SET_FEATURES
-		/* enable rx csum by default */
-		set_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
-
-#endif
 #ifdef IXGBE_FCOE
 		if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED) {
 			struct ixgbe_ring_feature *f;

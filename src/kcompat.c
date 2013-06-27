@@ -1626,7 +1626,7 @@ u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
 #ifdef CONFIG_PCI_IOV
-int pci_vfs_assigned(struct pci_dev *dev)
+int __kc_pci_vfs_assigned(struct pci_dev *dev)
 {
 	unsigned int vfs_assigned = 0;
 #ifdef HAVE_PCI_DEV_FLAGS_ASSIGNED

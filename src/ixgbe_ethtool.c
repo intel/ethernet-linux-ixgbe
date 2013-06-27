@@ -469,7 +469,8 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 
 	memset(p, 0, IXGBE_REGS_LEN * sizeof(u32));
 
-	regs->version = (1 << 24) | hw->revision_id << 16 | hw->device_id;
+	regs->version = hw->mac.type << 24 | hw->revision_id << 16 |
+			hw->device_id;
 
 	/* General Registers */
 	regs_buff[0] = IXGBE_READ_REG(hw, IXGBE_CTRL);
@@ -2244,23 +2245,17 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 #ifndef HAVE_NDO_SET_FEATURES
 static u32 ixgbe_get_rx_csum(struct net_device *netdev)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_ring *ring = adapter->rx_ring[0];
-	return test_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
+	return !!(netdev->features & NETIF_F_RXCSUM);
 }
 
 static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	int i;
 
-	for (i = 0; i < adapter->num_rx_queues; i++) {
-		struct ixgbe_ring *ring = adapter->rx_ring[i];
-		if (data)
-			set_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
-		else
-			clear_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
-	}
+	if (data)
+		netdev->features |= NETIF_F_RXCSUM;
+	else
+		netdev->features &= ~NETIF_F_RXCSUM;
 
 	/* LRO and RSC both depend on RX checksum to function */
 	if (!data && (netdev->features & NETIF_F_LRO)) {
@@ -2275,21 +2270,15 @@ static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 	return 0;
 }
 
-static u32 ixgbe_get_tx_csum(struct net_device *netdev)
-{
-	return (netdev->features & NETIF_F_IP_CSUM) != 0;
-}
-
 static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	u32 feature_list;
-
 #ifdef NETIF_F_IPV6_CSUM
-	feature_list = NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+	u32 feature_list = NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
 #else
-	feature_list = NETIF_F_IP_CSUM;
+	u32 feature_list = NETIF_F_IP_CSUM;
 #endif
+
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
@@ -2298,6 +2287,7 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 	default:
 		break;
 	}
+
 	if (data)
 		netdev->features |= feature_list;
 	else
@@ -2309,39 +2299,40 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 #ifdef NETIF_F_TSO
 static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 {
-	if (data) {
-		netdev->features |= NETIF_F_TSO;
 #ifdef NETIF_F_TSO6
-		netdev->features |= NETIF_F_TSO6;
+	u32 feature_list = NETIF_F_TSO | NETIF_F_TSO6;
+#else
+	u32 feature_list = NETIF_F_TSO;
 #endif
-	} else {
+
+	if (data)
+		netdev->features |= feature_list;
+	else
+		netdev->features &= ~feature_list;
+
 #ifndef HAVE_NETDEV_VLAN_FEATURES
-#ifdef NETIF_F_HW_VLAN_TX
+	if (!data) {
 		struct ixgbe_adapter *adapter = netdev_priv(netdev);
+		struct net_device *v_netdev;
+		int i;
+
 		/* disable TSO on all VLANs if they're present */
-		if (adapter->vlgrp) {
-			int i;
-			struct net_device *v_netdev;
-			for (i = 0; i < VLAN_N_VID; i++) {
-				v_netdev =
-				       vlan_group_get_device(adapter->vlgrp, i);
-				if (v_netdev) {
-					v_netdev->features &= ~NETIF_F_TSO;
-#ifdef NETIF_F_TSO6
-					v_netdev->features &= ~NETIF_F_TSO6;
-#endif
-					vlan_group_set_device(adapter->vlgrp, i,
-							      v_netdev);
-				}
-			}
+		if (!adapter->vlgrp)
+			goto tso_out;
+
+		for (i = 0; i < VLAN_GROUP_ARRAY_LEN; i++) {
+			v_netdev = vlan_group_get_device(adapter->vlgrp, i);
+			if (!v_netdev)
+				continue;
+
+			v_netdev->features &= ~feature_list;
+			vlan_group_set_device(adapter->vlgrp, i, v_netdev);
 		}
-#endif
-#endif /* HAVE_NETDEV_VLAN_FEATURES */
-		netdev->features &= ~NETIF_F_TSO;
-#ifdef NETIF_F_TSO6
-		netdev->features &= ~NETIF_F_TSO6;
-#endif
 	}
+
+tso_out:
+
+#endif /* HAVE_NETDEV_VLAN_FEATURES */
 	return 0;
 }
 
@@ -2352,7 +2343,7 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	u32 supported_flags = ETH_FLAG_RXVLAN | ETH_FLAG_TXVLAN;
 	u32 changed = netdev->features ^ data;
-	bool need_reset;
+	bool need_reset = false;
 	int rc;
 
 #ifndef HAVE_VLAN_RX_REGISTER
@@ -3203,7 +3194,7 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #ifndef HAVE_NDO_SET_FEATURES
 	.get_rx_csum		= ixgbe_get_rx_csum,
 	.set_rx_csum		= ixgbe_set_rx_csum,
-	.get_tx_csum		= ixgbe_get_tx_csum,
+	.get_tx_csum		= ethtool_op_get_tx_csum,
 	.set_tx_csum		= ixgbe_set_tx_csum,
 	.get_sg			= ethtool_op_get_sg,
 	.set_sg			= ethtool_op_set_sg,

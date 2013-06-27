@@ -25,7 +25,6 @@
 
 *******************************************************************************/
 
-// test
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
 ******************************************************************************/
@@ -71,7 +70,7 @@ static const char ixgbe_driver_string[] =
 
 #define BYPASS_TAG
 
-#define DRV_VERSION	__stringify(3.15.1) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(3.16.1) DRIVERIOV DRV_HW_PERF FPGA \
 			VMDQ_TAG BYPASS_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -85,7 +84,7 @@ static const char ixgbe_copyright[] =
  * { Vendor ID, Device ID, SubVendor ID, SubDevice ID,
  *   Class, Class Mask, private data (not used) }
  */
-DEFINE_PCI_DEVICE_TABLE(ixgbe_pci_tbl) = {
+static DEFINE_PCI_DEVICE_TABLE(ixgbe_pci_tbl) = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82598)},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82598AF_DUAL_PORT)},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82598AF_SINGLE_PORT)},
@@ -562,6 +561,10 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 		return true;
 	}
 
+	netdev_tx_completed_queue(netdev_get_tx_queue(tx_ring->netdev,
+						      tx_ring->queue_index),
+				  total_packets, total_bytes);
+
 #define TX_WAKE_THRESHOLD (DESC_NEEDED * 2)
 	if (unlikely(total_packets && netif_carrier_ok(netdev_ring(tx_ring)) &&
 		     (ixgbe_desc_unused(tx_ring) >= TX_WAKE_THRESHOLD))) {
@@ -765,11 +768,7 @@ static inline void ixgbe_rx_checksum(struct ixgbe_ring *ring,
 	skb_checksum_none_assert(skb);
 
 	/* Rx csum disabled */
-#ifdef HAVE_NDO_SET_FEATURES
 	if (!(netdev_ring(ring)->features & NETIF_F_RXCSUM))
-#else
-	if (!test_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state))
-#endif
 		return;
 
 	/* if IP and error */
@@ -1047,7 +1046,7 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 	struct ixgbe_adapter *adapter = q_vector->adapter;
 	u16 vlan_tag = IXGBE_CB(skb)->vid;
 
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	if (vlan_tag & VLAN_VID_MASK) {
 		/* by placing vlgrp at start of structure we can alias it */
 		struct vlan_group **vlgrp = netdev_priv(skb->dev);
@@ -1059,14 +1058,14 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 			vlan_gro_receive(&q_vector->napi,
 					 *vlgrp, vlan_tag, skb);
 	} else {
-#endif /* NETIF_F_HW_VLAN_TX */
+#endif /* NETIF_F_HW_VLAN_TX || NETIF_F_HW_VLAN_CTAG_TX */
 		if (adapter->flags & IXGBE_FLAG_IN_NETPOLL)
 			netif_rx(skb);
 		else
 			napi_gro_receive(&q_vector->napi, skb);
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	}
-#endif /* NETIF_F_HW_VLAN_TX */
+#endif /* NETIF_F_HW_VLAN_TX || NETIF_F_HW_VLAN_CTAG_TX */
 }
 
 #endif /* HAVE_VLAN_RX_REGISTER */
@@ -1595,10 +1594,15 @@ static void ixgbe_rx_vlan(struct ixgbe_ring *ring,
 			  union ixgbe_adv_rx_desc *rx_desc,
 			  struct sk_buff *skb)
 {
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+	if ((netdev_ring(ring)->features & NETIF_F_HW_VLAN_CTAG_RX) &&
+#else
 	if ((netdev_ring(ring)->features & NETIF_F_HW_VLAN_RX) &&
+#endif
 	    ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_VP))
 #ifndef HAVE_VLAN_RX_REGISTER
 		__vlan_hwaccel_put_tag(skb,
+				       htons(ETH_P_8021Q),
 				       le16_to_cpu(rx_desc->wb.upper.vlan));
 #else
 		IXGBE_CB(skb)->vid = le16_to_cpu(rx_desc->wb.upper.vlan);
@@ -2670,7 +2674,7 @@ static void ixgbe_check_lsc(struct ixgbe_adapter *adapter)
 	}
 }
 
-void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
+static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 {
 	u32 mask;
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -2688,31 +2692,6 @@ void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 		mask = (qmask >> 32);
 		if (mask)
 			IXGBE_WRITE_REG(hw, IXGBE_EIMS_EX(1), mask);
-		break;
-	default:
-		break;
-	}
-	/* skip the flush */
-}
-
-void ixgbe_irq_disable_queues(struct ixgbe_adapter *adapter, u64 qmask)
-{
-	u32 mask;
-	struct ixgbe_hw *hw = &adapter->hw;
-
-	switch (hw->mac.type) {
-	case ixgbe_mac_82598EB:
-		mask = (IXGBE_EIMS_RTX_QUEUE & qmask);
-		IXGBE_WRITE_REG(hw, IXGBE_EIMC, mask);
-		break;
-	case ixgbe_mac_82599EB:
-	case ixgbe_mac_X540:
-		mask = (qmask & 0xFFFFFFFF);
-		if (mask)
-			IXGBE_WRITE_REG(hw, IXGBE_EIMC_EX(0), mask);
-		mask = (qmask >> 32);
-		if (mask)
-			IXGBE_WRITE_REG(hw, IXGBE_EIMC_EX(1), mask);
 		break;
 	default:
 		break;
@@ -3995,13 +3974,17 @@ static void ixgbe_configure_rx(struct ixgbe_adapter *adapter)
 	hw->mac.ops.enable_rx_dma(hw, rxctrl);
 }
 
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 #ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+#ifdef NETIF_F_HW_VLAN_CTAG_TX
+static int ixgbe_vlan_rx_add_vid(struct net_device *netdev,
+				 __always_unused __be16 proto, u16 vid)
+#else /* !NETIF_F_HW_VLAN_CTAG_TX */
 static int ixgbe_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
-#else
+#endif /* NETIF_F_HW_VLAN_CTAG_TX */
+#else /* !HAVE_INT_NDO_VLAN_RX_ADD_VID */
 static void ixgbe_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
-#endif
-
+#endif /* HAVE_INT_NDO_VLAN_RX_ADD_VID */
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -4052,7 +4035,12 @@ static void ixgbe_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 }
 
 #ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+static int ixgbe_vlan_rx_kill_vid(struct net_device *netdev,
+				  __always_unused __be16 proto, u16 vid)
+#else /* !NETIF_F_HW_VLAN_CTAG_RX */
 static int ixgbe_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
+#endif /* NETIF_F_HW_VLAN_CTAG_RX */
 #else
 static void ixgbe_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 #endif
@@ -4178,7 +4166,9 @@ static void ixgbe_vlan_mode(struct net_device *netdev, struct vlan_group *grp)
 void ixgbe_vlan_mode(struct net_device *netdev, u32 features)
 #endif
 {
+#if defined(HAVE_VLAN_RX_REGISTER) || defined(HAVE_8021P_SUPPORT)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+#endif
 #ifdef HAVE_VLAN_RX_REGISTER
 
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
@@ -4193,7 +4183,11 @@ void ixgbe_vlan_mode(struct net_device *netdev, u32 features)
 #ifdef HAVE_VLAN_RX_REGISTER
 	bool enable = (grp || (adapter->flags & IXGBE_FLAG_DCB_ENABLED));
 #else
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+	bool enable = !!(features & NETIF_F_HW_VLAN_CTAG_RX);
+#else
 	bool enable = !!(features & NETIF_F_HW_VLAN_RX);
+#endif
 #endif
 	if (enable)
 		/* enable VLAN tag insert/strip */
@@ -4214,7 +4208,11 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 	 * add vlan ID 0 and enable vlan tag stripping so we
 	 * always accept priority-tagged traffic
 	 */
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+	ixgbe_vlan_rx_add_vid(adapter->netdev, htons(ETH_P_8021Q), 0);
+#else
 	ixgbe_vlan_rx_add_vid(adapter->netdev, 0);
+#endif
 #ifndef HAVE_8021P_SUPPORT
 	ixgbe_vlan_stripping_enable(adapter);
 #endif
@@ -4223,7 +4221,12 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 		for (vid = 0; vid < VLAN_N_VID; vid++) {
 			if (!vlan_group_get_device(adapter->vlgrp, vid))
 				continue;
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+			ixgbe_vlan_rx_add_vid(adapter->netdev,
+					      htons(ETH_P_8021Q), vid);
+#else
 			ixgbe_vlan_rx_add_vid(adapter->netdev, vid);
+#endif
 		}
 	}
 #else
@@ -4233,7 +4236,11 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 	ixgbe_vlan_mode(netdev, netdev->features);
 
 	for_each_set_bit(vid, adapter->active_vlans, VLAN_N_VID)
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+		ixgbe_vlan_rx_add_vid(netdev, htons(ETH_P_8021Q), vid);
+#else
 		ixgbe_vlan_rx_add_vid(netdev, vid);
+#endif
 #endif
 }
 
@@ -4336,7 +4343,7 @@ void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter)
 	}
 }
 
-void ixgbe_sync_mac_table(struct ixgbe_adapter *adapter)
+static void ixgbe_sync_mac_table(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
@@ -4391,7 +4398,7 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter, u8 *addr, u16 queue)
 	return -ENOMEM;
 }
 
-void ixgbe_flush_sw_mac_table(struct ixgbe_adapter *adapter)
+static void ixgbe_flush_sw_mac_table(struct ixgbe_adapter *adapter)
 {
 	int i;
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -4405,14 +4412,6 @@ void ixgbe_flush_sw_mac_table(struct ixgbe_adapter *adapter)
 	ixgbe_sync_mac_table(adapter);
 }
 
-void ixgbe_del_mac_filter_by_index(struct ixgbe_adapter *adapter, int index)
-{
-	adapter->mac_table[index].state |= IXGBE_MAC_STATE_MODIFIED;
-	adapter->mac_table[index].state &= ~IXGBE_MAC_STATE_IN_USE;
-	memset(adapter->mac_table[index].addr, 0, ETH_ALEN);
-	adapter->mac_table[index].queue = 0;
-	ixgbe_sync_mac_table(adapter);
-}
 
 int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter, u8* addr, u16 queue)
 {
@@ -4534,7 +4533,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 				vmolr |= IXGBE_VMOLR_ROMPE;
 			}
 		}
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 		/* enable hardware vlan filtering */
 		vlnctrl |= IXGBE_VLNCTRL_VFE;
 #endif
@@ -4995,7 +4994,7 @@ static void ixgbe_configure(struct ixgbe_adapter *adapter)
 	ixgbe_configure_virtualization(adapter);
 
 	ixgbe_set_rx_mode(adapter->netdev);
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	ixgbe_restore_vlan(adapter);
 #endif
 
@@ -5101,7 +5100,7 @@ link_cfg_out:
  * On a reset we need to clear out the VF stats or accounting gets
  * messed up because they're not clear on read.
  **/
-void ixgbe_clear_vf_stats_counters(struct ixgbe_adapter *adapter)
+static void ixgbe_clear_vf_stats_counters(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
@@ -5447,6 +5446,9 @@ static void ixgbe_clean_tx_ring(struct ixgbe_ring *tx_ring)
 		tx_buffer_info = &tx_ring->tx_buffer_info[i];
 		ixgbe_unmap_and_free_tx_resource(tx_ring, tx_buffer_info);
 	}
+
+	netdev_tx_reset_queue(netdev_get_tx_queue(tx_ring->netdev,
+						  tx_ring->queue_index));
 
 	size = sizeof(struct ixgbe_tx_buffer) * tx_ring->count;
 	memset(tx_ring->tx_buffer_info, 0, size);
@@ -7461,6 +7463,10 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 	cmd_type |= size | IXGBE_TXD_CMD;
 	tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
 
+	netdev_tx_sent_queue(netdev_get_tx_queue(tx_ring->netdev,
+						 tx_ring->queue_index),
+			     first->bytecount);
+
 	/* set the timestamp */
 	first->time_stamp = jiffies;
 
@@ -8156,7 +8162,11 @@ static netdev_features_t ixgbe_fix_features(struct net_device *netdev,
 
 #ifdef CONFIG_DCB
 	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED)
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+		features |= NETIF_F_HW_VLAN_CTAG_RX;
+#else
 		features |= NETIF_F_HW_VLAN_RX;
+#endif
 #endif
 
 	/* If Rx checksum is disabled, then RSC/LRO should also be disabled */
@@ -8240,7 +8250,11 @@ static int ixgbe_set_features(struct net_device *netdev,
 		break;
 	}
 
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+	if (features & NETIF_F_HW_VLAN_CTAG_RX)
+#else
 	if (features & NETIF_F_HW_VLAN_RX)
+#endif
 		ixgbe_vlan_stripping_enable(adapter);
 	else
 		ixgbe_vlan_stripping_disable(adapter);
@@ -8365,7 +8379,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_set_mac_address	= ixgbe_set_mac,
 	.ndo_change_mtu		= ixgbe_change_mtu,
 	.ndo_tx_timeout		= ixgbe_tx_timeout,
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	.ndo_vlan_rx_add_vid	= ixgbe_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= ixgbe_vlan_rx_kill_vid,
 #endif
@@ -8439,7 +8453,7 @@ void ixgbe_assign_netdev_ops(struct net_device *dev)
 #ifdef HAVE_TX_TIMEOUT
 	dev->tx_timeout = &ixgbe_tx_timeout;
 #endif
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	dev->vlan_rx_register = &ixgbe_vlan_mode;
 	dev->vlan_rx_add_vid = &ixgbe_vlan_rx_add_vid;
 	dev->vlan_rx_kill_vid = &ixgbe_vlan_rx_kill_vid;
@@ -8542,8 +8556,9 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	struct ixgbe_hw *hw = NULL;
 	static int cards_found;
 	int err, pci_using_dac;
-	u16 offset;
-	u16 eeprom_verh, eeprom_verl, eeprom_cfg_blkh, eeprom_cfg_blkl;
+	u16 offset = 0;
+	u16 eeprom_verh = 0, eeprom_verl = 0;
+	u16 eeprom_cfg_blkh = 0, eeprom_cfg_blkl = 0;
 	u32 etrack_id;
 	u16 build, major, patch;
 	char *info_string, *i_s_var;
@@ -8730,6 +8745,11 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	netdev->features |= NETIF_F_IPV6_CSUM;
 #endif
 
+#ifdef NETIF_F_HW_VLAN_CTAG_TX
+	netdev->features |= NETIF_F_HW_VLAN_CTAG_TX |
+			    NETIF_F_HW_VLAN_CTAG_RX;
+#endif
+
 #ifdef NETIF_F_HW_VLAN_TX
 	netdev->features |= NETIF_F_HW_VLAN_TX |
 			    NETIF_F_HW_VLAN_RX;
@@ -8744,9 +8764,9 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	netdev->features |= NETIF_F_RXHASH;
 #endif /* NETIF_F_RXHASH */
 
-#ifdef HAVE_NDO_SET_FEATURES
 	netdev->features |= NETIF_F_RXCSUM;
 
+#ifdef HAVE_NDO_SET_FEATURES
 	/* copy netdev features into list of user selectable features */
 	netdev->hw_features |= netdev->features;
 
@@ -8764,6 +8784,10 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 #endif /* NETIF_F_GRO */
 #endif
 
+#ifdef NETIF_F_HW_VLAN_CTAG_TX
+	/* set this bit last since it cannot be part of hw_features */
+	netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+#endif
 #ifdef NETIF_F_HW_VLAN_TX
 	/* set this bit last since it cannot be part of hw_features */
 	netdev->features |= NETIF_F_HW_VLAN_FILTER;
@@ -9408,6 +9432,11 @@ static struct pci_error_handlers ixgbe_err_handler = {
 	.resume = ixgbe_io_resume,
 };
 #endif /* HAVE_PCI_ERS */
+
+struct net_device *ixgbe_hw_to_netdev(const struct ixgbe_hw *hw)
+{
+	return ((struct ixgbe_adapter *)hw->back)->netdev;
+}
 
 static struct pci_driver ixgbe_driver = {
 	.name     = ixgbe_driver_name,

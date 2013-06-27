@@ -506,9 +506,6 @@ static int ixgbe_featflag(char *page, char **start, off_t off,
 			  int count, int *eof, void *data)
 {
 	int bitmask = 0;
-#ifndef HAVE_NDO_SET_FEATURES
-	struct ixgbe_ring *ring;
-#endif
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
 	struct net_device *netdev;
 
@@ -518,16 +515,9 @@ static int ixgbe_featflag(char *page, char **start, off_t off,
 	if (netdev == NULL)
 		return snprintf(page, count, "error: no net device\n");
 
-#ifndef HAVE_NDO_SET_FEATURES
-	/* ixgbe_get_rx_csum(netdev) doesn't compile so hard code */
-	ring = adapter->rx_ring[0];
-	bitmask = test_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
-	return snprintf(page, count, "%d\n", bitmask);
-#else
 	if (adapter->netdev->features & NETIF_F_RXCSUM)
 		bitmask |= 1;
 	return snprintf(page, count, "%d\n", bitmask);
-#endif
 }
 
 static int ixgbe_lsominct(char *page, char **start, off_t off,
