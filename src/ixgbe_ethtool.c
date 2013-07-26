@@ -141,20 +141,31 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 #endif /* HAVE_PTP_1588_CLOCK */
 };
 
-#define IXGBE_QUEUE_STATS_LEN \
-	((((struct ixgbe_adapter *)netdev_priv(netdev))->num_tx_queues + \
-	 ((struct ixgbe_adapter *)netdev_priv(netdev))->num_rx_queues) * \
-	  (sizeof(struct ixgbe_queue_stats) / sizeof(u64)))
+/* ixgbe allocates num_tx_queues and num_rx_queues symmetrically so
+ * we set the num_rx_queues to evaluate to num_tx_queues. This is
+ * used because we do not have a good way to get the max number of
+ * rx queues with CONFIG_RPS disabled.
+ */
+#ifdef HAVE_TX_MQ
+#define IXGBE_NUM_RX_QUEUES netdev->num_tx_queues
+#define IXGBE_NUM_TX_QUEUES netdev->num_tx_queues
+#else /* HAVE_TX_MQ */
+#define IXGBE_NUM_RX_QUEUES 1
+#define IXGBE_NUM_TX_QUEUES ( \
+		((struct ixgbe_adapter *)netdev_priv(netdev))->num_tx_queues)
+#endif /* HAVE_TX_MQ */
+
+#define IXGBE_QUEUE_STATS_LEN ( \
+		(IXGBE_NUM_TX_QUEUES + IXGBE_NUM_RX_QUEUES) * \
+		(sizeof(struct ixgbe_queue_stats) / sizeof(u64)))
 #define IXGBE_GLOBAL_STATS_LEN	ARRAY_SIZE(ixgbe_gstrings_stats)
 #define IXGBE_NETDEV_STATS_LEN	ARRAY_SIZE(ixgbe_gstrings_net_stats)
 #define IXGBE_PB_STATS_LEN ( \
-		(((struct ixgbe_adapter *)netdev_priv(netdev))->flags & \
-		 IXGBE_FLAG_DCB_ENABLED) ? \
-		 (sizeof(((struct ixgbe_adapter *)0)->stats.pxonrxc) + \
-		  sizeof(((struct ixgbe_adapter *)0)->stats.pxontxc) + \
-		  sizeof(((struct ixgbe_adapter *)0)->stats.pxoffrxc) + \
-		  sizeof(((struct ixgbe_adapter *)0)->stats.pxofftxc)) \
-		 / sizeof(u64) : 0)
+		(sizeof(((struct ixgbe_adapter *)0)->stats.pxonrxc) + \
+		 sizeof(((struct ixgbe_adapter *)0)->stats.pxontxc) + \
+		 sizeof(((struct ixgbe_adapter *)0)->stats.pxoffrxc) + \
+		 sizeof(((struct ixgbe_adapter *)0)->stats.pxofftxc)) \
+		/ sizeof(u64))
 #define IXGBE_VF_STATS_LEN \
 	((((struct ixgbe_adapter *)netdev_priv(netdev))->num_vfs) * \
 	  (sizeof(struct vf_stats) / sizeof(u64)))
@@ -1062,8 +1073,12 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 	struct net_device_stats *net_stats = &adapter->net_stats;
 #endif
 	u64 *queue_stat;
-	int stat_count = sizeof(struct ixgbe_queue_stats) / sizeof(u64);
-	int i, j, k;
+	int stat_count, k;
+#ifdef HAVE_NDO_GET_STATS64
+	unsigned int start;
+#endif
+	struct ixgbe_ring *ring;
+	int i, j;
 	char *p;
 
 	ixgbe_update_stats(adapter);
@@ -1078,27 +1093,51 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		data[i] = (ixgbe_gstrings_stats[j].sizeof_stat ==
 			   sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
 	}
-	for (j = 0; j < adapter->num_tx_queues; j++) {
-		queue_stat = (u64 *)&adapter->tx_ring[j]->stats;
-		for (k = 0; k < stat_count; k++)
-			data[i + k] = queue_stat[k];
-		i += k;
-	}
-	for (j = 0; j < adapter->num_rx_queues; j++) {
-		queue_stat = (u64 *)&adapter->rx_ring[j]->stats;
-		for (k = 0; k < stat_count; k++)
-			data[i + k] = queue_stat[k];
-		i += k;
-	}
-	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-		for (j = 0; j < MAX_TX_PACKET_BUFFERS; j++) {
-			data[i++] = adapter->stats.pxontxc[j];
-			data[i++] = adapter->stats.pxofftxc[j];
+	for (j = 0; j < IXGBE_NUM_TX_QUEUES; j++) {
+		ring = adapter->tx_ring[j];
+		if (!ring) {
+			data[i++] = 0;
+			data[i++] = 0;
+			continue;
 		}
-		for (j = 0; j < MAX_RX_PACKET_BUFFERS; j++) {
-			data[i++] = adapter->stats.pxonrxc[j];
-			data[i++] = adapter->stats.pxoffrxc[j];
+
+#ifdef HAVE_NDO_GET_STATS64
+		do {
+			start = u64_stats_fetch_begin_bh(&ring->syncp);
+#endif
+			data[i]   = ring->stats.packets;
+			data[i+1] = ring->stats.bytes;
+#ifdef HAVE_NDO_GET_STATS64
+		} while (u64_stats_fetch_retry_bh(&ring->syncp, start));
+#endif
+		i += 2;
+	}
+	for (j = 0; j < IXGBE_NUM_RX_QUEUES; j++) {
+		ring = adapter->rx_ring[j];
+		if (!ring) {
+			data[i++] = 0;
+			data[i++] = 0;
+			continue;
 		}
+
+#ifdef HAVE_NDO_GET_STATS64
+		do {
+			start = u64_stats_fetch_begin_bh(&ring->syncp);
+#endif
+			data[i]   = ring->stats.packets;
+			data[i+1] = ring->stats.bytes;
+#ifdef HAVE_NDO_GET_STATS64
+		} while (u64_stats_fetch_retry_bh(&ring->syncp, start));
+#endif
+		i += 2;
+	}
+	for (j = 0; j < IXGBE_MAX_PACKET_BUFFERS; j++) {
+		data[i++] = adapter->stats.pxontxc[j];
+		data[i++] = adapter->stats.pxofftxc[j];
+	}
+	for (j = 0; j < IXGBE_MAX_PACKET_BUFFERS; j++) {
+		data[i++] = adapter->stats.pxonrxc[j];
+		data[i++] = adapter->stats.pxoffrxc[j];
 	}
 	stat_count = sizeof(struct vf_stats) / sizeof(u64);
 	for (j = 0; j < adapter->num_vfs; j++) {
@@ -1135,31 +1174,29 @@ static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 			       ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
-		for (i = 0; i < adapter->num_tx_queues; i++) {
+		for (i = 0; i < IXGBE_NUM_TX_QUEUES; i++) {
 			sprintf(p, "tx_queue_%u_packets", i);
 			p += ETH_GSTRING_LEN;
 			sprintf(p, "tx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
 		}
-		for (i = 0; i < adapter->num_rx_queues; i++) {
+		for (i = 0; i < IXGBE_NUM_RX_QUEUES; i++) {
 			sprintf(p, "rx_queue_%u_packets", i);
 			p += ETH_GSTRING_LEN;
 			sprintf(p, "rx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
 		}
-		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
-			for (i = 0; i < MAX_TX_PACKET_BUFFERS; i++) {
-				sprintf(p, "tx_pb_%u_pxon", i);
-				p += ETH_GSTRING_LEN;
-				sprintf(p, "tx_pb_%u_pxoff", i);
-				p += ETH_GSTRING_LEN;
-			}
-			for (i = 0; i < MAX_RX_PACKET_BUFFERS; i++) {
-				sprintf(p, "rx_pb_%u_pxon", i);
-				p += ETH_GSTRING_LEN;
-				sprintf(p, "rx_pb_%u_pxoff", i);
-				p += ETH_GSTRING_LEN;
-			}
+		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
+			sprintf(p, "tx_pb_%u_pxon", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "tx_pb_%u_pxoff", i);
+			p += ETH_GSTRING_LEN;
+		}
+		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
+			sprintf(p, "rx_pb_%u_pxon", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "rx_pb_%u_pxoff", i);
+			p += ETH_GSTRING_LEN;
 		}
 		for (i = 0; i < adapter->num_vfs; i++) {
 			sprintf(p, "VF %d Rx Packets", i);
@@ -1239,7 +1276,7 @@ static struct ixgbe_reg_test reg_test_82599[] = {
 	{ IXGBE_RAL(0), 16, TABLE64_TEST_LO, 0xFFFFFFFF, 0xFFFFFFFF },
 	{ IXGBE_RAL(0), 16, TABLE64_TEST_HI, 0x8001FFFF, 0x800CFFFF },
 	{ IXGBE_MTA(0), 128, TABLE32_TEST, 0xFFFFFFFF, 0xFFFFFFFF },
-	{ 0, 0, 0, 0 }
+	{ .reg = 0 }
 };
 
 /* default 82598 register test */
@@ -1267,7 +1304,7 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 	{ IXGBE_RAL(0), 16, TABLE64_TEST_LO, 0xFFFFFFFF, 0xFFFFFFFF },
 	{ IXGBE_RAL(0), 16, TABLE64_TEST_HI, 0x800CFFFF, 0x800CFFFF },
 	{ IXGBE_MTA(0), 128, TABLE32_TEST, 0xFFFFFFFF, 0xFFFFFFFF },
-	{ 0, 0, 0, 0 }
+	{ .reg = 0 }
 };
 
 #define REG_PATTERN_TEST(R, M, W)					      \

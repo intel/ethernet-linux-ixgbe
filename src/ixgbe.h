@@ -387,6 +387,9 @@ struct ixgbe_ring {
 
 	u8 dcb_tc;
 	struct ixgbe_queue_stats stats;
+#ifdef HAVE_NDO_GET_STATS64
+	struct u64_stats_sync syncp;
+#endif
 	union {
 		struct ixgbe_tx_queue_stats tx_stats;
 		struct ixgbe_rx_queue_stats rx_stats;
@@ -684,8 +687,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_FDIR_REQUIRES_REINIT	(u32)(1 << 8)
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
-#define IXGBE_FLAG2_PTP_ENABLED                 (u32)(1 << 11)
-#define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 12)
+#define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -830,6 +832,7 @@ struct ixgbe_adapter {
 #ifdef IXGBE_PROCFS
 	struct proc_dir_entry *eth_dir;
 	struct proc_dir_entry *info_dir;
+	u64 old_lsc;
 	struct proc_dir_entry *therm_dir[IXGBE_MAX_SENSORS];
 	struct ixgbe_therm_proc_data therm_data[IXGBE_MAX_SENSORS];
 #endif /* IXGBE_PROCFS */
@@ -868,6 +871,9 @@ enum ixgbe_state_t {
 	__IXGBE_DOWN,
 	__IXGBE_SERVICE_SCHED,
 	__IXGBE_IN_SFP_INIT,
+#ifdef HAVE_PTP_1588_CLOCK
+	__IXGBE_PTP_RUNNING,
+#endif
 };
 
 struct ixgbe_cb {

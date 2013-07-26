@@ -65,11 +65,11 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 		 * this out we have to swap the bits to get the correct layout
 		 */
 		for (i = 0; i < adapter->num_rx_queues; i++) {
-			u8 reg_idx = ((i >> 3) | (i << 3)) & 0x3F;
+			reg_idx = ((i >> 3) | (i << 3)) & 0x3F;
 			adapter->rx_ring[i]->reg_idx = reg_idx;
 		}
 		for (i = 0; i < adapter->num_tx_queues; i++) {
-			u8 reg_idx = ((i >> 4) | (i << 2)) & 0x1F;
+			reg_idx = ((i >> 4) | (i << 2)) & 0x1F;
 			adapter->tx_ring[i]->reg_idx = reg_idx;
 		}
 		break;

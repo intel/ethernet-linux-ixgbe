@@ -107,9 +107,7 @@
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
 #define IXGBE_DEV_ID_82599_LS			0x154F
-#define IXGBE_DEV_ID_82599_BYPASS		0x155D
 #define IXGBE_DEV_ID_X540T			0x1528
-#define IXGBE_DEV_ID_X540_BYPASS		0x155C
 
 /* General Registers */
 #define IXGBE_CTRL		0x00000
@@ -1912,6 +1910,8 @@ enum {
 #define IXGBE_EEPROM_PAGE_SIZE_MAX	128
 #define IXGBE_EEPROM_RD_BUFFER_MAX_COUNT	256 /* words rd in burst */
 #define IXGBE_EEPROM_WR_BUFFER_MAX_COUNT	256 /* words wr in burst */
+#define IXGBE_EEPROM_CTRL_2		1 /* EEPROM CTRL word 2 */
+#define IXGBE_EEPROM_CCD_BIT		2
 
 #ifndef IXGBE_EEPROM_GRANT_ATTEMPTS
 #define IXGBE_EEPROM_GRANT_ATTEMPTS	1000 /* EEPROM attempts to gain grant */
@@ -2023,7 +2023,7 @@ enum {
 #define IXGBE_RFCTL_ISCSI_DIS		0x00000001
 #define IXGBE_RFCTL_ISCSI_DWC_MASK	0x0000003E
 #define IXGBE_RFCTL_ISCSI_DWC_SHIFT	1
-#define IXGBE_RFCTL_RSC_DIS		0x00000010
+#define IXGBE_RFCTL_RSC_DIS		0x00000020
 #define IXGBE_RFCTL_NFSW_DIS		0x00000040
 #define IXGBE_RFCTL_NFSR_DIS		0x00000080
 #define IXGBE_RFCTL_NFS_VER_MASK	0x00000300
@@ -2920,7 +2920,6 @@ enum ixgbe_sfp_type {
 enum ixgbe_media_type {
 	ixgbe_media_type_unknown = 0,
 	ixgbe_media_type_fiber,
-	ixgbe_media_type_fiber_fixed,
 	ixgbe_media_type_fiber_lco,
 	ixgbe_media_type_copper,
 	ixgbe_media_type_backplane,
@@ -3143,7 +3142,6 @@ struct ixgbe_mac_operations {
 	s32 (*check_link)(struct ixgbe_hw *, ixgbe_link_speed *, bool *, bool);
 	s32 (*get_link_capabilities)(struct ixgbe_hw *, ixgbe_link_speed *,
 				     bool *);
-	bool (*mng_enabled) (struct ixgbe_hw *hw);
 
 	/* Packet Buffer manipulation */
 	void (*setup_rxpba)(struct ixgbe_hw *, int, u32, int);

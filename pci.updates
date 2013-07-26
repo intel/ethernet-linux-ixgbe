@@ -51,6 +51,7 @@
 		8086 0002  Ethernet Server Adapter X520-DA2
 		8086 0003  Ethernet Server Adapter X520-2
 		8086 0006  Ethernet Server Adapter X520-1
+		8086 0008  Ethernet OCP Server Adapter X520-2
 		8086 000a  Ethernet Server Adapter X520-1
 		8086 000c  Ethernet Server Adapter X520-2
 		8086 0470  Ethernet 10GSFP+ DP Embedded CNA X520-2
@@ -92,5 +93,4 @@
 		8086 7b11  Ethernet 10G 2P X520 Adapter
 	154f  82599 10 Gigabit Dual Port Network Connection
 	1557  82599 10 Gigabit Network Connection
-	155c  Ethernet Server Bypass Adapter X540-T2
-	155d  Ethernet Server Bypass Adapter X520-SR2
+		8086 0001  Ethernet OCP Server Adapter X520-1

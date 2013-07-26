@@ -361,11 +361,12 @@ static int ixgbe_txbytes(char *page, char **start, off_t off,
 static int ixgbe_linkstat(char *page, char **start, off_t off,
 			  int count, int *eof, void *data)
 {
-	u32 link_speed;
-	bool link_up = false;
-	int bitmask = 0;
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
+	int bitmask = 0;
+	u32 link_speed;
+	bool link_up = false;
+
 	if (adapter == NULL)
 		return snprintf(page, count, "error: no adapter\n");
 
@@ -373,8 +374,7 @@ static int ixgbe_linkstat(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		bitmask |= 1;
 
 	if (hw->mac.ops.check_link)
@@ -384,6 +384,12 @@ static int ixgbe_linkstat(char *page, char **start, off_t off,
 		link_up = true;
 	if (link_up)
 		bitmask |= 2;
+
+	if (adapter->old_lsc != adapter->lsc_int) {
+		bitmask |= 4;
+		adapter->old_lsc = adapter->lsc_int;
+	}
+
 	return snprintf(page, count, "0x%X\n", bitmask);
 }
 
@@ -421,7 +427,7 @@ static int ixgbe_macburn(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-	return snprintf(page, count, "0x%X%X%X%X%X%X\n",
+	return snprintf(page, count, "0x%02X%02X%02X%02X%02X%02X\n",
 		       (unsigned int)hw->mac.perm_addr[0],
 		       (unsigned int)hw->mac.perm_addr[1],
 		       (unsigned int)hw->mac.perm_addr[2],
@@ -442,7 +448,7 @@ static int ixgbe_macadmn(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-	return snprintf(page, count, "0x%X%X%X%X%X%X\n",
+	return snprintf(page, count, "0x%02X%02X%02X%02X%02X%02X\n",
 		       (unsigned int)hw->mac.addr[0],
 		       (unsigned int)hw->mac.addr[1],
 		       (unsigned int)hw->mac.addr[2],
