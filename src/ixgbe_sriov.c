@@ -143,9 +143,9 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 		}
 		adapter->dcb_cfg.vt_mode = true;
 
-		/* We do not support RSS w/ SR-IOV */
+#ifndef IXGBE_ENABLE_VF_MQ
 		adapter->ring_feature[RING_F_RSS].limit = 1;
-
+#endif
 		/* disable RSC when in SR-IOV mode */
 		adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
 				     IXGBE_FLAG2_RSC_ENABLED);
@@ -308,7 +308,7 @@ int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf)
 
 	return hw->mac.ops.set_vfta(hw, vid, vf, (bool)add);
 }
-int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf)
+static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 max_frs;
@@ -321,6 +321,7 @@ int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf)
 	 * account before we can enable the VF for receive
 	 */
 	if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+
 		struct net_device *dev = adapter->netdev;
 		int pf_max_frame = dev->mtu + ETH_HLEN;
 		u32 reg_offset, vf_shift, vfre;
@@ -602,8 +603,8 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	unsigned char *vf_mac = adapter->vfinfo[vf].vf_mac_addresses;
-	u32 reg, msgbuf[4];
-	u32 reg_offset, vf_shift;
+	u32 reg, reg_offset, vf_shift;
+	u32 msgbuf[4] = {0, 0, 0, 0};
 	u8 *addr = (u8 *)(&msgbuf[1]);
         /* q_per_pool assumes that DCB is not enabled, hence in 64 pool mode */
         u32 q_per_pool = 2;

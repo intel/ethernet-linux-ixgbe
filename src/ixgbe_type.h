@@ -102,12 +102,15 @@
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
 #define IXGBE_DEV_ID_82599_SFP_SF2		0x154D
+#define IXGBE_DEV_ID_82599_SFP_SF_QP		0x154A
+#define IXGBE_DEV_ID_82599_QSFP_SF_QP		0x1558
 #define IXGBE_DEV_ID_82599EN_SFP		0x1557
 #define IXGBE_SUBDEV_ID_82599EN_SFP_OCP1	0x0001
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
 #define IXGBE_DEV_ID_82599_LS			0x154F
 #define IXGBE_DEV_ID_X540T			0x1528
+#define IXGBE_DEV_ID_X540T1			0x1560
 
 /* General Registers */
 #define IXGBE_CTRL		0x00000
@@ -1829,28 +1832,28 @@ enum {
 #define IXGBE_PBANUM_LENGTH	11
 
 /* Checksum and EEPROM pointers */
-#define IXGBE_PBANUM_PTR_GUARD	0xFAFA
-#define IXGBE_EEPROM_CHECKSUM	0x3F
-#define IXGBE_EEPROM_SUM	0xBABA
-#define IXGBE_PCIE_ANALOG_PTR	0x03
-#define IXGBE_ATLAS0_CONFIG_PTR	0x04
-#define IXGBE_PHY_PTR		0x04
-#define IXGBE_ATLAS1_CONFIG_PTR	0x05
-#define IXGBE_OPTION_ROM_PTR	0x05
-#define IXGBE_PCIE_GENERAL_PTR	0x06
-#define IXGBE_PCIE_CONFIG0_PTR	0x07
-#define IXGBE_PCIE_CONFIG1_PTR	0x08
-#define IXGBE_CORE0_PTR		0x09
-#define IXGBE_CORE1_PTR		0x0A
-#define IXGBE_MAC0_PTR		0x0B
-#define IXGBE_MAC1_PTR		0x0C
-#define IXGBE_CSR0_CONFIG_PTR	0x0D
-#define IXGBE_CSR1_CONFIG_PTR	0x0E
-#define IXGBE_FW_PTR		0x0F
-#define IXGBE_PBANUM0_PTR	0x15
-#define IXGBE_PBANUM1_PTR	0x16
-#define IXGBE_ALT_MAC_ADDR_PTR	0x37
-#define IXGBE_FREE_SPACE_PTR	0X3E
+#define IXGBE_PBANUM_PTR_GUARD		0xFAFA
+#define IXGBE_EEPROM_CHECKSUM		0x3F
+#define IXGBE_EEPROM_SUM		0xBABA
+#define IXGBE_PCIE_ANALOG_PTR		0x03
+#define IXGBE_ATLAS0_CONFIG_PTR		0x04
+#define IXGBE_PHY_PTR			0x04
+#define IXGBE_ATLAS1_CONFIG_PTR		0x05
+#define IXGBE_OPTION_ROM_PTR		0x05
+#define IXGBE_PCIE_GENERAL_PTR		0x06
+#define IXGBE_PCIE_CONFIG0_PTR		0x07
+#define IXGBE_PCIE_CONFIG1_PTR		0x08
+#define IXGBE_CORE0_PTR			0x09
+#define IXGBE_CORE1_PTR			0x0A
+#define IXGBE_MAC0_PTR			0x0B
+#define IXGBE_MAC1_PTR			0x0C
+#define IXGBE_CSR0_CONFIG_PTR		0x0D
+#define IXGBE_CSR1_CONFIG_PTR		0x0E
+#define IXGBE_FW_PTR			0x0F
+#define IXGBE_PBANUM0_PTR		0x15
+#define IXGBE_PBANUM1_PTR		0x16
+#define IXGBE_ALT_MAC_ADDR_PTR		0x37
+#define IXGBE_FREE_SPACE_PTR		0X3E
 
 /* External Thermal Sensor Config */
 #define IXGBE_ETS_CFG			0x26
@@ -2880,6 +2883,10 @@ enum ixgbe_phy_type {
 	ixgbe_phy_sfp_ftl_active,
 	ixgbe_phy_sfp_unknown,
 	ixgbe_phy_sfp_intel,
+	ixgbe_phy_qsfp_passive_unknown,
+	ixgbe_phy_qsfp_active_unknown,
+	ixgbe_phy_qsfp_intel,
+	ixgbe_phy_qsfp_unknown,
 	ixgbe_phy_sfp_unsupported, /*Enforce bit set with unsupported module*/
 	ixgbe_phy_generic
 };
@@ -2920,6 +2927,7 @@ enum ixgbe_sfp_type {
 enum ixgbe_media_type {
 	ixgbe_media_type_unknown = 0,
 	ixgbe_media_type_fiber,
+	ixgbe_media_type_fiber_qsfp,
 	ixgbe_media_type_fiber_lco,
 	ixgbe_media_type_copper,
 	ixgbe_media_type_backplane,
@@ -3268,6 +3276,7 @@ struct ixgbe_phy_info {
 	bool smart_speed_active;
 	bool multispeed_fiber;
 	bool reset_if_overtemp;
+	bool qsfp_shared_i2c_bus;
 };
 
 #include "ixgbe_mbx.h"
