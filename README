@@ -6,7 +6,7 @@ ixgbe Linux* Base Driver for Intel® Ethernet Network Connection
 
 ================================================================================
 
-August 28, 2013
+October 30, 2013
 
 ================================================================================
 
@@ -19,9 +19,7 @@ Contents
 - Building and Installation
 - Command Line Parameters
 - Additional Configurations
-- Performance Tuning
 - Known Issues/Troubleshooting
-- Support
 - Support
 - License
 
@@ -222,7 +220,9 @@ Building and Installation
 -------------------------
 
 
-To build a binary RPM* package of this driver, run 'rpmbuild -tb ixgbe.tar.gz'.
+To build a binary RPM* package of this driver, run 
+'rpmbuild -tb ixgbe-<x.x.x>.tar.gz', where <x.x.x> is the version number
+for the driver tar file.
 
 NOTES:
 
@@ -237,9 +237,11 @@ NOTES:
 2. Untar/unzip the archive, where <x.x.x> is the version number for the
    driver tar file:
    tar zxf ixgbe-<x.x.x>.tar.gz
+
 3. Change to the driver src directory, where <x.x.x> is the version number
    for the driver tar:
    cd ixgbe-<x.x.x>/src/
+
 4. Compile the driver module:
    # make install
 
@@ -249,15 +251,17 @@ NOTES:
    The install location listed above is the default location. This may differ
    for various Linux distributions.
 
-5. Load the module. For kernel 2.6.x, use the modprobe command:
+5. Load the module. Use the modprobe command:
    modprobe ixgbe <parameter>=<value>
 
-   With 2.6 based kernels also make sure that older ixgbe drivers are removed
-   from the kernel, before loading the new module:
+   Ensure that older ixgbe drivers are removed from the kernel, before 
+   loading the new module:
    rmmod ixgbe; modprobe ixgbe
+
 6. Assign an IP address to the interface by entering the following, where x
    is the interface number:
-   ifconfig eth <x> <IP_address> netmask <netmask>
+   ifconfig eth<x> <IP_address> netmask <netmask>
+
 7. Verify that the interface works. Enter the following, where IP_address
    is the IP address for another machine on the same subnet as the interface
    that is being tested:
@@ -288,9 +292,6 @@ The default value for each parameter is generally the recommended setting,
 unless otherwise noted.
 
 NOTES:
-
-- For more information about the AutoNeg, Duplex, and Speed parameters, see
-  the Speed and Duplex Configuration section.
 - For more information about the InterruptThrottleRate parameter, see the
   application note at: http://www.intel.com/design/network/applnots/ap450.htm
 - A descriptor describes a data buffer and attributes related to the data
@@ -427,7 +428,7 @@ smaller than the specified size.
 
 LLIEType
 --------
-Valid Range:    0-x8FFF
+Valid Range:    0-0x8FFF
 
 Default Value:  0 (disabled)
 
@@ -768,12 +769,6 @@ downloading the latest version at:
 http://ftp.kernel.org/pub/software/network/ethtool/.
 
 
-NAPI
-----
-NAPI (Rx polling mode) is supported in the ixgbe driver. For more information,
-go to ftp://robur.slu.se/pub/Linux/net-development/NAPI/usenix-paper.tgz
-
-
 Hardware Receive Side Coalescing (HW RSC)
 -----------------------------------------
 82599 and X540-based adapters support HW RSC, which can merge multiple frames
@@ -792,22 +787,6 @@ ethtool:
 
 - hw_rsc_count. This counts the total number of Ethernet packets that were
   being combined.
-
-
-rx_dropped_backlog
-------------------
-When in a non-Napi (or Interrupt) mode, this counter indicates that the stack
-is dropping packets. There is an adjustable parameter in the stack that allows
-you to adjust the amount of backlog. We recommend increasing the
-netdev_max_backlog if the counter goes up.
-
-# sysctl -a |grep netdev_max_backlog
-
-net.core.netdev_max_backlog = 1000
-
-# sysctl -e net.core.netdev_max_backlog=10000
-
-net.core.netdev_max_backlog = 10000
 
 
 MAC and VLAN anti-spoofing feature
@@ -852,17 +831,6 @@ compiled.
 make CFLAGS_EXTRA="-DIXGBE_PTP" install
 
 
-================================================================================
-
-
-Performance Tuning
-------------------
-An excellent article on performance tuning can be found at:
-http://www.redhat.com/promo/summit/2008/downloads/pdf/Thursday/Mark_Wagner.pdf.
-
-================================================================================
-
-
 Known Issues/Troubleshooting
 ----------------------------
 
@@ -892,35 +860,12 @@ encountered, you may disable the irqbalance daemon or upgrade to a newer
 kernel.
 
 
-Driver Compilation
-------------------
-When trying to compile the driver by running make install, the following error
-may occur:  "Linux kernel source not configured - missing version.h"
-
-To solve this issue, create the version.h file by going to the Linux source
-tree and entering:
-# make include/linux/version.h
-
-Do Not Use LRO When Routing or Bridging Packets
------------------------------------------------
-Due to a known general compatibility issue with LRO and routing, do not use
-LRO when routing or bridging packets.
-
-
 LRO and iSCSI Incompatibility
 -----------------------------
 LRO is incompatible with iSCSI target or initiator traffic. A panic may occur
 when iSCSI traffic is received through the ixgbe driver with LRO enabled. To
 workaround this, the driver should be built and installed with:
 # make CFLAGS_EXTRA=-DIXGBE_NO_LRO install
-
-Performance Degradation with Jumbo Frames
------------------------------------------
-Degradation in throughput performance may be observed in some Jumbo frames
-environments. If this is observed, increasing the application's socket buffer
-size and/or increasing the /proc/sys/net/ipv4/tcp_*mem entry values may help.
-See the specific application manual and
-/usr/src/linux*/Documentation/networking/ip-sysctl.txt for more details.
 
 
 Multiple Interfaces on Same Ethernet Broadcast Network
@@ -944,6 +889,7 @@ or,
 install the interfaces in separate broadcast domains (either in different
 switches or in a switch partitioned to VLANs)
 
+
 UDP Stress Test Dropped Packet Issue
 ------------------------------------
 Under small packets UDP stress test with 10GbE driver, the Linux system may
@@ -953,14 +899,6 @@ reception, or the kernel's default buffer sizes can be increased for UDP by
 changing the values in
 
 /proc/sys/net/core/rmem_default and rmem_max
-
-
-Unplugging Network Cable While ethtool -p is Running
-----------------------------------------------------
-In kernel versions 2.5.50 and later (including 2.6 kernel), unplugging the
-network cable while ethtool -p is running will cause the system to become
-unresponsive to keyboard commands, except for control-alt-delete. Restarting
-the system appears to be the only remedy.
 
 
 Cisco Catalyst 4948-10GE port resets may cause switch to shut down ports
@@ -974,20 +912,6 @@ repeatedly running ethtool commands that cause a reset.
 A potential workaround is to use the Cisco IOS command "no errdisable detect
 cause all" from the Global Configuration prompt which enables the switch to
 keep the interfaces up, regardless of errors.
-
-
-Installing Red Hat Enterprise Linux 4.7, 5.1, or 5.2 with an Intel(R) 10
-Gigabit AT Server Adapter may cause kernel panic
-
-
-A known issue may cause a kernel panic or hang after installing an
-82598AT-based Intel(R) 10 Gigabit AT Server Adapter in a Red Hat Enterprise
-Linux 4.7, 5.1, or 5.2 system. The ixgbe driver for both the install kernel
-and the runtime kernel can create this panic if the 82598AT adapter is
-installed. Red Hat may release a security update that contains a fix for the
-panic that you can download using RHN (Red Hat Network) or Intel recommends
-that you install the ixgbe-1.3.31.5 driver or newer BEFORE installing the
-hardware.
 
 
 Rx Page Allocation Errors
@@ -1076,12 +1000,11 @@ Otherwise, the driver can be loaded once and will be safe, but unloading it
 will lead to the issue.
 
 Enabling SR-IOV in a 32-bit or 64-bit Microsoft* Windows* Server 2008/R2 Guest
-OS using Intel® 82576-based GbE, Intel® 82599- or X540-based 10GbE controller
-under KVM
+OS using Intel® Intel® 82599- or X540-based 10GbE controller under KVM.
 
 KVM Hypervisor/VMM supports direct assignment of a PCIe device to a VM. This
 includes traditional PCIe devices, as well as SR-IOV-capable devices using
-Intel 82576-based and 82599- or X540-based controllers.
+Intel 82599 or X540-based controllers.
 
 While direct assignment of a PCIe device or an SR-IOV Virtual Function (VF) to
 a Linux-based VM running 2.6.32 or later kernel works fine, there is a known
@@ -1091,17 +1014,11 @@ SR-IOV logic of the VMM, but rather that KVM emulates an older CPU model for
 the guests. This older CPU model does not support MSI-X interrupts, which is a
 requirement for Intel SR-IOV.
 
-If you wish to use the Intel 82576-, 82599- or X540-based controllers in
+If you wish to use the Intel 82599- or X540-based controllers in
 SR-IOV mode with KVM and a Microsoft Windows Server 2008/R2 guest, try the
 following workaround.
 Configure the KVM to emulate a different model of CPU when using qemu to
 create the KVM guest: "-cpu qemu64,model=13"
-
-
-Loading ixgbe driver in 3.2.x and above kernels displays kernel tainted message
--------------------------------------------------------------------------------
-Due to recent kernel changes, loading an out of tree driver will cause the
-kernel to be tainted.
 
 
 Unable to obtain DHCP lease on boot with RedHat
