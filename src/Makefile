@@ -16,6 +16,7 @@
 # the file called "COPYING".
 #
 # Contact Information:
+# Linux NICS <linux.nics@intel.com>
 # e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
 # Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 #
@@ -34,12 +35,6 @@ CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_sysfs.c \
          ixgbe_procfs.c \
          ixgbe_phy.c
-
-# PTP support is set by CFLAGS compile directive, so we don't need to compile
-# ixgbe_ptp.c unless it is set.
-ifneq (,$(findstring -DIXGBE_PTP, $(CFLAGS_EXTRA)))
-CFILES += ixgbe_ptp.c
-endif
 
 HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
          ixgbe_sriov.h ixgbe_mbx.h \
@@ -186,6 +181,17 @@ endif
 KVER_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
 	grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
 
+ifeq ($(strip $(KVER_CODE)),)
+KVER_CODE := 0
+endif
+
+RHEL_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
+	grep -m 1 RHEL_RELEASE_CODE | awk '{ print $$3 }')
+
+ifeq ($(strip $(RHEL_CODE)),)
+RHEL_CODE := 0
+endif
+
 # abort the build on kernels older than 2.4.0
 ifneq (1,$(shell [ $(KVER_CODE) -ge 132096 ] && echo 1 || echo 0))
   $(error *** Aborting the build. \
@@ -211,6 +217,17 @@ DEBUGFS := $(shell grep -wE 'CONFIG_DEBUG_FS' $(CONFIG_FILE) | \
 ifeq ($(DEBUGFS), 1)
   CFILES += ixgbe_debugfs.c
 endif
+
+# Use NO_PTP_SUPPORT flag to disable IEEE-1588 PTP (Documented in README)
+ifneq ($(filter %NO_PTP_SUPPORT,$(CFLAGS_EXTRA)),-DNO_PTP_SUPPORT)
+# Do not attempt to enable PTP in kernels which do not have support
+ifeq (1,$(shell ([ $(KVER_CODE) -ge 196608 ] || [ $(RHEL_CODE) -ge 1540 ]) && echo 1 || echo 0))
+include $(KOBJ)/include/config/auto.conf
+ifdef CONFIG_PTP_1588_CLOCK
+CFILES += ixgbe_ptp.c
+endif # CONFIG_PTP_1588_CLOCK
+endif # kernel version >= 3.0
+endif # !NO_PTP_SUPPORT
 
 # set the install path before and after 3.2.0
 ifeq (1,$(shell [ $(KVER_CODE) -lt 197120 ] && echo 1 || echo 0))
@@ -345,12 +362,12 @@ install: default $(MANFILE).gz
 	find $(INSTALL_MOD_PATH)/lib/modules/$(KVER) -name $(TARGET).gz -exec rm -f {} \; || true
 	install -D -m 644 $(TARGET) $(INSTALL_MOD_PATH)$(INSTDIR)/$(TARGET)
 ifeq (,$(INSTALL_MOD_PATH))
-	/sbin/depmod -a || true
+	/sbin/depmod -a $(KVER) || true
 else
   ifeq ($(DEPVER),1 )
-	/sbin/depmod -r $(INSTALL_MOD_PATH) -a || true
+	/sbin/depmod -r $(INSTALL_MOD_PATH) -a $(KVER) || true
   else
-	/sbin/depmod -b $(INSTALL_MOD_PATH) -a -n $(KVERSION) > /dev/null || true
+	/sbin/depmod -b $(INSTALL_MOD_PATH) -a -n $(KVER) > /dev/null || true
   endif
 endif
 	install -D -m 644 $(MANFILE).gz $(INSTALL_MOD_PATH)$(MANDIR)/man$(MANSECTION)/$(MANFILE).gz

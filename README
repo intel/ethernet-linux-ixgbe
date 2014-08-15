@@ -6,7 +6,7 @@ ixgbe Linux* Base Driver for Intel® Ethernet Network Connection
 
 ================================================================================
 
-February 19, 2014
+May 12, 2014
 
 ================================================================================
 
@@ -970,8 +970,8 @@ insufficient bandwidth for full 10Gbe line rate with dual port and quad port
 10GbE devices. In addition, if you put a PCIe Generation 3-capable adapter
 into a PCIe Generation 2 slot, you cannot get full bandwidth. The driver
 detects this situation and writes the following message in the system log:
-“PCI-Express bandwidth available for this card is not sufficient for optimal
-performance. For optimal performance a x8 PCI-Express slot is required.”
+"PCI-Express bandwidth available for this card is not sufficient for optimal
+performance. For optimal performance a x8 PCI-Express slot is required."
 
 If this error occurs, moving your adapter to a true x8 slot will resolve the
 issue.
@@ -1041,10 +1041,10 @@ Unable to obtain DHCP lease on boot with RedHat
 -----------------------------------------------
 For configurations where the auto-negotiation process takes more than 5
 seconds, the boot script may fail with the following message:
-“ethX: failed. No link present. Check cable?”
+"ethX: failed. No link present. Check cable?"
 
 If this error appears even though the presence of a link can be confirmed
-using ethtool ethX, try setting “LINKDELAY=5” in
+using ethtool ethX, try setting "LINKDELAY=5" in
 /etc/sysconfig/network-scripts/ifcfg-ethX.
 
 NOTE: Link time can take up to 30 seconds. Adjust LINKDELAY value accordingly.
@@ -1074,6 +1074,18 @@ able to allocate enough memory. To resolve this, reduce the number of
 descriptors using ethtool -G or the number of queues through the RSS parameter.
 
 
+VLAN tags are stripped on kernels earlier than 2.6.36
+-----------------------------------------------------
+In order to support DCB, kernels earlier than 2.6.36 strip VLAN tags for 
+VLAN0. This ensures connectivity using 802.1p frames between kernels that 
+have built-in support and kernels that do not.
+
+If the VLAN tags are necessary AND DCB is NOT used, disable vlan stripping 
+on older kernels at build time with the following:
+
+  # make CFLAGS_EXTRA=-DIXGBE_DISABLE_8021P_SUPPORT
+
+
 ================================================================================
 
 
@@ -1095,7 +1107,7 @@ issue to e1000-devel@lists.sf.net.
 License
 -------
 Intel Gigabit Linux driver.
-Copyright(c) 1999 - 2013 Intel Corporation.
+Copyright(c) 1999 - 2014 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms and conditions of the GNU General Public License, version 2, as
