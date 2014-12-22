@@ -43,7 +43,6 @@
 #endif
 /* Can't use IS_ENABLED until after kcompat is loaded */
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
-#define IXGBE_DCA
 #include <linux/dca.h>
 #endif
 #include "ixgbe_dcb.h"
