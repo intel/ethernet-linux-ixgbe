@@ -24,7 +24,7 @@
 
 #include "ixgbe.h"
 
-#ifdef CONFIG_DCB
+#if IS_ENABLED(CONFIG_DCB)
 #include <linux/dcbnl.h>
 #include "ixgbe_dcb_82598.h"
 #include "ixgbe_dcb_82599.h"
@@ -54,11 +54,11 @@ int ixgbe_copy_dcb_cfg(struct ixgbe_adapter *adapter, int tc_max)
 	int rx = IXGBE_DCB_RX_CONFIG;
 	int changes = 0;
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	if (adapter->fcoe.up_set != adapter->fcoe.up)
 		changes |= BIT_APP_UPCHG;
+#endif /* CONFIG_FCOE */
 
-#endif /* IXGBE_FCOE */
 	for (i = DCB_PG_ATTR_TC_0; i < tc_max + DCB_PG_ATTR_TC_0; i++) {
 		src = &scfg->tc_config[i - DCB_PG_ATTR_TC_0];
 		dst = &dcfg->tc_config[i - DCB_PG_ATTR_TC_0];
@@ -348,7 +348,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		int i;
 #endif
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 		if (adapter->netdev->features & NETIF_F_FCOE_MTU)
 			max_frame = max(max_frame, IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif
@@ -381,7 +381,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 			ret = DCB_HW_CHG;
 	}
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	/* Reprogam FCoE hardware offloads when the traffic class
 	 * FCoE is using changes. This happens if the APP info
 	 * changes or the up2tc mapping is updated.
@@ -391,8 +391,8 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		ixgbe_dcbnl_devreset(netdev);
 		ret = DCB_HW_CHG_RST;
 	}
+#endif /* CONFIG_FCOE */
 
-#endif /* IXGBE_FCOE */
 	adapter->dcb_set_bitmap = 0x00;
 	return ret;
 }
@@ -538,7 +538,7 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
 
 	switch (idtype) {
 	case DCB_APP_IDTYPE_ETHTYPE:
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 		if (id == ETH_P_FCOE)
 			rval = ixgbe_fcoe_getapp(netdev);
 #endif
@@ -580,7 +580,7 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 
 	switch (idtype) {
 	case DCB_APP_IDTYPE_ETHTYPE:
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 		if (id == ETH_P_FCOE) {
 			struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
@@ -741,7 +741,7 @@ static int ixgbe_dcbnl_ieee_setapp(struct net_device *dev,
 
 	err = dcb_ieee_setapp(dev, app);
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	if (!err && app->selector == IEEE_8021QAZ_APP_SEL_ETHERTYPE &&
 	    app->protocol == ETH_P_FCOE) {
 		u8 app_mask = dcb_ieee_getapp_mask(dev, app);
@@ -769,7 +769,7 @@ static int ixgbe_dcbnl_ieee_delapp(struct net_device *dev,
 
 	err = dcb_ieee_delapp(dev, app);
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	if (!err && app->selector == IEEE_8021QAZ_APP_SEL_ETHERTYPE &&
 	    app->protocol == ETH_P_FCOE) {
 		u8 app_mask = dcb_ieee_getapp_mask(dev, app);
@@ -875,4 +875,4 @@ struct dcbnl_rtnl_ops dcbnl_ops = {
 #endif
 };
 
-#endif
+#endif /* CONFIG_DCB */

@@ -22,10 +22,10 @@
 
 *******************************************************************************/
 
-#ifndef _IXGBE_FCOE_H
-#define _IXGBE_FCOE_H
+#ifndef _IXGBE_FCOE_H_
+#define _IXGBE_FCOE_H_
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 
 #include <scsi/fc/fc_fs.h>
 #include <scsi/fc/fc_fcoe.h>
@@ -87,6 +87,6 @@ struct ixgbe_fcoe {
 	u8 up;
 	u8 up_set;
 };
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */
 
 #endif /* _IXGBE_FCOE_H */

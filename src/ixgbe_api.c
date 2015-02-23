@@ -54,6 +54,8 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
 {
 	s32 status;
 
+	DEBUGFUNC("ixgbe_init_shared_code");
+
 	/*
 	 * Set the mac type
 	 */
@@ -86,7 +88,9 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 {
-	s32 ret_val = 0;
+	s32 ret_val = IXGBE_SUCCESS;
+
+	DEBUGFUNC("ixgbe_set_mac_type\n");
 
 	if (hw->vendor_id != IXGBE_INTEL_VENDOR_ID) {
 		ERROR_REPORT2(IXGBE_ERROR_UNSUPPORTED,
@@ -139,7 +143,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 		break;
 	}
 
-	hw_dbg(hw, "ixgbe_set_mac_type found mac: %d, returns: %d\n",
+	DEBUGOUT2("ixgbe_set_mac_type found mac: %d, returns: %d\n",
 		  hw->mac.type, ret_val);
 	return ret_val;
 }
@@ -367,7 +371,7 @@ s32 ixgbe_read_pba_string(struct ixgbe_hw *hw, u8 *pba_num, u32 pba_num_size)
  **/
 s32 ixgbe_identify_phy(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 
 	if (hw->phy.type == ixgbe_phy_unknown) {
 		status = ixgbe_call_func(hw, hw->phy.ops.identify, (hw),
@@ -383,14 +387,14 @@ s32 ixgbe_identify_phy(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 
 	if (hw->phy.type == ixgbe_phy_unknown) {
-		if (ixgbe_identify_phy(hw) != 0)
+		if (ixgbe_identify_phy(hw) != IXGBE_SUCCESS)
 			status = IXGBE_ERR_PHY;
 	}
 
-	if (status == 0) {
+	if (status == IXGBE_SUCCESS) {
 		status = ixgbe_call_func(hw, hw->phy.ops.reset, (hw),
 					 IXGBE_NOT_IMPLEMENTED);
 	}
@@ -404,7 +408,7 @@ s32 ixgbe_reset_phy(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_get_phy_firmware_version(struct ixgbe_hw *hw, u16 *firmware_version)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 
 	status = ixgbe_call_func(hw, hw->phy.ops.get_firmware_version,
 				 (hw, firmware_version),
@@ -461,6 +465,20 @@ s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw)
 }
 
 /**
+ * ixgbe_setup_internal_phy - Configure integrated PHY
+ * @hw: pointer to hardware structure
+ *
+ * Reconfigure the integrated PHY in order to enable talk to the external PHY.
+ * Returns success if not implemented, since nothing needs to be done in this
+ * case.
+ */
+s32 ixgbe_setup_internal_phy(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->phy.ops.setup_internal_link, (hw),
+			       IXGBE_SUCCESS);
+}
+
+/**
  *  ixgbe_check_phy_link - Determine link and speed status
  *  @hw: pointer to hardware structure
  *
@@ -486,6 +504,17 @@ s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
 {
 	return ixgbe_call_func(hw, hw->phy.ops.setup_link_speed, (hw, speed,
 			       autoneg_wait_to_complete),
+			       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ * ixgbe_set_phy_power - Control the phy power state
+ * @hw: pointer to hardware structure
+ * @on: true for on, false for off
+ */
+s32 ixgbe_set_phy_power(struct ixgbe_hw *hw, bool on)
+{
+	return ixgbe_call_func(hw, hw->phy.ops.set_phy_power, (hw, on),
 			       IXGBE_NOT_IMPLEMENTED);
 }
 
@@ -965,7 +994,6 @@ s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
 			       build, ver), IXGBE_NOT_IMPLEMENTED);
 }
 
-
 /**
  *  ixgbe_get_thermal_sensor_data - Gathers thermal sensor data
  *  @hw: pointer to hardware structure
@@ -989,7 +1017,6 @@ s32 ixgbe_init_thermal_sensor_thresh(struct ixgbe_hw *hw)
 	return ixgbe_call_func(hw, hw->mac.ops.init_thermal_sensor_thresh, (hw),
 				IXGBE_NOT_IMPLEMENTED);
 }
-
 
 /**
  *  ixgbe_read_analog_reg8 - Reads 8 bit analog register
@@ -1036,6 +1063,7 @@ s32 ixgbe_init_uta_tables(struct ixgbe_hw *hw)
  *  ixgbe_read_i2c_byte - Reads 8 bit word over I2C at specified device address
  *  @hw: pointer to hardware structure
  *  @byte_offset: byte offset to read
+ *  @dev_addr: I2C bus address to read from
  *  @data: value read
  *
  *  Performs byte read operation to SFP module's EEPROM over I2C interface.
@@ -1048,9 +1076,25 @@ s32 ixgbe_read_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
 }
 
 /**
+ * ixgbe_read_i2c_combined - Perform I2C read combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to read from
+ * @reg: I2C device register to read from
+ * @val: pointer to location to receive read value
+ *
+ * Returns an error code on error.
+ */
+s32 ixgbe_read_i2c_combined(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 *val)
+{
+	return ixgbe_call_func(hw, hw->phy.ops.read_i2c_combined, (hw, addr,
+			       reg, val), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
  *  ixgbe_write_i2c_byte - Writes 8 bit word over I2C
  *  @hw: pointer to hardware structure
  *  @byte_offset: byte offset to write
+ *  @dev_addr: I2C bus address to write to
  *  @data: value to write
  *
  *  Performs byte write operation to SFP module's EEPROM over I2C interface
@@ -1061,6 +1105,21 @@ s32 ixgbe_write_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
 {
 	return ixgbe_call_func(hw, hw->phy.ops.write_i2c_byte, (hw, byte_offset,
 			       dev_addr, data), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ * ixgbe_write_i2c_combined - Perform I2C write combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to write to
+ * @reg: I2C device register to write to
+ * @val: value to write
+ *
+ * Returns an error code on error.
+ */
+s32 ixgbe_write_i2c_combined(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 val)
+{
+	return ixgbe_call_func(hw, hw->phy.ops.write_i2c_combined, (hw, addr,
+			       reg, val), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
@@ -1170,7 +1229,6 @@ void ixgbe_release_swfw_semaphore(struct ixgbe_hw *hw, u32 mask)
 	if (hw->mac.ops.release_swfw_sync)
 		hw->mac.ops.release_swfw_sync(hw, mask);
 }
-
 
 void ixgbe_disable_rx(struct ixgbe_hw *hw)
 {

@@ -82,7 +82,7 @@ s32 ixgbe_dcb_calculate_tc_credits_cee(struct ixgbe_hw *hw,
 	struct ixgbe_dcb_tc_path *p;
 	u32 min_multiplier	= 0;
 	u16 min_percent		= 100;
-	s32 ret_val =		0;
+	s32 ret_val =		IXGBE_SUCCESS;
 	/* Initialization values default for Tx settings */
 	u32 min_credit		= 0;
 	u32 credit_refill	= 0;
@@ -288,7 +288,7 @@ void ixgbe_dcb_unpack_map_cee(struct ixgbe_dcb_config *cfg, int direction,
 s32 ixgbe_dcb_check_config_cee(struct ixgbe_dcb_config *dcb_config)
 {
 	struct ixgbe_dcb_tc_path *p;
-	s32 ret_val = 0;
+	s32 ret_val = IXGBE_SUCCESS;
 	u8 i, j, bw = 0, bw_id;
 	u8 bw_sum[2][IXGBE_DCB_MAX_BW_GROUP];
 	bool link_strict[2][IXGBE_DCB_MAX_BW_GROUP];
@@ -360,7 +360,7 @@ s32 ixgbe_dcb_check_config_cee(struct ixgbe_dcb_config *dcb_config)
 	}
 
 err_config:
-	hw_dbg(hw, "DCB error code %d while checking %s settings.\n",
+	DEBUGOUT2("DCB error code %d while checking %s settings.\n",
 		  ret_val, (i == IXGBE_DCB_TX_CONFIG) ? "Tx" : "Rx");
 
 	return ret_val;

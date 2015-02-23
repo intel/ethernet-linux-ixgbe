@@ -126,7 +126,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("fdir_miss", stats.fdirmiss),
 	IXGBE_STAT("fdir_overflow", fdir_overflow),
 #endif /* HAVE_TX_MQ */
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	IXGBE_STAT("fcoe_bad_fccrc", stats.fccrc),
 	IXGBE_STAT("fcoe_last_errors", stats.fclast),
 	IXGBE_STAT("rx_fcoe_dropped", stats.fcoerpdc),
@@ -136,7 +136,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("fcoe_noddp_ext_buff", stats.fcoe_noddp_ext_buff),
 	IXGBE_STAT("tx_fcoe_packets", stats.fcoeptc),
 	IXGBE_STAT("tx_fcoe_dwords", stats.fcoedwtc),
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */
 	IXGBE_STAT("os2bmc_rx_by_bmc", stats.o2bgptc),
 	IXGBE_STAT("os2bmc_tx_by_bmc", stats.b2ospc),
 	IXGBE_STAT("os2bmc_tx_by_host", stats.o2bspc),
@@ -269,6 +269,10 @@ int ixgbe_get_settings(struct net_device *netdev,
 	case ixgbe_phy_sfp_avago:
 	case ixgbe_phy_sfp_intel:
 	case ixgbe_phy_sfp_unknown:
+	case ixgbe_phy_qsfp_passive_unknown:
+	case ixgbe_phy_qsfp_active_unknown:
+	case ixgbe_phy_qsfp_intel:
+	case ixgbe_phy_qsfp_unknown:
 		switch (adapter->hw.phy.sfp_type) {
 			/* SFP+ devices, further checking needed */
 		case ixgbe_sfp_type_da_cu:
@@ -413,12 +417,16 @@ static int ixgbe_set_settings(struct net_device *netdev,
 		if (old == advertised)
 			return err;
 		/* this sets the link speed and restarts auto-neg */
+		while (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+			usleep_range(1000, 2000);
+
 		hw->mac.autotry_restart = true;
 		err = hw->mac.ops.setup_link(hw, advertised, true);
 		if (err) {
 			e_info(probe, "setup link failed with code %d\n", err);
 			hw->mac.ops.setup_link(hw, old, true);
 		}
+		clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
 	} else {
 		/* in this case we currently only support 10Gb/FULL */
 		u32 speed = ethtool_cmd_speed(ecmd);
@@ -513,7 +521,6 @@ static int ixgbe_get_regs_len(struct net_device __always_unused *netdev)
 }
 
 #define IXGBE_GET_STAT(_A_, _R_)	(_A_->stats._R_)
-
 
 static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 			   void *p)
@@ -823,6 +830,7 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 
 	/* 82599 X540 specific registers  */
 	regs_buff[1128] = IXGBE_READ_REG(hw, IXGBE_MFLCN);
+
 }
 
 static int ixgbe_get_eeprom_len(struct net_device *netdev)
@@ -2289,7 +2297,7 @@ static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 	/* Restore LED settings */
 	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, led_reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 #endif /* HAVE_ETHTOOL_SET_PHYS_ID */
 
@@ -2361,22 +2369,17 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	struct ixgbe_q_vector *q_vector;
 	int i;
 	u16 tx_itr_param, rx_itr_param;
-#if IS_ENABLED(CONFIG_BQL)
 	u16  tx_itr_prev;
-#endif
 	bool need_reset = false;
 
 	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count) {
 		/* reject Tx specific changes in case of mixed RxTx vectors */
 		if (ec->tx_coalesce_usecs)
 			return -EINVAL;
-#if IS_ENABLED(CONFIG_BQL)
 		tx_itr_prev = adapter->rx_itr_setting;
 	} else {
 		tx_itr_prev = adapter->tx_itr_setting;
-#endif /* BQL */
 	}
-
 
 	if (ec->tx_max_coalesced_frames_irq)
 		adapter->tx_work_limit = ec->tx_max_coalesced_frames_irq;
@@ -2409,7 +2412,6 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count)
 		adapter->tx_itr_setting = adapter->rx_itr_setting;
 
-#if IS_ENABLED(CONFIG_BQL)
 	/* detect ITR changes that require update of TXDCTL.WTHRESH */
 	if ((adapter->tx_itr_setting != 1) &&
 	    (adapter->tx_itr_setting < IXGBE_100K_ITR)) {
@@ -2421,7 +2423,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		    (tx_itr_prev < IXGBE_100K_ITR))
 			need_reset = true;
 	}
-#endif
+
 	/* check the old value and enable RSC if necessary */
 	need_reset |= ixgbe_update_rsc(adapter);
 
@@ -2881,7 +2883,7 @@ static int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 
 	/* add filter to the list */
 	if (parent)
-		hlist_add_after(parent, &input->fdir_node);
+		hlist_add_behind(&input->fdir_node, parent);
 	else
 		hlist_add_head(&input->fdir_node,
 			       &adapter->fdir_filter_list);
@@ -3361,13 +3363,13 @@ static int ixgbe_set_channels(struct net_device *dev,
 		count = max_rss_indices;
 	adapter->ring_feature[RING_F_RSS].limit = count;
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	/* cap FCoE limit at 8 */
 	if (count > IXGBE_FCRETA_SIZE)
 		count = IXGBE_FCRETA_SIZE;
 	adapter->ring_feature[RING_F_FCOE].limit = count;
+#endif /* CONFIG_FCOE */
 
-#endif
 	/* use setup TC to update any traffic class queue mapping */
 	return ixgbe_setup_tc(dev, netdev_get_num_tc(dev));
 }

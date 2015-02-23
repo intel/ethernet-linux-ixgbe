@@ -6,7 +6,7 @@ ixgbe Linux* Base Driver for Intel® Ethernet Network Connection
 
 ================================================================================
 
-May 12, 2014
+November 12, 2014
 
 ================================================================================
 
@@ -22,6 +22,7 @@ Contents
 - Known Issues/Troubleshooting
 - Support
 - License
+
 
 ================================================================================
 
@@ -74,8 +75,8 @@ in this document.
 Identifying Your Adapter
 ------------------------
 
-The driver in this release is compatible with 82598, 82599, X540, and 
-X550-based Intel Ethernet Network Connections.
+The driver in this release is compatible with 82598, 82599, X540, X550, 
+and X552-based Intel Ethernet Network Connections.
 
 For more information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -273,6 +274,7 @@ To build ixgbe driver with DCA
 If your kernel supports DCA, the driver will build by default with DCA enabled.
 
 Note: DCA is not supported on X550-based adapters.
+
 
 ================================================================================
 
@@ -476,8 +478,8 @@ behavior is changed to off.  Flow control in 1 gigabit mode on these devices
 can lead to transmit hangs.
 
 
-Intel® Ethernet Flow Director
------------------------------
+Intel(R) Ethernet Flow Director
+-------------------------------
 NOTE: Flow director parameters are only supported on kernel versions 2.6.30 or
 newer.
 
@@ -727,6 +729,35 @@ ethtool:
 
 NOTE: IPv6 and UDP are not supported by LRO.
 
+
+DMAC
+----
+Valid Range:    0, 41-10000
+
+Default Value:  0 (disabled)	
+
+Values are in microseconds and set the internal DMA Coalescing internal timer.
+
+DMAC is available on Intel(R) X550 (and later) based adapters.
+
+DMA (Direct Memory Access) allows the network device to move packet data
+directly to the system's memory, reducing CPU utilization. However, the
+frequency and random intervals at which packets arrive do not allow the system
+to enter a lower power state. DMA Coalescing allows the adapter to collect
+packets before it initiates a DMA event. This may increase network latency
+but also increases the chances that the system will enter a lower power state.
+
+Turning on DMA Coalescing may save energy with kernel 2.6.32 and newer. DMA 
+Coalescing must be enabled across all active ports in order to save platform
+power.
+
+InterruptThrottleRate (ITR) should be set to dynamic. When ITR=0, DMA Coalescing
+is automatically disabled.
+
+A whitepaper containing information on how to best configure your platform is 
+available on the Intel website.
+
+
 ================================================================================
 
 
@@ -833,7 +864,11 @@ Wake on LAN Support (WoL)
 -------------------------
 Some adapters do not support Wake on LAN. To determine if your adapter
 supports Wake on LAN, run
-ethtool ethX
+  ethtool ethX
+
+The Intel(R) Ethernet Converged Network Adapter X550-T1 and Intel(R) Ethernet 
+Converged Network Adapter X550-T2 have a manageability/AUX power connector. 
+These devices only support WoL if AUX power is supplied via this connector.
 
 
 IEEE 1588 PTP
@@ -845,6 +880,39 @@ The IXGBE_PTP is a compile time flag. The user may enable PTP at compile time
 by adding CFLAGS_EXTRA="-DIXGBE_PTP" to the make file when it is being
 compiled.
 make CFLAGS_EXTRA="-DIXGBE_PTP" install
+
+
+VXLAN Overlay HW Offloading
+---------------------------
+VXLAN Overlay HW Offloading is enabled by default. The ixgbe Linux driver
+features VXLAN Overlay HW Offloading support. To view and configure
+VXLAN on a VXLAN-overlay offload enabled device,  use the following
+commands:
+
+  # ethtool -k ethX
+    (This command displays the offloads and their current state.)
+  # ethtool -K ethX tx-udp_tnl-segmentation [off|on]
+    (This enables/disables VXLAN support in the driver.)
+
+For more information on configuring your network for VXLAN overlay support,
+refer to the Intel Technical Brief, "Creating Overlay Networks Using Intel
+Ethernet Converged Network Adapters" (Intel Networking Division, August 2013):
+
+  http://www.intel.com/content/dam/www/public/us/en/documents/technology-briefs/
+  overlay-networks-using-converged-network-adapters-brief.pdf
+
+
+Virtual Function (VF) TX Rate Limit
+-----------------------------------
+Virtual Function (VF) TX rate limit  is configured with an ip command from the
+PF interface.
+  # ip link set eth0 vf 0 rate 1000
+    (This command sets TX Rate Limit of 1000Mbps for VF 0)
+
+Note that the limit is set per queue and not for the entire VF interface.
+
+
+================================================================================
 
 
 Known Issues/Troubleshooting
@@ -1101,12 +1169,13 @@ If an issue is identified with the released source code on the supported
 kernel with a supported adapter, email the specific information related to the
 issue to e1000-devel@lists.sf.net.
 
+
 ================================================================================
 
 
 License
 -------
-Intel Gigabit Linux driver.
+Intel 10 Gigabit Linux driver.
 Copyright(c) 1999 - 2014 Intel Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -1123,6 +1192,7 @@ St - Fifth Floor, Boston, MA 02110-1301 USA.
 
 The full GNU General Public License is included in this distribution in the
 file called "COPYING".
+
 
 ================================================================================
 

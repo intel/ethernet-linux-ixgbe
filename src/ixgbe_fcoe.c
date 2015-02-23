@@ -24,9 +24,8 @@
 
 #include "ixgbe.h"
 
-
-#ifdef IXGBE_FCOE
-#ifdef CONFIG_DCB
+#if IS_ENABLED(CONFIG_FCOE)
+#if IS_ENABLED(CONFIG_DCB)
 #include "ixgbe_dcb_82599.h"
 #endif /* CONFIG_DCB */
 #include <linux/if_ether.h>
@@ -797,7 +796,6 @@ static int ixgbe_fcoe_ddp_enable(struct ixgbe_adapter *adapter)
 
 	adapter->netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX - 1;
 
-
 	return 0;
 }
 
@@ -908,7 +906,7 @@ int ixgbe_fcoe_disable(struct net_device *netdev)
 }
 #endif /* HAVE_NETDEV_OPS_FCOE_ENABLE */
 
-#ifdef CONFIG_DCB
+#if IS_ENABLED(CONFIG_DCB)
 #ifdef HAVE_DCBNL_OPS_GETAPP
 /**
  * ixgbe_fcoe_getapp - retrieves current user priority bitmap for FCoE
@@ -925,7 +923,6 @@ u8 ixgbe_fcoe_getapp(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	return 1 << adapter->fcoe.up;
 }
-
 #endif /* HAVE_DCBNL_OPS_GETAPP */
 #endif /* CONFIG_DCB */
 #ifdef HAVE_NETDEV_OPS_FCOE_GETWWN
@@ -984,4 +981,4 @@ u8 ixgbe_fcoe_get_tc(struct ixgbe_adapter *adapter)
 {
 	return netdev_get_prio_tc_map(adapter->netdev, adapter->fcoe.up);
 }
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */

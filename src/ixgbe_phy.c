@@ -26,18 +26,18 @@
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
 
-static void ixgbe_i2c_start(struct ixgbe_hw *hw);
-static void ixgbe_i2c_stop(struct ixgbe_hw *hw);
-static s32 ixgbe_clock_in_i2c_byte(struct ixgbe_hw *hw, u8 *data);
-static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data);
-static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw);
-static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data);
-static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data);
-static void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
-static void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
-static s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data);
-static bool ixgbe_get_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl);
-static s32 ixgbe_read_i2c_sff8472_generic(struct ixgbe_hw *hw, u8 byte_offset,
+STATIC void ixgbe_i2c_start(struct ixgbe_hw *hw);
+STATIC void ixgbe_i2c_stop(struct ixgbe_hw *hw);
+STATIC s32 ixgbe_clock_in_i2c_byte(struct ixgbe_hw *hw, u8 *data);
+STATIC s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data);
+STATIC s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw);
+STATIC s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data);
+STATIC s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data);
+STATIC void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
+STATIC void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl);
+STATIC s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data);
+STATIC bool ixgbe_get_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl);
+STATIC s32 ixgbe_read_i2c_sff8472_generic(struct ixgbe_hw *hw, u8 byte_offset,
 					  u8 *sff8472_data);
 
 /**
@@ -50,27 +50,29 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 {
 	struct ixgbe_phy_info *phy = &hw->phy;
 
+	DEBUGFUNC("ixgbe_init_phy_ops_generic");
+
 	/* PHY */
-	phy->ops.identify = &ixgbe_identify_phy_generic;
-	phy->ops.reset = &ixgbe_reset_phy_generic;
-	phy->ops.read_reg = &ixgbe_read_phy_reg_generic;
-	phy->ops.write_reg = &ixgbe_write_phy_reg_generic;
-	phy->ops.read_reg_mdi = &ixgbe_read_phy_reg_mdi;
-	phy->ops.write_reg_mdi = &ixgbe_write_phy_reg_mdi;
-	phy->ops.setup_link = &ixgbe_setup_phy_link_generic;
-	phy->ops.setup_link_speed = &ixgbe_setup_phy_link_speed_generic;
+	phy->ops.identify = ixgbe_identify_phy_generic;
+	phy->ops.reset = ixgbe_reset_phy_generic;
+	phy->ops.read_reg = ixgbe_read_phy_reg_generic;
+	phy->ops.write_reg = ixgbe_write_phy_reg_generic;
+	phy->ops.read_reg_mdi = ixgbe_read_phy_reg_mdi;
+	phy->ops.write_reg_mdi = ixgbe_write_phy_reg_mdi;
+	phy->ops.setup_link = ixgbe_setup_phy_link_generic;
+	phy->ops.setup_link_speed = ixgbe_setup_phy_link_speed_generic;
 	phy->ops.check_link = NULL;
 	phy->ops.get_firmware_version = ixgbe_get_phy_firmware_version_generic;
-	phy->ops.read_i2c_byte = &ixgbe_read_i2c_byte_generic;
-	phy->ops.write_i2c_byte = &ixgbe_write_i2c_byte_generic;
-	phy->ops.read_i2c_sff8472 = &ixgbe_read_i2c_sff8472_generic;
-	phy->ops.read_i2c_eeprom = &ixgbe_read_i2c_eeprom_generic;
-	phy->ops.write_i2c_eeprom = &ixgbe_write_i2c_eeprom_generic;
-	phy->ops.i2c_bus_clear = &ixgbe_i2c_bus_clear;
-	phy->ops.identify_sfp = &ixgbe_identify_module_generic;
+	phy->ops.read_i2c_byte = ixgbe_read_i2c_byte_generic;
+	phy->ops.write_i2c_byte = ixgbe_write_i2c_byte_generic;
+	phy->ops.read_i2c_sff8472 = ixgbe_read_i2c_sff8472_generic;
+	phy->ops.read_i2c_eeprom = ixgbe_read_i2c_eeprom_generic;
+	phy->ops.write_i2c_eeprom = ixgbe_write_i2c_eeprom_generic;
+	phy->ops.i2c_bus_clear = ixgbe_i2c_bus_clear;
+	phy->ops.identify_sfp = ixgbe_identify_module_generic;
 	phy->sfp_type = ixgbe_sfp_type_unknown;
-	phy->ops.check_overtemp = &ixgbe_tn_check_overtemp;
-	return 0;
+	phy->ops.check_overtemp = ixgbe_tn_check_overtemp;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -85,10 +87,10 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 	u32 phy_addr;
 	u16 ext_ability = 0;
 
+	DEBUGFUNC("ixgbe_identify_phy_generic");
+
 	if (!hw->phy.phy_semaphore_mask) {
-		hw->phy.lan_id = IXGBE_READ_REG(hw, IXGBE_STATUS) &
-						IXGBE_STATUS_LAN_ID_1;
-		if (hw->phy.lan_id)
+		if (hw->bus.lan_id)
 			hw->phy.phy_semaphore_mask = IXGBE_GSSR_PHY1_SM;
 		else
 			hw->phy.phy_semaphore_mask = IXGBE_GSSR_PHY0_SM;
@@ -117,7 +119,7 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 							 ixgbe_phy_generic;
 				}
 
-				status = 0;
+				status = IXGBE_SUCCESS;
 				break;
 			}
 		}
@@ -126,11 +128,11 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 		 * be found and the code will take this path.  Caller has to
 		 * decide if it is an error or not.
 		 */
-		if (status != 0) {
+		if (status != IXGBE_SUCCESS) {
 			hw->phy.addr = 0;
 		}
 	} else {
-		status = 0;
+		status = IXGBE_SUCCESS;
 	}
 
 	return status;
@@ -148,6 +150,8 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 s32 ixgbe_check_reset_blocked(struct ixgbe_hw *hw)
 {
 	u32 mmngc;
+
+	DEBUGFUNC("ixgbe_check_reset_blocked");
 
 	/* If we don't have this bit, it can't be blocking */
 	if (hw->mac.type == ixgbe_mac_82598EB)
@@ -173,6 +177,8 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 	u16 phy_id = 0;
 	bool valid = false;
 
+	DEBUGFUNC("ixgbe_validate_phy_addr");
+
 	hw->phy.addr = phy_addr;
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_HIGH,
 			     IXGBE_MDIO_PMA_PMD_DEV_TYPE, &phy_id);
@@ -194,11 +200,13 @@ s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 	u16 phy_id_high = 0;
 	u16 phy_id_low = 0;
 
+	DEBUGFUNC("ixgbe_get_phy_id");
+
 	status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_HIGH,
 				      IXGBE_MDIO_PMA_PMD_DEV_TYPE,
 				      &phy_id_high);
 
-	if (status == 0) {
+	if (status == IXGBE_SUCCESS) {
 		hw->phy.id = (u32)(phy_id_high << 16);
 		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_ID_LOW,
 					      IXGBE_MDIO_PMA_PMD_DEV_TYPE,
@@ -218,6 +226,8 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 {
 	enum ixgbe_phy_type phy_type;
 
+	DEBUGFUNC("ixgbe_get_phy_type_from_id");
+
 	switch (phy_id) {
 	case TN1010_PHY_ID:
 		phy_type = ixgbe_phy_tn;
@@ -236,7 +246,7 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 		break;
 	}
 
-	hw_dbg(hw, "phy type found is %d\n", phy_type);
+	DEBUGOUT1("phy type found is %d\n", phy_type);
 	return phy_type;
 }
 
@@ -248,12 +258,14 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 {
 	u32 i;
 	u16 ctrl = 0;
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
+
+	DEBUGFUNC("ixgbe_reset_phy_generic");
 
 	if (hw->phy.type == ixgbe_phy_unknown)
 		status = ixgbe_identify_phy_generic(hw);
 
-	if (status != 0 || hw->phy.type == ixgbe_phy_none)
+	if (status != IXGBE_SUCCESS || hw->phy.type == ixgbe_phy_none)
 		goto out;
 
 	/* Don't reset PHY if it's shut down due to overtemp. */
@@ -279,11 +291,11 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 	 * 1.7 usec delay after the reset is complete.
 	 */
 	for (i = 0; i < 30; i++) {
-		msleep(100);
+		msec_delay(100);
 		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
 				     IXGBE_MDIO_PHY_XS_DEV_TYPE, &ctrl);
 		if (!(ctrl & IXGBE_MDIO_PHY_XS_RESET)) {
-			udelay(2);
+			usec_delay(2);
 			break;
 		}
 	}
@@ -324,7 +336,7 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 	 * complete
 	 */
 	for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
-		udelay(10);
+		usec_delay(10);
 
 		command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 		if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
@@ -354,7 +366,7 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 	 * operation is complete
 	 */
 	for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
-		udelay(10);
+		usec_delay(10);
 
 		command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 		if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
@@ -374,7 +386,7 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 	data >>= IXGBE_MSRWD_READ_DATA_SHIFT;
 	*phy_data = (u16)(data);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -390,7 +402,9 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	s32 status;
 	u32 gssr = hw->phy.phy_semaphore_mask;
 
-	if (hw->mac.ops.acquire_swfw_sync(hw, gssr) == 0) {
+	DEBUGFUNC("ixgbe_read_phy_reg_generic");
+
+	if (hw->mac.ops.acquire_swfw_sync(hw, gssr) == IXGBE_SUCCESS) {
 		status = ixgbe_read_phy_reg_mdi(hw, reg_addr, device_type,
 						phy_data);
 		hw->mac.ops.release_swfw_sync(hw, gssr);
@@ -431,7 +445,7 @@ s32 ixgbe_write_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr,
 	 * complete
 	 */
 	for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
-		udelay(10);
+		usec_delay(10);
 
 		command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 		if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
@@ -460,7 +474,7 @@ s32 ixgbe_write_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr,
 	 * operation is complete
 	 */
 	for (i = 0; i < IXGBE_MDIO_COMMAND_TIMEOUT; i++) {
-		udelay(10);
+		usec_delay(10);
 
 		command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 		if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
@@ -472,7 +486,7 @@ s32 ixgbe_write_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr,
 		return IXGBE_ERR_PHY;
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -489,7 +503,9 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	s32 status;
 	u32 gssr = hw->phy.phy_semaphore_mask;
 
-	if (hw->mac.ops.acquire_swfw_sync(hw, gssr) == 0) {
+	DEBUGFUNC("ixgbe_write_phy_reg_generic");
+
+	if (hw->mac.ops.acquire_swfw_sync(hw, gssr) == IXGBE_SUCCESS) {
 		status = ixgbe_write_phy_reg_mdi(hw, reg_addr, device_type,
 						 phy_data);
 		hw->mac.ops.release_swfw_sync(hw, gssr);
@@ -501,19 +517,19 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 }
 
 /**
- *  ixgbe_setup_phy_link_generic - Set and restart autoneg
+ *  ixgbe_setup_phy_link_generic - Set and restart auto-neg
  *  @hw: pointer to hardware structure
  *
- *  Restart autonegotiation and PHY and waits for completion.
+ *  Restart auto-negotiation and PHY and waits for completion.
  **/
 s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
-	u32 time_out;
-	u32 max_time_out = 10;
+	s32 status = IXGBE_SUCCESS;
 	u16 autoneg_reg = IXGBE_MII_AUTONEG_REG;
 	bool autoneg = false;
 	ixgbe_link_speed speed;
+
+	DEBUGFUNC("ixgbe_setup_phy_link_generic");
 
 	ixgbe_get_copper_link_capabilities_generic(hw, &speed, &autoneg);
 
@@ -569,7 +585,7 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 	if (ixgbe_check_reset_blocked(hw))
 		return status;
 
-	/* Restart PHY autonegotiation and wait for completion */
+	/* Restart PHY auto-negotiation. */
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
 			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
 
@@ -577,22 +593,6 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 
 	hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
 			      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_reg);
-
-	/* Wait for autonegotiation to finish */
-	for (time_out = 0; time_out < max_time_out; time_out++) {
-		udelay(10);
-		/* Restart PHY autonegotiation and wait for completion */
-		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_STATUS,
-					      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-					      &autoneg_reg);
-
-		autoneg_reg &= IXGBE_MII_AUTONEG_COMPLETE;
-		if (autoneg_reg == IXGBE_MII_AUTONEG_COMPLETE)
-			break;
-	}
-
-	if (time_out == max_time_out)
-		status = IXGBE_ERR_LINK_SETUP;
 
 	return status;
 }
@@ -608,6 +608,8 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 {
 	UNREFERENCED_1PARAMETER(autoneg_wait_to_complete);
 
+	DEBUGFUNC("ixgbe_setup_phy_link_speed_generic");
+
 	/*
 	 * Clear autoneg_advertised and set new values based on input link
 	 * speed.
@@ -616,6 +618,12 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 
 	if (speed & IXGBE_LINK_SPEED_10GB_FULL)
 		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
+
+	if (speed & IXGBE_LINK_SPEED_5GB_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_5GB_FULL;
+
+	if (speed & IXGBE_LINK_SPEED_2_5GB_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_2_5GB_FULL;
 
 	if (speed & IXGBE_LINK_SPEED_1GB_FULL)
 		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_1GB_FULL;
@@ -626,7 +634,7 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 	/* Setup link based on the new speed settings */
 	hw->phy.ops.setup_link(hw);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -635,7 +643,8 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
  *  @speed: pointer to link speed
  *  @autoneg: boolean auto-negotiation value
  *
- *  Determines the link capabilities by reading the AUTOC register.
+ *  Determines the supported link capabilities by reading the PHY auto
+ *  negotiation register.
  **/
 s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 					       ixgbe_link_speed *speed,
@@ -644,6 +653,8 @@ s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 	s32 status;
 	u16 speed_ability;
 
+	DEBUGFUNC("ixgbe_get_copper_link_capabilities_generic");
+
 	*speed = 0;
 	*autoneg = true;
 
@@ -651,7 +662,7 @@ s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 				      IXGBE_MDIO_PMA_PMD_DEV_TYPE,
 				      &speed_ability);
 
-	if (status == 0) {
+	if (status == IXGBE_SUCCESS) {
 		if (speed_ability & IXGBE_MDIO_PHY_SPEED_10G)
 			*speed |= IXGBE_LINK_SPEED_10GB_FULL;
 		if (speed_ability & IXGBE_MDIO_PHY_SPEED_1G)
@@ -673,12 +684,14 @@ s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 s32 ixgbe_check_phy_link_tnx(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 			     bool *link_up)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 	u32 time_out;
 	u32 max_time_out = 10;
 	u16 phy_link = 0;
 	u16 phy_speed = 0;
 	u16 phy_data = 0;
+
+	DEBUGFUNC("ixgbe_check_phy_link_tnx");
 
 	/* Initialize speed and link to default case */
 	*link_up = false;
@@ -690,7 +703,7 @@ s32 ixgbe_check_phy_link_tnx(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 	 * be changed for other copper PHYs.
 	 */
 	for (time_out = 0; time_out < max_time_out; time_out++) {
-		udelay(10);
+		usec_delay(10);
 		status = hw->phy.ops.read_reg(hw,
 					IXGBE_MDIO_VENDOR_SPECIFIC_1_STATUS,
 					IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
@@ -711,19 +724,19 @@ s32 ixgbe_check_phy_link_tnx(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 }
 
 /**
- *	ixgbe_setup_phy_link_tnx - Set and restart autoneg
+ *	ixgbe_setup_phy_link_tnx - Set and restart auto-neg
  *	@hw: pointer to hardware structure
  *
- *	Restart autonegotiation and PHY and waits for completion.
+ *	Restart auto-negotiation and PHY and waits for completion.
  **/
 s32 ixgbe_setup_phy_link_tnx(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
-	u32 time_out;
-	u32 max_time_out = 10;
+	s32 status = IXGBE_SUCCESS;
 	u16 autoneg_reg = IXGBE_MII_AUTONEG_REG;
 	bool autoneg = false;
 	ixgbe_link_speed speed;
+
+	DEBUGFUNC("ixgbe_setup_phy_link_tnx");
 
 	ixgbe_get_copper_link_capabilities_generic(hw, &speed, &autoneg);
 
@@ -776,7 +789,7 @@ s32 ixgbe_setup_phy_link_tnx(struct ixgbe_hw *hw)
 	if (ixgbe_check_reset_blocked(hw))
 		return status;
 
-	/* Restart PHY autonegotiation and wait for completion */
+	/* Restart PHY auto-negotiation. */
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
 			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
 
@@ -784,24 +797,6 @@ s32 ixgbe_setup_phy_link_tnx(struct ixgbe_hw *hw)
 
 	hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
 			      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_reg);
-
-	/* Wait for autonegotiation to finish */
-	for (time_out = 0; time_out < max_time_out; time_out++) {
-		udelay(10);
-		/* Restart PHY autonegotiation and wait for completion */
-		status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_STATUS,
-					      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-					      &autoneg_reg);
-
-		autoneg_reg &= IXGBE_MII_AUTONEG_COMPLETE;
-		if (autoneg_reg == IXGBE_MII_AUTONEG_COMPLETE)
-			break;
-	}
-
-	if (time_out == max_time_out) {
-		status = IXGBE_ERR_LINK_SETUP;
-		hw_dbg(hw, "ixgbe_setup_phy_link_tnx: time out");
-	}
 
 	return status;
 }
@@ -815,6 +810,8 @@ s32 ixgbe_get_phy_firmware_version_tnx(struct ixgbe_hw *hw,
 				       u16 *firmware_version)
 {
 	s32 status;
+
+	DEBUGFUNC("ixgbe_get_phy_firmware_version_tnx");
 
 	status = hw->phy.ops.read_reg(hw, TNX_FW_REV,
 				      IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
@@ -833,6 +830,8 @@ s32 ixgbe_get_phy_firmware_version_generic(struct ixgbe_hw *hw,
 {
 	s32 status;
 
+	DEBUGFUNC("ixgbe_get_phy_firmware_version_generic");
+
 	status = hw->phy.ops.read_reg(hw, AQ_FW_REV,
 				      IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
 				      firmware_version);
@@ -850,8 +849,10 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	bool end_data = false;
 	u16 list_offset, data_offset;
 	u16 phy_data = 0;
-	s32 ret_val = 0;
+	s32 ret_val = IXGBE_SUCCESS;
 	u32 i;
+
+	DEBUGFUNC("ixgbe_reset_phy_nl");
 
 	/* Blocked by MNG FW so bail */
 	if (ixgbe_check_reset_blocked(hw))
@@ -870,11 +871,11 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 				     IXGBE_MDIO_PHY_XS_DEV_TYPE, &phy_data);
 		if ((phy_data & IXGBE_MDIO_PHY_XS_RESET) == 0)
 			break;
-		msleep(10);
+		msec_delay(10);
 	}
 
 	if ((phy_data & IXGBE_MDIO_PHY_XS_RESET) != 0) {
-		hw_dbg(hw, "PHY reset did not complete.\n");
+		DEBUGOUT("PHY reset did not complete.\n");
 		ret_val = IXGBE_ERR_PHY;
 		goto out;
 	}
@@ -882,7 +883,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	/* Get init offsets */
 	ret_val = ixgbe_get_sfp_init_sequence_offsets(hw, &list_offset,
 						      &data_offset);
-	if (ret_val != 0)
+	if (ret_val != IXGBE_SUCCESS)
 		goto out;
 
 	ret_val = hw->eeprom.ops.read(hw, data_offset, &block_crc);
@@ -900,11 +901,11 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 		switch (control) {
 		case IXGBE_DELAY_NL:
 			data_offset++;
-			hw_dbg(hw, "DELAY: %d MS\n", edata);
-			msleep(edata);
+			DEBUGOUT1("DELAY: %d MS\n", edata);
+			msec_delay(edata);
 			break;
 		case IXGBE_DATA_NL:
-			hw_dbg(hw, "DATA:\n");
+			DEBUGOUT("DATA:\n");
 			data_offset++;
 			ret_val = hw->eeprom.ops.read(hw, data_offset,
 						      &phy_offset);
@@ -918,7 +919,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 					goto err_eeprom;
 				hw->phy.ops.write_reg(hw, phy_offset,
 						      IXGBE_TWINAX_DEV, eword);
-				hw_dbg(hw, "Wrote %4.4x to %4.4x\n", eword,
+				DEBUGOUT2("Wrote %4.4x to %4.4x\n", eword,
 					  phy_offset);
 				data_offset++;
 				phy_offset++;
@@ -926,20 +927,20 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 			break;
 		case IXGBE_CONTROL_NL:
 			data_offset++;
-			hw_dbg(hw, "CONTROL:\n");
+			DEBUGOUT("CONTROL:\n");
 			if (edata == IXGBE_CONTROL_EOL_NL) {
-				hw_dbg(hw, "EOL\n");
+				DEBUGOUT("EOL\n");
 				end_data = true;
 			} else if (edata == IXGBE_CONTROL_SOL_NL) {
-				hw_dbg(hw, "SOL\n");
+				DEBUGOUT("SOL\n");
 			} else {
-				hw_dbg(hw, "Bad control value\n");
+				DEBUGOUT("Bad control value\n");
 				ret_val = IXGBE_ERR_PHY;
 				goto out;
 			}
 			break;
 		default:
-			hw_dbg(hw, "Bad control type\n");
+			DEBUGOUT("Bad control type\n");
 			ret_val = IXGBE_ERR_PHY;
 			goto out;
 		}
@@ -963,6 +964,8 @@ err_eeprom:
 s32 ixgbe_identify_module_generic(struct ixgbe_hw *hw)
 {
 	s32 status = IXGBE_ERR_SFP_NOT_PRESENT;
+
+	DEBUGFUNC("ixgbe_identify_module_generic");
 
 	switch (hw->mac.ops.get_media_type(hw)) {
 	case ixgbe_media_type_fiber:
@@ -1001,21 +1004,23 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 	u8 cable_spec = 0;
 	u16 enforce_sfp = 0;
 
+	DEBUGFUNC("ixgbe_identify_sfp_module_generic");
+
 	if (hw->mac.ops.get_media_type(hw) != ixgbe_media_type_fiber) {
 		hw->phy.sfp_type = ixgbe_sfp_type_not_present;
 		status = IXGBE_ERR_SFP_NOT_PRESENT;
 		goto out;
 	}
 
+	/* LAN ID is needed for I2C access */
+	hw->mac.ops.set_lan_id(hw);
+
 	status = hw->phy.ops.read_i2c_eeprom(hw,
 					     IXGBE_SFF_IDENTIFIER,
 					     &identifier);
 
-	if (status != 0)
+	if (status != IXGBE_SUCCESS)
 		goto err_read_i2c_eeprom;
-
-	/* LAN ID is needed for sfp_type determination */
-	hw->mac.ops.set_lan_id(hw);
 
 	if (identifier != IXGBE_SFF_IDENTIFIER_SFP) {
 		hw->phy.type = ixgbe_phy_sfp_unsupported;
@@ -1025,20 +1030,20 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 						     IXGBE_SFF_1GBE_COMP_CODES,
 						     &comp_codes_1g);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 
 		status = hw->phy.ops.read_i2c_eeprom(hw,
 						     IXGBE_SFF_10GBE_COMP_CODES,
 						     &comp_codes_10g);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 		status = hw->phy.ops.read_i2c_eeprom(hw,
 						     IXGBE_SFF_CABLE_TECHNOLOGY,
 						     &cable_tech);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 
 		 /* ID Module
@@ -1143,21 +1148,21 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 						    IXGBE_SFF_VENDOR_OUI_BYTE0,
 						    &oui_bytes[0]);
 
-			if (status != 0)
+			if (status != IXGBE_SUCCESS)
 				goto err_read_i2c_eeprom;
 
 			status = hw->phy.ops.read_i2c_eeprom(hw,
 						    IXGBE_SFF_VENDOR_OUI_BYTE1,
 						    &oui_bytes[1]);
 
-			if (status != 0)
+			if (status != IXGBE_SUCCESS)
 				goto err_read_i2c_eeprom;
 
 			status = hw->phy.ops.read_i2c_eeprom(hw,
 						    IXGBE_SFF_VENDOR_OUI_BYTE2,
 						    &oui_bytes[2]);
 
-			if (status != 0)
+			if (status != IXGBE_SUCCESS)
 				goto err_read_i2c_eeprom;
 
 			vendor_oui =
@@ -1199,7 +1204,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		/* Allow any DA cable vendor */
 		if (cable_tech & (IXGBE_SFF_DA_PASSIVE_CABLE |
 		    IXGBE_SFF_DA_ACTIVE_CABLE)) {
-			status = 0;
+			status = IXGBE_SUCCESS;
 			goto out;
 		}
 
@@ -1218,7 +1223,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 
 		/* Anything else 82598-based is supported */
 		if (hw->mac.type == ixgbe_mac_82598EB) {
-			status = 0;
+			status = IXGBE_SUCCESS;
 			goto out;
 		}
 
@@ -1232,7 +1237,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		      hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core1)) {
 			/* Make sure we're a supported PHY type */
 			if (hw->phy.type == ixgbe_phy_sfp_intel) {
-				status = 0;
+				status = IXGBE_SUCCESS;
 			} else {
 				if (hw->allow_unsupported_sfp == true) {
 					EWARN(hw, "WARNING: Intel (R) Network "
@@ -1245,16 +1250,16 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 					      "Corporation is not responsible "
 					      "for any harm caused by using "
 					      "untested modules.\n", status);
-					status = 0;
+					status = IXGBE_SUCCESS;
 				} else {
-					hw_dbg(hw, "SFP+ module not supported\n");
+					DEBUGOUT("SFP+ module not supported\n");
 					hw->phy.type =
 						ixgbe_phy_sfp_unsupported;
 					status = IXGBE_ERR_SFP_NOT_SUPPORTED;
 				}
 			}
 		} else {
-			status = 0;
+			status = IXGBE_SUCCESS;
 		}
 	}
 
@@ -1268,6 +1273,68 @@ err_read_i2c_eeprom:
 		hw->phy.type = ixgbe_phy_unknown;
 	}
 	return IXGBE_ERR_SFP_NOT_PRESENT;
+}
+
+/**
+ *  ixgbe_get_supported_phy_sfp_layer_generic - Returns physical layer type
+ *  @hw: pointer to hardware structure
+ *
+ *  Determines physical layer capabilities of the current SFP.
+ */
+s32 ixgbe_get_supported_phy_sfp_layer_generic(struct ixgbe_hw *hw)
+{
+	u32 physical_layer = IXGBE_PHYSICAL_LAYER_UNKNOWN;
+	u8 comp_codes_10g = 0;
+	u8 comp_codes_1g = 0;
+
+	DEBUGFUNC("ixgbe_get_supported_phy_sfp_layer_generic");
+
+	hw->phy.ops.identify_sfp(hw);
+	if (hw->phy.sfp_type == ixgbe_sfp_type_not_present)
+		return physical_layer;
+
+	switch (hw->phy.type) {
+	case ixgbe_phy_sfp_passive_tyco:
+	case ixgbe_phy_sfp_passive_unknown:
+	case ixgbe_phy_qsfp_passive_unknown:
+		physical_layer = IXGBE_PHYSICAL_LAYER_SFP_PLUS_CU;
+		break;
+	case ixgbe_phy_sfp_ftl_active:
+	case ixgbe_phy_sfp_active_unknown:
+	case ixgbe_phy_qsfp_active_unknown:
+		physical_layer = IXGBE_PHYSICAL_LAYER_SFP_ACTIVE_DA;
+		break;
+	case ixgbe_phy_sfp_avago:
+	case ixgbe_phy_sfp_ftl:
+	case ixgbe_phy_sfp_intel:
+	case ixgbe_phy_sfp_unknown:
+		hw->phy.ops.read_i2c_eeprom(hw,
+		      IXGBE_SFF_1GBE_COMP_CODES, &comp_codes_1g);
+		hw->phy.ops.read_i2c_eeprom(hw,
+		      IXGBE_SFF_10GBE_COMP_CODES, &comp_codes_10g);
+		if (comp_codes_10g & IXGBE_SFF_10GBASESR_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_SR;
+		else if (comp_codes_10g & IXGBE_SFF_10GBASELR_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_LR;
+		else if (comp_codes_1g & IXGBE_SFF_1GBASET_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_1000BASE_T;
+		else if (comp_codes_1g & IXGBE_SFF_1GBASESX_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_1000BASE_SX;
+		break;
+	case ixgbe_phy_qsfp_intel:
+	case ixgbe_phy_qsfp_unknown:
+		hw->phy.ops.read_i2c_eeprom(hw,
+		      IXGBE_SFF_QSFP_10GBE_COMP, &comp_codes_10g);
+		if (comp_codes_10g & IXGBE_SFF_10GBASESR_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_SR;
+		else if (comp_codes_10g & IXGBE_SFF_10GBASELR_CAPABLE)
+			physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_LR;
+		break;
+	default:
+		break;
+	}
+
+	return physical_layer;
 }
 
 /**
@@ -1291,6 +1358,8 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 	u8 device_tech = 0;
 	bool active_cable = false;
 
+	DEBUGFUNC("ixgbe_identify_qsfp_module_generic");
+
 	if (hw->mac.ops.get_media_type(hw) != ixgbe_media_type_fiber_qsfp) {
 		hw->phy.sfp_type = ixgbe_sfp_type_not_present;
 		status = IXGBE_ERR_SFP_NOT_PRESENT;
@@ -1300,7 +1369,7 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_IDENTIFIER,
 					     &identifier);
 
-	if (status != 0)
+	if (status != IXGBE_SUCCESS)
 		goto err_read_i2c_eeprom;
 
 	if (identifier != IXGBE_SFF_IDENTIFIER_QSFP_PLUS) {
@@ -1317,13 +1386,13 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_QSFP_10GBE_COMP,
 					     &comp_codes_10g);
 
-	if (status != 0)
+	if (status != IXGBE_SUCCESS)
 		goto err_read_i2c_eeprom;
 
 	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_QSFP_1GBE_COMP,
 					     &comp_codes_1g);
 
-	if (status != 0)
+	if (status != IXGBE_SUCCESS)
 		goto err_read_i2c_eeprom;
 
 	if (comp_codes_10g & IXGBE_SFF_QSFP_DA_PASSIVE_CABLE) {
@@ -1399,21 +1468,21 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 					    IXGBE_SFF_QSFP_VENDOR_OUI_BYTE0,
 					    &oui_bytes[0]);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 
 		status = hw->phy.ops.read_i2c_eeprom(hw,
 					    IXGBE_SFF_QSFP_VENDOR_OUI_BYTE1,
 					    &oui_bytes[1]);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 
 		status = hw->phy.ops.read_i2c_eeprom(hw,
 					    IXGBE_SFF_QSFP_VENDOR_OUI_BYTE2,
 					    &oui_bytes[2]);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 
 		vendor_oui =
@@ -1430,7 +1499,7 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 		if (!(enforce_sfp & IXGBE_DEVICE_CAPS_ALLOW_ANY_SFP)) {
 			/* Make sure we're a supported PHY type */
 			if (hw->phy.type == ixgbe_phy_qsfp_intel) {
-				status = 0;
+				status = IXGBE_SUCCESS;
 			} else {
 				if (hw->allow_unsupported_sfp == true) {
 					EWARN(hw, "WARNING: Intel (R) Network "
@@ -1443,16 +1512,16 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 					      "Corporation is not responsible "
 					      "for any harm caused by using "
 					      "untested modules.\n", status);
-					status = 0;
+					status = IXGBE_SUCCESS;
 				} else {
-					hw_dbg(hw, "QSFP module not supported\n");
+					DEBUGOUT("QSFP module not supported\n");
 					hw->phy.type =
 						ixgbe_phy_sfp_unsupported;
 					status = IXGBE_ERR_SFP_NOT_SUPPORTED;
 				}
 			}
 		} else {
-			status = 0;
+			status = IXGBE_SUCCESS;
 		}
 	}
 
@@ -1483,6 +1552,8 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 {
 	u16 sfp_id;
 	u16 sfp_type = hw->phy.sfp_type;
+
+	DEBUGFUNC("ixgbe_get_sfp_init_sequence_offsets");
 
 	if (hw->phy.sfp_type == ixgbe_sfp_type_unknown)
 		return IXGBE_ERR_SFP_NOT_SUPPORTED;
@@ -1536,7 +1607,7 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 			if (hw->eeprom.ops.read(hw, *list_offset, data_offset))
 				goto err_phy;
 			if ((!*data_offset) || (*data_offset == 0xFFFF)) {
-				hw_dbg(hw, "SFP+ module not supported\n");
+				DEBUGOUT("SFP+ module not supported\n");
 				return IXGBE_ERR_SFP_NOT_SUPPORTED;
 			} else {
 				break;
@@ -1549,11 +1620,11 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 	}
 
 	if (sfp_id == IXGBE_PHY_INIT_END_NL) {
-		hw_dbg(hw, "No matching SFP+ module found\n");
+		DEBUGOUT("No matching SFP+ module found\n");
 		return IXGBE_ERR_SFP_NOT_SUPPORTED;
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 
 err_phy:
 	ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
@@ -1572,6 +1643,8 @@ err_phy:
 s32 ixgbe_read_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				  u8 *eeprom_data)
 {
+	DEBUGFUNC("ixgbe_read_i2c_eeprom_generic");
+
 	return hw->phy.ops.read_i2c_byte(hw, byte_offset,
 					 IXGBE_I2C_EEPROM_DEV_ADDR,
 					 eeprom_data);
@@ -1585,7 +1658,7 @@ s32 ixgbe_read_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,
  *
  *  Performs byte read operation to SFP module's SFF-8472 data over I2C
  **/
-static s32 ixgbe_read_i2c_sff8472_generic(struct ixgbe_hw *hw, u8 byte_offset,
+STATIC s32 ixgbe_read_i2c_sff8472_generic(struct ixgbe_hw *hw, u8 byte_offset,
 					  u8 *sff8472_data)
 {
 	return hw->phy.ops.read_i2c_byte(hw, byte_offset,
@@ -1604,9 +1677,26 @@ static s32 ixgbe_read_i2c_sff8472_generic(struct ixgbe_hw *hw, u8 byte_offset,
 s32 ixgbe_write_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				   u8 eeprom_data)
 {
+	DEBUGFUNC("ixgbe_write_i2c_eeprom_generic");
+
 	return hw->phy.ops.write_i2c_byte(hw, byte_offset,
 					  IXGBE_I2C_EEPROM_DEV_ADDR,
 					  eeprom_data);
+}
+
+/**
+ * ixgbe_is_sfp_probe - Returns true if SFP is being detected
+ * @hw: pointer to hardware structure
+ * @offset: eeprom offset to be read
+ * @addr: I2C address to be read
+ */
+STATIC bool ixgbe_is_sfp_probe(struct ixgbe_hw *hw, u8 offset, u8 addr)
+{
+	if (addr == IXGBE_I2C_EEPROM_DEV_ADDR &&
+	    offset == IXGBE_SFF_IDENTIFIER &&
+	    hw->phy.sfp_type == ixgbe_sfp_type_not_present)
+		return true;
+	return false;
 }
 
 /**
@@ -1628,6 +1718,11 @@ s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 	bool nack = 1;
 	*data = 0;
 
+	DEBUGFUNC("ixgbe_read_i2c_byte_generic");
+
+	if (ixgbe_is_sfp_probe(hw, byte_offset, dev_addr))
+		max_retry = IXGBE_SFP_DETECT_RETRIES;
+
 	do {
 		if (hw->mac.ops.acquire_swfw_sync(hw, swfw_mask))
 			return IXGBE_ERR_SWFW_SYNC;
@@ -1636,53 +1731,53 @@ s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 
 		/* Device Address and write indication */
 		status = ixgbe_clock_out_i2c_byte(hw, dev_addr);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_get_i2c_ack(hw);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_clock_out_i2c_byte(hw, byte_offset);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_get_i2c_ack(hw);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		ixgbe_i2c_start(hw);
 
 		/* Device Address and read indication */
 		status = ixgbe_clock_out_i2c_byte(hw, (dev_addr | 0x1));
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_get_i2c_ack(hw);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_clock_in_i2c_byte(hw, data);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_clock_out_i2c_bit(hw, nack);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		ixgbe_i2c_stop(hw);
 		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
-		return 0;
+		return IXGBE_SUCCESS;
 
 fail:
 		ixgbe_i2c_bus_clear(hw);
 		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
-		msleep(100);
+		msec_delay(100);
 		retry++;
 		if (retry < max_retry)
-			hw_dbg(hw, "I2C byte read error - Retrying.\n");
+			DEBUGOUT("I2C byte read error - Retrying.\n");
 		else
-			hw_dbg(hw, "I2C byte read error.\n");
+			DEBUGOUT("I2C byte read error.\n");
 
 	} while (retry < max_retry);
 
@@ -1701,12 +1796,14 @@ fail:
 s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				 u8 dev_addr, u8 data)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 	u32 max_retry = 1;
 	u32 retry = 0;
 	u32 swfw_mask = hw->phy.phy_semaphore_mask;
 
-	if (hw->mac.ops.acquire_swfw_sync(hw, swfw_mask) != 0) {
+	DEBUGFUNC("ixgbe_write_i2c_byte_generic");
+
+	if (hw->mac.ops.acquire_swfw_sync(hw, swfw_mask) != IXGBE_SUCCESS) {
 		status = IXGBE_ERR_SWFW_SYNC;
 		goto write_byte_out;
 	}
@@ -1715,40 +1812,40 @@ s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 		ixgbe_i2c_start(hw);
 
 		status = ixgbe_clock_out_i2c_byte(hw, dev_addr);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_get_i2c_ack(hw);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_clock_out_i2c_byte(hw, byte_offset);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_get_i2c_ack(hw);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_clock_out_i2c_byte(hw, data);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		status = ixgbe_get_i2c_ack(hw);
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			goto fail;
 
 		ixgbe_i2c_stop(hw);
 		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
-		return 0;
+		return IXGBE_SUCCESS;
 
 fail:
 		ixgbe_i2c_bus_clear(hw);
 		retry++;
 		if (retry < max_retry)
-			hw_dbg(hw, "I2C byte write error - Retrying.\n");
+			DEBUGOUT("I2C byte write error - Retrying.\n");
 		else
-			hw_dbg(hw, "I2C byte write error.\n");
+			DEBUGOUT("I2C byte write error.\n");
 	} while (retry < max_retry);
 
 	hw->mac.ops.release_swfw_sync(hw, swfw_mask);
@@ -1763,26 +1860,30 @@ write_byte_out:
  *
  *  Sets I2C start condition (High -> Low on SDA while SCL is High)
  **/
-static void ixgbe_i2c_start(struct ixgbe_hw *hw)
+STATIC void ixgbe_i2c_start(struct ixgbe_hw *hw)
 {
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
+
+	DEBUGFUNC("ixgbe_i2c_start");
+
+	i2cctl |= IXGBE_I2C_BB_EN_BY_MAC(hw);
 
 	/* Start condition must begin with data and clock high */
 	ixgbe_set_i2c_data(hw, &i2cctl, 1);
 	ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 	/* Setup time for start condition (4.7us) */
-	udelay(IXGBE_I2C_T_SU_STA);
+	usec_delay(IXGBE_I2C_T_SU_STA);
 
 	ixgbe_set_i2c_data(hw, &i2cctl, 0);
 
 	/* Hold time for start condition (4us) */
-	udelay(IXGBE_I2C_T_HD_STA);
+	usec_delay(IXGBE_I2C_T_HD_STA);
 
 	ixgbe_lower_i2c_clk(hw, &i2cctl);
 
 	/* Minimum low period of clock is 4.7 us */
-	udelay(IXGBE_I2C_T_LOW);
+	usec_delay(IXGBE_I2C_T_LOW);
 
 }
 
@@ -1792,21 +1893,33 @@ static void ixgbe_i2c_start(struct ixgbe_hw *hw)
  *
  *  Sets I2C stop condition (Low -> High on SDA while SCL is High)
  **/
-static void ixgbe_i2c_stop(struct ixgbe_hw *hw)
+STATIC void ixgbe_i2c_stop(struct ixgbe_hw *hw)
 {
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
+	u32 data_oe_bit = IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
+	u32 clk_oe_bit = IXGBE_I2C_CLK_OE_N_EN_BY_MAC(hw);
+	u32 bb_en_bit = IXGBE_I2C_BB_EN_BY_MAC(hw);
+
+	DEBUGFUNC("ixgbe_i2c_stop");
 
 	/* Stop condition must begin with data low and clock high */
 	ixgbe_set_i2c_data(hw, &i2cctl, 0);
 	ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 	/* Setup time for stop condition (4us) */
-	udelay(IXGBE_I2C_T_SU_STO);
+	usec_delay(IXGBE_I2C_T_SU_STO);
 
 	ixgbe_set_i2c_data(hw, &i2cctl, 1);
 
 	/* bus free time between stop and start (4.7us)*/
-	udelay(IXGBE_I2C_T_BUF);
+	usec_delay(IXGBE_I2C_T_BUF);
+
+	if (bb_en_bit || data_oe_bit || clk_oe_bit) {
+		i2cctl &= ~bb_en_bit;
+		i2cctl |= data_oe_bit | clk_oe_bit;
+		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), i2cctl);
+		IXGBE_WRITE_FLUSH(hw);
+	}
 }
 
 /**
@@ -1816,17 +1929,20 @@ static void ixgbe_i2c_stop(struct ixgbe_hw *hw)
  *
  *  Clocks in one byte data via I2C data/clock
  **/
-static s32 ixgbe_clock_in_i2c_byte(struct ixgbe_hw *hw, u8 *data)
+STATIC s32 ixgbe_clock_in_i2c_byte(struct ixgbe_hw *hw, u8 *data)
 {
 	s32 i;
 	bool bit = 0;
 
+	DEBUGFUNC("ixgbe_clock_in_i2c_byte");
+
+	*data = 0;
 	for (i = 7; i >= 0; i--) {
 		ixgbe_clock_in_i2c_bit(hw, &bit);
 		*data |= bit << i;
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -1836,24 +1952,27 @@ static s32 ixgbe_clock_in_i2c_byte(struct ixgbe_hw *hw, u8 *data)
  *
  *  Clocks out one byte data via I2C data/clock
  **/
-static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data)
+STATIC s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 	s32 i;
 	u32 i2cctl;
 	bool bit;
+
+	DEBUGFUNC("ixgbe_clock_out_i2c_byte");
 
 	for (i = 7; i >= 0; i--) {
 		bit = (data >> i) & 0x1;
 		status = ixgbe_clock_out_i2c_bit(hw, bit);
 
-		if (status != 0)
+		if (status != IXGBE_SUCCESS)
 			break;
 	}
 
 	/* Release SDA line (set high) */
 	i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 	i2cctl |= IXGBE_I2C_DATA_OUT_BY_MAC(hw);
+	i2cctl |= IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), i2cctl);
 	IXGBE_WRITE_FLUSH(hw);
 
@@ -1866,19 +1985,27 @@ static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data)
  *
  *  Clocks in/out one bit via I2C data/clock
  **/
-static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
+STATIC s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
+	u32 data_oe_bit = IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
+	s32 status = IXGBE_SUCCESS;
 	u32 i = 0;
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 	u32 timeout = 10;
 	bool ack = 1;
 
+	DEBUGFUNC("ixgbe_get_i2c_ack");
+
+	if (data_oe_bit) {
+		i2cctl |= IXGBE_I2C_DATA_OUT_BY_MAC(hw);
+		i2cctl |= data_oe_bit;
+		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), i2cctl);
+		IXGBE_WRITE_FLUSH(hw);
+	}
 	ixgbe_raise_i2c_clk(hw, &i2cctl);
 
-
 	/* Minimum high period of clock is 4us */
-	udelay(IXGBE_I2C_T_HIGH);
+	usec_delay(IXGBE_I2C_T_HIGH);
 
 	/* Poll for ACK.  Note that ACK in I2C spec is
 	 * transition from 1 to 0 */
@@ -1886,20 +2013,20 @@ static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
 		i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 		ack = ixgbe_get_i2c_data(hw, &i2cctl);
 
-		udelay(1);
+		usec_delay(1);
 		if (!ack)
 			break;
 	}
 
 	if (ack) {
-		hw_dbg(hw, IXGBE_ERROR_POLLING, "I2C ack was not received.\n");
+		DEBUGOUT("I2C ack was not received.\n");
 		status = IXGBE_ERR_I2C;
 	}
 
 	ixgbe_lower_i2c_clk(hw, &i2cctl);
 
 	/* Minimum low period of clock is 4.7 us */
-	udelay(IXGBE_I2C_T_LOW);
+	usec_delay(IXGBE_I2C_T_LOW);
 
 	return status;
 }
@@ -1911,14 +2038,23 @@ static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
  *
  *  Clocks in one bit via I2C data/clock
  **/
-static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data)
+STATIC s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data)
 {
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
+	u32 data_oe_bit = IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
 
+	DEBUGFUNC("ixgbe_clock_in_i2c_bit");
+
+	if (data_oe_bit) {
+		i2cctl |= IXGBE_I2C_DATA_OUT_BY_MAC(hw);
+		i2cctl |= data_oe_bit;
+		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), i2cctl);
+		IXGBE_WRITE_FLUSH(hw);
+	}
 	ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 	/* Minimum high period of clock is 4us */
-	udelay(IXGBE_I2C_T_HIGH);
+	usec_delay(IXGBE_I2C_T_HIGH);
 
 	i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 	*data = ixgbe_get_i2c_data(hw, &i2cctl);
@@ -1926,9 +2062,9 @@ static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data)
 	ixgbe_lower_i2c_clk(hw, &i2cctl);
 
 	/* Minimum low period of clock is 4.7 us */
-	udelay(IXGBE_I2C_T_LOW);
+	usec_delay(IXGBE_I2C_T_LOW);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -1938,24 +2074,26 @@ static s32 ixgbe_clock_in_i2c_bit(struct ixgbe_hw *hw, bool *data)
  *
  *  Clocks out one bit via I2C data/clock
  **/
-static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
+STATIC s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
 {
 	s32 status;
 	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 
+	DEBUGFUNC("ixgbe_clock_out_i2c_bit");
+
 	status = ixgbe_set_i2c_data(hw, &i2cctl, data);
-	if (status == 0) {
+	if (status == IXGBE_SUCCESS) {
 		ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 		/* Minimum high period of clock is 4us */
-		udelay(IXGBE_I2C_T_HIGH);
+		usec_delay(IXGBE_I2C_T_HIGH);
 
 		ixgbe_lower_i2c_clk(hw, &i2cctl);
 
 		/* Minimum low period of clock is 4.7 us.
 		 * This also takes care of the data hold time.
 		 */
-		udelay(IXGBE_I2C_T_LOW);
+		usec_delay(IXGBE_I2C_T_LOW);
 	} else {
 		status = IXGBE_ERR_I2C;
 		ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
@@ -1972,11 +2110,19 @@ static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
  *
  *  Raises the I2C clock line '0'->'1'
  **/
-static void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
+STATIC void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 {
+	u32 clk_oe_bit = IXGBE_I2C_CLK_OE_N_EN_BY_MAC(hw);
 	u32 i = 0;
 	u32 timeout = IXGBE_I2C_CLOCK_STRETCHING_TIMEOUT;
 	u32 i2cctl_r = 0;
+
+	DEBUGFUNC("ixgbe_raise_i2c_clk");
+
+	if (clk_oe_bit) {
+		*i2cctl |= clk_oe_bit;
+		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), *i2cctl);
+	}
 
 	for (i = 0; i < timeout; i++) {
 		*i2cctl |= IXGBE_I2C_CLK_OUT_BY_MAC(hw);
@@ -1984,7 +2130,7 @@ static void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), *i2cctl);
 		IXGBE_WRITE_FLUSH(hw);
 		/* SCL rise time (1000ns) */
-		udelay(IXGBE_I2C_T_RISE);
+		usec_delay(IXGBE_I2C_T_RISE);
 
 		i2cctl_r = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 		if (i2cctl_r & IXGBE_I2C_CLK_IN_BY_MAC(hw))
@@ -1999,16 +2145,18 @@ static void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
  *
  *  Lowers the I2C clock line '1'->'0'
  **/
-static void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
+STATIC void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 {
+	DEBUGFUNC("ixgbe_lower_i2c_clk");
 
 	*i2cctl &= ~(IXGBE_I2C_CLK_OUT_BY_MAC(hw));
+	*i2cctl &= ~IXGBE_I2C_CLK_OE_N_EN_BY_MAC(hw);
 
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), *i2cctl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* SCL fall time (300ns) */
-	udelay(IXGBE_I2C_T_FALL);
+	usec_delay(IXGBE_I2C_T_FALL);
 }
 
 /**
@@ -2019,20 +2167,32 @@ static void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
  *
  *  Sets the I2C data bit
  **/
-static s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
+STATIC s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
 {
-	s32 status = 0;
+	u32 data_oe_bit = IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
+	s32 status = IXGBE_SUCCESS;
+
+	DEBUGFUNC("ixgbe_set_i2c_data");
 
 	if (data)
 		*i2cctl |= IXGBE_I2C_DATA_OUT_BY_MAC(hw);
 	else
 		*i2cctl &= ~(IXGBE_I2C_DATA_OUT_BY_MAC(hw));
+	*i2cctl &= ~data_oe_bit;
 
 	IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), *i2cctl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Data rise/fall (1000ns/300ns) and set-up time (250ns) */
-	udelay(IXGBE_I2C_T_RISE + IXGBE_I2C_T_FALL + IXGBE_I2C_T_SU_DATA);
+	usec_delay(IXGBE_I2C_T_RISE + IXGBE_I2C_T_FALL + IXGBE_I2C_T_SU_DATA);
+
+	if (!data)	/* Can't verify data in this case */
+		return IXGBE_SUCCESS;
+	if (data_oe_bit) {
+		*i2cctl |= data_oe_bit;
+		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), *i2cctl);
+		IXGBE_WRITE_FLUSH(hw);
+	}
 
 	/* Verify data was set correctly */
 	*i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
@@ -2053,10 +2213,20 @@ static s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
  *
  *  Returns the I2C data bit value
  **/
-static bool ixgbe_get_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl)
+STATIC bool ixgbe_get_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl)
 {
+	u32 data_oe_bit = IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
 	bool data;
 	UNREFERENCED_1PARAMETER(hw);
+
+	DEBUGFUNC("ixgbe_get_i2c_data");
+
+	if (data_oe_bit) {
+		*i2cctl |= data_oe_bit;
+		IXGBE_WRITE_REG(hw, IXGBE_I2CCTL_BY_MAC(hw), *i2cctl);
+		IXGBE_WRITE_FLUSH(hw);
+		usec_delay(IXGBE_I2C_T_FALL);
+	}
 
 	if (*i2cctl & IXGBE_I2C_DATA_IN_BY_MAC(hw))
 		data = 1;
@@ -2075,10 +2245,13 @@ static bool ixgbe_get_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl)
  **/
 void ixgbe_i2c_bus_clear(struct ixgbe_hw *hw)
 {
-	u32 i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
+	u32 i2cctl;
 	u32 i;
 
+	DEBUGFUNC("ixgbe_i2c_bus_clear");
+
 	ixgbe_i2c_start(hw);
+	i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL_BY_MAC(hw));
 
 	ixgbe_set_i2c_data(hw, &i2cctl, 1);
 
@@ -2086,12 +2259,12 @@ void ixgbe_i2c_bus_clear(struct ixgbe_hw *hw)
 		ixgbe_raise_i2c_clk(hw, &i2cctl);
 
 		/* Min high period of clock is 4us */
-		udelay(IXGBE_I2C_T_HIGH);
+		usec_delay(IXGBE_I2C_T_HIGH);
 
 		ixgbe_lower_i2c_clk(hw, &i2cctl);
 
 		/* Min low period of clock is 4.7us*/
-		udelay(IXGBE_I2C_T_LOW);
+		usec_delay(IXGBE_I2C_T_LOW);
 	}
 
 	ixgbe_i2c_start(hw);
@@ -2108,8 +2281,10 @@ void ixgbe_i2c_bus_clear(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_tn_check_overtemp(struct ixgbe_hw *hw)
 {
-	s32 status = 0;
+	s32 status = IXGBE_SUCCESS;
 	u16 phy_data = 0;
+
+	DEBUGFUNC("ixgbe_tn_check_overtemp");
 
 	if (hw->device_id != IXGBE_DEV_ID_82599_T3_LOM)
 		goto out;
@@ -2124,5 +2299,35 @@ s32 ixgbe_tn_check_overtemp(struct ixgbe_hw *hw)
 	status = IXGBE_ERR_OVERTEMP;
 	ERROR_REPORT1(IXGBE_ERROR_CAUTION, "Device over temperature");
 out:
+	return status;
+}
+
+/**
+ * ixgbe_set_copper_phy_power - Control power for copper phy
+ * @hw: pointer to hardware structure
+ * @on: true for on, false for off
+ */
+s32 ixgbe_set_copper_phy_power(struct ixgbe_hw *hw, bool on)
+{
+	u32 status;
+	u16 reg;
+
+	status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_VENDOR_SPECIFIC_1_CONTROL,
+				      IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
+				      &reg);
+	if (status)
+		return status;
+
+	if (on) {
+		reg &= ~IXGBE_MDIO_PHY_SET_LOW_POWER_MODE;
+	} else {
+		if (ixgbe_check_reset_blocked(hw))
+			return 0;
+		reg |= IXGBE_MDIO_PHY_SET_LOW_POWER_MODE;
+	}
+
+	status = hw->phy.ops.write_reg(hw, IXGBE_MDIO_VENDOR_SPECIFIC_1_CONTROL,
+				       IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
+				       reg);
 	return status;
 }

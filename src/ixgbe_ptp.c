@@ -717,7 +717,6 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 		return 0;
 	}
 
-
 	/* define ethertype filter for timestamping L2 packets */
 	if (is_l2)
 		IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_1588),
