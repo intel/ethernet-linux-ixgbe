@@ -738,6 +738,7 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 {
 	u32 swmask = mask & IXGBE_GSSR_NVM_PHY_MASK;
 	u32 fwmask = swmask << 5;
+	u32 swi2c_mask = mask & IXGBE_GSSR_I2C_MASK;
 	u32 timeout = 200;
 	u32 hwmask = 0;
 	u32 swfw_sync;
@@ -752,6 +753,8 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 	if (mask & IXGBE_GSSR_SW_MNG_SM)
 		swmask |= IXGBE_GSSR_SW_MNG_SM;
 
+	swmask |= swi2c_mask;
+	fwmask |= swi2c_mask << 2;
 	for (i = 0; i < timeout; i++) {
 		/* SW NVM semaphore bit is used for access to all
 		 * SW_FW_SYNC bits (not just NVM)
@@ -806,6 +809,8 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 		u32 rmask = IXGBE_GSSR_EEP_SM | IXGBE_GSSR_PHY0_SM |
 			    IXGBE_GSSR_PHY1_SM | IXGBE_GSSR_MAC_CSR_SM;
 
+		if (swi2c_mask)
+			rmask |= IXGBE_GSSR_I2C_MASK;
 		ixgbe_release_swfw_sync_X540(hw, rmask);
 		ixgbe_release_swfw_sync_semaphore(hw);
 		return IXGBE_ERR_SWFW_SYNC;
@@ -830,6 +835,8 @@ void ixgbe_release_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 
 	DEBUGFUNC("ixgbe_release_swfw_sync_X540");
 
+	if (mask & IXGBE_GSSR_I2C_MASK)
+		swmask |= mask & IXGBE_GSSR_I2C_MASK;
 	ixgbe_get_swfw_sync_semaphore(hw);
 
 	swfw_sync = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC);
@@ -912,13 +919,13 @@ STATIC void ixgbe_release_swfw_sync_semaphore(struct ixgbe_hw *hw)
 
 	/* Release both semaphores by writing 0 to the bits REGSMP and SMBI */
 
-	swsm = IXGBE_READ_REG(hw, IXGBE_SWSM);
-	swsm &= ~IXGBE_SWSM_SMBI;
-	IXGBE_WRITE_REG(hw, IXGBE_SWSM, swsm);
-
 	swsm = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC);
 	swsm &= ~IXGBE_SWFW_REGSMP;
 	IXGBE_WRITE_REG(hw, IXGBE_SWFW_SYNC, swsm);
+
+	swsm = IXGBE_READ_REG(hw, IXGBE_SWSM);
+	swsm &= ~IXGBE_SWSM_SMBI;
+	IXGBE_WRITE_REG(hw, IXGBE_SWSM, swsm);
 
 	IXGBE_WRITE_FLUSH(hw);
 }
@@ -991,4 +998,3 @@ s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index)
 
 	return IXGBE_SUCCESS;
 }
-

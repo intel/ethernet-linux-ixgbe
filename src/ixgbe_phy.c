@@ -41,6 +41,263 @@ STATIC s32 ixgbe_read_i2c_sff8472_generic(struct ixgbe_hw *hw, u8 byte_offset,
 					  u8 *sff8472_data);
 
 /**
+ * ixgbe_out_i2c_byte_ack - Send I2C byte with ack
+ * @hw: pointer to the hardware structure
+ * @byte: byte to send
+ *
+ * Returns an error code on error.
+ */
+STATIC s32 ixgbe_out_i2c_byte_ack(struct ixgbe_hw *hw, u8 byte)
+{
+	s32 status;
+
+	status = ixgbe_clock_out_i2c_byte(hw, byte);
+	if (status)
+		return status;
+	return ixgbe_get_i2c_ack(hw);
+}
+
+/**
+ * ixgbe_in_i2c_byte_ack - Receive an I2C byte and send ack
+ * @hw: pointer to the hardware structure
+ * @byte: pointer to a u8 to receive the byte
+ *
+ * Returns an error code on error.
+ */
+STATIC s32 ixgbe_in_i2c_byte_ack(struct ixgbe_hw *hw, u8 *byte)
+{
+	s32 status;
+
+	status = ixgbe_clock_in_i2c_byte(hw, byte);
+	if (status)
+		return status;
+	/* ACK */
+	return ixgbe_clock_out_i2c_bit(hw, false);
+}
+
+/**
+ * ixgbe_ones_comp_byte_add - Perform one's complement addition
+ * @add1 - addend 1
+ * @add2 - addend 2
+ *
+ * Returns one's complement 8-bit sum.
+ */
+STATIC u8 ixgbe_ones_comp_byte_add(u8 add1, u8 add2)
+{
+	u16 sum = add1 + add2;
+
+	sum = (sum & 0xFF) + (sum >> 8);
+	return sum & 0xFF;
+}
+
+/**
+ * ixgbe_read_i2c_combined_generic_int - Perform I2C read combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to read from
+ * @reg: I2C device register to read from
+ * @val: pointer to location to receive read value
+ * @lock: true if to take and release semaphore
+ *
+ * Returns an error code on error.
+ */
+STATIC s32 ixgbe_read_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr,
+					       u16 reg, u16 *val, bool lock)
+{
+	u32 swfw_mask = hw->phy.phy_semaphore_mask;
+	int max_retry = 10;
+	int retry = 0;
+	u8 csum_byte;
+	u8 high_bits;
+	u8 low_bits;
+	u8 reg_high;
+	u8 csum;
+
+	if (hw->mac.type >= ixgbe_mac_X550)
+		max_retry = 3;
+	reg_high = ((reg >> 7) & 0xFE) | 1;	/* Indicate read combined */
+	csum = ixgbe_ones_comp_byte_add(reg_high, reg & 0xFF);
+	csum = ~csum;
+	do {
+		if (lock && hw->mac.ops.acquire_swfw_sync(hw, swfw_mask))
+			return IXGBE_ERR_SWFW_SYNC;
+		ixgbe_i2c_start(hw);
+		/* Device Address and write indication */
+		if (ixgbe_out_i2c_byte_ack(hw, addr))
+			goto fail;
+		/* Write bits 14:8 */
+		if (ixgbe_out_i2c_byte_ack(hw, reg_high))
+			goto fail;
+		/* Write bits 7:0 */
+		if (ixgbe_out_i2c_byte_ack(hw, reg & 0xFF))
+			goto fail;
+		/* Write csum */
+		if (ixgbe_out_i2c_byte_ack(hw, csum))
+			goto fail;
+		/* Re-start condition */
+		ixgbe_i2c_start(hw);
+		/* Device Address and read indication */
+		if (ixgbe_out_i2c_byte_ack(hw, addr | 1))
+			goto fail;
+		/* Get upper bits */
+		if (ixgbe_in_i2c_byte_ack(hw, &high_bits))
+			goto fail;
+		/* Get low bits */
+		if (ixgbe_in_i2c_byte_ack(hw, &low_bits))
+			goto fail;
+		/* Get csum */
+		if (ixgbe_clock_in_i2c_byte(hw, &csum_byte))
+			goto fail;
+		/* NACK */
+		if (ixgbe_clock_out_i2c_bit(hw, false))
+			goto fail;
+		ixgbe_i2c_stop(hw);
+		if (lock)
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+		*val = (high_bits << 8) | low_bits;
+		return 0;
+
+fail:
+		ixgbe_i2c_bus_clear(hw);
+		if (lock)
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+		retry++;
+		if (retry < max_retry)
+			DEBUGOUT("I2C byte read combined error - Retrying.\n");
+		else
+			DEBUGOUT("I2C byte read combined error.\n");
+	} while (retry < max_retry);
+
+	return IXGBE_ERR_I2C;
+}
+
+/**
+ * ixgbe_read_i2c_combined_generic - Perform I2C read combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to read from
+ * @reg: I2C device register to read from
+ * @val: pointer to location to receive read value
+ *
+ * Returns an error code on error.
+ **/
+STATIC s32 ixgbe_read_i2c_combined_generic(struct ixgbe_hw *hw, u8 addr,
+					   u16 reg, u16 *val)
+{
+	return ixgbe_read_i2c_combined_generic_int(hw, addr, reg, val, true);
+}
+
+/**
+ * ixgbe_read_i2c_combined_generic_unlocked - Do I2C read combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to read from
+ * @reg: I2C device register to read from
+ * @val: pointer to location to receive read value
+ *
+ * Returns an error code on error.
+ **/
+STATIC s32
+ixgbe_read_i2c_combined_generic_unlocked(struct ixgbe_hw *hw, u8 addr,
+					 u16 reg, u16 *val)
+{
+	return ixgbe_read_i2c_combined_generic_int(hw, addr, reg, val, false);
+}
+
+/**
+ * ixgbe_write_i2c_combined_generic_int - Perform I2C write combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to write to
+ * @reg: I2C device register to write to
+ * @val: value to write
+ * @lock: true if to take and release semaphore
+ *
+ * Returns an error code on error.
+ */
+STATIC s32 ixgbe_write_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr,
+						u16 reg, u16 val, bool lock)
+{
+	u32 swfw_mask = hw->phy.phy_semaphore_mask;
+	int max_retry = 1;
+	int retry = 0;
+	u8 reg_high;
+	u8 csum;
+
+	reg_high = (reg >> 7) & 0xFE;	/* Indicate write combined */
+	csum = ixgbe_ones_comp_byte_add(reg_high, reg & 0xFF);
+	csum = ixgbe_ones_comp_byte_add(csum, val >> 8);
+	csum = ixgbe_ones_comp_byte_add(csum, val & 0xFF);
+	csum = ~csum;
+	do {
+		if (lock && hw->mac.ops.acquire_swfw_sync(hw, swfw_mask))
+			return IXGBE_ERR_SWFW_SYNC;
+		ixgbe_i2c_start(hw);
+		/* Device Address and write indication */
+		if (ixgbe_out_i2c_byte_ack(hw, addr))
+			goto fail;
+		/* Write bits 14:8 */
+		if (ixgbe_out_i2c_byte_ack(hw, reg_high))
+			goto fail;
+		/* Write bits 7:0 */
+		if (ixgbe_out_i2c_byte_ack(hw, reg & 0xFF))
+			goto fail;
+		/* Write data 15:8 */
+		if (ixgbe_out_i2c_byte_ack(hw, val >> 8))
+			goto fail;
+		/* Write data 7:0 */
+		if (ixgbe_out_i2c_byte_ack(hw, val & 0xFF))
+			goto fail;
+		/* Write csum */
+		if (ixgbe_out_i2c_byte_ack(hw, csum))
+			goto fail;
+		ixgbe_i2c_stop(hw);
+		if (lock)
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+		return 0;
+
+fail:
+		ixgbe_i2c_bus_clear(hw);
+		if (lock)
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+		retry++;
+		if (retry < max_retry)
+			DEBUGOUT("I2C byte write combined error - Retrying.\n");
+		else
+			DEBUGOUT("I2C byte write combined error.\n");
+	} while (retry < max_retry);
+
+	return IXGBE_ERR_I2C;
+}
+
+/**
+ * ixgbe_write_i2c_combined_generic - Perform I2C write combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to write to
+ * @reg: I2C device register to write to
+ * @val: value to write
+ *
+ * Returns an error code on error.
+ **/
+STATIC s32 ixgbe_write_i2c_combined_generic(struct ixgbe_hw *hw,
+					    u8 addr, u16 reg, u16 val)
+{
+	return ixgbe_write_i2c_combined_generic_int(hw, addr, reg, val, true);
+}
+
+/**
+ * ixgbe_write_i2c_combined_generic_unlocked - Do I2C write combined operation
+ * @hw: pointer to the hardware structure
+ * @addr: I2C bus address to write to
+ * @reg: I2C device register to write to
+ * @val: value to write
+ *
+ * Returns an error code on error.
+ **/
+STATIC s32
+ixgbe_write_i2c_combined_generic_unlocked(struct ixgbe_hw *hw,
+					  u8 addr, u16 reg, u16 val)
+{
+	return ixgbe_write_i2c_combined_generic_int(hw, addr, reg, val, false);
+}
+
+/**
  *  ixgbe_init_phy_ops_generic - Inits PHY function ptrs
  *  @hw: pointer to the hardware structure
  *
@@ -71,6 +328,15 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 	phy->ops.i2c_bus_clear = ixgbe_i2c_bus_clear;
 	phy->ops.identify_sfp = ixgbe_identify_module_generic;
 	phy->sfp_type = ixgbe_sfp_type_unknown;
+	phy->ops.read_i2c_combined = ixgbe_read_i2c_combined_generic;
+	phy->ops.write_i2c_combined = ixgbe_write_i2c_combined_generic;
+	phy->ops.read_i2c_combined_unlocked =
+				ixgbe_read_i2c_combined_generic_unlocked;
+	phy->ops.write_i2c_combined_unlocked =
+				ixgbe_write_i2c_combined_generic_unlocked;
+	phy->ops.read_i2c_byte_unlocked = ixgbe_read_i2c_byte_generic_unlocked;
+	phy->ops.write_i2c_byte_unlocked =
+				ixgbe_write_i2c_byte_generic_unlocked;
 	phy->ops.check_overtemp = ixgbe_tn_check_overtemp;
 	return IXGBE_SUCCESS;
 }
@@ -232,6 +498,7 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 	case TN1010_PHY_ID:
 		phy_type = ixgbe_phy_tn;
 		break;
+	case X550_PHY_ID:
 	case X540_PHY_ID:
 		phy_type = ixgbe_phy_aq;
 		break;
@@ -240,6 +507,9 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 		break;
 	case ATH_PHY_ID:
 		phy_type = ixgbe_phy_nl;
+		break;
+	case X557_PHY_ID:
+		phy_type = ixgbe_phy_x550em_ext_t;
 		break;
 	default:
 		phy_type = ixgbe_phy_unknown;
@@ -548,6 +818,44 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 				      autoneg_reg);
 	}
 
+	if (hw->mac.type == ixgbe_mac_X550) {
+		if (speed & IXGBE_LINK_SPEED_5GB_FULL) {
+			/* Set or unset auto-negotiation 1G advertisement */
+			hw->phy.ops.read_reg(hw,
+				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+				&autoneg_reg);
+
+			autoneg_reg &= ~IXGBE_MII_5GBASE_T_ADVERTISE;
+			if (hw->phy.autoneg_advertised &
+			     IXGBE_LINK_SPEED_5GB_FULL)
+				autoneg_reg |= IXGBE_MII_5GBASE_T_ADVERTISE;
+
+			hw->phy.ops.write_reg(hw,
+				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+				autoneg_reg);
+		}
+
+		if (speed & IXGBE_LINK_SPEED_2_5GB_FULL) {
+			/* Set or unset auto-negotiation 1G advertisement */
+			hw->phy.ops.read_reg(hw,
+				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+				&autoneg_reg);
+
+			autoneg_reg &= ~IXGBE_MII_2_5GBASE_T_ADVERTISE;
+			if (hw->phy.autoneg_advertised &
+			    IXGBE_LINK_SPEED_2_5GB_FULL)
+				autoneg_reg |= IXGBE_MII_2_5GBASE_T_ADVERTISE;
+
+			hw->phy.ops.write_reg(hw,
+				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+				autoneg_reg);
+		}
+	}
+
 	if (speed & IXGBE_LINK_SPEED_1GB_FULL) {
 		/* Set or unset auto-negotiation 1G advertisement */
 		hw->phy.ops.read_reg(hw,
@@ -669,6 +977,15 @@ s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 			*speed |= IXGBE_LINK_SPEED_1GB_FULL;
 		if (speed_ability & IXGBE_MDIO_PHY_SPEED_100M)
 			*speed |= IXGBE_LINK_SPEED_100_FULL;
+	}
+
+	/* Internal PHY does not support 100 Mbps */
+	if (hw->mac.type == ixgbe_mac_X550EM_x)
+		*speed &= ~IXGBE_LINK_SPEED_100_FULL;
+
+	if (hw->mac.type == ixgbe_mac_X550) {
+		*speed |= IXGBE_LINK_SPEED_2_5GB_FULL;
+		*speed |= IXGBE_LINK_SPEED_5GB_FULL;
 	}
 
 	return status;
@@ -1366,6 +1683,9 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 		goto out;
 	}
 
+	/* LAN ID is needed for I2C access */
+	hw->mac.ops.set_lan_id(hw);
+
 	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_IDENTIFIER,
 					     &identifier);
 
@@ -1379,9 +1699,6 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 	}
 
 	hw->phy.id = identifier;
-
-	/* LAN ID is needed for sfp_type determination */
-	hw->mac.ops.set_lan_id(hw);
 
 	status = hw->phy.ops.read_i2c_eeprom(hw, IXGBE_SFF_QSFP_10GBE_COMP,
 					     &comp_codes_10g);
@@ -1700,16 +2017,17 @@ STATIC bool ixgbe_is_sfp_probe(struct ixgbe_hw *hw, u8 offset, u8 addr)
 }
 
 /**
- *  ixgbe_read_i2c_byte_generic - Reads 8 bit word over I2C
+ *  ixgbe_read_i2c_byte_generic_int - Reads 8 bit word over I2C
  *  @hw: pointer to hardware structure
  *  @byte_offset: byte offset to read
  *  @data: value read
+ *  @lock: true if to take and release semaphore
  *
  *  Performs byte read operation to SFP module's EEPROM over I2C interface at
  *  a specified device address.
  **/
-s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
-				u8 dev_addr, u8 *data)
+STATIC s32 ixgbe_read_i2c_byte_generic_int(struct ixgbe_hw *hw, u8 byte_offset,
+					   u8 dev_addr, u8 *data, bool lock)
 {
 	s32 status;
 	u32 max_retry = 10;
@@ -1720,11 +2038,13 @@ s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 
 	DEBUGFUNC("ixgbe_read_i2c_byte_generic");
 
+	if (hw->mac.type >= ixgbe_mac_X550)
+		max_retry = 3;
 	if (ixgbe_is_sfp_probe(hw, byte_offset, dev_addr))
 		max_retry = IXGBE_SFP_DETECT_RETRIES;
 
 	do {
-		if (hw->mac.ops.acquire_swfw_sync(hw, swfw_mask))
+		if (lock && hw->mac.ops.acquire_swfw_sync(hw, swfw_mask))
 			return IXGBE_ERR_SWFW_SYNC;
 
 		ixgbe_i2c_start(hw);
@@ -1766,13 +2086,16 @@ s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 			goto fail;
 
 		ixgbe_i2c_stop(hw);
-		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+		if (lock)
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 		return IXGBE_SUCCESS;
 
 fail:
 		ixgbe_i2c_bus_clear(hw);
-		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
-		msec_delay(100);
+		if (lock) {
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+			msec_delay(100);
+		}
 		retry++;
 		if (retry < max_retry)
 			DEBUGOUT("I2C byte read error - Retrying.\n");
@@ -1785,28 +2108,60 @@ fail:
 }
 
 /**
- *  ixgbe_write_i2c_byte_generic - Writes 8 bit word over I2C
+ *  ixgbe_read_i2c_byte_generic - Reads 8 bit word over I2C
+ *  @hw: pointer to hardware structure
+ *  @byte_offset: byte offset to read
+ *  @data: value read
+ *
+ *  Performs byte read operation to SFP module's EEPROM over I2C interface at
+ *  a specified device address.
+ **/
+s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
+				u8 dev_addr, u8 *data)
+{
+	return ixgbe_read_i2c_byte_generic_int(hw, byte_offset, dev_addr,
+					       data, true);
+}
+
+/**
+ *  ixgbe_read_i2c_byte_generic_unlocked - Reads 8 bit word over I2C
+ *  @hw: pointer to hardware structure
+ *  @byte_offset: byte offset to read
+ *  @data: value read
+ *
+ *  Performs byte read operation to SFP module's EEPROM over I2C interface at
+ *  a specified device address.
+ **/
+s32 ixgbe_read_i2c_byte_generic_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
+					 u8 dev_addr, u8 *data)
+{
+	return ixgbe_read_i2c_byte_generic_int(hw, byte_offset, dev_addr,
+					       data, false);
+}
+
+/**
+ *  ixgbe_write_i2c_byte_generic_int - Writes 8 bit word over I2C
  *  @hw: pointer to hardware structure
  *  @byte_offset: byte offset to write
  *  @data: value to write
+ *  @lock: true if to take and release semaphore
  *
  *  Performs byte write operation to SFP module's EEPROM over I2C interface at
  *  a specified device address.
  **/
-s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
-				 u8 dev_addr, u8 data)
+STATIC s32 ixgbe_write_i2c_byte_generic_int(struct ixgbe_hw *hw, u8 byte_offset,
+					    u8 dev_addr, u8 data, bool lock)
 {
-	s32 status = IXGBE_SUCCESS;
+	s32 status;
 	u32 max_retry = 1;
 	u32 retry = 0;
 	u32 swfw_mask = hw->phy.phy_semaphore_mask;
 
 	DEBUGFUNC("ixgbe_write_i2c_byte_generic");
 
-	if (hw->mac.ops.acquire_swfw_sync(hw, swfw_mask) != IXGBE_SUCCESS) {
-		status = IXGBE_ERR_SWFW_SYNC;
-		goto write_byte_out;
-	}
+	if (lock && hw->mac.ops.acquire_swfw_sync(hw, swfw_mask) !=
+	    IXGBE_SUCCESS)
+		return IXGBE_ERR_SWFW_SYNC;
 
 	do {
 		ixgbe_i2c_start(hw);
@@ -1836,7 +2191,8 @@ s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 			goto fail;
 
 		ixgbe_i2c_stop(hw);
-		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+		if (lock)
+			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 		return IXGBE_SUCCESS;
 
 fail:
@@ -1848,10 +2204,42 @@ fail:
 			DEBUGOUT("I2C byte write error.\n");
 	} while (retry < max_retry);
 
-	hw->mac.ops.release_swfw_sync(hw, swfw_mask);
+	if (lock)
+		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 
-write_byte_out:
 	return status;
+}
+
+/**
+ *  ixgbe_write_i2c_byte_generic - Writes 8 bit word over I2C
+ *  @hw: pointer to hardware structure
+ *  @byte_offset: byte offset to write
+ *  @data: value to write
+ *
+ *  Performs byte write operation to SFP module's EEPROM over I2C interface at
+ *  a specified device address.
+ **/
+s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
+				 u8 dev_addr, u8 data)
+{
+	return ixgbe_write_i2c_byte_generic_int(hw, byte_offset, dev_addr,
+						data, true);
+}
+
+/**
+ *  ixgbe_write_i2c_byte_generic_unlocked - Writes 8 bit word over I2C
+ *  @hw: pointer to hardware structure
+ *  @byte_offset: byte offset to write
+ *  @data: value to write
+ *
+ *  Performs byte write operation to SFP module's EEPROM over I2C interface at
+ *  a specified device address.
+ **/
+s32 ixgbe_write_i2c_byte_generic_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
+					  u8 dev_addr, u8 data)
+{
+	return ixgbe_write_i2c_byte_generic_int(hw, byte_offset, dev_addr,
+						data, false);
 }
 
 /**
@@ -1859,6 +2247,7 @@ write_byte_out:
  *  @hw: pointer to hardware structure
  *
  *  Sets I2C start condition (High -> Low on SDA while SCL is High)
+ *  Set bit-bang mode on X550 hardware.
  **/
 STATIC void ixgbe_i2c_start(struct ixgbe_hw *hw)
 {
@@ -1892,6 +2281,8 @@ STATIC void ixgbe_i2c_start(struct ixgbe_hw *hw)
  *  @hw: pointer to hardware structure
  *
  *  Sets I2C stop condition (Low -> High on SDA while SCL is High)
+ *  Disables bit-bang mode and negates data output enable on X550
+ *  hardware.
  **/
 STATIC void ixgbe_i2c_stop(struct ixgbe_hw *hw)
 {
@@ -2109,6 +2500,7 @@ STATIC s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
  *  @i2cctl: Current value of I2CCTL register
  *
  *  Raises the I2C clock line '0'->'1'
+ *  Negates the I2C clock output enable on X550 hardware.
  **/
 STATIC void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 {
@@ -2144,6 +2536,7 @@ STATIC void ixgbe_raise_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
  *  @i2cctl: Current value of I2CCTL register
  *
  *  Lowers the I2C clock line '1'->'0'
+ *  Asserts the I2C clock output enable on X550 hardware.
  **/
 STATIC void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
 {
@@ -2166,6 +2559,7 @@ STATIC void ixgbe_lower_i2c_clk(struct ixgbe_hw *hw, u32 *i2cctl)
  *  @data: I2C data value (0 or 1) to set
  *
  *  Sets the I2C data bit
+ *  Asserts the I2C data output enable on X550 hardware.
  **/
 STATIC s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
 {
@@ -2212,12 +2606,12 @@ STATIC s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
  *  @i2cctl: Current value of I2CCTL register
  *
  *  Returns the I2C data bit value
+ *  Negates the I2C data output enable on X550 hardware.
  **/
 STATIC bool ixgbe_get_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl)
 {
 	u32 data_oe_bit = IXGBE_I2C_DATA_OE_N_EN_BY_MAC(hw);
 	bool data;
-	UNREFERENCED_1PARAMETER(hw);
 
 	DEBUGFUNC("ixgbe_get_i2c_data");
 

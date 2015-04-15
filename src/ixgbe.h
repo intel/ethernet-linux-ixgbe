@@ -43,6 +43,7 @@
 #endif
 /* Can't use IS_ENABLED until after kcompat is loaded */
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
+#define IXGBE_DCA
 #include <linux/dca.h>
 #endif
 #include "ixgbe_dcb.h"
@@ -77,7 +78,11 @@
 		__func__ , ## args)))
 
 #ifdef HAVE_PTP_1588_CLOCK
+#ifdef HAVE_INCLUDE_LINUX_TIMECOUNTER_H
+#include <linux/timecounter.h>
+#else
 #include <linux/clocksource.h>
+#endif /* HAVE_INCLUDE_TIMECOUNTER_H */
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
 #endif
@@ -326,6 +331,7 @@ struct ixgbe_rx_queue_stats {
 	u64 csum_err;
 };
 
+#define IXGBE_TS_HDR_LEN 8
 enum ixgbe_ring_state_t {
 	__IXGBE_TX_FDIR_INIT_DONE,
 	__IXGBE_TX_XPS_INIT_DONE,
@@ -429,6 +435,7 @@ enum ixgbe_ring_f_enum {
 
 #define IXGBE_MAX_DCB_INDICES		8
 #define IXGBE_MAX_RSS_INDICES		16
+#define IXGBE_MAX_RSS_INDICES_X550	64
 #define IXGBE_MAX_VMDQ_INDICES		64
 #define IXGBE_MAX_FDIR_INDICES		63
 #if IS_ENABLED(CONFIG_FCOE)
@@ -765,6 +772,8 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE	(u32)(1 << 22)
 #define IXGBE_FLAG_SRIOV_VEPA_BRIDGE_MODE	(u32)(1 << 23)
 #define IXGBE_FLAG_RX_HWTSTAMP_ENABLED          (u32)(1 << 24)
+#define IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE	(u32)(1 << 25)
+#define IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE		(u32)(1 << 26)
 #define IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER	(u32)(1 << 27)
 
 /* preset defaults */
@@ -776,6 +785,9 @@ struct ixgbe_adapter {
 					 IXGBE_FLAG_SRIOV_CAPABLE)
 
 #define IXGBE_FLAGS_X540_INIT		IXGBE_FLAGS_82599_INIT
+
+#define IXGBE_FLAGS_X550_INIT		(IXGBE_FLAGS_82599_INIT |	\
+					 IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE)
 
 	u32 flags2;
 #ifndef IXGBE_NO_HW_RSC
@@ -794,8 +806,10 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
-#define IXGBE_FLAG2_EEE_CAPABLE			(u32) (1 << 14)
+/* 1 << 14 vacant */
 #define IXGBE_FLAG2_EEE_ENABLED			(u32) (1 << 15)
+#define IXGBE_FLAG2_VXLAN_REREG_NEEDED		(u32)(1 << 16)
+#define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
 
 	bool cloud_mode;
 
@@ -942,6 +956,9 @@ struct ixgbe_adapter {
 	u32 vferr_refcount;
 #endif
 	struct ixgbe_mac_addr *mac_table;
+#ifdef HAVE_VXLAN_CHECKS
+	u16 vxlan_port;
+#endif /* HAVE_VXLAN_CHECKS */
 #ifdef IXGBE_SYSFS
 #ifdef IXGBE_HWMON
 	struct hwmon_buff ixgbe_hwmon_buff;
@@ -974,6 +991,10 @@ static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 		return IXGBE_MAX_RSS_INDICES;
+		break;
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+		return IXGBE_MAX_RSS_INDICES_X550;
 		break;
 	default:
 		return 0;
@@ -1070,6 +1091,8 @@ void ixgbe_configure_tx_ring(struct ixgbe_adapter *,
 				    struct ixgbe_ring *);
 void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter);
+void ixgbe_reset_interrupt_capability(struct ixgbe_adapter *adapter);
+void ixgbe_set_interrupt_capability(struct ixgbe_adapter *adapter);
 void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter);
 bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
 netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *,
@@ -1168,12 +1191,18 @@ void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
+void ixgbe_ptp_rx_pktstamp(struct ixgbe_q_vector *q_vector,
+				  struct sk_buff *skb);
 void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
 				  struct sk_buff *skb);
 static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
 					 union ixgbe_adv_rx_desc *rx_desc,
 					 struct sk_buff *skb)
 {
+	if (unlikely(ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_TSIP))) {
+		ixgbe_ptp_rx_pktstamp(rx_ring->q_vector, skb);
+		return;
+	}
 
 	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
 		return;

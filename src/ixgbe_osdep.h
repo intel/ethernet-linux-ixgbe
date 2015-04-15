@@ -104,6 +104,8 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 #define e_crit(msglvl, format, arg...) \
 	netif_crit(adapter, msglvl, adapter->netdev, format, ## arg)
 
+#define IXGBE_DEAD_READ_RETRIES 10
+#define IXGBE_DEAD_READ_REG 0xdeadbeefU
 #define IXGBE_FAILED_READ_REG 0xffffffffU
 #define IXGBE_FAILED_READ_CFG_DWORD 0xffffffffU
 #define IXGBE_FAILED_READ_CFG_WORD 0xffffU
@@ -112,7 +114,8 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 #define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) \
 	IXGBE_WRITE_REG((a), (reg) + ((offset) << 2), (value))
 
-#define IXGBE_READ_REG(h, r) ixgbe_read_reg(h, r)
+#define IXGBE_READ_REG(h, r) ixgbe_read_reg(h, r, false)
+#define IXGBE_R32_Q(h, r) ixgbe_read_reg(h, r, true)
 
 #define IXGBE_READ_REG_ARRAY(a, reg, offset) ( \
 	IXGBE_READ_REG((a), (reg) + ((offset) << 2)))
@@ -125,7 +128,7 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_STATUS)
 
-u32 ixgbe_read_reg(struct ixgbe_hw *, u32 reg);
+u32 ixgbe_read_reg(struct ixgbe_hw *, u32 reg, bool quiet);
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);

@@ -54,6 +54,16 @@
 #include <linux/ethtool.h>
 #include <linux/if_vlan.h>
 
+/* UTS_RELEASE is in a different header starting in kernel 2.6.18 */
+#ifndef UTS_RELEASE
+/* utsrelease.h changed locations in 2.6.33 */
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33) )
+#include <linux/utsrelease.h>
+#else
+#include <generated/utsrelease.h>
+#endif
+#endif
+
 /* NAPI enable/disable flags here */
 #define NAPI
 
@@ -281,14 +291,6 @@ struct msix_entry {
 
 #ifndef VLAN_ETH_FRAME_LEN
 #define VLAN_ETH_FRAME_LEN 1518
-#endif
-
-#if !defined(IXGBE_DCA) && !defined(IGB_DCA)
-#define dca_get_tag(b) 0
-#define dca_add_requester(a) -1
-#define dca_remove_requester(b) do { } while(0)
-#define DCA_PROVIDER_ADD     0x0001
-#define DCA_PROVIDER_REMOVE  0x0002
 #endif
 
 #ifndef DCA_GET_TAG_TWO_ARGS
@@ -712,6 +714,58 @@ struct _kc_ethtool_pauseparam {
 #define RHEL_RELEASE_CODE 0
 #endif
 
+/* Ubuntu Release ABI is the 4th digit of their kernel version. You can find
+ * it in /usr/src/linux/$(uname -r)/include/generated/utsrelease.h for new
+ * enough versions of Ubuntu. Otherwise you can simply see it in the output of
+ * uname as the 4th digit of the kernel. The UTS_UBUNTU_RELEASE_ABI is not in
+ * the linux-source package, but in the linux-headers package. It begins to
+ * appear in later releases of 14.04 and 14.10.
+ *
+ * Ex:
+ * <Ubuntu 14.04.1>
+ *  $uname -r
+ *  3.13.0-45-generic
+ * ABI is 45
+ *
+ * <Ubuntu 14.10>
+ *  $uname -r
+ *  3.16.0-23-generic
+ * ABI is 23
+ */
+#ifndef UTS_UBUNTU_RELEASE_ABI
+#define UTS_UBUNTU_RELEASE_ABI 0
+#define UBUNTU_VERSION_CODE 0
+#else
+/* Ubuntu does not provide actual release version macro, so we use the kernel
+ * version plus the ABI to generate a unique version code specific to Ubuntu.
+ * In addition, we mask the lower 8 bits of LINUX_VERSION_CODE in order to
+ * ignore differences in sublevel which are not important since we have the
+ * ABI value. Otherwise, it becomes impossible to correlate ABI to version for
+ * ordering checks.
+ */
+#define UBUNTU_VERSION_CODE (((LINUX_VERSION_CODE & ~0xFF) << 8) + (UTS_UBUNTU_RELEASE_ABI))
+
+#if UTS_UBUNTU_RELEASE_ABI > 255
+#error UTS_UBUNTU_RELEASE_ABI is too large...
+#endif /* UTS_UBUNTU_RELEASE_ABI > 255 */
+
+#if ( LINUX_VERSION_CODE <= KERNEL_VERSION(3,0,0) )
+/* Our version code scheme does not make sense for non 3.x or newer kernels,
+ * and we have no support in kcompat for this scenario. Thus, treat this as a
+ * non-Ubuntu kernel. Possibly might be better to error here.
+ */
+#define UTS_UBUNTU_RELEASE_ABI 0
+#define UBUNTU_VERSION_CODE 0
+#endif
+
+#endif
+
+/* Note that the 3rd digit is always zero, and will be ignored. This is
+ * because Ubuntu kernels are based on x.y.0-ABI values, and while their linux
+ * version codes are 3 digit, this 3rd digit is superseded by the ABI value.
+ */
+#define UBUNTU_VERSION(a,b,c,d) ((KERNEL_VERSION(a,b,0) << 8) + (d))
+
 /* SuSE version macro is the same as Linux kernel version */
 #ifndef SLE_VERSION
 #define SLE_VERSION(a,b,c) KERNEL_VERSION(a,b,c)
@@ -729,6 +783,9 @@ struct _kc_ethtool_pauseparam {
 #elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,0,76)))
 /* SLES11 SP3 is 3.0.76 based */
 #define SLE_VERSION_CODE SLE_VERSION(11,3,0)
+#elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,0,101)))
+/* SLES11 SP4 is 3.0.101 based */
+#define SLE_VERSION_CODE SLE_VERSION(11,4,0)
 /* new SLES kernels must be added here with >= based on kernel
  * the idea is to order from newest to oldest and just catch all
  * of them using the >=
@@ -2906,6 +2963,7 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 #if (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,5))
 #define HAVE_ETHTOOL_GSRSSH
 #define HAVE_RHEL6_SRIOV_CONFIGURE
+#define HAVE_RXFH_NONCONST
 #endif /* RHEL > 6.5 */
 #endif /* RHEL >= 6.4 && RHEL < 7.0 */
 
@@ -3135,8 +3193,10 @@ ssize_t _kc_simple_write_to_buffer(void *to, size_t available, loff_t *ppos,
 #ifdef HAVE_TX_MQ
 #include <net/sch_generic.h>
 #ifndef CONFIG_NETDEVICES_MULTIQUEUE
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)))
 #define kstrtoul(a, b, c)  ((*(c)) = simple_strtoul((a), &(a), (b)))
+#endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)) */
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
 void _kc_netif_set_real_num_tx_queues(struct net_device *, unsigned int);
 #define netif_set_real_num_tx_queues  _kc_netif_set_real_num_tx_queues
 #endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) */
@@ -3661,6 +3721,7 @@ typedef u32 netdev_features_t;
 #if (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0))
 #define HAVE_ETHTOOL_GRXFHINDIR_SIZE
 #endif /* SLE_VERSION(11,3,0) */
+#define netif_xmit_stopped(_q) netif_tx_queue_stopped(_q)
 #else /* ! < 3.3.0 */
 #define HAVE_ETHTOOL_GRXFHINDIR_SIZE
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
@@ -3758,7 +3819,9 @@ static inline void _kc_eth_random_addr(u8 *addr)
         addr[0] &= 0xfe; /* clear multicast */
         addr[0] |= 0x02; /* set local assignment */
 }
-#endif
+#endif /* eth_random_addr */
+#else /* < 3.6.0 */
+#define HAVE_STRUCT_PAGE_PFMEMALLOC
 #endif /* < 3.6.0 */
 
 /******************************************************************************/
@@ -4106,6 +4169,7 @@ extern int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct net_device *dev,
 #else /* >= 3.10.0 */
 #define HAVE_ENCAP_TSO_OFFLOAD
 #define USE_DEFAULT_FDB_DEL_DUMP
+#define HAVE_SKB_INNER_NETWORK_HEADER
 #endif /* >= 3.10.0 */
 
 /*****************************************************************************/
@@ -4133,7 +4197,12 @@ extern int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 #endif
 #else /* >= 3.13.0 */
 #define HAVE_VXLAN_CHECKS
+#if (UBUNTU_VERSION_CODE && UBUNTU_VERSION_CODE >= UBUNTU_VERSION(3,13,0,24))
+#define HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
+#else
 #define HAVE_NDO_SELECT_QUEUE_ACCEL
+#endif
+#define HAVE_NET_GET_RANDOM_ONCE
 #endif
 
 /*****************************************************************************/
@@ -4171,6 +4240,10 @@ static inline void __kc_skb_set_hash(struct sk_buff __maybe_unused *skb,
 #endif /* !skb_set_hash */
 
 #else
+
+#ifndef HAVE_ENCAP_TSO_OFFLOAD
+#define HAVE_ENCAP_TSO_OFFLOAD
+#endif /* HAVE_ENCAP_TSO_OFFLOAD */
 
 #ifndef HAVE_VXLAN_RX_OFFLOAD
 #define HAVE_VXLAN_RX_OFFLOAD
@@ -4217,8 +4290,12 @@ static inline void __kc_ether_addr_copy(u8 *dst, const u8 *src)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0) )
+
+#if (!( UBUNTU_VERSION_CODE && UBUNTU_VERSION_CODE >= UBUNTU_VERSION(3,13,0,30)))
 #define u64_stats_fetch_begin_irq u64_stats_fetch_begin_bh
 #define u64_stats_fetch_retry_irq u64_stats_fetch_retry_bh
+#endif
+
 #else
 #define HAVE_PTP_1588_CLOCK_PINS
 #define HAVE_NETDEV_PORT
@@ -4333,5 +4410,40 @@ extern unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_l
 #ifndef ETH_P_XDSA
 #define ETH_P_XDSA 0x00F8
 #endif
+#else /*  3.18.0 */
+#define HAVE_SKBUFF_CSUM_LEVEL
+#define HAVE_SKB_XMIT_MORE
 #endif /* 3.18.0 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,18,4) )
+#else
+#define HAVE_NDO_FEATURES_CHECK
+#endif /* 3.18.4 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0) )
+/* netdev_phys_port_id renamed to netdev_phys_item_id */
+#define netdev_phys_item_id netdev_phys_port_id
+#define NETDEV_RSS_KEY_LEN (13 * 4)
+#define netdev_rss_key_fill(buffer, len) __kc_netdev_rss_key_fill(buffer, len)
+extern void __kc_netdev_rss_key_fill(void *buffer, size_t len);
+#define SPEED_20000 20000
+#define SPEED_40000 40000
+#ifndef dma_rmb
+#define dma_rmb() rmb()
+#endif
+#else /* 3.19.0 */
+#define HAVE_NDO_FDB_ADD_VID
+/* ethtool get/set_rxfh function got a new argument */
+#define HAVE_RXFH_HASHFUNC
+#endif /* 3.19.0 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,20,0) )
+#else
+#define HAVE_INCLUDE_LINUX_TIMECOUNTER_H
+/* vlan_tx_xx functions got renamed to skb_vlan */
+#define vlan_tx_tag_get skb_vlan_tag_get
+#define vlan_tx_tag_present skb_vlan_tag_present
+#define HAVE_NDO_BRIDGE_SET_DEL_LINK_FLAGS
+#endif /* 3.20.0 */
+
 #endif /* _KCOMPAT_H_ */

@@ -72,6 +72,8 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		/* start at VMDq register offset for SR-IOV enabled setups */
 		reg_idx = vmdq->offset * __ALIGN_MASK(1, ~vmdq->mask);
 		for (i = 0; i < adapter->num_rx_queues; i++, reg_idx++) {
@@ -146,6 +148,8 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		if (num_tcs > 4) {
 			/*
 			 * TCs    : TC0/1 TC2/3 TC4-7
@@ -363,6 +367,8 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -567,6 +573,8 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -1149,7 +1157,7 @@ static void ixgbe_free_q_vectors(struct ixgbe_adapter *adapter)
 		ixgbe_free_q_vector(adapter, v_idx);
 }
 
-static void ixgbe_reset_interrupt_capability(struct ixgbe_adapter *adapter)
+void ixgbe_reset_interrupt_capability(struct ixgbe_adapter *adapter)
 {
 	if (adapter->flags & IXGBE_FLAG_MSIX_ENABLED) {
 		adapter->flags &= ~IXGBE_FLAG_MSIX_ENABLED;
@@ -1169,7 +1177,7 @@ static void ixgbe_reset_interrupt_capability(struct ixgbe_adapter *adapter)
  * Attempt to configure the interrupts using the best available
  * capabilities of the hardware and the kernel.
  **/
-static void ixgbe_set_interrupt_capability(struct ixgbe_adapter *adapter)
+void ixgbe_set_interrupt_capability(struct ixgbe_adapter *adapter)
 {
 	int err;
 

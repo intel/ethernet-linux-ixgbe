@@ -192,6 +192,10 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	if (!(adapter->flags & IXGBE_FLAG_SRIOV_ENABLED))
 		return 0;
 
+	/* Turn off malicious driver detection */
+	if (hw->mac.ops.disable_mdd)
+		hw->mac.ops.disable_mdd(hw);
+
 #ifdef CONFIG_PCI_IOV
 	/*
 	 * If our VFs are assigned we cannot shut down SR-IOV
@@ -238,6 +242,11 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 	int err = 0;
 	int i;
 	int pre_existing_vfs = pci_num_vf(dev);
+
+	if (!(adapter->flags & IXGBE_FLAG_SRIOV_CAPABLE)) {
+		e_dev_warn("SRIOV not supported on this device\n");
+		return -EOPNOTSUPP;
+	}
 
 	if (pre_existing_vfs && pre_existing_vfs != num_vfs)
 		err = ixgbe_disable_sriov(adapter);
@@ -1054,7 +1063,43 @@ static void ixgbe_rcv_ack_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
+	u32 vf_bitmap[Q_BITMAP_DEPTH] = { 0 };
+	u32 j, i;
+	u32 ping;
 	u32 vf;
+
+	/* Did we have a malicious event */
+	if (hw->mac.ops.mdd_event)
+		hw->mac.ops.mdd_event(hw, vf_bitmap);
+
+	/* Log any blocked queues and release lock */
+	for (i = 0; i < Q_BITMAP_DEPTH; i++) {
+		for (j = 0; j < 32 && vf_bitmap[i]; j++) {
+
+			if (!(vf_bitmap[i] & (1 << j)))
+				continue;
+
+			/* The VF that malicious event occurred on */
+			vf = j + (i * 32);
+
+			dev_warn(pci_dev_to_dev(adapter->pdev),
+				"Malicious event on VF %d tx:%x rx:%x\n", vf,
+				IXGBE_READ_REG(hw, IXGBE_LVMMC_TX),
+				IXGBE_READ_REG(hw, IXGBE_LVMMC_RX));
+
+			/* restart the vf */
+			if (hw->mac.ops.restore_mdd_vf) {
+				hw->mac.ops.restore_mdd_vf(hw, vf);
+
+				/* get the VF to rebuild its queues */
+				adapter->vfinfo[vf].clear_to_send = 0;
+				ping = IXGBE_PF_CONTROL_MSG |
+				       IXGBE_VT_MSGTYPE_CTS;
+				ixgbe_write_mbx(hw, &ping, 1, vf);
+			}
+
+		}
+	}
 
 	for (vf = 0; vf < adapter->num_vfs; vf++) {
 		/* process any reset requests */
@@ -1134,6 +1179,10 @@ static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,
 	if (adapter->vfinfo[vf].spoofchk_enabled)
 		hw->mac.ops.set_vlan_anti_spoofing(hw, true, vf);
 	adapter->vfinfo[vf].vlan_count++;
+	/* enable hide vlan on X550 */
+	if (hw->mac.type >= ixgbe_mac_X550)
+		ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE |
+				IXGBE_QDE_HIDE_VLAN);
 	adapter->vfinfo[vf].pf_vlan = vlan;
 	adapter->vfinfo[vf].pf_qos = qos;
 	dev_info(pci_dev_to_dev(adapter->pdev),
@@ -1159,6 +1208,9 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	hw->mac.ops.set_vlan_anti_spoofing(hw, false, vf);
 	if (adapter->vfinfo[vf].vlan_count)
 		adapter->vfinfo[vf].vlan_count--;
+	/* disable hide vlan on X550 */
+	if (hw->mac.type >= ixgbe_mac_X550)
+		ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE);
 	adapter->vfinfo[vf].pf_vlan = 0;
 	adapter->vfinfo[vf].pf_qos = 0;
 

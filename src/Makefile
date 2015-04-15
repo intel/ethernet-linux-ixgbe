@@ -29,6 +29,7 @@
 CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
          ixgbe_lib.c ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
          ixgbe_82599.c ixgbe_x540.c \
+	 ixgbe_x550.c \
          ixgbe_sriov.c ixgbe_mbx.c \
          ixgbe_dcb.c ixgbe_dcb_82598.c \
          ixgbe_dcb_82599.c \
@@ -152,10 +153,12 @@ EXTRA_CFLAGS += -DDRIVER_NAME=$(DRIVER_NAME)
 EXTRA_CFLAGS += -DDRIVER_NAME_CAPS=$(shell echo $(DRIVER_NAME) | tr '[a-z]' '[A-Z]')
 # standard flags for module builds
 EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -O2 -pipe -Wall
-EXTRA_CFLAGS += -I$(KSRC)/include
+EXTRA_CFLAGS += $(shell [ -d $(KSRC)/generated/uapi ] && \
+                        echo "$(KSRC)/generated/uapi")
+EXTRA_CFLAGS += -I$(KSRC)/include -I.
 EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
-            echo "-DMODVERSIONS -DEXPORT_SYMTAB \
-                  -include $(KSRC)/include/linux/modversions.h")
+                        echo "-DMODVERSIONS -DEXPORT_SYMTAB \
+                              -include $(KSRC)/include/linux/modversions.h")
 
 EXTRA_CFLAGS += $(CFLAGS_EXTRA)
 
@@ -371,7 +374,6 @@ else
   endif
 endif
 	install -D -m 644 $(MANFILE).gz $(INSTALL_MOD_PATH)$(MANDIR)/man$(MANSECTION)/$(MANFILE).gz
-	man -c -P'cat > /dev/null' $(MANFILE:.$(MANSECTION)=) || true
 
 uninstall:
 	if [ -e $(INSTDIR)/$(TARGET) ] ; then \

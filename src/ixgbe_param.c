@@ -320,6 +320,24 @@ IXGBE_PARAM(LRO, "Large Receive Offload (0,1), default 1 = on");
 IXGBE_PARAM(allow_unsupported_sfp, "Allow unsupported and untested "
 	    "SFP+ modules on 82599 based adapters, default 0 = Disable");
 
+/* Enable/disable support for DMA coalescing
+ *
+ * Valid Values: 0(off), 41 - 10000(on)
+ *
+ * Default Value: 0
+ */
+IXGBE_PARAM(dmac_watchdog,
+	    "DMA coalescing watchdog in microseconds (0,41-10000), default 0 = off");
+
+/* Enable/disable support for VXLAN rx checksum offload
+ *
+ * Valid Values: 0(Disable), 1(Enable)
+ *
+ * Default Value: 1 on hardware that supports it
+ */
+IXGBE_PARAM(vxlan_rx,
+	    "VXLAN receive checksum offload (0,1), default 1 = Enable");
+
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
@@ -1001,6 +1019,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 
 		switch (adapter->hw.mac.type) {
 		case ixgbe_mac_X540:
+		case ixgbe_mac_X550:
 		case ixgbe_mac_82599EB: {
 			struct ixgbe_option opt = {
 				.type = enable_option,
@@ -1098,6 +1117,79 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				adapter->hw.allow_unsupported_sfp = true;
 		} else {
 				adapter->hw.allow_unsupported_sfp = false;
+		}
+#endif
+	}
+	{ /* DMA Coalescing */
+		struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "dmac_watchdog",
+			.err  = "defaulting to 0 (disabled)",
+			.def  = 0,
+			.arg  = { .r = { .min = 41, .max = 10000 } },
+		};
+		const char *cmsg = "DMA coalescing not supported on this hardware";
+
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_X550:
+		case ixgbe_mac_X550EM_x:
+			if (adapter->rx_itr_setting || adapter->tx_itr_setting)
+				break;
+			opt.err = "interrupt throttling disabled also disables DMA coalescing";
+			opt.arg.r.min = 0;
+			opt.arg.r.max = 0;
+			break;
+		default:
+			opt.err = cmsg;
+			opt.msg = cmsg;
+			opt.arg.r.min = 0;
+			opt.arg.r.max = 0;
+		}
+#ifdef module_param_array
+		if (num_dmac_watchdog > bd) {
+#endif
+			unsigned int dmac_wd = dmac_watchdog[bd];
+
+			ixgbe_validate_option(&dmac_wd, &opt);
+			adapter->hw.mac.dmac_config.watchdog_timer = dmac_wd;
+#ifdef module_param_array
+		} else {
+			adapter->hw.mac.dmac_config.watchdog_timer = opt.def;
+		}
+#endif
+	}
+	{ /* VXLAN rx offload */
+		struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "vxlan_rx",
+			.err  = "defaulting to 1 (enabled)",
+			.def  = 1,
+			.arg  = { .r = { .min = 0, .max = 1 } },
+		};
+		const char *cmsg = "VXLAN rx offload not supported on this hardware";
+		const u32 flag = IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE;
+
+		if (!(adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE)) {
+			opt.err = cmsg;
+			opt.msg = cmsg;
+			opt.def = 0;
+			opt.arg.r.max = 0;
+		}
+#ifdef module_param_array
+		if (num_vxlan_rx > bd) {
+#endif
+			unsigned int enable_vxlan_rx = vxlan_rx[bd];
+
+			ixgbe_validate_option(&enable_vxlan_rx, &opt);
+			if (enable_vxlan_rx)
+				adapter->flags |= flag;
+			else
+				adapter->flags &= ~flag;
+#ifdef module_param_array
+		} else if (opt.def) {
+			adapter->flags |= flag;
+		} else {
+			adapter->flags &= ~flag;
 		}
 #endif
 	}

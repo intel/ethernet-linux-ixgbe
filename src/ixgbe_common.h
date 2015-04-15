@@ -84,6 +84,7 @@ s32 ixgbe_enable_sec_rx_path_generic(struct ixgbe_hw *hw);
 s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw);
 bool ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw);
 void ixgbe_fc_autoneg(struct ixgbe_hw *hw);
+s32 ixgbe_setup_fc_generic(struct ixgbe_hw *hw);
 
 s32 ixgbe_validate_mac_addr(u8 *mac_addr);
 s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u32 mask);
@@ -127,7 +128,6 @@ void ixgbe_set_rxpba_generic(struct ixgbe_hw *hw, int num_pb, u32 headroom,
 s32 ixgbe_set_fw_drv_ver_generic(struct ixgbe_hw *hw, u8 maj, u8 min,
 				 u8 build, u8 ver);
 u8 ixgbe_calculate_checksum(u8 *buffer, u32 length);
-s32 ixgbe_get_hi_status(struct ixgbe_hw *hw, u8 *ret_status);
 s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
 				 u32 length, u32 timeout, bool return_data);
 
@@ -152,4 +152,9 @@ s32 ixgbe_get_thermal_sensor_data_generic(struct ixgbe_hw *hw);
 s32 ixgbe_init_thermal_sensor_thresh_generic(struct ixgbe_hw *hw);
 void ixgbe_disable_rx_generic(struct ixgbe_hw *hw);
 void ixgbe_enable_rx_generic(struct ixgbe_hw *hw);
+s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
+					  ixgbe_link_speed speed,
+					  bool autoneg_wait_to_complete);
+void ixgbe_set_soft_rate_select_speed(struct ixgbe_hw *hw,
+				      ixgbe_link_speed speed);
 #endif /* IXGBE_COMMON */

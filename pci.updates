@@ -5,7 +5,7 @@
 #             are sorted by ven, dev, subven, subdev
 #             (numerical order).
 #
-8086  Intel Corporation
+8086  Intel(R)
 	10b6  82598 10GbE PCI-Express Ethernet Controller
 	10c6  82598EB 10-Gigabit AF Dual Port Network Connection
 		8086 a05f  10-Gigabit XF SR Dual Port Server Adapter
@@ -106,3 +106,13 @@
 		8086 011a  Ethernet Converged Network Adapter X520-Q1
 		8086 011b  Ethernet Converged Network Adapter X520-Q1
 	1560  Ethernet Controller X540
+	1563  Ethernet Controller 10G X550T
+		8086 0001  Ethernet Converged Network Adapter X550-T2
+		8086 0002  Ethernet Converged Network Adapter X550-T1
+		8086 001A  Ethernet Converged Network Adapter X550-T2
+		8086 00A2  Ethernet Converged Network Adapter X550-T1
+	15AA  Ethernet Connection X552 10 GbE Backplane
+	15AB  Ethernet Connection X552 10 GbE Backplane
+	15AC  Ethernet Controller 10G X550EM SFP
+	15AD  Ethernet Connection X552/X557-AT 10GBASE-T
+	15AE  Ethernet Controller 1G X550EM Copper

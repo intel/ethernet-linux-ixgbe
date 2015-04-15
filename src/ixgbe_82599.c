@@ -75,6 +75,9 @@ void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 	if (hw->phy.multispeed_fiber) {
 		/* Set up dual speed SFP+ support */
 		mac->ops.setup_link = ixgbe_setup_mac_link_multispeed_fiber;
+		mac->ops.setup_mac_link = ixgbe_setup_mac_link_82599;
+		mac->ops.set_rate_select_speed =
+					       ixgbe_set_hard_rate_select_speed;
 	} else {
 		if ((ixgbe_get_media_type(hw) == ixgbe_media_type_backplane) &&
 		     (hw->phy.smart_speed == ixgbe_smart_speed_auto ||
@@ -719,170 +722,32 @@ void ixgbe_flap_tx_laser_multispeed_fiber(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_setup_mac_link_multispeed_fiber - Set MAC link speed
+ *  ixgbe_set_hard_rate_select_speed - Set module link speed
  *  @hw: pointer to hardware structure
- *  @speed: new link speed
- *  @autoneg_wait_to_complete: true when waiting for completion is needed
+ *  @speed: link speed to set
  *
- *  Set the link speed in the AUTOC register and restarts link.
- **/
-s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
-				     ixgbe_link_speed speed,
-				     bool autoneg_wait_to_complete)
+ *  Set module link speed via RS0/RS1 rate select pins.
+ */
+void ixgbe_set_hard_rate_select_speed(struct ixgbe_hw *hw,
+					ixgbe_link_speed speed)
 {
-	s32 status = IXGBE_SUCCESS;
-	ixgbe_link_speed link_speed = IXGBE_LINK_SPEED_UNKNOWN;
-	ixgbe_link_speed highest_link_speed = IXGBE_LINK_SPEED_UNKNOWN;
-	u32 speedcnt = 0;
 	u32 esdp_reg = IXGBE_READ_REG(hw, IXGBE_ESDP);
-	u32 i = 0;
-	bool autoneg, link_up = false;
 
-	DEBUGFUNC("ixgbe_setup_mac_link_multispeed_fiber");
-
-	/* Mask off requested but non-supported speeds */
-	status = ixgbe_get_link_capabilities(hw, &link_speed, &autoneg);
-	if (status != IXGBE_SUCCESS)
-		return status;
-
-	speed &= link_speed;
-
-	/*
-	 * Try each speed one by one, highest priority first.  We do this in
-	 * software because 10gb fiber doesn't support speed autonegotiation.
-	 */
-	if (speed & IXGBE_LINK_SPEED_10GB_FULL) {
-		speedcnt++;
-		highest_link_speed = IXGBE_LINK_SPEED_10GB_FULL;
-
-		/* If we already have link at this speed, just jump out */
-		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
-		if (status != IXGBE_SUCCESS)
-			return status;
-
-		if ((link_speed == IXGBE_LINK_SPEED_10GB_FULL) && link_up)
-			goto out;
-
-		/* Set the module link speed */
-		switch (hw->phy.media_type) {
-		case ixgbe_media_type_fiber:
-			esdp_reg |= (IXGBE_ESDP_SDP5_DIR | IXGBE_ESDP_SDP5);
-			IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
-			IXGBE_WRITE_FLUSH(hw);
-			break;
-		case ixgbe_media_type_fiber_qsfp:
-			/* QSFP module automatically detects MAC link speed */
-			break;
-		default:
-			DEBUGOUT("Unexpected media type.\n");
-			break;
-		}
-
-		/* Allow module to change analog characteristics (1G->10G) */
-		msec_delay(40);
-
-		status = ixgbe_setup_mac_link_82599(hw,
-						    IXGBE_LINK_SPEED_10GB_FULL,
-						    autoneg_wait_to_complete);
-		if (status != IXGBE_SUCCESS)
-			return status;
-
-		/* Flap the tx laser if it has not already been done */
-		ixgbe_flap_tx_laser(hw);
-
-		/*
-		 * Wait for the controller to acquire link.  Per IEEE 802.3ap,
-		 * Section 73.10.2, we may have to wait up to 500ms if KR is
-		 * attempted.  82599 uses the same timing for 10g SFI.
-		 */
-		for (i = 0; i < 5; i++) {
-			/* Wait for the link partner to also set speed */
-			msec_delay(100);
-
-			/* If we have link, just jump out */
-			status = ixgbe_check_link(hw, &link_speed,
-						  &link_up, false);
-			if (status != IXGBE_SUCCESS)
-				return status;
-
-			if (link_up)
-				goto out;
-		}
+	switch (speed) {
+	case IXGBE_LINK_SPEED_10GB_FULL:
+		esdp_reg |= (IXGBE_ESDP_SDP5_DIR | IXGBE_ESDP_SDP5);
+		break;
+	case IXGBE_LINK_SPEED_1GB_FULL:
+		esdp_reg &= ~IXGBE_ESDP_SDP5;
+		esdp_reg |= IXGBE_ESDP_SDP5_DIR;
+		break;
+	default:
+		DEBUGOUT("Invalid fixed module speed\n");
+		return;
 	}
 
-	if (speed & IXGBE_LINK_SPEED_1GB_FULL) {
-		speedcnt++;
-		if (highest_link_speed == IXGBE_LINK_SPEED_UNKNOWN)
-			highest_link_speed = IXGBE_LINK_SPEED_1GB_FULL;
-
-		/* If we already have link at this speed, just jump out */
-		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
-		if (status != IXGBE_SUCCESS)
-			return status;
-
-		if ((link_speed == IXGBE_LINK_SPEED_1GB_FULL) && link_up)
-			goto out;
-
-		/* Set the module link speed */
-		switch (hw->phy.media_type) {
-		case ixgbe_media_type_fiber:
-			esdp_reg &= ~IXGBE_ESDP_SDP5;
-			esdp_reg |= IXGBE_ESDP_SDP5_DIR;
-			IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
-			IXGBE_WRITE_FLUSH(hw);
-			break;
-		case ixgbe_media_type_fiber_qsfp:
-			/* QSFP module automatically detects link speed */
-			break;
-		default:
-			DEBUGOUT("Unexpected media type.\n");
-			break;
-		}
-
-		/* Allow module to change analog characteristics (10G->1G) */
-		msec_delay(40);
-
-		status = ixgbe_setup_mac_link_82599(hw,
-						    IXGBE_LINK_SPEED_1GB_FULL,
-						    autoneg_wait_to_complete);
-		if (status != IXGBE_SUCCESS)
-			return status;
-
-		/* Flap the Tx laser if it has not already been done */
-		ixgbe_flap_tx_laser(hw);
-
-		/* Wait for the link partner to also set speed */
-		msec_delay(100);
-
-		/* If we have link, just jump out */
-		status = ixgbe_check_link(hw, &link_speed, &link_up, false);
-		if (status != IXGBE_SUCCESS)
-			return status;
-
-		if (link_up)
-			goto out;
-	}
-
-	/*
-	 * We didn't get link.  Configure back to the highest speed we tried,
-	 * (if there was more than one).  We call ourselves back with just the
-	 * single highest speed that the user requested.
-	 */
-	if (speedcnt > 1)
-		status = ixgbe_setup_mac_link_multispeed_fiber(hw,
-			highest_link_speed, autoneg_wait_to_complete);
-
-out:
-	/* Set autoneg_advertised value based on input link speed */
-	hw->phy.autoneg_advertised = 0;
-
-	if (speed & IXGBE_LINK_SPEED_10GB_FULL)
-		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
-
-	if (speed & IXGBE_LINK_SPEED_1GB_FULL)
-		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_1GB_FULL;
-
-	return status;
+	IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
+	IXGBE_WRITE_FLUSH(hw);
 }
 
 /**
@@ -1487,7 +1352,6 @@ s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 fdirctrl)
 s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 fdirctrl,
 			bool cloud_mode)
 {
-	UNREFERENCED_1PARAMETER(cloud_mode);
 	DEBUGFUNC("ixgbe_init_fdir_perfect_82599");
 
 	/*
@@ -1505,6 +1369,10 @@ s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 fdirctrl,
 		    (0x6 << IXGBE_FDIRCTRL_FLEX_SHIFT) |
 		    (0xA << IXGBE_FDIRCTRL_MAX_LENGTH_SHIFT) |
 		    (4 << IXGBE_FDIRCTRL_FULL_THRESH_SHIFT);
+
+	if (cloud_mode)
+		fdirctrl |=(IXGBE_FDIRCTRL_FILTERMODE_CLOUD <<
+					IXGBE_FDIRCTRL_FILTERMODE_SHIFT);
 
 	/* write hashes and fdirctrl register, poll for completion */
 	ixgbe_fdir_enable_82599(hw, fdirctrl);
@@ -1608,6 +1476,9 @@ u32 ixgbe_atr_compute_sig_hash_82599(union ixgbe_atr_hash_dword input,
  *  @input: unique input dword
  *  @common: compressed common input dword
  *  @queue: queue index to direct traffic to
+ *
+ * Note that the tunnel bit in input must not be set when the hardware
+ * tunneling support does not exist.
  **/
 s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 					  union ixgbe_atr_hash_dword input,
@@ -1616,6 +1487,7 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 {
 	u64 fdirhashcmd;
 	u8 flow_type;
+	bool tunnel;
 	u32 fdircmd;
 	s32 err;
 
@@ -1626,6 +1498,7 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 	 * lowest 2 bits are FDIRCMD.L4TYPE, third lowest bit is FDIRCMD.IPV6
 	 * fifth is FDIRCMD.TUNNEL_FILTER
 	 */
+	tunnel = !!(input.formatted.flow_type & IXGBE_ATR_L4TYPE_TUNNEL_MASK);
 	flow_type = input.formatted.flow_type &
 		    (IXGBE_ATR_L4TYPE_TUNNEL_MASK - 1);
 	switch (flow_type) {
@@ -1646,6 +1519,8 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 		  IXGBE_FDIRCMD_LAST | IXGBE_FDIRCMD_QUEUE_EN;
 	fdircmd |= (u32)flow_type << IXGBE_FDIRCMD_FLOW_TYPE_SHIFT;
 	fdircmd |= (u32)queue << IXGBE_FDIRCMD_RX_QUEUE_SHIFT;
+	if (tunnel)
+		fdircmd |= IXGBE_FDIRCMD_TUNNEL_FILTER;
 
 	/*
 	 * The lower 32-bits of fdirhashcmd is for FDIRHASH, the upper 32-bits
@@ -1777,7 +1652,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	/* mask IPv6 since it is currently not supported */
 	u32 fdirm = IXGBE_FDIRM_DIPv6;
 	u32 fdirtcpm;
-	UNREFERENCED_1PARAMETER(cloud_mode);
+	u32 fdirip6m;
 	DEBUGFUNC("ixgbe_fdir_set_atr_input_mask_82599");
 
 	/*
@@ -1850,6 +1725,59 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		return IXGBE_ERR_CONFIG;
 	}
 
+	if (cloud_mode) {
+		fdirm |= IXGBE_FDIRM_L3P;
+		fdirip6m = ((u32) 0xFFFFU << IXGBE_FDIRIP6M_DIPM_SHIFT);
+		fdirip6m |= IXGBE_FDIRIP6M_ALWAYS_MASK;
+
+		switch (input_mask->formatted.inner_mac[0] & 0xFF) {
+		case 0x00:
+			/* Mask inner MAC, fall through */
+			fdirip6m |= IXGBE_FDIRIP6M_INNER_MAC;
+		case 0xFF:
+			break;
+		default:
+			DEBUGOUT(" Error on inner_mac byte mask\n");
+			return IXGBE_ERR_CONFIG;
+		}
+
+		switch (input_mask->formatted.tni_vni & 0xFFFFFFFF) {
+		case 0x0:
+			/* Mask vxlan id */
+			fdirip6m |= IXGBE_FDIRIP6M_TNI_VNI;
+			break;
+		case 0x00FFFFFF:
+			fdirip6m |= IXGBE_FDIRIP6M_TNI_VNI_24;
+			break;
+		case 0xFFFFFFFF:
+			break;
+		default:
+			DEBUGOUT(" Error on TNI/VNI byte mask\n");
+			return IXGBE_ERR_CONFIG;
+		}
+
+		switch (input_mask->formatted.tunnel_type & 0xFFFF) {
+		case 0x0:
+			/* Mask turnnel type, fall through */
+			fdirip6m |= IXGBE_FDIRIP6M_TUNNEL_TYPE;
+		case 0xFFFF:
+			break;
+		default:
+			DEBUGOUT(" Error on tunnel type byte mask\n");
+			return IXGBE_ERR_CONFIG;
+		}
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRIP6M, fdirip6m);
+
+		/* Set all bits in FDIRTCPM, FDIRUDPM, FDIRSIP4M and
+		 * FDIRDIP4M in cloud mode to allow L3/L3 packets to
+		 * tunnel.
+		 */
+		IXGBE_WRITE_REG(hw, IXGBE_FDIRTCPM, 0xFFFFFFFF);
+		IXGBE_WRITE_REG(hw, IXGBE_FDIRUDPM, 0xFFFFFFFF);
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRDIP4M, 0xFFFFFFFF);
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIP4M, 0xFFFFFFFF);
+	}
+
 	/* Now mask VM pool and destination IPv6 - bits 5 and 2 */
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRM, fdirm);
 
@@ -1861,6 +1789,15 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		/* write both the same so that UDP and TCP use the same mask */
 		IXGBE_WRITE_REG(hw, IXGBE_FDIRTCPM, ~fdirtcpm);
 		IXGBE_WRITE_REG(hw, IXGBE_FDIRUDPM, ~fdirtcpm);
+		/* also use it for SCTP */
+		switch (hw->mac.type) {
+		case ixgbe_mac_X550:
+		case ixgbe_mac_X550EM_x:
+			IXGBE_WRITE_REG(hw, IXGBE_FDIRSCTPM, ~fdirtcpm);
+			break;
+		default:
+			break;
+		}
 
 		/* store source and destination IP masks (big-enian) */
 		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIP4M,
@@ -1876,8 +1813,9 @@ s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
 					  u16 soft_id, u8 queue, bool cloud_mode)
 {
 	u32 fdirport, fdirvlan, fdirhash, fdircmd;
+	u32 addr_low, addr_high;
+	u32 cloud_type = 0;
 	s32 err;
-	UNREFERENCED_1PARAMETER(cloud_mode);
 
 	DEBUGFUNC("ixgbe_fdir_write_perfect_filter_82599");
 	if (!cloud_mode) {
@@ -1910,6 +1848,22 @@ s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
 	fdirvlan <<= IXGBE_FDIRVLAN_FLEX_SHIFT;
 	fdirvlan |= IXGBE_NTOHS(input->formatted.vlan_id);
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRVLAN, fdirvlan);
+
+	if (cloud_mode) {
+		if (input->formatted.tunnel_type != 0)
+			cloud_type = 0x80000000;
+
+		addr_low = ((u32)input->formatted.inner_mac[0] |
+				((u32)input->formatted.inner_mac[1] << 8) |
+				((u32)input->formatted.inner_mac[2] << 16) |
+				((u32)input->formatted.inner_mac[3] << 24));
+		addr_high = ((u32)input->formatted.inner_mac[4] |
+				((u32)input->formatted.inner_mac[5] << 8));
+		cloud_type |= addr_high;
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIPv6(0), addr_low);
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIPv6(1), cloud_type);
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIPv6(2), input->formatted.tni_vni);
+	}
 
 	/* configure FDIRHASH register */
 	fdirhash = input->formatted.bkt_hash;
@@ -1996,7 +1950,6 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 					u16 soft_id, u8 queue, bool cloud_mode)
 {
 	s32 err = IXGBE_ERR_CONFIG;
-	UNREFERENCED_1PARAMETER(cloud_mode);
 
 	DEBUGFUNC("ixgbe_fdir_add_perfect_filter_82599");
 
@@ -2614,4 +2567,3 @@ release_i2c_access:
 
 	return status;
 }
-
