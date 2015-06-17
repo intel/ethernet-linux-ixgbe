@@ -43,6 +43,7 @@
 		8086 000c  Ethernet X520 10GbE Dual Port KX4-KR Mezz
 	10f9  82599 10 Gigabit CX4 Dual Port Network Connection
 	10fb  82599 10 Gigabit Dual Port Network Connection
+		1028 06ee  Ethernet 10G X520 LOM
 		1028 1f72  Ethernet 10G 4P X520/I350 rNDC
 		103c 17d0  HP Ethernet 10Gb 2-port 560FLR-SFP+ Adapter
 		103c 17d3  HP Ethernet 10Gb 2-port 560SFP+ Adapter
@@ -91,6 +92,7 @@
 		8086 00a2  Ethernet Converged Network Adapter X540-T1
 		8086 0471  Ethernet 10GBT DP Embedded CNA X540-T2
 		8086 5003  Ethernet 10G 2P X540-t Adapter
+		8086 5004  Ethernet 10G 2P X540-t Adapter
 	1529  82599 10 Gigabit Dual Port Network Connection with FCoE
 	152a  82599 10 Gigabit Dual Port Backplane Connection with FCoE
 	154a  Ethernet Converged Network Adapter X520-4

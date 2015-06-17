@@ -160,6 +160,32 @@ EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
                         echo "-DMODVERSIONS -DEXPORT_SYMTAB \
                               -include $(KSRC)/include/linux/modversions.h")
 
+# Some helper functions for converting kernel version to version codes
+get_kver = $(or $(word ${2},$(subst ., ,${1})),0)
+get_kvercode = $(shell [ "${1}" -ge 0 -a "${1}" -le 255 2>/dev/null ] && \
+                       [ "${2}" -ge 0 -a "${2}" -le 255 2>/dev/null ] && \
+                       [ "${3}" -ge 0 -a "${3}" -le 255 2>/dev/null ] && \
+                       printf %d $$(( ( ${1} << 16 ) + ( ${2} << 8 ) + ( ${3} ) )) )
+
+# The following command line parameter is intended for development of KCOMPAT
+# against upstream kernels such as net-next which have broken or non-updated
+# version codes in their Makefile. They are intended for debugging and
+# development purpose only so that we can easily test new KCOMPAT early. If you
+# don't know what this means, you do not need to set this flag. There is no
+# arcane magic here.
+
+# Convert LINUX_VERSION into LINUX_VERSION_CODE
+ifneq (${LINUX_VERSION},)
+  LINUX_VERSION_CODE=$(call get_kvercode,$(call get_kver,${LINUX_VERSION},1),$(call get_kver,${LINUX_VERSION},2),$(call get_kver,${LINUX_VERSION},3))
+endif
+
+# Honor LINUX_VERSION_CODE
+ifneq (${LINUX_VERSION_CODE},)
+  $(warning Forcing target kernel's LINUX_VERSION_CODE to ${LINUX_VERSION_CODE}$(if ${LINUX_VERSION}, from LINUX_VERSION=${LINUX_VERSION}). Do this at your owk risk.)
+  KVER_CODE := ${LINUX_VERSION_CODE}
+  EXTRA_CFLAGS += -DLINUX_VERSION_CODE=${LINUX_VERSION_CODE}
+endif
+
 EXTRA_CFLAGS += $(CFLAGS_EXTRA)
 
 RHC := $(KSRC)/include/linux/rhconfig.h
@@ -181,8 +207,10 @@ ifneq ($(KSRC),$(shell readlink /lib/modules/$(KVER)/build))
 endif
 endif
 
-KVER_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
-	grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
+ifeq (${KVER_CODE},)
+  KVER_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
+                 grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
+endif
 
 ifeq ($(strip $(KVER_CODE)),)
 KVER_CODE := 0
