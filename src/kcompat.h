@@ -3193,9 +3193,6 @@ ssize_t _kc_simple_write_to_buffer(void *to, size_t available, loff_t *ppos,
 #ifdef HAVE_TX_MQ
 #include <net/sch_generic.h>
 #ifndef CONFIG_NETDEVICES_MULTIQUEUE
-#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)))
-#define kstrtoul(a, b, c)  ((*(c)) = simple_strtoul((a), &(a), (b)))
-#endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)) */
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
 void _kc_netif_set_real_num_tx_queues(struct net_device *, unsigned int);
 #define netif_set_real_num_tx_queues  _kc_netif_set_real_num_tx_queues
@@ -3444,6 +3441,9 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 #define IEEE_8021QAZ_APP_SEL_ETHERTYPE	1
 #endif
 #endif
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)))
+#define kstrtoul(a, b, c)  ((*(c)) = simple_strtoul((a), NULL, (b)), 0)
+#endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)) */
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
 extern u16 ___kc_skb_tx_hash(struct net_device *, const struct sk_buff *, u16);
 #define __skb_tx_hash(n, s, q) ___kc_skb_tx_hash((n), (s), (q))
@@ -3567,7 +3567,7 @@ struct _kc_ethtool_rx_flow_spec {
 #endif /* kfree_rcu */
 #ifndef kstrtol_from_user
 #define kstrtol_from_user(s, c, b, r) _kc_kstrtol_from_user(s, c, b, r)
-static inline int _kc_kstrtol_from_user(const char __user *s, size_t count, 
+static inline int _kc_kstrtol_from_user(const char __user *s, size_t count,
 					unsigned int base, long *res)
 {
 	/* sign, base 2 representation, newline, terminator */
@@ -3705,6 +3705,7 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #define HAVE_SKB_L4_RXHASH
 #endif
 #define HAVE_IOMMU_PRESENT
+#define HAVE_PM_QOS_REQUEST_LIST_NEW
 #endif /* < 3.2.0 */
 
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE == RHEL_RELEASE_VERSION(6,2))
@@ -4379,7 +4380,7 @@ static inline int __kc_dev_mc_sync(struct net_device __maybe_unused *dev,
 #else
 	return 0;
 #endif
-	
+
 }
 #define __dev_mc_sync __kc_dev_mc_sync
 
@@ -4456,7 +4457,7 @@ extern unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_l
 
 #ifndef NETDEV_RSS_KEY_LEN
 #define NETDEV_RSS_KEY_LEN (13 * 4)
-#endif 
+#endif
 #if ( !(RHEL_RELEASE_CODE && \
 	(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,7) && \
 	(RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))) )
@@ -4473,7 +4474,11 @@ extern void __kc_netdev_rss_key_fill(void *buffer, size_t len);
 #endif
 #if ( !(RHEL_RELEASE_CODE && \
 	(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,7) && \
-	(RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))) )
+	(RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))) && \
+      !(SLE_VERSION_CODE && \
+	      (SLE_VERSION_CODE >= SLE_VERSION(11,4,0)) && \
+	      (SLE_VERSION_CODE < SLE_VERSION(12,0,0)) ) )
+
 /**
  *     skb_put_padto - increase size and pad an skbuff up to a minimal size
  *     @skb: buffer to pad
@@ -4539,6 +4544,7 @@ static inline void __kc_timecounter_adjtime(struct timecounter *tc, s64 delta)
 #endif
 #else
 #define HAVE_PTP_CLOCK_INFO_GETTIME64
+#define HAVE_NDO_BRIDGE_GETLINK_NLFLAGS
 #endif /* 4,1,0 */
 
 #endif /* _KCOMPAT_H_ */
