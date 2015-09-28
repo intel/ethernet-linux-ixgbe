@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.1.2) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.1.5) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -2078,11 +2078,7 @@ static void ixgbe_reuse_rx_page(struct ixgbe_ring *rx_ring,
 
 static inline bool ixgbe_page_is_reserved(struct page *page)
 {
-#ifdef HAVE_STRUCT_PAGE_PFMEMALLOC
-	return (page_to_nid(page) != numa_mem_id()) || page->pfmemalloc;
-#else
-	return (page_to_nid(page) != numa_mem_id());
-#endif
+	return (page_to_nid(page) != numa_mem_id()) || page_is_pfmemalloc(page);
 }
 
 /**
@@ -9181,8 +9177,12 @@ void ixgbe_do_reset(struct net_device *netdev)
 }
 
 #ifdef HAVE_NDO_SET_FEATURES
+#ifdef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+static u32 ixgbe_fix_features(struct net_device *netdev, u32 features)
+#else
 static netdev_features_t ixgbe_fix_features(struct net_device *netdev,
 					    netdev_features_t features)
+#endif
 {
 #if defined(CONFIG_DCB) || defined(IXGBE_NO_LRO)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -9210,8 +9210,12 @@ static netdev_features_t ixgbe_fix_features(struct net_device *netdev,
 	return features;
 }
 
+#ifdef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+static int ixgbe_set_features(struct net_device *netdev, u32 features)
+#else
 static int ixgbe_set_features(struct net_device *netdev,
 			      netdev_features_t features)
+#endif
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	bool need_reset = false;
@@ -9447,14 +9451,19 @@ static int ixgbe_ndo_bridge_setlink(struct net_device *dev,
 	return 0;
 }
 
-#ifdef HAVE_BRIDGE_FILTER
+#ifdef HAVE_NDO_BRIDGE_GETLINK_NLFLAGS
+static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
+				    struct net_device *dev,
+				    u32 __maybe_unused filter_mask,
+				    int nlflags)
+#elif defined(HAVE_BRIDGE_FILTER)
 static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 				    struct net_device *dev,
 				    u32 __always_unused filter_mask)
 #else
 static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 				    struct net_device *dev)
-#endif
+#endif /* HAVE_NDO_BRIDGE_GETLINK_NLFLAGS */
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	u16 mode;
@@ -9463,8 +9472,13 @@ static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 		return 0;
 
 	mode = adapter->bridge_mode;
-
-#ifdef HAVE_NDO_FDB_ADD_VID
+#ifdef HAVE_NDO_DFLT_BRIDGE_GETLINK_VLAN_SUPPORT
+	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode, 0, 0, nlflags,
+				       filter_mask, NULL);
+#elif defined(HAVE_NDO_BRIDGE_GETLINK_NLFLAGS)
+	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode, 0, 0, nlflags);
+#elif defined(HAVE_NDO_FDB_ADD_VID) || \
+      defined NDO_BRIDGE_GETLINK_HAS_FILTER_MASK_PARAM
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode, 0, 0);
 #else
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode);
@@ -9474,6 +9488,7 @@ static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 #endif /* HAVE_FDB_OPS */
 
 #ifdef HAVE_NDO_FEATURES_CHECK
+#define IXGBE_MAX_TUNNEL_HDR_LEN 80
 static netdev_features_t
 ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 		     netdev_features_t features)
@@ -9547,10 +9562,6 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_fcoe_get_wwn = ixgbe_fcoe_get_wwn,
 #endif
 #endif /* CONFIG_FCOE */
-#ifdef HAVE_NDO_SET_FEATURES
-	.ndo_set_features = ixgbe_set_features,
-	.ndo_fix_features = ixgbe_fix_features,
-#endif /* HAVE_NDO_SET_FEATURES */
 #ifdef HAVE_VLAN_RX_REGISTER
 	.ndo_vlan_rx_register	= &ixgbe_vlan_mode,
 #endif
@@ -9575,6 +9586,17 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #ifdef HAVE_NDO_FEATURES_CHECK
 	.ndo_features_check	= ixgbe_features_check,
 #endif /* HAVE_NDO_FEATURES_CHECK */
+#ifdef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+};
+
+/* RHEL6 keeps these operations in a separate structure */
+static const struct net_device_ops_ext ixgbe_netdev_ops_ext = {
+	.size = sizeof(struct net_device_ops_ext),
+#endif /* HAVE_RHEL6_NET_DEVICE_OPS_EXT */
+#ifdef HAVE_NDO_SET_FEATURES
+	.ndo_set_features = ixgbe_set_features,
+	.ndo_fix_features = ixgbe_fix_features,
+#endif /* HAVE_NDO_SET_FEATURES */
 };
 #endif /* HAVE_NET_DEVICE_OPS */
 
@@ -9582,6 +9604,9 @@ void ixgbe_assign_netdev_ops(struct net_device *dev)
 {
 #ifdef HAVE_NET_DEVICE_OPS
 	dev->netdev_ops = &ixgbe_netdev_ops;
+#ifdef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+	set_netdev_ops_ext(dev, &ixgbe_netdev_ops_ext);
+#endif /* HAVE_RHEL6_NET_DEVICE_OPS_EXT */
 #else /* HAVE_NET_DEVICE_OPS */
 	dev->open = &ixgbe_open;
 	dev->stop = &ixgbe_close;
@@ -9731,6 +9756,13 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	bool disable_dev = false;
 #if IS_ENABLED(CONFIG_FCOE)
 	u16 device_caps;
+#endif
+#ifdef HAVE_NDO_SET_FEATURES
+#ifndef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+	netdev_features_t hw_features;
+#else
+	u32 hw_features;
+#endif
 #endif
 
 	err = pci_enable_device_mem(pdev);
@@ -9944,13 +9976,18 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 #ifdef HAVE_NDO_SET_FEATURES
 	/* copy netdev features into list of user selectable features */
-	netdev->hw_features |= netdev->features;
+#ifndef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+	hw_features = netdev->hw_features;
+#else
+	hw_features = get_netdev_hw_features(netdev);
+#endif
+	hw_features |= netdev->features;
 
 	/* give us the option of enabling RSC/LRO later */
 #ifdef IXGBE_NO_LRO
 	if (adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE)
 #endif
-		netdev->hw_features |= NETIF_F_LRO;
+		hw_features |= NETIF_F_LRO;
 
 #else
 #ifdef NETIF_F_GRO
@@ -9975,13 +10012,20 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	case ixgbe_mac_X550EM_x:
 		netdev->features |= NETIF_F_SCTP_CSUM;
 #ifdef HAVE_NDO_SET_FEATURES
-		netdev->hw_features |= NETIF_F_SCTP_CSUM |
+		hw_features |= NETIF_F_SCTP_CSUM |
 				       NETIF_F_NTUPLE;
 #endif
 		break;
 	default:
 		break;
 	}
+#ifdef HAVE_NDO_SET_FEATURES
+#ifdef HAVE_RHEL6_NET_DEVICE_OPS_EXT
+	set_netdev_hw_features(netdev, hw_features);
+#else
+	netdev->hw_features = hw_features;
+#endif
+#endif
 
 #ifdef HAVE_NETDEV_VLAN_FEATURES
 	netdev->vlan_features |= NETIF_F_SG |

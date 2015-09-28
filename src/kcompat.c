@@ -1031,21 +1031,19 @@ void _kc_netif_tx_start_all_queues(struct net_device *netdev)
 }
 #endif /* HAVE_TX_MQ */
 
-#ifndef __WARN_printf
 void __kc_warn_slowpath(const char *file, int line, const char *fmt, ...)
 {
 	va_list args;
 
 	printk(KERN_WARNING "------------[ cut here ]------------\n");
-	printk(KERN_WARNING "WARNING: at %s:%d %s()\n", file, line);
+	printk(KERN_WARNING "WARNING: at %s:%d \n", file, line);
 	va_start(args, fmt);
 	vprintk(fmt, args);
 	va_end(args);
 
 	dump_stack();
 }
-#endif /* __WARN_printf */
-#endif /* < 2.6.27 */
+#endif /* __VMKLNX__ */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28) )
@@ -1743,6 +1741,62 @@ int __kc_pci_vfs_assigned(struct pci_dev __maybe_unused *dev)
 
 #endif /* CONFIG_PCI_IOV */
 #endif /* 3.10.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
+const unsigned char pcie_link_speed[] = {
+	PCI_SPEED_UNKNOWN,      /* 0 */
+	PCIE_SPEED_2_5GT,       /* 1 */
+	PCIE_SPEED_5_0GT,       /* 2 */
+	PCIE_SPEED_8_0GT,       /* 3 */
+	PCI_SPEED_UNKNOWN,      /* 4 */
+	PCI_SPEED_UNKNOWN,      /* 5 */
+	PCI_SPEED_UNKNOWN,      /* 6 */
+	PCI_SPEED_UNKNOWN,      /* 7 */
+	PCI_SPEED_UNKNOWN,      /* 8 */
+	PCI_SPEED_UNKNOWN,      /* 9 */
+	PCI_SPEED_UNKNOWN,      /* A */
+	PCI_SPEED_UNKNOWN,      /* B */
+	PCI_SPEED_UNKNOWN,      /* C */
+	PCI_SPEED_UNKNOWN,      /* D */
+	PCI_SPEED_UNKNOWN,      /* E */
+	PCI_SPEED_UNKNOWN       /* F */
+};
+
+int __kc_pcie_get_minimum_link(struct pci_dev *dev, enum pci_bus_speed *speed,
+			       enum pcie_link_width *width)
+{
+	int ret;
+
+	*speed = PCI_SPEED_UNKNOWN;
+	*width = PCIE_LNK_WIDTH_UNKNOWN;
+
+	while (dev) {
+		u16 lnksta;
+		enum pci_bus_speed next_speed;
+		enum pcie_link_width next_width;
+
+		ret = pcie_capability_read_word(dev, PCI_EXP_LNKSTA, &lnksta);
+		if (ret)
+			return ret;
+
+		next_speed = pcie_link_speed[lnksta & PCI_EXP_LNKSTA_CLS];
+		next_width = (lnksta & PCI_EXP_LNKSTA_NLW) >>
+			PCI_EXP_LNKSTA_NLW_SHIFT;
+
+		if (next_speed < *speed)
+			*speed = next_speed;
+
+		if (next_width < *width)
+			*width = next_width;
+
+		dev = dev->bus->self;
+	}
+
+	return 0;
+}
+
+#endif
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) )
 int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask)

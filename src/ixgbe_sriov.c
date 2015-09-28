@@ -47,6 +47,8 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 
 	adapter->flags |= IXGBE_FLAG_SRIOV_ENABLED;
 	e_dev_info("SR-IOV enabled with %d VFs\n", adapter->num_vfs);
+	if (hw->mac.type < ixgbe_mac_X550)
+		e_dev_info("configure port vlans to keep your VFs secure\n");
 
 	/* Enable VMDq flag so device will be set in VM mode */
 	adapter->flags |= IXGBE_FLAG_VMDQ_ENABLED;
