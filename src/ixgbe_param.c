@@ -199,6 +199,7 @@ IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, "
 #define MIN_ITR		IXGBE_MIN_INT_RATE
 
 #ifndef IXGBE_NO_LLI
+
 /* LLIPort (Low Latency Interrupt TCP Port)
  *
  * Valid Range: 0 - 65535
@@ -309,7 +310,7 @@ IXGBE_PARAM(FCoE, "Disable or enable FCoE Offload, default 1");
  *
  * Default Value: 1
  */
-IXGBE_PARAM(LRO, "Large Receive Offload (0,1), default 1 = on");
+IXGBE_PARAM(LRO, "Large Receive Offload (0,1), default 0 = off");
 
 /* Enable/disable support for untested SFP+ modules on 82599-based adapters
  *
@@ -358,6 +359,37 @@ struct ixgbe_option {
 		} l;
 	} arg;
 };
+
+#ifndef IXGBE_NO_LLI
+#ifdef module_param_array
+/**
+ *  helper function to determine LLI support
+ *
+ *  LLI is only supported for 82599 and X540
+ *  LLIPush is not supported on 82599
+ **/
+static bool __devinit ixgbe_lli_supported(struct ixgbe_adapter *adapter,
+					  struct ixgbe_option *opt)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	if (hw->mac.type == ixgbe_mac_82599EB) {
+
+		if (LLIPush[adapter->bd_number] > 0)
+			goto not_supp;
+
+		return true;
+	}
+
+	if (hw->mac.type == ixgbe_mac_X540)
+		return true;
+
+not_supp:
+	DPRINTK(PROBE, INFO, "%s not supported on this HW\n", opt->name);
+	return false;
+}
+#endif /* module_param_array */
+#endif /* IXGBE_NO_LLI */
 
 static int __devinit ixgbe_validate_option(unsigned int *value,
 					   struct ixgbe_option *opt)
@@ -816,7 +848,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 
 #ifdef module_param_array
-		if (num_LLIPort > bd) {
+		if (num_LLIPort > bd && ixgbe_lli_supported(adapter, &opt)) {
 #endif
 			adapter->lli_port = LLIPort[bd];
 			if (adapter->lli_port) {
@@ -843,7 +875,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 
 #ifdef module_param_array
-		if (num_LLISize > bd) {
+		if (num_LLISize > bd && ixgbe_lli_supported(adapter, &opt)) {
 #endif
 			adapter->lli_size = LLISize[bd];
 			if (adapter->lli_size) {
@@ -867,9 +899,10 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 
 #ifdef module_param_array
-		if (num_LLIPush > bd) {
+		if (num_LLIPush > bd && ixgbe_lli_supported(adapter, &opt)) {
 #endif
 			unsigned int lli_push = LLIPush[bd];
+
 			ixgbe_validate_option(&lli_push, &opt);
 			if (lli_push)
 				*aflags |= IXGBE_FLAG_LLI_PUSH;
@@ -897,7 +930,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 
 #ifdef module_param_array
-		if (num_LLIEType > bd) {
+		if (num_LLIEType > bd && ixgbe_lli_supported(adapter, &opt)) {
 #endif
 			adapter->lli_etype = LLIEType[bd];
 			if (adapter->lli_etype) {
@@ -926,7 +959,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 
 #ifdef module_param_array
-		if (num_LLIVLANP > bd) {
+		if (num_LLIVLANP > bd && ixgbe_lli_supported(adapter, &opt)) {
 #endif
 			adapter->lli_vlan_pri = LLIVLANP[bd];
 			if (adapter->lli_vlan_pri) {
@@ -1051,12 +1084,12 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 	}
 #endif /* CONFIG_FCOE */
-	{ /* LRO - Enable Large Receive Offload */
+	{ /* LRO - Set Large Receive Offload */
 		struct ixgbe_option opt = {
 			.type = enable_option,
 			.name = "LRO - Large Receive Offload",
-			.err  = "defaulting to Enabled",
-			.def  = OPTION_ENABLED
+			.err  = "defaulting to Disabled",
+			.def  = OPTION_DISABLED
 		};
 		struct net_device *netdev = adapter->netdev;
 

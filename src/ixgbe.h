@@ -80,9 +80,8 @@
 #ifdef HAVE_PTP_1588_CLOCK
 #ifdef HAVE_INCLUDE_LINUX_TIMECOUNTER_H
 #include <linux/timecounter.h>
-#else
-#include <linux/clocksource.h>
 #endif /* HAVE_INCLUDE_TIMECOUNTER_H */
+#include <linux/clocksource.h>
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
 #endif
@@ -641,8 +640,7 @@ struct hwmon_buff {
 #define IXGBE_100K_ITR		40
 #define IXGBE_20K_ITR		200
 #define IXGBE_16K_ITR		248
-#define IXGBE_10K_ITR		400
-#define IXGBE_8K_ITR		500
+#define IXGBE_12K_ITR		336
 
 /* ixgbe_test_staterr - tests bits in Rx descriptor status and error fields */
 static inline __le32 ixgbe_test_staterr(union ixgbe_adv_rx_desc *rx_desc,
@@ -802,7 +800,8 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
 /* 1 << 14 vacant */
-#define IXGBE_FLAG2_EEE_ENABLED			(u32) (1 << 15)
+#define IXGBE_FLAG2_EEE_CAPABLE			(u32)(1 << 14)
+#define IXGBE_FLAG2_EEE_ENABLED			(u32)(1 << 15)
 #define IXGBE_FLAG2_VXLAN_REREG_NEEDED		(u32)(1 << 16)
 #define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
 
@@ -1100,6 +1099,7 @@ void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter,
 				   struct ixgbe_ring *);
 void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter,
 			       struct ixgbe_ring *);
+void ixgbe_clear_vxlan_port(struct ixgbe_adapter *);
 void ixgbe_set_rx_mode(struct net_device *netdev);
 int ixgbe_write_mc_addr_list(struct net_device *netdev);
 int ixgbe_setup_tc(struct net_device *dev, u8 tc);

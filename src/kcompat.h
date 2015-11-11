@@ -4319,11 +4319,7 @@ static inline void __kc_skb_set_hash(struct sk_buff __maybe_unused *skb,
 }
 #endif /* !skb_set_hash */
 
-#else
-
-#ifndef HAVE_ENCAP_TSO_OFFLOAD
-#define HAVE_ENCAP_TSO_OFFLOAD
-#endif /* HAVE_ENCAP_TSO_OFFLOAD */
+#else	/* RHEL_RELEASE_CODE >= 7.0 || SLE_VERSION_CODE >= 12.0 */
 
 #ifndef HAVE_VXLAN_RX_OFFLOAD
 #define HAVE_VXLAN_RX_OFFLOAD
@@ -4332,7 +4328,7 @@ static inline void __kc_skb_set_hash(struct sk_buff __maybe_unused *skb,
 #ifndef HAVE_VXLAN_CHECKS
 #define HAVE_VXLAN_CHECKS
 #endif /* HAVE_VXLAN_CHECKS */
-#endif /* !(RHEL_RELEASE_CODE&&RHEL_RELEASE_CODE>=RHEL_RELEASE_VERSION(7,0)) */
+#endif /* !(RHEL_RELEASE_CODE >= 7.0 && SLE_VERSION_CODE >= 12.0) */
 
 #ifndef pci_enable_msix_range
 extern int __kc_pci_enable_msix_range(struct pci_dev *dev,
@@ -4598,6 +4594,9 @@ static inline struct sk_buff *__kc_napi_alloc_skb(struct napi_struct *napi, unsi
 #define NDO_BRIDGE_GETLINK_HAS_FILTER_MASK_PARAM
 #define HAVE_RXFH_HASHFUNC
 #endif /* RHEL_RELEASE_CODE */
+#ifndef napi_schedule_irqoff
+#define napi_schedule_irqoff	napi_schedule
+#endif
 #else /* 3.19.0 */
 #define HAVE_NDO_FDB_ADD_VID
 #define HAVE_RXFH_HASHFUNC
@@ -4637,7 +4636,7 @@ static inline void __kc_timecounter_adjtime(struct timecounter *tc, s64 delta)
 #define HAVE_NDO_BRIDGE_GETLINK_NLFLAGS
 #endif /* 4,1,0 */
 
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0) )
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,1,9))
 #if (!(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(12,1,0)))
 static inline bool page_is_pfmemalloc(struct page __maybe_unused *page)
 {
@@ -4648,10 +4647,13 @@ static inline bool page_is_pfmemalloc(struct page __maybe_unused *page)
 #endif
 }
 #endif /* !SLES12sp1 */
+#else
+#undef HAVE_STRUCT_PAGE_PFMEMALLOC
+#endif /* 4.1.9 */
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0))
 #else
 #define HAVE_NDO_DFLT_BRIDGE_GETLINK_VLAN_SUPPORT
-#undef HAVE_STRUCT_PAGE_PFMEMALLOC
 #endif /* 4.2.0 */
 
 #endif /* _KCOMPAT_H_ */

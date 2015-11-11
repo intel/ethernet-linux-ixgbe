@@ -31,6 +31,7 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 #include <linux/highmem.h>
+
 #ifdef SIOCETHTOOL
 #include <asm/uaccess.h>
 
@@ -51,9 +52,6 @@
 #ifdef ETHTOOL_OPS_COMPAT
 #include "kcompat_ethtool.c"
 #endif
-#ifndef FLOW_VXLAN_EXT
-#define FLOW_VXLAN_EXT 0x20000000
-#endif /* !FLOW_VXLAN_EXT */
 #ifdef ETHTOOL_GSTATS
 struct ixgbe_stats {
 	char stat_string[ETH_GSTRING_LEN];
@@ -196,6 +194,36 @@ static const char ixgbe_gstrings_test[][ETH_GSTRING_LEN] = {
 #define IXGBE_TEST_LEN	(sizeof(ixgbe_gstrings_test) / ETH_GSTRING_LEN)
 #endif /* ETHTOOL_TEST */
 
+/* currently supported speeds for 10G */
+#define ADVERTISED_MASK_10G (SUPPORTED_10000baseT_Full | SUPPORTED_10000baseKX4_Full | SUPPORTED_10000baseKR_Full)
+
+#define ixgbe_isbackplane(type)  ((type == ixgbe_media_type_backplane)? true : false)
+
+static __u32 ixgbe_backplane_type(struct ixgbe_hw *hw)
+{
+	__u32 mode = 0x00;
+	switch(hw->device_id)
+	{
+		case IXGBE_DEV_ID_82598:
+		case IXGBE_DEV_ID_82599_KX4:
+		case IXGBE_DEV_ID_82599_KX4_MEZZ:
+		case IXGBE_DEV_ID_X550EM_X_KX4:
+			mode = SUPPORTED_10000baseKX4_Full;
+			break;
+		case IXGBE_DEV_ID_82598_BX:
+		case IXGBE_DEV_ID_82599_KR:
+		case IXGBE_DEV_ID_X550EM_X_KR:
+			mode = SUPPORTED_10000baseKR_Full;
+			break;
+		default:
+			mode = (SUPPORTED_10000baseKX4_Full | SUPPORTED_10000baseKR_Full);
+			break;
+	}
+	return mode;
+}
+
+
+
 int ixgbe_get_settings(struct net_device *netdev,
 		       struct ethtool_cmd *ecmd)
 {
@@ -210,35 +238,39 @@ int ixgbe_get_settings(struct net_device *netdev,
 
 	/* set the supported link speeds */
 	if (supported_link & IXGBE_LINK_SPEED_10GB_FULL)
-		ecmd->supported |= SUPPORTED_10000baseT_Full;
+		ecmd->supported |= (ixgbe_isbackplane(hw->phy.media_type))? ixgbe_backplane_type(hw) : SUPPORTED_10000baseT_Full;
 	if (supported_link & IXGBE_LINK_SPEED_1GB_FULL)
-		ecmd->supported |= SUPPORTED_1000baseT_Full;
+		ecmd->supported |= (ixgbe_isbackplane(hw->phy.media_type))? SUPPORTED_1000baseKX_Full : SUPPORTED_1000baseT_Full;
 	if (supported_link & IXGBE_LINK_SPEED_100_FULL)
 		ecmd->supported |= SUPPORTED_100baseT_Full;
 
+	/* default advertised speed if phy.autoneg_advertised isn't set */
+	ecmd->advertising = ecmd->supported;
+
 	/* set the advertised speeds */
-	if (hw->phy.autoneg_advertised) {
+	if (hw->phy.autoneg_advertised)
+	{
+		ecmd->advertising = 0x00;
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
 			ecmd->advertising |= ADVERTISED_100baseT_Full;
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL)
-			ecmd->advertising |= ADVERTISED_10000baseT_Full;
+			ecmd->advertising |= (ecmd->supported & ADVERTISED_MASK_10G);
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
-			ecmd->advertising |= ADVERTISED_1000baseT_Full;
-	} else {
-		/* default modes in case phy.autoneg_advertised isn't set */
-		if (supported_link & IXGBE_LINK_SPEED_10GB_FULL)
-			ecmd->advertising |= ADVERTISED_10000baseT_Full;
-		if (supported_link & IXGBE_LINK_SPEED_1GB_FULL)
-			ecmd->advertising |= ADVERTISED_1000baseT_Full;
-		if (supported_link & IXGBE_LINK_SPEED_100_FULL)
-			ecmd->advertising |= ADVERTISED_100baseT_Full;
-
-		if (hw->phy.multispeed_fiber && !autoneg) {
+		{
+			if(ecmd->supported & SUPPORTED_1000baseKX_Full)
+				ecmd->advertising |= ADVERTISED_1000baseKX_Full;
+			else
+				ecmd->advertising |= ADVERTISED_1000baseT_Full;
+		}
+	}
+	else
+	{
+		if (hw->phy.multispeed_fiber && !autoneg)
+		{
 			if (supported_link & IXGBE_LINK_SPEED_10GB_FULL)
 				ecmd->advertising = ADVERTISED_10000baseT_Full;
 		}
 	}
-
 	if (autoneg) {
 		ecmd->supported |= SUPPORTED_Autoneg;
 		ecmd->advertising |= ADVERTISED_Autoneg;
@@ -361,6 +393,14 @@ int ixgbe_get_settings(struct net_device *netdev,
 		case IXGBE_LINK_SPEED_10GB_FULL:
 			ethtool_cmd_speed_set(ecmd, SPEED_10000);
 			break;
+		case IXGBE_LINK_SPEED_5GB_FULL:
+			ethtool_cmd_speed_set(ecmd, 5000);
+			break;
+#ifdef SUPPORTED_2500baseX_Full
+		case IXGBE_LINK_SPEED_2_5GB_FULL:
+			ethtool_cmd_speed_set(ecmd, SPEED_2500);
+			break;
+#endif /* SUPPORTED_2500baseX_Full */
 		case IXGBE_LINK_SPEED_1GB_FULL:
 			ethtool_cmd_speed_set(ecmd, SPEED_1000);
 			break;
@@ -428,7 +468,8 @@ static int ixgbe_set_settings(struct net_device *netdev,
 			hw->mac.ops.setup_link(hw, old, true);
 		}
 		clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
-	} else {
+	}
+	else {
 		/* in this case we currently only support 10Gb/FULL */
 		u32 speed = ethtool_cmd_speed(ecmd);
 		if ((ecmd->autoneg == AUTONEG_ENABLE) ||
@@ -2415,7 +2456,7 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		adapter->tx_itr_setting = ec->tx_coalesce_usecs;
 
 	if (adapter->tx_itr_setting == 1)
-		tx_itr_param = IXGBE_10K_ITR;
+		tx_itr_param = IXGBE_12K_ITR;
 	else
 		tx_itr_param = adapter->tx_itr_setting;
 
@@ -2479,6 +2520,8 @@ static u32 ixgbe_get_rx_csum(struct net_device *netdev)
 static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	bool need_reset = false;
+
 	if (data)
 		netdev->features |= NETIF_F_RXCSUM;
 	else
@@ -2490,9 +2533,27 @@ static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 
 		if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED) {
 			adapter->flags2 &= ~IXGBE_FLAG2_RSC_ENABLED;
-			ixgbe_do_reset(netdev);
+			need_reset = true;
 		}
 	}
+
+#ifdef HAVE_VXLAN_RX_OFFLOAD
+	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE && data) {
+		netdev->hw_enc_features |= NETIF_F_RXCSUM |
+					   NETIF_F_IP_CSUM |
+					   NETIF_F_IPV6_CSUM;
+		if (!need_reset)
+			adapter->flags2 |= IXGBE_FLAG2_VXLAN_REREG_NEEDED;
+	} else {
+		netdev->hw_enc_features &= ~(NETIF_F_RXCSUM |
+					     NETIF_F_IP_CSUM |
+					     NETIF_F_IPV6_CSUM);
+		ixgbe_clear_vxlan_port(adapter);
+	}
+#endif /* HAVE_VXLAN_RX_OFFLOAD */
+
+	if (need_reset)
+		ixgbe_do_reset(netdev);
 
 	return 0;
 }
@@ -2511,6 +2572,13 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+#ifdef HAVE_ENCAP_TSO_OFFLOAD
+		if (data)
+			netdev->hw_enc_features |= NETIF_F_GSO_UDP_TUNNEL;
+		else
+			netdev->hw_enc_features &= ~NETIF_F_GSO_UDP_TUNNEL;
+		feature_list |= NETIF_F_GSO_UDP_TUNNEL;
+#endif /* HAVE_ENCAP_TSO_OFFLOAD */
 		feature_list |= NETIF_F_SCTP_CSUM;
 		break;
 	default:
@@ -2609,8 +2677,17 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 #ifndef HAVE_VLAN_RX_REGISTER
 	if (changed & ETH_FLAG_RXVLAN)
 		ixgbe_vlan_mode(netdev, netdev->features);
-
 #endif
+
+#ifdef HAVE_VXLAN_CHECKS
+	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE &&
+	    netdev->features & NETIF_F_RXCSUM) {
+		vxlan_get_rx_port(netdev);
+	else
+		ixgbe_clear_vxlan_port(adapter);
+	}
+#endif /* HAVE_VXLAN_RX_OFFLOAD */
+
 	/* if state changes we need to update adapter->flags and reset */
 	if (!(netdev->features & NETIF_F_LRO)) {
 		if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)
@@ -2744,24 +2821,6 @@ static int ixgbe_get_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	fsp->m_ext.data[1] = htonl(mask->formatted.vm_pool);
 	fsp->flow_type |= FLOW_EXT;
 
-#ifdef HAVE_VXLAN_CHECKS
-	if (rule->filter.formatted.tunnel_type) {
-		__be16 *vpp;
-
-		memcpy(&fsp->h_ext.h_dest[2],
-		       &rule->filter.formatted.tni_vni,
-		       sizeof(rule->filter.formatted.tni_vni));
-		memcpy(&fsp->m_ext.h_dest[2],
-		       &mask->formatted.tni_vni,
-		       sizeof(mask->formatted.tni_vni));
-		vpp = (__be16 *)&fsp->h_ext.h_dest[0];
-		*vpp = htons(adapter->vxlan_port);
-		vpp = (__be16 *)&fsp->m_ext.h_dest[0];
-		*vpp = htons(0xFFFF);
-		fsp->flow_type |= FLOW_VXLAN_EXT;
-	}
-
-#endif /* HAVE_VXLAN_CHECKS */
 	/* record action */
 	if (rule->action == IXGBE_FDIR_DROP_QUEUE)
 		fsp->ring_cookie = RX_CLS_FLOW_DISC;
@@ -2938,7 +2997,7 @@ static int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 static int ixgbe_flowspec_to_flow_type(struct ethtool_rx_flow_spec *fsp,
 				       u8 *flow_type)
 {
-	switch (fsp->flow_type & ~(FLOW_EXT | FLOW_VXLAN_EXT)) {
+	switch (fsp->flow_type & ~FLOW_EXT) {
 	case TCP_V4_FLOW:
 		*flow_type = IXGBE_ATR_FLOW_TYPE_TCPV4;
 		break;
@@ -2988,9 +3047,6 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
 		return -EOPNOTSUPP;
 
-	if ((fsp->flow_type & FLOW_VXLAN_EXT) && !adapter->cloud_mode)
-		return -EOPNOTSUPP;
-
 	/*
 	 * Don't allow programming if the action is a queue greater than
 	 * the number of online Rx queues.
@@ -3037,25 +3093,6 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	input->filter.formatted.dst_port = fsp->h_u.tcp_ip4_spec.pdst;
 	mask.formatted.dst_port = fsp->m_u.tcp_ip4_spec.pdst;
 
-#ifdef HAVE_VXLAN_CHECKS
-	if (fsp->flow_type & FLOW_VXLAN_EXT) {
-		u16 vxlan_port = ntohs(*(__be16 *)&fsp->h_ext.h_dest[0]);
-
-		if (vxlan_port != adapter->vxlan_port) {
-			e_err(drv,
-			      "Cannot filter on vxlan port %u when current vxlan port is %u\n",
-			      vxlan_port, adapter->vxlan_port);
-			goto err_out;
-		}
-		memcpy(&input->filter.formatted.tni_vni, &fsp->h_ext.h_dest[2],
-		       sizeof(input->filter.formatted.tni_vni));
-		memcpy(&mask.formatted.tni_vni, &fsp->m_ext.h_dest[2],
-		       sizeof(mask.formatted.tni_vni));
-		input->filter.formatted.tunnel_type = 1;
-		mask.formatted.tunnel_type = 0xFFFF;
-	}
-
-#endif /* HAVE_VXLAN_CHECKS */
 	if (fsp->flow_type & FLOW_EXT) {
 		input->filter.formatted.vm_pool =
 				(unsigned char)ntohl(fsp->h_ext.data[1]);
@@ -3537,11 +3574,9 @@ static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
 	if (!hw->mac.ops.setup_eee)
 		return -EOPNOTSUPP;
 
-	edata->supported = (SUPPORTED_10000baseT_Full |
-			    SUPPORTED_1000baseT_Full);
-
-	if (hw->mac.ops.get_media_type(hw) == ixgbe_media_type_copper)
-		edata->supported |= SUPPORTED_100baseT_Full;
+	if (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)
+		edata->supported = (SUPPORTED_10000baseT_Full |
+				    SUPPORTED_1000baseT_Full);
 
 	eee_stat = IXGBE_READ_REG(hw, IXGBE_EEE_STAT);
 
@@ -3576,7 +3611,8 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 	struct ethtool_eee eee_data;
 	s32 ret_val;
 
-	if (!hw->mac.ops.setup_eee)
+	if (!(hw->mac.ops.setup_eee &&
+	    (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)))
 		return -EOPNOTSUPP;
 
 	memset(&eee_data, 0, sizeof(struct ethtool_eee));

@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.1.5) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.2.1) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -118,6 +118,9 @@ static DEFINE_PCI_DEVICE_TABLE(ixgbe_pci_tbl) = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_SFP_SF_QP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_QSFP_SF_QP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X540T1), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_KX4), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_KR), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_SFP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_10G_T), 0},
 	/* required last entry */
 	{ .device = 0 }
@@ -225,6 +228,9 @@ static void ixgbe_check_minimum_link(struct ixgbe_adapter *adapter,
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	int max_gts = 0;
+	enum pci_bus_speed speed = PCI_SPEED_UNKNOWN;
+	enum pcie_link_width width = PCIE_LNK_WIDTH_UNKNOWN;
+	struct pci_dev *pdev;
 
 	/* Some devices are not connected over PCIe and thus do not negotiate
 	 * speed. These devices do not have valid bus info, and thus any report
@@ -233,35 +239,47 @@ static void ixgbe_check_minimum_link(struct ixgbe_adapter *adapter,
 	if (hw->bus.type == ixgbe_bus_type_internal)
 		return;
 
-	switch (hw->bus.speed) {
-	case ixgbe_bus_speed_2500:
+	/* determine whether to use the parent device */
+	if (ixgbe_pcie_from_parent(&adapter->hw))
+		pdev = adapter->pdev->bus->parent->self;
+	else
+		pdev = adapter->pdev;
+
+	if (pcie_get_minimum_link(pdev, &speed, &width) ||
+	    speed == PCI_SPEED_UNKNOWN || width == PCIE_LNK_WIDTH_UNKNOWN) {
+		e_dev_warn("Unable to determine PCI Express bandwidth.\n");
+		return;
+	}
+
+	switch (speed) {
+	case PCIE_SPEED_2_5GT:
 		/* 8b/10b encoding reduces max throughput by 20% */
-		max_gts = 2 * hw->bus.width;
+		max_gts = 2 * width;
 		break;
-	case ixgbe_bus_speed_5000:
+	case PCIE_SPEED_5_0GT:
 		/* 8b/10b encoding reduces max throughput by 20% */
-		max_gts = 4 * hw->bus.width;
+		max_gts = 4 * width;
 		break;
-	case ixgbe_bus_speed_8000:
+	case PCIE_SPEED_8_0GT:
 		/* 128b/130b encoding has less than 2% impact on throughput */
-		max_gts = 8 * hw->bus.width;
+		max_gts = 8 * width;
 		break;
 	default:
-		e_dev_warn("Unable to determine PCI Express throughput.\n");
+		e_dev_warn("Unable to determine PCI Express bandwidth.\n");
 		return;
 	}
 
 	e_dev_info("PCI Express bandwidth of %dGT/s available\n",
 		   max_gts);
 	e_dev_info("(Speed:%s, Width: x%d, Encoding Loss:%s)\n",
-		   (hw->bus.speed == ixgbe_bus_speed_8000 ? "8.0GT/s" :
-		    hw->bus.speed == ixgbe_bus_speed_5000 ? "5.0GT/s" :
-		    hw->bus.speed == ixgbe_bus_speed_2500 ? "2.5GT/s" :
+		   (speed == PCIE_SPEED_8_0GT ? "8.0GT/s" :
+		    speed == PCIE_SPEED_5_0GT ? "5.0GT/s" :
+		    speed == PCIE_SPEED_2_5GT ? "2.5GT/s" :
 		    "Unknown"),
 		   hw->bus.width,
-		   (hw->bus.speed == ixgbe_bus_speed_2500 ? "20%" :
-		    hw->bus.speed == ixgbe_bus_speed_5000 ? "20%" :
-		    hw->bus.speed == ixgbe_bus_speed_8000 ? "<2%" :
+		   (speed == PCIE_SPEED_2_5GT ? "20%" :
+		    speed == PCIE_SPEED_5_0GT ? "20%" :
+		    speed == PCIE_SPEED_8_0GT ? "<2%" :
 		    "Unknown"));
 
 	if (max_gts < expected_gts) {
@@ -366,13 +384,14 @@ static void ixgbe_check_remove(struct ixgbe_hw *hw, u32 reg)
 }
 
 static u32
-ixgbe_validate_register_read(struct ixgbe_hw *hw, u32 reg, bool quiet)
+ixgbe_validate_register_read(struct ixgbe_hw *_hw, u32 reg, bool quiet)
 {
 	int i;
 	u32 value;
 	u8 __iomem *reg_addr;
+	struct ixgbe_adapter *adapter = _hw->back;
 
-	reg_addr = ACCESS_ONCE(hw->hw_addr);
+	reg_addr = ACCESS_ONCE(_hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return IXGBE_FAILED_READ_REG;
 	for (i = 0; i < IXGBE_DEAD_READ_RETRIES; ++i) {
@@ -383,9 +402,9 @@ ixgbe_validate_register_read(struct ixgbe_hw *hw, u32 reg, bool quiet)
 	if (quiet)
 		return value;
 	if (value == IXGBE_DEAD_READ_REG)
-		pr_info("%s: register %x read unchanged\n", __func__, reg);
+		e_err(drv, "%s: register %x read unchanged\n", __func__, reg);
 	else
-		pr_info("%s: register %x read recovered after %d retries\n",
+		e_warn(hw, "%s: register %x read recovered after %d retries\n",
 			__func__, reg, i + 1);
 	return value;
 }
@@ -2035,14 +2054,9 @@ static bool ixgbe_cleanup_headers(struct ixgbe_ring __maybe_unused *rx_ring,
 		return false;
 #endif
 
-	/* if skb_pad returns an error the skb was freed */
-	if (unlikely(skb->len < 60)) {
-		int pad_len = 60 - skb->len;
-
-		if (skb_pad(skb, pad_len))
-			return true;
-		__skb_put(skb, pad_len);
-	}
+	/* if eth_skb_pad returns an error the skb was freed */
+	if (eth_skb_pad(skb))
+		return true;
 
 	return false;
 }
@@ -2647,7 +2661,7 @@ static void ixgbe_update_itr(struct ixgbe_q_vector *q_vector,
 	/* simple throttlerate management
 	 *   0-10MB/s   lowest (100000 ints/s)
 	 *  10-20MB/s   low    (20000 ints/s)
-	 *  20-1249MB/s bulk   (8000 ints/s)
+	 *  20-1249MB/s bulk   (12000 ints/s)
 	 */
 	/* what was last interrupt timeslice? */
 	timepassed_us = q_vector->itr >> 2;
@@ -2738,7 +2752,7 @@ static void ixgbe_set_itr(struct ixgbe_q_vector *q_vector)
 		new_itr = IXGBE_20K_ITR;
 		break;
 	case bulk_latency:
-		new_itr = IXGBE_8K_ITR;
+		new_itr = IXGBE_12K_ITR;
 		break;
 	default:
 		break;
@@ -3980,6 +3994,8 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 	IXGBE_WRITE_REG(hw, IXGBE_RDBAH(reg_idx), rdba >> 32);
 	IXGBE_WRITE_REG(hw, IXGBE_RDLEN(reg_idx),
 			ring->count * sizeof(union ixgbe_adv_rx_desc));
+	/* Force flushing of IXGBE_RDLEN to prevent MDD */
+	IXGBE_WRITE_FLUSH(hw);
 
 	/* reset head and tail pointers */
 	IXGBE_WRITE_REG(hw, IXGBE_RDH(reg_idx), 0);
@@ -4196,14 +4212,20 @@ static void ixgbe_configure_virtualization(struct ixgbe_adapter *adapter)
 	hw->mac.ops.set_mac_anti_spoofing(hw, (adapter->num_vfs != 0),
 						adapter->num_vfs);
 
-	/* Ensure LLDP is set for Ethertype Antispoofing if we will be
+	/* Ensure LLDP and FC is set for Ethertype Antispoofing if we will be
 	 * calling set_ethertype_anti_spoofing for each VF in loop below.
 	 */
-	if (hw->mac.ops.set_ethertype_anti_spoofing)
+	if (hw->mac.ops.set_ethertype_anti_spoofing) {
 		IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_LLDP),
-			(IXGBE_ETQF_FILTER_EN    | /* enable filter */
-			 IXGBE_ETQF_TX_ANTISPOOF | /* enable tx antispoof */
-			 IXGBE_ETH_P_LLDP));       /* LLDP eth procotol type */
+			(IXGBE_ETQF_FILTER_EN    |
+			 IXGBE_ETQF_TX_ANTISPOOF |
+			 IXGBE_ETH_P_LLDP));
+
+		IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_FC),
+			(IXGBE_ETQF_FILTER_EN    |
+			 IXGBE_ETQF_TX_ANTISPOOF |
+			 ETH_P_PAUSE));
+	}
 
 	for (i = 0; i < adapter->num_vfs; i++) {
 #ifdef HAVE_VF_SPOOFCHK_CONFIGURE
@@ -5076,8 +5098,18 @@ s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame)
 	return ixgbe_dcb_hw_config(hw, refill, max,
 				   bwg_id, prio_type, ets->prio_tc);
 }
+#endif /* HAVE_DCBNL_IEEE */
 
-#endif
+void ixgbe_clear_vxlan_port(struct ixgbe_adapter *adapter)
+{
+#ifdef HAVE_VXLAN_CHECKS
+	adapter->vxlan_port = 0;
+#endif /* HAVE_VXLAN_CHECKS */
+	if (!(adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE))
+		return;
+	IXGBE_WRITE_REG(&adapter->hw, IXGBE_VXLANCTRL, 0);
+}
+
 static inline unsigned long ixgbe_tso_features(void)
 {
 	unsigned long features = 0;
@@ -5520,8 +5552,13 @@ static void ixgbe_configure(struct ixgbe_adapter *adapter)
 	    adapter->hw.mac.type == ixgbe_mac_X540)
 		hw->mac.ops.enable_sec_rx_path(hw);
 
+	/* Enable EEE only when supported and enabled */
 	if (hw->mac.ops.setup_eee) {
-		bool eee_enable = !!(adapter->flags2 & IXGBE_FLAG2_EEE_ENABLED);
+		bool eee_enable = false;
+
+		if (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)
+			eee_enable = !!(adapter->flags2 &
+					IXGBE_FLAG2_EEE_ENABLED);
 
 		hw->mac.ops.setup_eee(hw, eee_enable);
 	}
@@ -5687,9 +5724,6 @@ static void ixgbe_setup_gpie(struct ixgbe_adapter *adapter)
 		 * specifically only auto mask tx and rx interrupts */
 		IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
 	}
-
-	/* XXX: to interrupt immediately for EICS writes, enable this */
-	/* gpie |= IXGBE_GPIE_EIMEN; */
 
 	if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
 		gpie &= ~IXGBE_GPIE_VTMODE_MASK;
@@ -6127,6 +6161,25 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 }
 
 /**
+ * ixgbe_eee_capable - helper function to determine EEE support on X550
+ *
+ **/
+static inline void ixgbe_set_eee_capable(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 fuse;
+
+	if (hw->mac.type == ixgbe_mac_X550EM_x) {
+		/* EEE not supported on first revision. */
+		fuse = IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0));
+
+		if ((hw->device_id == IXGBE_DEV_ID_X550EM_X_KR) &&
+			    (fuse & IXGBE_FUSES0_REV1))
+				adapter->flags2 |= IXGBE_FLAG2_EEE_CAPABLE;
+	}
+}
+
+/**
  * ixgbe_sw_init - Initialize general software structures (struct ixgbe_adapter)
  * @adapter: board private structure to initialize
  *
@@ -6229,15 +6282,13 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550:
+		if (hw->mac.type == ixgbe_mac_X550)
+			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_CAPABLE;
+		ixgbe_set_eee_capable(adapter);
 		adapter->flags |= IXGBE_FLAGS_X550_INIT;
 #if IS_ENABLED(CONFIG_DCA)
 		adapter->flags &= ~IXGBE_FLAG_DCA_CAPABLE;
 #endif /* CONFIG_DCA */
-		adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
-
-		if ((hw->mac.type == ixgbe_mac_X550EM_x) &&
-		    (hw->revision_id == 0))
-			adapter->flags &= ~IXGBE_FLAG_SRIOV_CAPABLE;
 	default:
 		break;
 	}
@@ -6666,6 +6717,7 @@ static int ixgbe_open(struct net_device *netdev)
 
 	ixgbe_up_complete(adapter);
 
+	ixgbe_clear_vxlan_port(adapter);
 #ifdef HAVE_VXLAN_CHECKS
 	vxlan_get_rx_port(netdev);
 #endif /* HAVE_VXLAN_CHECKS */
@@ -7520,6 +7572,7 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	struct net_device *netdev = adapter->netdev;
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 link_speed = adapter->link_speed;
+	const char *speed_str;
 	bool flow_rx, flow_tx;
 
 	/* only continue if link was previously down */
@@ -7559,14 +7612,27 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 		ixgbe_ptp_start_cyclecounter(adapter);
 
 #endif
-	e_info(drv, "NIC Link is Up %s, Flow Control: %s\n",
-	       (link_speed == IXGBE_LINK_SPEED_10GB_FULL ?
-	       "10 Gbps" :
-	       (link_speed == IXGBE_LINK_SPEED_1GB_FULL ?
-	       "1 Gbps" :
-	       (link_speed == IXGBE_LINK_SPEED_100_FULL ?
-	       "100 Mbps" :
-	       "unknown speed"))),
+	switch (link_speed) {
+	case IXGBE_LINK_SPEED_10GB_FULL:
+		speed_str = "10 Gbps";
+		break;
+	case IXGBE_LINK_SPEED_5GB_FULL:
+		speed_str = "5 Gbps";
+		break;
+	case IXGBE_LINK_SPEED_2_5GB_FULL:
+		speed_str = "2.5 Gbps";
+		break;
+	case IXGBE_LINK_SPEED_1GB_FULL:
+		speed_str = "1 Gbps";
+		break;
+	case IXGBE_LINK_SPEED_100_FULL:
+		speed_str = "100 Mbps";
+		break;
+	default:
+		speed_str = "unknown speed";
+		break;
+	}
+	e_info(drv, "NIC Link is Up %s, Flow Control: %s\n", speed_str,
 	       ((flow_rx && flow_tx) ? "RX/TX" :
 	       (flow_rx ? "RX" :
 	       (flow_tx ? "TX" : "None"))));
@@ -8790,6 +8856,22 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 			goto out_drop;
 
 		goto xmit_fcoe;
+	} else if (protocol ==  htons(ETH_P_FIP)) {
+		/* FCoE stack has a bug where it does not set the network
+		 * header offset for FIP frames sent resulting into MACLEN
+		 * being set to ZERO in the Tx context descriptor.
+		 * This will cause MDD events when trying to Tx such frames.
+		 */
+		if (!skb_network_offset(skb)) {
+			if (tx_flags & (IXGBE_TX_FLAGS_HW_VLAN |
+			    IXGBE_TX_FLAGS_SW_VLAN))
+				skb_set_network_header(skb,
+						sizeof(struct ethhdr) +
+						sizeof(struct vlan_hdr));
+			else
+				skb_set_network_header(skb,
+						sizeof(struct ethhdr));
+		}
 	}
 #endif /* CONFIG_FCOE */
 
@@ -8842,11 +8924,8 @@ static netdev_tx_t ixgbe_xmit_frame(struct sk_buff *skb,
 	 * The minimum packet size for olinfo paylen is 17 so pad the skb
 	 * in order to meet this minimum size requirement.
 	 */
-	if (unlikely(skb->len < 17)) {
-		if (skb_pad(skb, 17 - skb->len))
-			return NETDEV_TX_OK;
-		skb->len = 17;
-	}
+	if (skb_put_padto(skb, 17))
+		return NETDEV_TX_OK;
 
 #ifdef HAVE_TX_MQ
 	if (r_idx >= adapter->num_tx_queues)
@@ -9111,9 +9190,11 @@ int ixgbe_setup_tc(struct net_device *dev, u8 tc)
 	struct ixgbe_hw *hw = &adapter->hw;
 
 	/* Hardware supports up to 8 traffic classes */
-	if (tc > adapter->dcb_cfg.num_tcs.pg_tcs ||
-	    (hw->mac.type == ixgbe_mac_82598EB &&
-	     tc < IXGBE_DCB_MAX_TRAFFIC_CLASS))
+	if (tc > adapter->dcb_cfg.num_tcs.pg_tcs)
+		return -EINVAL;
+
+	if (tc && hw->mac.type == ixgbe_mac_82598EB &&
+	    tc < IXGBE_DCB_MAX_TRAFFIC_CLASS)
 		return -EINVAL;
 
 	/* Hardware has to reinitialize queues and interrupts to
@@ -9291,6 +9372,16 @@ static int ixgbe_set_features(struct net_device *netdev,
 	else
 		ixgbe_vlan_stripping_disable(adapter);
 
+#ifdef HAVE_VXLAN_CHECKS
+	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE &&
+	    features & NETIF_F_RXCSUM) {
+		if (!need_reset)
+			adapter->flags2 |= IXGBE_FLAG2_VXLAN_REREG_NEEDED;
+	} else {
+		ixgbe_clear_vxlan_port(adapter);
+	}
+#endif /* HAVE_VXLAN_CHECKS */
+
 	if (need_reset)
 		ixgbe_do_reset(netdev);
 
@@ -9319,13 +9410,12 @@ static void ixgbe_add_vxlan_port(struct net_device *dev, sa_family_t sa_family,
 	if (!(adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE))
 		return;
 
-	if (adapter->vxlan_port == new_port) {
-		netdev_info(dev, "Port %d already offloaded\n", new_port);
+	if (adapter->vxlan_port == new_port)
 		return;
-	}
+
 	if (adapter->vxlan_port) {
 		netdev_info(dev,
-			    "Maximum number of UDP ports reached, not adding port %d\n",
+			    "Maximum VXLAN offload ports reached, not offloading port %d\n",
 			    new_port);
 		return;
 	}
@@ -9343,7 +9433,6 @@ static void ixgbe_del_vxlan_port(struct net_device *dev, sa_family_t sa_family,
 				 __be16 port)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
-	struct ixgbe_hw *hw = &adapter->hw;
 	u16 new_port = ntohs(port);
 
 	if (sa_family == AF_INET6)
@@ -9352,13 +9441,10 @@ static void ixgbe_del_vxlan_port(struct net_device *dev, sa_family_t sa_family,
 	if (!(adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE))
 		return;
 
-	if (adapter->vxlan_port != new_port) {
-		netdev_info(dev, "Port %d was not found, not deleting\n",
-			    new_port);
+	if (adapter->vxlan_port != new_port)
 		return;
-	}
-	adapter->vxlan_port = 0;
-	IXGBE_WRITE_REG(hw, IXGBE_VXLANCTRL, 0);
+
+	ixgbe_clear_vxlan_port(adapter);
 	adapter->flags2 |= IXGBE_FLAG2_VXLAN_REREG_NEEDED;
 }
 
@@ -9482,7 +9568,7 @@ static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode, 0, 0);
 #else
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode);
-#endif
+#endif /* HAVE_NDO_BRIDGE_GETLINK_NLFLAGS */
 }
 #endif /* HAVE_BRIDGE_ATTRIBS */
 #endif /* HAVE_FDB_OPS */
@@ -9493,7 +9579,14 @@ static netdev_features_t
 ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 		     netdev_features_t features)
 {
-	return vxlan_features_check(skb, features);
+	if (!skb->encapsulation)
+		return features;
+
+	if (unlikely(skb_inner_mac_header(skb) - skb_transport_header(skb) >
+		     IXGBE_MAX_TUNNEL_HDR_LEN))
+		return features & ~NETIF_F_ALL_CSUM;
+
+	return features;
 }
 #endif /* HAVE_NDO_FEATURES_CHECK */
 
@@ -9707,6 +9800,7 @@ int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 	case IXGBE_DEV_ID_X540T:
 	case IXGBE_DEV_ID_X540T1:
 	case IXGBE_DEV_ID_X550T:
+	case IXGBE_DEV_ID_X550T1:
 	case IXGBE_DEV_ID_X550EM_X_KX4:
 	case IXGBE_DEV_ID_X550EM_X_KR:
 	case IXGBE_DEV_ID_X550EM_X_10G_T:
@@ -9922,12 +10016,6 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		goto err_sw_init;
 	}
 
-	if (hw->mac.ops.setup_eee) {
-		bool eee_enable = !!(adapter->flags2 & IXGBE_FLAG2_EEE_ENABLED);
-
-		hw->mac.ops.setup_eee(hw, eee_enable);
-	}
-
 #ifdef CONFIG_PCI_IOV
 #ifdef HAVE_SRIOV_CONFIGURE
 	if (adapter->num_vfs > 0) {
@@ -9970,9 +10058,6 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	netdev->features |= NETIF_F_RXHASH;
 #endif /* NETIF_F_RXHASH */
 	netdev->features |= NETIF_F_RXCSUM;
-#ifdef HAVE_ENCAP_TSO_OFFLOAD
-	netdev->features |= NETIF_F_GSO_UDP_TUNNEL;
-#endif
 
 #ifdef HAVE_NDO_SET_FEATURES
 	/* copy netdev features into list of user selectable features */
@@ -10036,20 +10121,13 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 #ifdef HAVE_ENCAP_CSUM_OFFLOAD
-	netdev->hw_enc_features |= NETIF_F_SG | NETIF_F_IP_CSUM |
-#ifdef HAVE_ENCAP_TSO_OFFLOAD
-				   NETIF_F_GSO_UDP_TUNNEL |
-#endif
-				   NETIF_F_IPV6_CSUM;
+	netdev->hw_enc_features |= NETIF_F_SG;
 #endif /* HAVE_ENCAP_CSUM_OFFLOAD */
 #ifdef HAVE_VXLAN_RX_OFFLOAD
-	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_X550:
-	case ixgbe_mac_X550EM_x:
-		netdev->hw_enc_features |= NETIF_F_RXCSUM;
-		break;
-	default:
-		break;
+	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE) {
+		netdev->hw_enc_features |= NETIF_F_RXCSUM |
+					   NETIF_F_IP_CSUM |
+					   NETIF_F_IPV6_CSUM;
 	}
 
 #endif /* HAVE_VXLAN_RX_OFFLOAD */
@@ -10372,6 +10450,16 @@ no_info_string:
 		hw->mac.ops.setup_link(hw,
 			IXGBE_LINK_SPEED_10GB_FULL | IXGBE_LINK_SPEED_1GB_FULL,
 			true);
+
+	if (hw->mac.ops.setup_eee) {
+		bool eee_enable = false;
+
+		if (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)
+			eee_enable = !!(adapter->flags2 &
+					IXGBE_FLAG2_EEE_ENABLED);
+
+		hw->mac.ops.setup_eee(hw, eee_enable);
+	}
 
 	return 0;
 

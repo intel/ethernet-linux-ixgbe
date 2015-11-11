@@ -92,7 +92,7 @@
 #define IXGBE_INCPER_SHIFT_82599 24
 
 #define IXGBE_OVERFLOW_PERIOD    (HZ * 30)
-#define IXGBE_PTP_TX_TIMEOUT     (HZ * 15)
+#define IXGBE_PTP_TX_TIMEOUT     (HZ)
 
 /* half of a one second clock period, for use with PPS signal. We have to use
  * this instead of something pre-defined like IXGBE_PTP_PPS_HALF_SECOND, in
@@ -672,6 +672,26 @@ void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter)
 }
 
 /**
+ * ixgbe_ptp_clear_tx_timestamp - utility function to clear Tx timestamp state
+ * @adapter: the private adapter structure
+ *
+ * This function should be called whenever the state related to a Tx timestamp
+ * needs to be cleared. This helps ensure that all related bits are reset for
+ * the next Tx timestamp event.
+ */
+static void ixgbe_ptp_clear_tx_timestamp(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	IXGBE_READ_REG(hw, IXGBE_TXSTMPH);
+	if (adapter->ptp_tx_skb) {
+		dev_kfree_skb_any(adapter->ptp_tx_skb);
+		adapter->ptp_tx_skb = NULL;
+	}
+	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
+}
+
+/**
  * ixgbe_ptp_tx_hwtstamp - utility function which checks for TX time stamp
  * @adapter: the private adapter struct
  *
@@ -691,9 +711,7 @@ static void ixgbe_ptp_tx_hwtstamp(struct ixgbe_adapter *adapter)
 	ixgbe_ptp_convert_to_hwtstamp(adapter, &shhwtstamps, regval);
 	skb_tstamp_tx(adapter->ptp_tx_skb, &shhwtstamps);
 
-	dev_kfree_skb_any(adapter->ptp_tx_skb);
-	adapter->ptp_tx_skb = NULL;
-	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
+	ixgbe_ptp_clear_tx_timestamp(adapter);
 }
 
 /**
@@ -713,25 +731,28 @@ static void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work)
 					      IXGBE_PTP_TX_TIMEOUT);
 	u32 tsynctxctl;
 
-	/* we have to have a valid skb */
-	if (!adapter->ptp_tx_skb)
-		return;
-
-	if (timeout) {
-		dev_kfree_skb_any(adapter->ptp_tx_skb);
-		adapter->ptp_tx_skb = NULL;
-		adapter->tx_hwtstamp_timeouts++;
-		clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
-		e_warn(drv, "clearing Tx Timestamp hang");
+	/* we have to have a valid skb to poll for a timestamp */
+	if (!adapter->ptp_tx_skb) {
+		ixgbe_ptp_clear_tx_timestamp(adapter);
 		return;
 	}
 
+	/* stop polling once we have a valid timestamp */
 	tsynctxctl = IXGBE_READ_REG(hw, IXGBE_TSYNCTXCTL);
-	if (tsynctxctl & IXGBE_TSYNCTXCTL_VALID)
+	if (tsynctxctl & IXGBE_TSYNCTXCTL_VALID) {
 		ixgbe_ptp_tx_hwtstamp(adapter);
-	else
-		/* reschedule to keep checking if it's not available yet */
+		return;
+	}
+
+	/* check timeout last in case timestamp event just occurred */
+	if (timeout) {
+		ixgbe_ptp_clear_tx_timestamp(adapter);
+		adapter->tx_hwtstamp_timeouts++;
+		e_warn(drv, "clearing Tx Timestamp hang");
+	} else {
+		/* reschedule to keep checking until we timeout */
 		schedule_work(&adapter->ptp_tx_work);
+	}
 }
 
 /**
@@ -982,9 +1003,9 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 
 	IXGBE_WRITE_FLUSH(hw);
 
-	/* clear TX/RX time stamp registers, just to be sure */
-	regval = IXGBE_READ_REG(hw, IXGBE_TXSTMPH);
-	regval = IXGBE_READ_REG(hw, IXGBE_RXSTMPH);
+	/* clear TX/RX timestamp state, just to be sure */
+	ixgbe_ptp_clear_tx_timestamp(adapter);
+	IXGBE_READ_REG(hw, IXGBE_RXSTMPH);
 
 	return 0;
 }
@@ -1347,11 +1368,7 @@ void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter)
 		adapter->ptp_setup_sdp(adapter);
 
 	cancel_work_sync(&adapter->ptp_tx_work);
-	if (adapter->ptp_tx_skb) {
-		dev_kfree_skb_any(adapter->ptp_tx_skb);
-		adapter->ptp_tx_skb = NULL;
-		clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
-	}
+	ixgbe_ptp_clear_tx_timestamp(adapter);
 }
 
 /**

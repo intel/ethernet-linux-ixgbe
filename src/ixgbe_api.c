@@ -25,6 +25,24 @@
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
 
+#define IXGBE_EMPTY_PARAM
+
+static const u32 ixgbe_mvals_base[IXGBE_MVALS_IDX_LIMIT] = {
+	IXGBE_MVALS_INIT(IXGBE_EMPTY_PARAM)
+};
+
+static const u32 ixgbe_mvals_X540[IXGBE_MVALS_IDX_LIMIT] = {
+	IXGBE_MVALS_INIT(_X540)
+};
+
+static const u32 ixgbe_mvals_X550[IXGBE_MVALS_IDX_LIMIT] = {
+	IXGBE_MVALS_INIT(_X550)
+};
+
+static const u32 ixgbe_mvals_X550EM_x[IXGBE_MVALS_IDX_LIMIT] = {
+	IXGBE_MVALS_INIT(_X550EM_x)
+};
+
 /**
  * ixgbe_dcb_get_rtrup2tc - read rtrup2tc reg
  * @hw: pointer to hardware structure
@@ -81,6 +99,7 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
 		status = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
 		break;
 	}
+	hw->mac.max_link_up_time = IXGBE_LINK_UP_TIME;
 
 	return status;
 }
@@ -103,6 +122,8 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 			     "Unsupported vendor id: %x", hw->vendor_id);
 		return IXGBE_ERR_DEVICE_NOT_SUPPORTED;
 	}
+
+	hw->mvals = ixgbe_mvals_base;
 
 	switch (hw->device_id) {
 	case IXGBE_DEV_ID_82598:
@@ -140,9 +161,12 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_X540T:
 	case IXGBE_DEV_ID_X540T1:
 		hw->mac.type = ixgbe_mac_X540;
+		hw->mvals = ixgbe_mvals_X540;
 		break;
 	case IXGBE_DEV_ID_X550T:
+	case IXGBE_DEV_ID_X550T1:
 		hw->mac.type = ixgbe_mac_X550;
+		hw->mvals = ixgbe_mvals_X550;
 		break;
 	case IXGBE_DEV_ID_X550EM_X_KX4:
 	case IXGBE_DEV_ID_X550EM_X_KR:
@@ -150,6 +174,7 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_X550EM_X_1G_T:
 	case IXGBE_DEV_ID_X550EM_X_SFP:
 		hw->mac.type = ixgbe_mac_X550EM_x;
+		hw->mvals = ixgbe_mvals_X550EM_x;
 		break;
 	default:
 		ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;

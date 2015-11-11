@@ -533,6 +533,7 @@ int ixgbe_fso(struct ixgbe_ring *tx_ring,
 	u32 fcoe_sof_eof = 0;
 	u32 mss_l4len_idx;
 	u8 sof, eof;
+	u32 type_tucmd = IXGBE_ADVTXT_TUCMD_FCOE;
 
 #ifdef NETIF_F_FSO
 	if (skb_is_gso(skb) && skb_shinfo(skb)->gso_type != SKB_GSO_FCOE) {
@@ -610,6 +611,8 @@ int ixgbe_fso(struct ixgbe_ring *tx_ring,
 					       skb_shinfo(skb)->gso_size);
 		first->bytecount += (first->gso_segs - 1) * *hdr_len;
 		first->tx_flags |= IXGBE_TX_FLAGS_TSO;
+		/* Hardware expects L4T to be RSV for FCoE TSO */
+		type_tucmd |= IXGBE_ADVTXD_TUCMD_L4T_RSV;
 	}
 
 	/* set flag indicating FCOE to ixgbe_tx_map call */
@@ -627,7 +630,7 @@ int ixgbe_fso(struct ixgbe_ring *tx_ring,
 
 	/* write context desc */
 	ixgbe_tx_ctxtdesc(tx_ring, vlan_macip_lens, fcoe_sof_eof,
-			  IXGBE_ADVTXT_TUCMD_FCOE, mss_l4len_idx);
+			  type_tucmd, mss_l4len_idx);
 
 	return 0;
 }

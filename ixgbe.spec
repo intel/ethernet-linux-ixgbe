@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Ethernet Connection
-Version: 4.1.5
+Version: 4.2.1
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -34,6 +34,8 @@ make -C src
 
 %install
 make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} install
+# Remove modules files that we do not want to include
+find %{buildroot}/lib/modules/%(uname -r) -name 'modules.*' -exec rm -f {} \;
 # Append .new to driver name to avoid conflict with kernel RPM
 cd %{buildroot}
 find lib -name "ixgbe.*o" -exec mv {} {}.new \; \

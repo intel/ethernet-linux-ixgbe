@@ -22,150 +22,165 @@
 #
 ################################################################################
 
-###########################################################################
-# Driver files
+ifneq ($(KERNELRELEASE),)
+# kbuild part of makefile
+#
+# Makefile for the Intel(R) 10GbE PCI Express ethernet adapter driver
+#
 
-# core driver files
-CFILES = ixgbe_main.c ixgbe_common.c ixgbe_api.c ixgbe_param.c \
-         ixgbe_lib.c ixgbe_ethtool.c kcompat.c ixgbe_82598.c \
-         ixgbe_82599.c ixgbe_x540.c \
-	 ixgbe_x550.c \
-         ixgbe_sriov.c ixgbe_mbx.c \
-         ixgbe_dcb.c ixgbe_dcb_82598.c \
-         ixgbe_dcb_82599.c \
-         ixgbe_sysfs.c \
-         ixgbe_procfs.c \
-         ixgbe_phy.c
+obj-$(CONFIG_IXGBE) += ixgbe.o
 
-HFILES = ixgbe.h ixgbe_common.h ixgbe_api.h ixgbe_osdep.h kcompat.h \
-         ixgbe_sriov.h ixgbe_mbx.h \
-         ixgbe_dcb.h \
-         ixgbe_phy.h
-ifeq (,$(BUILD_KERNEL))
-BUILD_KERNEL=$(shell uname -r)
-endif
+define ixgbe-y
+	ixgbe_main.o
+	ixgbe_api.o
+	ixgbe_common.o
+	ixgbe_dcb.o
+	ixgbe_dcb_82598.o
+	ixgbe_dcb_82599.o
+	ixgbe_ethtool.o
+	ixgbe_lib.o
+	ixgbe_mbx.o
+	ixgbe_sriov.o
+	ixgbe_param.o
+	ixgbe_phy.o
+	ixgbe_procfs.o
+	ixgbe_82598.o
+	ixgbe_82599.o
+	ixgbe_x540.o
+	ixgbe_x550.o
+endef
+ixgbe-y := $(strip ${ixgbe-y})
 
-DRIVER_NAME=ixgbe
+ixgbe-${CONFIG_DCB} += ixgbe_dcb_nl.o
 
+ixgbe-${CONFIG_DEBUG_FS} += ixgbe_debugfs.o
 
-###########################################################################
-# Environment tests
+ixgbe-${CONFIG_FCOE:m=y} += ixgbe_fcoe.o
 
-# Kernel Search Path
-# All the places we look for kernel source
-KSP :=  /lib/modules/$(BUILD_KERNEL)/build \
-        /lib/modules/$(BUILD_KERNEL)/source \
-        /usr/src/linux-$(BUILD_KERNEL) \
-        /usr/src/linux-$($(BUILD_KERNEL) | sed 's/-.*//') \
-        /usr/src/kernel-headers-$(BUILD_KERNEL) \
-        /usr/src/kernel-source-$(BUILD_KERNEL) \
-        /usr/src/linux-$($(BUILD_KERNEL) | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/') \
-        /usr/src/linux
+ixgbe-$(CONFIG_PTP_1588_CLOCK:m=y) += ixgbe_ptp.o
 
-# prune the list down to only values that exist
-# and have an include/linux sub-directory
-test_dir = $(shell [ -e $(dir)/include/linux ] && echo $(dir))
-KSP := $(foreach dir, $(KSP), $(test_dir))
+ixgbe-${CONFIG_SYSFS} += ixgbe_sysfs.o
 
-# we will use this first valid entry in the search path
-ifeq (,$(KSRC))
-  KSRC := $(firstword $(KSP))
-endif
+ixgbe-y += kcompat.o
 
-ifeq (,$(KSRC))
-  $(warning *** Kernel header files not in any of the expected locations.)
-  $(warning *** Install the appropriate kernel development package, e.g.)
-  $(error kernel-devel, for building kernel modules and try again)
-else
-ifeq (/lib/modules/$(BUILD_KERNEL)/source, $(KSRC))
-  KOBJ :=  /lib/modules/$(BUILD_KERNEL)/build
-else
-  KOBJ :=  $(KSRC)
-endif
-endif
+else	# ifneq($(KERNELRELEASE),)
+# normal makefile
 
-# Version file Search Path
-VSP :=  $(KOBJ)/include/generated/utsrelease.h \
-        $(KOBJ)/include/linux/utsrelease.h \
-        $(KOBJ)/include/linux/version.h \
-	$(KOBJ)/include/generated/uapi/linux/version.h \
-        /boot/vmlinuz.version.h
+#####################
+# Helpful functions #
+#####################
 
-# Config file Search Path
-CSP :=  $(KOBJ)/include/generated/autoconf.h \
-        $(KOBJ)/include/linux/autoconf.h \
-        /boot/vmlinuz.autoconf.h
+readlink = $(shell readlink -f ${1})
 
-# prune the lists down to only files that exist
-test_file = $(shell [ -f $(file) ] && echo $(file))
-VSP := $(foreach file, $(VSP), $(test_file))
-CSP := $(foreach file, $(CSP), $(test_file))
-
-# and use the first valid entry in the Search Paths
-ifeq (,$(VERSION_FILE))
-  VERSION_FILE := $(firstword $(VSP))
-endif
-ifeq (,$(CONFIG_FILE))
-  CONFIG_FILE := $(firstword $(CSP))
-endif
-
-ifeq (,$(wildcard $(VERSION_FILE)))
-  $(error Linux kernel source not configured - missing version header file)
-endif
-
-ifeq (,$(wildcard $(CONFIG_FILE)))
-  $(error Linux kernel source not configured - missing autoconf.h)
-endif
-
-# pick a compiler
-ifneq (,$(findstring egcs-2.91.66, $(shell cat /proc/version)))
-  CC := kgcc gcc cc
-else
-  CC := gcc cc
-endif
-test_cc = $(shell $(cc) --version > /dev/null 2>&1 && echo $(cc))
-CC := $(foreach cc, $(CC), $(test_cc))
-CC := $(firstword $(CC))
-ifeq (,$(CC))
-  $(error Compiler not found)
-endif
-
-# we need to know what platform the driver is being built on
-# some additional features are only built on Intel platforms
-ARCH := $(shell uname -m | sed 's/i.86/i386/')
-ifeq ($(ARCH),alpha)
-  EXTRA_CFLAGS += -ffixed-8 -mno-fp-regs
-endif
-ifeq ($(ARCH),x86_64)
-  EXTRA_CFLAGS += -mcmodel=kernel -mno-red-zone
-endif
-ifeq ($(ARCH),ppc)
-  EXTRA_CFLAGS += -msoft-float
-endif
-ifeq ($(ARCH),ppc64)
-  EXTRA_CFLAGS += -m64 -msoft-float
-  LDFLAGS += -melf64ppc
-endif
-
-# extra flags for module builds
-EXTRA_CFLAGS += -DDRIVER_$(shell echo $(DRIVER_NAME) | tr '[a-z]' '[A-Z]')
-EXTRA_CFLAGS += -DDRIVER_NAME=$(DRIVER_NAME)
-EXTRA_CFLAGS += -DDRIVER_NAME_CAPS=$(shell echo $(DRIVER_NAME) | tr '[a-z]' '[A-Z]')
-# standard flags for module builds
-EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -O2 -pipe -Wall
-EXTRA_CFLAGS += $(shell [ -d $(KSRC)/generated/uapi ] && \
-                        echo "$(KSRC)/generated/uapi")
-EXTRA_CFLAGS += -I$(KSRC)/include -I.
-EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
-                        echo "-DMODVERSIONS -DEXPORT_SYMTAB \
-                              -include $(KSRC)/include/linux/modversions.h")
-
-# Some helper functions for converting kernel version to version codes
+# helper functions for converting kernel version to version codes
 get_kver = $(or $(word ${2},$(subst ., ,${1})),0)
 get_kvercode = $(shell [ "${1}" -ge 0 -a "${1}" -le 255 2>/dev/null ] && \
                        [ "${2}" -ge 0 -a "${2}" -le 255 2>/dev/null ] && \
                        [ "${3}" -ge 0 -a "${3}" -le 255 2>/dev/null ] && \
                        printf %d $$(( ( ${1} << 16 ) + ( ${2} << 8 ) + ( ${3} ) )) )
+
+#####################
+# Environment setup #
+#####################
+
+SOURCES := $(shell find . -name "*.[ch]" | grep -v "\.mod\.c")
+DRIVER := ixgbe
+DRIVER_UPPERCASE := $(shell echo ${DRIVER} | tr "[:lower:]" "[:upper:]")
+
+#####################
+# Environment tests #
+#####################
+
+ifeq (,${BUILD_KERNEL})
+BUILD_KERNEL=$(shell uname -r)
+endif
+
+# Kernel Search Path
+# All the places we look for kernel source
+KSP :=  /lib/modules/${BUILD_KERNEL}/build \
+        /lib/modules/${BUILD_KERNEL}/source \
+        /usr/src/linux-${BUILD_KERNEL} \
+        /usr/src/linux-$(${BUILD_KERNEL} | sed 's/-.*//') \
+        /usr/src/kernel-headers-${BUILD_KERNEL} \
+        /usr/src/kernel-source-${BUILD_KERNEL} \
+        /usr/src/linux-$(${BUILD_KERNEL} | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/') \
+        /usr/src/linux \
+        /usr/src/kernels/${BUILD_KERNEL} \
+        /usr/src/kernels
+
+# prune the list down to only values that exist and have an include/linux
+# sub-directory. We can't use include/config because some older kernels don't
+# have this.
+test_dir = $(shell [ -e ${dir}/include/linux ] && echo ${dir})
+KSP := $(foreach dir, ${KSP}, ${test_dir})
+
+# we will use this first valid entry in the search path
+ifeq (,${KSRC})
+  KSRC := $(firstword ${KSP})
+endif
+
+ifeq (,${KSRC})
+  $(warning *** Kernel header files not in any of the expected locations.)
+  $(warning *** Install the appropriate kernel development package, e.g.)
+  $(error *** kernel-devel, for building kernel modules and try again)
+else
+ifeq (/lib/modules/${BUILD_KERNEL}/source, ${KSRC})
+  KOBJ :=  /lib/modules/${BUILD_KERNEL}/build
+else
+  KOBJ :=  ${KSRC}
+endif
+endif
+
+# Version file Search Path
+VSP :=  ${KOBJ}/include/generated/utsrelease.h \
+        ${KOBJ}/include/linux/utsrelease.h \
+        ${KOBJ}/include/linux/version.h \
+        ${KOBJ}/include/generated/uapi/linux/version.h \
+        /boot/vmlinuz.version.h
+
+# Config file Search Path
+CSP :=  ${KOBJ}/include/generated/autoconf.h \
+        ${KOBJ}/include/linux/autoconf.h \
+        /boot/vmlinuz.autoconf.h
+
+# System.map Search Path (for depmod)
+MSP := ${KSRC}/System.map \
+       /boot/System.map-${BUILD_KERNEL}
+
+# prune the lists down to only files that exist
+test_file = $(shell [ -f ${file} ] && echo ${file})
+VSP := $(foreach file, ${VSP}, ${test_file})
+CSP := $(foreach file, ${CSP}, ${test_file})
+MSP := $(foreach file, ${MSP}, ${test_file})
+
+# and use the first valid entry in the Search Paths
+ifeq (,${VERSION_FILE})
+  VERSION_FILE := $(firstword ${VSP})
+endif
+
+ifeq (,${CONFIG_FILE})
+  CONFIG_FILE := $(firstword ${CSP})
+endif
+
+ifeq (,${SYSTEM_MAP_FILE})
+  SYSTEM_MAP_FILE := $(firstword ${MSP})
+endif
+
+ifeq (,$(wildcard ${VERSION_FILE}))
+  $(error Linux kernel source not configured - missing version header file)
+endif
+
+ifeq (,$(wildcard ${CONFIG_FILE}))
+  $(error Linux kernel source not configured - missing autoconf.h)
+endif
+
+ifeq (,$(wildcard ${SYSTEM_MAP_FILE}))
+  $(warning Missing System.map file - depmod will not check for missing symbols)
+endif
+
+#######################
+# Linux Version Setup #
+#######################
 
 # The following command line parameter is intended for development of KCOMPAT
 # against upstream kernels such as net-next which have broken or non-updated
@@ -181,243 +196,185 @@ endif
 
 # Honor LINUX_VERSION_CODE
 ifneq (${LINUX_VERSION_CODE},)
-  $(warning Forcing target kernel's LINUX_VERSION_CODE to ${LINUX_VERSION_CODE}$(if ${LINUX_VERSION}, from LINUX_VERSION=${LINUX_VERSION}). Do this at your owk risk.)
+  $(warning Forcing target kernel to build with LINUX_VERSION_CODE of ${LINUX_VERSION_CODE}$(if ${LINUX_VERSION}, from LINUX_VERSION=${LINUX_VERSION}). Do this at your own risk.)
   KVER_CODE := ${LINUX_VERSION_CODE}
   EXTRA_CFLAGS += -DLINUX_VERSION_CODE=${LINUX_VERSION_CODE}
 endif
 
-EXTRA_CFLAGS += $(CFLAGS_EXTRA)
+EXTRA_CFLAGS += ${CFLAGS_EXTRA}
 
-RHC := $(KSRC)/include/linux/rhconfig.h
-ifneq (,$(wildcard $(RHC)))
-  # 7.3 typo in rhconfig.h
-  ifneq (,$(shell $(CC) $(CFLAGS) -E -dM $(RHC) | grep __module__bigmem))
-	EXTRA_CFLAGS += -D__module_bigmem
-  endif
-endif
 
 # get the kernel version - we use this to find the correct install path
-KVER := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VERSION_FILE) | grep UTS_RELEASE | \
+KVER := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM ${VERSION_FILE} | grep UTS_RELEASE | \
         awk '{ print $$3 }' | sed 's/\"//g')
 
 # assume source symlink is the same as build, otherwise adjust KOBJ
-ifneq (,$(wildcard /lib/modules/$(KVER)/build))
-ifneq ($(KSRC),$(shell readlink /lib/modules/$(KVER)/build))
-  KOBJ=/lib/modules/$(KVER)/build
+ifneq (,$(wildcard /lib/modules/${KVER}/build))
+ifneq (${KSRC},$(call readlink,/lib/modules/${KVER}/build))
+  KOBJ=/lib/modules/${KVER}/build
 endif
 endif
 
 ifeq (${KVER_CODE},)
-  KVER_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
+  KVER_CODE := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM ${VSP} 2> /dev/null |\
                  grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
 endif
 
-ifeq ($(strip $(KVER_CODE)),)
-KVER_CODE := 0
-endif
-
-RHEL_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
-	grep -m 1 RHEL_RELEASE_CODE | awk '{ print $$3 }')
-
-ifeq ($(strip $(RHEL_CODE)),)
-RHEL_CODE := 0
-endif
-
-# abort the build on kernels older than 2.4.0
-ifneq (1,$(shell [ $(KVER_CODE) -ge 132096 ] && echo 1 || echo 0))
-  $(error *** Aborting the build. \
-          *** This driver is not supported on kernel versions older than 2.4.0)
-endif
-
-# Add DCB netlink source if our kernel is 2.6.23 or newer
-ifeq (1,$(shell [ $(KVER_CODE) -ge 132631 ] && echo 1 || echo 0))
-  CFILES += ixgbe_dcb_nl.c
-endif
-
-# Add FCoE source if FCoE is supported by the kernel
-FCOE := $(shell grep -wE 'CONFIG_FCOE|CONFIG_FCOE_MODULE' $(CONFIG_FILE) | \
-	awk '{print $$3}')
-ifeq ($(FCOE), 1)
-  CFILES += ixgbe_fcoe.c
-  HFILES += ixgbe_fcoe.h
-endif
-
-# Add Debug FS source if DEBUG_FS is supported by the kernel
-DEBUGFS := $(shell grep -wE 'CONFIG_DEBUG_FS' $(CONFIG_FILE) | \
-	awk '{print $$3}')
-ifeq ($(DEBUGFS), 1)
-  CFILES += ixgbe_debugfs.c
-endif
-
-# Use NO_PTP_SUPPORT flag to disable IEEE-1588 PTP (Documented in README)
-ifneq ($(filter %NO_PTP_SUPPORT,$(CFLAGS_EXTRA)),-DNO_PTP_SUPPORT)
-# Do not attempt to enable PTP in kernels which do not have support
-ifeq (1,$(shell ([ $(KVER_CODE) -ge 196608 ] || [ $(RHEL_CODE) -ge 1540 ]) && echo 1 || echo 0))
-include $(KOBJ)/include/config/auto.conf
-ifdef CONFIG_PTP_1588_CLOCK
-CFILES += ixgbe_ptp.c
-endif # CONFIG_PTP_1588_CLOCK
-endif # kernel version >= 3.0
-endif # !NO_PTP_SUPPORT
-
-# set the install path before and after 3.2.0
-ifeq (1,$(shell [ $(KVER_CODE) -lt 197120 ] && echo 1 || echo 0))
-INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/$(DRIVER_NAME)
+# set correct CCFLAGS variable for kernels older than 2.6.24
+ifeq (0,$(shell [ ${KVER_CODE} -lt $(call get_kvercode,2,6,24) ]; echo $$?))
+CCFLAGS_VAR := EXTRA_CFLAGS
 else
-INSTDIR := /lib/modules/$(KVER)/kernel/drivers/net/ethernet/intel/$(DRIVER_NAME)
+CCFLAGS_VAR := ccflags-y
 endif
 
-# look for SMP in config.h
-SMP := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(CONFIG_FILE) | \
-         grep -w CONFIG_SMP | awk '{ print $$3 }')
-ifneq ($(SMP),1)
-  SMP := 0
+# abort the build on kernels older than 2.6.0
+ifeq (0,$(shell [ ${KVER_CODE} -lt $(call get_kvercode,2,6,0) ]; echo $$? ))
+  $(warning *** Aborting the build.)
+  $(error This driver is not supported on kernel versions older than 2.6.0)
 endif
 
-ifneq ($(SMP),$(shell uname -a | grep SMP > /dev/null 2>&1 && echo 1 || echo 0))
-  $(warning ***)
-  ifeq ($(SMP),1)
-    $(warning *** Warning: kernel source configuration (SMP))
-    $(warning *** does not match running kernel (UP))
-  else
-    $(warning *** Warning: kernel source configuration (UP))
-    $(warning *** does not match running kernel (SMP))
-  endif
-  $(warning *** Continuing with build,)
-  $(warning *** resulting driver may not be what you want)
-  $(warning ***)
-endif
+################
+# Manual Pages #
+################
 
-ifeq ($(SMP),1)
-  EXTRA_CFLAGS += -D__SMP__
-endif
-
-
-###########################################################################
-# Kernel Version Specific rules
-
-ifeq (1,$(shell [ $(KVER_CODE) -ge 132352 ] && echo 1 || echo 0))
-
-# Makefile for 2.5.x and newer kernel
-TARGET = $(DRIVER_NAME).ko
-
-# man page
 MANSECTION = 7
-MANFILE = $(TARGET:.ko=.$(MANSECTION))
 
-ifneq ($(PATCHLEVEL),)
-EXTRA_CFLAGS += $(CFLAGS_EXTRA)
-obj-m += $(DRIVER_NAME).o
-$(DRIVER_NAME)-objs := $(CFILES:.c=.o)
-else
-default:
-ifeq ($(KOBJ),$(KSRC))
-	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) modules
-else
-	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) modules
-endif
-endif
-
-else # ifeq (1,$(shell [ $(KVER_CODE) -ge 132352 ] && echo 1 || echo 0))
-
-# Makefile for 2.4.x kernel
-TARGET = $(DRIVER_NAME).o
-
-# man page
-MANSECTION = 7
-MANFILE = $(TARGET:.o=.$(MANSECTION))
-
-# Get rid of compile warnings in kernel header files from SuSE
-ifneq (,$(wildcard /etc/SuSE-release))
-  EXTRA_CFLAGS += -Wno-sign-compare -fno-strict-aliasing
-endif
-
-# Get rid of compile warnings in kernel header files from fedora
-ifneq (,$(wildcard /etc/fedora-release))
-  EXTRA_CFLAGS += -fno-strict-aliasing
-endif
-CFLAGS += $(EXTRA_CFLAGS)
-
-.SILENT: $(TARGET)
-$(TARGET): $(filter-out $(TARGET), $(CFILES:.c=.o))
-	$(LD) $(LDFLAGS) -r $^ -o $@
-	echo; echo
-	echo "**************************************************"
-	echo "** $(TARGET) built for $(KVER)"
-	echo -n "** SMP               "
-	if [ "$(SMP)" = "1" ]; \
-		then echo "Enabled"; else echo "Disabled"; fi
-	echo "**************************************************"
-	echo
-
-$(CFILES:.c=.o): $(HFILES) Makefile
-default:
-	$(MAKE)
-
-endif # ifeq (1,$(shell [ $(KVER_CODE) -ge 132352 ] && echo 1 || echo 0))
-
-ifeq (,$(MANDIR))
+ifeq (,${MANDIR})
   # find the best place to install the man page
   MANPATH := $(shell (manpath 2>/dev/null || echo $MANPATH) | sed 's/:/ /g')
-  ifneq (,$(MANPATH))
+  ifneq (,${MANPATH})
     # test based on inclusion in MANPATH
-    test_dir = $(findstring $(dir), $(MANPATH))
+    test_dir = $(findstring ${dir}, ${MANPATH})
   else
     # no MANPATH, test based on directory existence
-    test_dir = $(shell [ -e $(dir) ] && echo $(dir))
+    test_dir = $(shell [ -e ${dir} ] && echo ${dir})
   endif
   # our preferred install path
   # should /usr/local/man be in here ?
   MANDIR := /usr/share/man /usr/man
-  MANDIR := $(foreach dir, $(MANDIR), $(test_dir))
-  MANDIR := $(firstword $(MANDIR))
+  MANDIR := $(foreach dir, ${MANDIR}, ${test_dir})
+  MANDIR := $(firstword ${MANDIR})
 endif
-ifeq (,$(MANDIR))
+ifeq (,${MANDIR})
   # fallback to /usr/man
   MANDIR := /usr/man
 endif
 
-# depmod version for rpm builds
-DEPVER := $(shell /sbin/depmod -V 2>/dev/null | \
-          awk 'BEGIN {FS="."} NR==1 {print $$2}')
+############################
+# Module Install Directory #
+############################
 
-###########################################################################
-# Build rules
+# Default to using updates/drivers/net/ethernet/intel/ path, since depmod since
+# v3.1 defaults to checking updates folder first, and only checking kernels/
+# and extra afterwards. We use updates instead of kernel/* due to desire to
+# prevent over-writing built-in modules files.
+INSTALL_MOD_DIR ?= updates/drivers/net/ethernet/intel/${DRIVER}
 
-$(MANFILE).gz: ../$(MANFILE)
-	gzip -c $< > $@
+######################
+# Kernel Build Macro #
+######################
 
-install: default $(MANFILE).gz
-	# remove all old versions of the driver
-	find $(INSTALL_MOD_PATH)/lib/modules/$(KVER) -name $(TARGET) -exec rm -f {} \; || true
-	find $(INSTALL_MOD_PATH)/lib/modules/$(KVER) -name $(TARGET).gz -exec rm -f {} \; || true
-	install -D -m 644 $(TARGET) $(INSTALL_MOD_PATH)$(INSTDIR)/$(TARGET)
-ifeq (,$(INSTALL_MOD_PATH))
-	/sbin/depmod -a $(KVER) || true
-else
-  ifeq ($(DEPVER),1 )
-	/sbin/depmod -r $(INSTALL_MOD_PATH) -a $(KVER) || true
-  else
-	/sbin/depmod -b $(INSTALL_MOD_PATH) -a -n $(KVER) > /dev/null || true
-  endif
-endif
-	install -D -m 644 $(MANFILE).gz $(INSTALL_MOD_PATH)$(MANDIR)/man$(MANSECTION)/$(MANFILE).gz
+# kernel build function
+# ${1} is the kernel build target
+# ${2] may contain any extra rules to pass directly to the sub-make process
+kernelbuild = ${MAKE} $(if ${GCC_I_SYS},CC:="${GCC_I_SYS}") \
+                      ${CCFLAGS_VAR}:="${EXTRA_CFLAGS}" \
+                      -C ${KSRC} \
+                      $(if ${KOBJ},O:=${KOBJ}) \
+                      CONFIG_${DRIVER_UPPERCASE}=m \
+                      $(if $(filter -DNO_PTP_SUPPORT,${EXTRA_CFLAGS}),CONFIG_PTP_1588_CLOCK=n) \
+                      M:=$(call readlink,.) \
+                      $(if ${INSTALL_MOD_PATH},INSTALL_MOD_PATH:=${INSTALL_MOD_PATH}) \
+                      INSTALL_MOD_DIR:=${INSTALL_MOD_DIR} \
+                      ${2} ${1};
+
+################
+# depmod Macro #
+################
+
+cmd_depmod = /sbin/depmod $(if ${SYSTEM_MAP_FILE},-e -F ${SYSTEM_MAP_FILE}) \
+                          $(if $(strip ${INSTALL_MOD_PATH}),-b ${INSTALL_MOD_PATH}) \
+                          -a ${KVER}
+
+###############
+# Build rules #
+###############
+
+# Standard compilation, with regular output
+default: ${SOURCES}
+	@+$(call kernelbuild,modules)
+
+# Noisy output, for extra debugging
+noisy: ${SOURCES}
+	@+$(call kernelbuild,modules,V=1)
+
+# Silence any output generated
+silent: ${SOURCES}
+	@+$(call kernelbuild,modules,>/dev/null)
+
+# Enable higher warning level
+checkwarnings: clean ${SOURCES}
+	@+$(call kernelbuild,modules,W=1)
+
+# Run sparse static analyzer
+sparse: clean ${SOURCES}
+	@+$(call kernelbuild,modules,C=2 CF="-D__CHECK_ENDIAN__ -Wbitwise -Wcontext")
+
+# Run coccicheck static analyzer
+ccc: clean ${SOURCES}
+	@+$(call kernelbuild,modules,coccicheck MODE=report))
+
+# Build manfiles
+manfile:
+	@gzip -c ../${DRIVER}.${MANSECTION} > ${DRIVER}.${MANSECTION}.gz
+
+# Clean the module subdirectories
+clean:
+	@+$(call kernelbuild,clean)
+	@-rm -rf *.${MANSECTION}.gz *.ko
+
+# Install the modules and manpage
+install: default manfile
+# remove all old versions of the driver
+	install -D -m 644 ${DRIVER}.${MANSECTION}.gz ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz
+	@$(call kernelbuild,modules_install)
+	$(call cmd_depmod)
 
 uninstall:
-	if [ -e $(INSTDIR)/$(TARGET) ] ; then \
-	    rm -f $(INSTDIR)/$(TARGET) ; \
-	fi
-	/sbin/depmod -a
-	if [ -e $(MANDIR)/man$(MANSECTION)/$(MANFILE).gz ] ; then \
-		rm -f $(MANDIR)/man$(MANSECTION)/$(MANFILE).gz ; \
-	fi
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/${DRIVER}.ko;
+	$(call cmd_depmod)
+	if [ -e ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz ] ; then \
+		rm -f ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz ; \
+	fi;
 
-.PHONY: clean install
+########
+# Help #
+########
+help:
+	@echo 'Cleaning targets:'
+	@echo '  clean               - Clean files generated by kernel module build'
+	@echo 'Build targets:'
+	@echo '  default             - Build module(s) with standard verbosity'
+	@echo '  noisy               - Build module(s) with V=1 verbosity -- very noisy'
+	@echo '  silent              - Build module(s), squelching all output'
+	@echo 'Static Analysis:'
+	@echo '  checkwarnings       - Clean, then build module(s) with W=1 warnings enabled'
+	@echo '  sparse              - Clean, then check module(s) using sparse'
+	@echo '  ccc                 - Clean, then check module(s) using coccicheck'
+	@echo 'Other targets:'
+	@echo '  manfile             - Generate a gzipped manpage'
+	@echo '  install             - Build then install the module(s) and manpage'
+	@echo '  uninstall           - Uninstall the module(s) and manpage'
+	@echo '  help                - Display this help message'
+	@echo 'Variables:'
+	@echo '  LINUX_VERSION       - Debug tool to force kernel LINUX_VERSION_CODE. Use at your own risk.'
+	@echo '  W=N                 - Kernel variable for setting warning levels'
+	@echo '  V=N                 - Kernel variable for setting output verbosity'
+	@echo '  INSTALL_MOD_PATH    - Add prefix for the module and manpage installation path'
+	@echo '  INSTALL_MOD_DIR     - Use module directory other than updates/drivers/net/ethernet/intel/${DRIVER}'
+	@echo ' Other variables may be available for tuning make process, see'
+	@echo ' Kernel Kbuild documentation for more information'
 
-clean:
-ifeq ($(KOBJ),$(KSRC))
-	$(MAKE) -C $(KSRC) SUBDIRS=$(shell pwd) clean
-else
-	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) clean
-endif
-	rm -rf $(TARGET) $(TARGET:.ko=.o) $(TARGET:.ko=.mod.c) $(TARGET:.ko=.mod.o) $(CFILES:.c=.o) $(MANFILE).gz .*cmd .tmp_versions
+.PHONY: default noisy clean manfile silent sparse ccc install uninstall help
+
+endif	# ifneq($(KERNELRELEASE),)
