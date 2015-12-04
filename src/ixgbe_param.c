@@ -304,6 +304,14 @@ IXGBE_PARAM(AtrSampleRate, "Software ATR Tx packet sample rate");
 IXGBE_PARAM(FCoE, "Disable or enable FCoE Offload, default 1");
 #endif /* CONFIG_FCOE */
 
+/* Enable/disable Malicious Driver Detection
+ *
+ * Valid Values: 0(off), 1(on)
+ *
+ * Default Value: 1
+ */
+IXGBE_PARAM(MDD, "Malicious Driver Detection: (0,1), default 1 = on");
+
 /* Enable/disable Large Receive Offload
  *
  * Valid Values: 0(off), 1(on)
@@ -461,6 +469,7 @@ static int __devinit ixgbe_validate_option(unsigned int *value,
  **/
 void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 {
+	unsigned int mdd;
 	int bd = adapter->bd_number;
 	u32 *aflags = &adapter->flags;
 	struct ixgbe_ring_feature *feature = adapter->ring_feature;
@@ -1227,4 +1236,43 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #endif
 	}
 
+	{ /* MDD support */
+		struct ixgbe_option opt = {
+			.type = enable_option,
+			.name = "Malicious Driver Detection",
+			.err  = "defaulting to Enabled",
+			.def  = OPTION_ENABLED,
+		};
+
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_X550:
+		case ixgbe_mac_X550EM_x:
+#ifdef module_param_array
+			if (num_MDD > bd) {
+#endif
+				mdd = MDD[bd];
+				ixgbe_validate_option(&mdd, &opt);
+
+				if (mdd){
+					*aflags |= IXGBE_FLAG_MDD_ENABLED;
+
+				} else{
+					*aflags &= ~IXGBE_FLAG_MDD_ENABLED;
+				}
+#ifdef module_param_array
+			} else {
+					if (opt.def == OPTION_ENABLED){
+						*aflags |= IXGBE_FLAG_MDD_ENABLED;
+
+					} else {
+						*aflags &= ~IXGBE_FLAG_MDD_ENABLED;
+				}
+#endif
+			}
+			break;
+		default:
+			*aflags &= ~IXGBE_FLAG_MDD_ENABLED;
+			break;
+		}
+	}
 }

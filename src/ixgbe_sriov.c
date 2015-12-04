@@ -195,7 +195,8 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 		return 0;
 
 	/* Turn off malicious driver detection */
-	if (hw->mac.ops.disable_mdd)
+	if ((hw->mac.ops.disable_mdd) &&
+		(!(adapter->flags & IXGBE_FLAG_MDD_ENABLED)))
 		hw->mac.ops.disable_mdd(hw);
 
 #ifdef CONFIG_PCI_IOV

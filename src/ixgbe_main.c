@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.2.1) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.2.3) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -7642,7 +7642,8 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	ixgbe_check_vf_rate_limit(adapter);
 #endif /* IFLA_VF_MAX */
 	/* Turn on malicious driver detection */
-	if (adapter->num_vfs && hw->mac.ops.enable_mdd)
+	if ((adapter->num_vfs) && (hw->mac.ops.enable_mdd) &&
+		(adapter->flags & IXGBE_FLAG_MDD_ENABLED))
 		hw->mac.ops.enable_mdd(hw);
 
 	netif_tx_wake_all_queues(netdev);

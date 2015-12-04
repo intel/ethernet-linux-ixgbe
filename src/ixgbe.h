@@ -768,6 +768,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE	(u32)(1 << 25)
 #define IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE		(u32)(1 << 26)
 #define IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER	(u32)(1 << 27)
+#define IXGBE_FLAG_MDD_ENABLED			(u32)(1 << 29)
 
 /* preset defaults */
 #define IXGBE_FLAGS_82598_INIT		(IXGBE_FLAG_MSI_CAPABLE |	\
