@@ -227,16 +227,8 @@ struct vf_data_storage {
 	u16 pf_qos;
 	u16 tx_rate;
 	u16 vlan_count;
-	u8 trusted;
-	int xcast_mode;
 	u8 spoofchk_enabled;
 	unsigned int vf_api;
-};
-
-enum ixgbevf_xcast_modes {
-	IXGBEVF_XCAST_MODE_NONE = 0,
-	IXGBEVF_XCAST_MODE_MULTI,
-	IXGBEVF_XCAST_MODE_ALLMULTI,
 };
 
 struct vf_macvlans {
@@ -437,7 +429,7 @@ enum ixgbe_ring_f_enum {
 
 #define IXGBE_MAX_DCB_INDICES		8
 #define IXGBE_MAX_RSS_INDICES		16
-#define IXGBE_MAX_RSS_INDICES_X550	64
+#define IXGBE_MAX_RSS_INDICES_X550	63
 #define IXGBE_MAX_VMDQ_INDICES		64
 #define IXGBE_MAX_FDIR_INDICES		63
 #if IS_ENABLED(CONFIG_FCOE)
@@ -808,9 +800,6 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
-/* 1 << 14 vacant */
-#define IXGBE_FLAG2_EEE_CAPABLE			(u32)(1 << 14)
-#define IXGBE_FLAG2_EEE_ENABLED			(u32)(1 << 15)
 #define IXGBE_FLAG2_VXLAN_REREG_NEEDED		(u32)(1 << 16)
 #define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
 

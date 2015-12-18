@@ -70,20 +70,7 @@ enable multiqueue in 2.6.27 and newer kernels.
 If the driver is enabled for DCA, this parameter allows load-time control of
 the feature.
 .IP
-.LP
-.B EEE
-.IP
-.B Valid Range: 0-1
-.IP
-0 = Disables EEE
-.IP
-1 = Enables EEE
-.IP
-A link between two EEE-compliant devices will result in periodic bursts of
-data followed by periods where the link is in an idle state. This Low Power
-Idle (LPI) state is supported in both 1 Gbps and 10 Gbps link speeds.
-
-NOTE: EEE support requires auto-negotiation.
+Note: DCA is not supported on X550-based adapters.
 .LP
 .B IntMode
 .IP
@@ -111,7 +98,7 @@ increased CPU utilization, though it may help throughput in some circumstances.
   suitable for bulk throughput traffic due to the increased CPU utilization
   of the higher interrupt rate.
   NOTES:
-  - On 82599, X540, disabling InterruptThrottleRate
+  - On 82599, and X540, and X550-based adapters, disabling InterruptThrottleRate
     will also result in the driver disabling HW RSC.
   - On 82598-based adapters, disabling InterruptThrottleRate will also
     result in disabling LRO (Large Receive Offloads).
@@ -142,6 +129,8 @@ interrupt upon receipt of any packet sent to TCP port 80 on the local machine.
 WARNING: Enabling LLI can result in an excessive number of interrupts/second
 that may cause problems with the system and in some cases may cause a kernel
 panic.
+
+Note: LLI is not supported on X550-based adapters.
 .LP
 .B LLIPush
 .IP
@@ -151,6 +140,8 @@ LLIPush can be set to be enabled or disabled (default). It is most effective
 in an environment with many small transactions.
 .IP
 NOTE: Enabling LLIPush may allow a denial of service attack.
+
+Note: LLI is not supported on X550-based adapters.
 .LP
 .B LLISize
 .IP
@@ -158,17 +149,23 @@ NOTE: Enabling LLIPush may allow a denial of service attack.
 .IP
 LLISize causes an immediate interrupt if the board receives a packet smaller
 than the specified size.
+
+Note: LLI is not supported on X550-based adapters.
 .B LLIEType
 .IP
 .B Valid Range: 0-0x8FFF
 .IP
 This parameter specifies the Low Latency Interrupt (LLI) Ethernet protocol type.
+
+Note: LLI is not supported on X550-based adapters.
 LLIVLANP
 --------
 
 Valid Range: 0-7
 
 This parameter specifies the LLI on VLAN priority threshold.
+
+Note: LLI is not supported on X550-based adapters.
 .B FdirPballoc
 .IP
 .B Valid Range: 1-3
@@ -248,5 +245,5 @@ For general information, go to the Intel support website at:
 .LP
 If an issue is identified with the released source code on a supported
 kernel with a supported adapter, email the specific information related to the
-issue to ixgbe-devel@lists.sf.net.
+issue to e1000-devel@lists.sf.net.
 .LP

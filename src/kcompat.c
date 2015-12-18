@@ -1136,15 +1136,14 @@ int _kc_pci_num_vf(struct pci_dev __maybe_unused *dev)
 #ifdef HAVE_TX_MQ
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
 #ifndef CONFIG_NETDEVICES_MULTIQUEUE
-int _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
+void _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
 {
 	unsigned int real_num = dev->real_num_tx_queues;
 	struct Qdisc *qdisc;
 	int i;
 
-	if (txq < 1 || txq > dev->num_tx_queues)
-		return -EINVAL;
-
+	if (unlikely(txq > dev->num_tx_queues))
+		;
 	else if (txq > real_num)
 		dev->real_num_tx_queues = txq;
 	else if (txq < real_num) {
@@ -1158,8 +1157,6 @@ int _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
 			}
 		}
 	}
-
-	return 0;
 }
 #endif /* CONFIG_NETDEVICES_MULTIQUEUE */
 #endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) */

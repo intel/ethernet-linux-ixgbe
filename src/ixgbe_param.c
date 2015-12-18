@@ -53,7 +53,7 @@
  * The true default values are loaded in when ixgbe_check_options is called.
  *
  * This is a GCC extension to ANSI C.
- * See the item "Labeled Elements in Initializers" in the section
+ * See the item "Labelled Elements in Initializers" in the section
  * "Extensions to the C Language Family" of the GCC documentation.
  */
 
@@ -959,7 +959,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Low Latency Interrupt on VLAN priority "
-				"threashold",
+				"threshold",
 			.err  = "using default of "
 					__MODULE_STRING(DEFAULT_LLIVLANP),
 			.def  = DEFAULT_LLIVLANP,

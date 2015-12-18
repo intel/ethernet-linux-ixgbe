@@ -52,9 +52,6 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate);
 #ifdef HAVE_VF_SPOOFCHK_CONFIGURE
 int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 #endif
-#ifdef HAVE_NDO_SET_VF_TRUST
-int ixgbe_ndo_set_vf_trust(struct net_device *netdev, int vf, bool setting);
-#endif /* HAVE_NDO_SET_VF_TRUST */
 int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 			    int vf, struct ifla_vf_info *ivi);
 #endif /* IFLA_VF_MAX */

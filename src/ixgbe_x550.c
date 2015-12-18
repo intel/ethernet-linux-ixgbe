@@ -71,9 +71,13 @@ s32 ixgbe_init_ops_X550(struct ixgbe_hw *hw)
 	mac->ops.mdd_event = ixgbe_mdd_event_X550;
 	mac->ops.restore_mdd_vf = ixgbe_restore_mdd_vf_X550;
 	mac->ops.disable_rx = ixgbe_disable_rx_x550;
-	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_10G_T) {
+	switch (hw->device_id) {
+	case IXGBE_DEV_ID_X550EM_X_10G_T:
 		hw->mac.ops.led_on = ixgbe_led_on_t_X550em;
 		hw->mac.ops.led_off = ixgbe_led_off_t_X550em;
+		break;
+	default:
+		break;
 	}
 	return ret_val;
 }
@@ -326,7 +330,6 @@ STATIC s32 ixgbe_identify_phy_x550em(struct ixgbe_hw *hw)
 		hw->phy.phy_semaphore_mask = IXGBE_GSSR_SHARED_I2C_SM;
 		ixgbe_setup_mux_ctl(hw);
 		ixgbe_check_cs4227(hw);
-
 		return ixgbe_identify_module_generic(hw);
 		break;
 	case IXGBE_DEV_ID_X550EM_X_KX4:
@@ -625,7 +628,6 @@ s32 ixgbe_setup_eee_X550(struct ixgbe_hw *hw, bool enable_eee)
 	u16 autoneg_eee_reg;
 	u32 link_reg;
 	s32 status;
-	u32 fuse;
 
 	DEBUGFUNC("ixgbe_setup_eee_X550");
 
@@ -646,9 +648,10 @@ s32 ixgbe_setup_eee_X550(struct ixgbe_hw *hw, bool enable_eee)
 			hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_EEE_ADVT,
 				IXGBE_MDIO_AUTO_NEG_DEV_TYPE, autoneg_eee_reg);
 		} else if (hw->device_id == IXGBE_DEV_ID_X550EM_X_KR) {
-			/* Not supported on first revision. */
-			fuse = IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0));
-			if (!(fuse & IXGBE_FUSES0_REV1))
+			/* Not supported on first revision of X550EM_x. */
+			if ((hw->mac.type == ixgbe_mac_X550EM_x) &&
+			    !(IXGBE_FUSES0_REV_MASK &
+			      IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0))))
 				return IXGBE_SUCCESS;
 
 			status = ixgbe_read_iosf_sb_reg_x550(hw,
@@ -1497,9 +1500,10 @@ s32 ixgbe_init_phy_ops_X550em(struct ixgbe_hw *hw)
 		phy->ops.setup_internal_link =
 					      ixgbe_setup_internal_phy_t_x550em;
 
-		/* setup SW LPLU only for first revision */
-		if (!(IXGBE_FUSES0_REV1 & IXGBE_READ_REG(hw,
-						       IXGBE_FUSES0_GROUP(0))))
+		/* setup SW LPLU only for first revision of X550EM_x */
+		if ((hw->mac.type == ixgbe_mac_X550EM_x) &&
+		    !(IXGBE_FUSES0_REV_MASK &
+		      IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0))))
 			phy->ops.enter_lplu = ixgbe_enter_lplu_t_x550em;
 
 		phy->ops.handle_lasi = ixgbe_handle_lasi_ext_t_x550em;
@@ -1538,11 +1542,15 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 	/* flush pending Tx transactions */
 	ixgbe_clear_tx_pending(hw);
 
-	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_10G_T) {
+	switch (hw->device_id) {
+	case IXGBE_DEV_ID_X550EM_X_10G_T:
 		/* Config MDIO clock speed before the first MDIO PHY access */
 		hlreg0 = IXGBE_READ_REG(hw, IXGBE_HLREG0);
 		hlreg0 &= ~IXGBE_HLREG0_MDCSPD;
 		IXGBE_WRITE_REG(hw, IXGBE_HLREG0, hlreg0);
+		break;
+	default:
+		break;
 	}
 
 	/* PHY ops must be identified and initialized prior to reset */
@@ -1621,6 +1629,13 @@ mac_reset_top:
 	 */
 	hw->mac.num_rar_entries = 128;
 	hw->mac.ops.init_rx_addrs(hw);
+
+	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_10G_T) {
+		/* Reconfig MDIO clock speed after PHY reset */
+		hlreg0 = IXGBE_READ_REG(hw, IXGBE_HLREG0);
+		hlreg0 &= ~IXGBE_HLREG0_MDCSPD;
+		IXGBE_WRITE_REG(hw, IXGBE_HLREG0, hlreg0);
+	}
 
 	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_SFP)
 		ixgbe_setup_mux_ctl(hw);
@@ -2703,7 +2718,9 @@ s32 ixgbe_enter_lplu_t_x550em(struct ixgbe_hw *hw)
 	bool link_up;
 
 	/* SW LPLU not required on later HW revisions. */
-	if (IXGBE_FUSES0_REV1 & IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0)))
+	if ((hw->mac.type == ixgbe_mac_X550EM_x) &&
+	    (IXGBE_FUSES0_REV_MASK &
+	     IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0))))
 		return IXGBE_SUCCESS;
 
 	/* If blocked by MNG FW, then don't restart AN */
@@ -3150,4 +3167,3 @@ s32 ixgbe_led_off_t_X550em(struct ixgbe_hw *hw, u32 led_idx)
 
 	return IXGBE_SUCCESS;
 }
-

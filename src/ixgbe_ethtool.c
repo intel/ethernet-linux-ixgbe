@@ -2767,13 +2767,13 @@ static int ixgbe_get_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	union ixgbe_atr_input *mask = &adapter->fdir_mask;
 	struct ethtool_rx_flow_spec *fsp =
 		(struct ethtool_rx_flow_spec *)&cmd->fs;
-	struct hlist_node *node;
+	struct hlist_node *node2;
 	struct ixgbe_fdir_filter *rule = NULL;
 
 	/* report total rule count */
 	cmd->data = (1024 << adapter->fdir_pballoc) - 2;
 
-	hlist_for_each_entry_safe(rule, node,
+	hlist_for_each_entry_safe(rule, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
 		if (fsp->location <= rule->sw_idx)
 			break;
@@ -2834,14 +2834,14 @@ static int ixgbe_get_ethtool_fdir_all(struct ixgbe_adapter *adapter,
 				      struct ethtool_rxnfc *cmd,
 				      u32 *rule_locs)
 {
-	struct hlist_node *node;
+	struct hlist_node *node2;
 	struct ixgbe_fdir_filter *rule;
 	int cnt = 0;
 
 	/* report total rule count */
 	cmd->data = (1024 << adapter->fdir_pballoc) - 2;
 
-	hlist_for_each_entry_safe(rule, node,
+	hlist_for_each_entry_safe(rule, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
 		if (cnt == cmd->rule_cnt)
 			return -EMSGSIZE;
@@ -2933,20 +2933,20 @@ static int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 					   u16 sw_idx)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct hlist_node *node, *parent;
-	struct ixgbe_fdir_filter *rule;
+	struct hlist_node *node2;
+	struct ixgbe_fdir_filter *rule, *parent;
 	bool deleted = false;
 	s32 err;
 
 	parent = NULL;
 	rule = NULL;
 
-	hlist_for_each_entry_safe(rule, node,
+	hlist_for_each_entry_safe(rule, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
 		/* hash found, or no matching entry */
 		if (rule->sw_idx >= sw_idx)
 			break;
-		parent = node;
+		parent = rule;
 	}
 
 	/* if there is an old rule occupying our place remove it */
@@ -2983,7 +2983,7 @@ static int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 
 	/* add filter to the list */
 	if (parent)
-		hlist_add_behind(&input->fdir_node, parent);
+		hlist_add_behind(&input->fdir_node, &parent->fdir_node);
 	else
 		hlist_add_head(&input->fdir_node,
 			       &adapter->fdir_filter_list);
@@ -3564,99 +3564,6 @@ static int ixgbe_get_module_eeprom(struct net_device *dev,
 }
 #endif /* ETHTOOL_GMODULEINFO */
 
-#ifdef ETHTOOL_GEEE
-static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
-{
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_hw *hw = &adapter->hw;
-	u32 eee_stat, eeer;
-
-	if (!hw->mac.ops.setup_eee)
-		return -EOPNOTSUPP;
-
-	if (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)
-		edata->supported = (SUPPORTED_10000baseT_Full |
-				    SUPPORTED_1000baseT_Full);
-
-	eee_stat = IXGBE_READ_REG(hw, IXGBE_EEE_STAT);
-
-	/* EEE status of the negotiated link */
-	if (eee_stat & IXGBE_EEE_STAT_NEG)
-		edata->eee_active = true;
-
-	if (eee_stat & IXGBE_EEE_TX_LPI_STATUS)
-		edata->tx_lpi_enabled = true;
-
-	eeer = IXGBE_READ_REG(hw, IXGBE_EEER);
-	edata->eee_enabled = (eeer &
-			      (IXGBE_EEER_TX_LPI_EN | IXGBE_EEER_RX_LPI_EN));
-
-	/* EEE modes are advertised only when EEE is enabled */
-	if (edata->eee_enabled) {
-		u32 eee_su = IXGBE_READ_REG(hw, IXGBE_EEE_SU);
-
-		edata->advertised = edata->supported;
-		edata->tx_lpi_timer = eee_su >> 26;
-	}
-
-	return 0;
-}
-#endif /* ETHTOOL_GEEE */
-
-#ifdef ETHTOOL_SEEE
-static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
-{
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_hw *hw = &adapter->hw;
-	struct ethtool_eee eee_data;
-	s32 ret_val;
-
-	if (!(hw->mac.ops.setup_eee &&
-	    (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)))
-		return -EOPNOTSUPP;
-
-	memset(&eee_data, 0, sizeof(struct ethtool_eee));
-
-	ret_val = ixgbe_get_eee(netdev, &eee_data);
-	if (ret_val)
-		return ret_val;
-
-	if (eee_data.eee_enabled && !edata->eee_enabled) {
-		if (eee_data.tx_lpi_enabled != edata->tx_lpi_enabled) {
-			e_dev_err("Setting EEE tx-lpi is not supported\n");
-			return -EINVAL;
-		}
-
-		if (eee_data.tx_lpi_timer != edata->tx_lpi_timer) {
-			e_dev_err("Setting EEE Tx LPI timer is not supported\n");
-			return -EINVAL;
-		}
-
-		if (eee_data.advertised != edata->advertised) {
-			e_dev_err("Setting EEE advertised speeds is not supported\n");
-			return -EINVAL;
-		}
-
-	}
-
-	if (eee_data.eee_enabled != edata->eee_enabled) {
-
-		if (edata->eee_enabled)
-			adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
-		else
-			adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
-
-		/* reset link */
-		if (netif_running(netdev))
-			ixgbe_reinit_locked(adapter);
-		else
-			ixgbe_reset(adapter);
-	}
-
-	return 0;
-}
-#endif /* ETHTOOL_SEEE */
-
 static struct ethtool_ops ixgbe_ethtool_ops = {
 	.get_settings		= ixgbe_get_settings,
 	.set_settings		= ixgbe_set_settings,
@@ -3723,12 +3630,6 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif
 #endif /* ETHTOOL_GRXRINGS */
 #ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
-#ifdef ETHTOOL_GEEE
-	.get_eee		= ixgbe_get_eee,
-#endif /* ETHTOOL_GEEE */
-#ifdef ETHTOOL_SEEE
-	.set_eee		= ixgbe_set_eee,
-#endif /* ETHTOOL_SEEE */
 #ifdef ETHTOOL_SCHANNELS
 	.get_channels		= ixgbe_get_channels,
 	.set_channels		= ixgbe_set_channels,
@@ -3754,12 +3655,6 @@ static const struct ethtool_ops_ext ixgbe_ethtool_ops_ext = {
 	.get_module_info	= ixgbe_get_module_info,
 	.get_module_eeprom	= ixgbe_get_module_eeprom,
 #endif
-#ifdef ETHTOOL_GEEE
-	.get_eee		= ixgbe_get_eee,
-#endif /* ETHTOOL_GEEE */
-#ifdef ETHTOOL_SEEE
-	.set_eee		= ixgbe_set_eee,
-#endif /* ETHTOOL_SEEE */
 };
 
 #endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */

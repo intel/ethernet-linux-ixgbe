@@ -3728,7 +3728,6 @@ struct ixgbe_mac_operations {
 				   ixgbe_mc_addr_itr);
 	s32 (*update_mc_addr_list)(struct ixgbe_hw *, u8 *, u32,
 				   ixgbe_mc_addr_itr, bool clear);
-	s32 (*update_xcast_mode)(struct ixgbe_hw *, struct net_device *, int);
 	s32 (*enable_mc)(struct ixgbe_hw *);
 	s32 (*disable_mc)(struct ixgbe_hw *);
 	s32 (*clear_vfta)(struct ixgbe_hw *);
@@ -3970,7 +3969,7 @@ struct ixgbe_hw {
 
 #define IXGBE_FUSES0_GROUP(_i)		(0x11158 + ((_i) * 4))
 #define IXGBE_FUSES0_300MHZ		(1 << 5)
-#define IXGBE_FUSES0_REV1		(1 << 6)
+#define IXGBE_FUSES0_REV_MASK		(3 << 6)
 
 #define IXGBE_KRM_PORT_CAR_GEN_CTRL(P)	((P) ? 0x8010 : 0x4010)
 #define IXGBE_KRM_LINK_CTRL_1(P)	((P) ? 0x820C : 0x420C)

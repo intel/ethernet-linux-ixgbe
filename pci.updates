@@ -133,10 +133,8 @@
 		8086 011b  Ethernet Converged Network Adapter X520-Q1
 	1560  Ethernet Controller X540
 	1563  Ethernet Controller 10G X550T
-		1590 00D1  HPE Ethernet 10Gb 2-port 562T Adapter
 		8086 0001  Ethernet Converged Network Adapter X550-T2
 		8086 001A  Ethernet Converged Network Adapter X550-T2
-		8086 001D  Ethernet 10G 2P X550-t Adapter
 		8086 0022  Ethernet Converged Network Adapter X550-T2
 	15AA  Ethernet Connection X552 10 GbE Backplane
 	15AB  Ethernet Connection X552 10 GbE Backplane

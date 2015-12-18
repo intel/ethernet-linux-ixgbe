@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.2.5) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.3.9) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -118,6 +118,8 @@ static DEFINE_PCI_DEVICE_TABLE(ixgbe_pci_tbl) = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_SFP_SF_QP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_QSFP_SF_QP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X540T1), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550T), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550T1), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_KX4), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_KR), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_SFP), 0},
@@ -3105,7 +3107,7 @@ static irqreturn_t ixgbe_msix_clean_rings(int __always_unused irq, void *data)
 	/* EIAM disabled interrupts (on this vector) for us */
 
 	if (q_vector->rx.ring || q_vector->tx.ring)
-		napi_schedule(&q_vector->napi);
+		napi_schedule_irqoff(&q_vector->napi);
 
 	return IRQ_HANDLED;
 }
@@ -3315,7 +3317,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 #endif
 
 	/* would disable interrupts here but EIAM disabled it */
-	napi_schedule(&q_vector->napi);
+	napi_schedule_irqoff(&q_vector->napi);
 
 	/*
 	 * re-enable link(maybe) and non-queue interrupts, no flush.
@@ -5494,7 +5496,7 @@ static void ixgbe_configure_pb(struct ixgbe_adapter *adapter)
 static void ixgbe_fdir_filter_restore(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct hlist_node *node;
+	struct hlist_node *node2;
 	struct ixgbe_fdir_filter *filter;
 
 	spin_lock(&adapter->fdir_perfect_lock);
@@ -5503,7 +5505,7 @@ static void ixgbe_fdir_filter_restore(struct ixgbe_adapter *adapter)
 		ixgbe_fdir_set_input_mask_82599(hw, &adapter->fdir_mask, 
 				adapter->cloud_mode);
 
-	hlist_for_each_entry_safe(filter, node,
+	hlist_for_each_entry_safe(filter, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
 		ixgbe_fdir_write_perfect_filter_82599(hw,
 				&filter->filter,
@@ -5551,17 +5553,6 @@ static void ixgbe_configure(struct ixgbe_adapter *adapter)
 	if (adapter->hw.mac.type == ixgbe_mac_82599EB ||
 	    adapter->hw.mac.type == ixgbe_mac_X540)
 		hw->mac.ops.enable_sec_rx_path(hw);
-
-	/* Enable EEE only when supported and enabled */
-	if (hw->mac.ops.setup_eee) {
-		bool eee_enable = false;
-
-		if (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)
-			eee_enable = !!(adapter->flags2 &
-					IXGBE_FLAG2_EEE_ENABLED);
-
-		hw->mac.ops.setup_eee(hw, eee_enable);
-	}
 
 #if IS_ENABLED(CONFIG_DCA)
 	/* configure DCA */
@@ -6061,12 +6052,12 @@ static void ixgbe_clean_all_tx_rings(struct ixgbe_adapter *adapter)
 
 static void ixgbe_fdir_filter_exit(struct ixgbe_adapter *adapter)
 {
-	struct hlist_node *node;
+	struct hlist_node *node2;
 	struct ixgbe_fdir_filter *filter;
 
 	spin_lock(&adapter->fdir_perfect_lock);
 
-	hlist_for_each_entry_safe(filter, node,
+	hlist_for_each_entry_safe(filter, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
 		hlist_del(&filter->fdir_node);
 		kfree(filter);
@@ -6158,25 +6149,6 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 
 	ixgbe_clean_all_tx_rings(adapter);
 	ixgbe_clean_all_rx_rings(adapter);
-}
-
-/**
- * ixgbe_eee_capable - helper function to determine EEE support on X550
- *
- **/
-static inline void ixgbe_set_eee_capable(struct ixgbe_adapter *adapter)
-{
-	struct ixgbe_hw *hw = &adapter->hw;
-	u32 fuse;
-
-	if (hw->mac.type == ixgbe_mac_X550EM_x) {
-		/* EEE not supported on first revision. */
-		fuse = IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0));
-
-		if ((hw->device_id == IXGBE_DEV_ID_X550EM_X_KR) &&
-			    (fuse & IXGBE_FUSES0_REV1))
-				adapter->flags2 |= IXGBE_FLAG2_EEE_CAPABLE;
-	}
 }
 
 /**
@@ -6284,7 +6256,15 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 		if (hw->mac.type == ixgbe_mac_X550)
 			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_CAPABLE;
-		ixgbe_set_eee_capable(adapter);
+#if IS_ENABLED(CONFIG_FCOE)
+		if (hw->mac.type == ixgbe_mac_X550EM_x) {
+			adapter->flags &= ~IXGBE_FLAG_FCOE_CAPABLE;
+#if IS_ENABLED(CONFIG_DCB)
+			adapter->fcoe.up = 0;
+			adapter->fcoe.up_set = 0;
+#endif /* IXGBE_DCB */
+		}
+#endif /* CONFIG_FCOE */
 		adapter->flags |= IXGBE_FLAGS_X550_INIT;
 #if IS_ENABLED(CONFIG_DCA)
 		adapter->flags &= ~IXGBE_FLAG_DCA_CAPABLE;
@@ -6310,10 +6290,10 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
-	case ixgbe_mac_X550EM_x:
 		adapter->dcb_cfg.num_tcs.pg_tcs = 4;
 		adapter->dcb_cfg.num_tcs.pfc_tcs = 4;
 		break;
+	case ixgbe_mac_X550EM_x:
 	default:
 		adapter->dcb_cfg.num_tcs.pg_tcs = 1;
 		adapter->dcb_cfg.num_tcs.pfc_tcs = 1;
@@ -6349,7 +6329,11 @@ static int __devinit ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	adapter->dcb_cfg.pfc_mode_enable = false;
 	adapter->dcb_cfg.round_robin_enable = false;
 	adapter->dcb_set_bitmap = 0x00;
-	adapter->dcbx_cap = DCB_CAP_DCBX_HOST | DCB_CAP_DCBX_VER_CEE;
+
+	/* DCB not support on some MAC */
+	if (hw->mac.type != ixgbe_mac_X550EM_x)
+		adapter->dcbx_cap = DCB_CAP_DCBX_HOST | DCB_CAP_DCBX_VER_CEE;
+
 	memcpy(&adapter->temp_dcb_cfg, &adapter->dcb_cfg,
 	       sizeof(adapter->temp_dcb_cfg));
 #endif /* CONFIG_DCB */
@@ -6701,9 +6685,17 @@ static int ixgbe_open(struct net_device *netdev)
 		goto err_req_irq;
 
 	/* Notify the stack of the actual queue counts. */
+#ifdef HAVE_NETIF_SET_REAL_NUM_TX_QUEUES_VOID
 	netif_set_real_num_tx_queues(netdev,
 				     adapter->num_rx_pools > 1 ? 1 :
 				     adapter->num_tx_queues);
+#else
+	err = netif_set_real_num_tx_queues(netdev,
+					   adapter->num_rx_pools > 1 ? 1 :
+					   adapter->num_tx_queues);
+	if (err)
+		goto err_set_queues;
+#endif
 
 	err = netif_set_real_num_rx_queues(netdev,
 					   adapter->num_rx_pools > 1 ? 1 :
@@ -9204,6 +9196,9 @@ int ixgbe_setup_tc(struct net_device *dev, u8 tc)
 	 */
 	if (netif_running(dev))
 		ixgbe_close(dev);
+	else
+		ixgbe_reset(adapter);
+
 	ixgbe_clear_interrupt_scheme(adapter);
 
 	if (tc) {
@@ -9626,9 +9621,6 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #endif
 	.ndo_get_vf_config	= ixgbe_ndo_get_vf_config,
 #endif
-#ifdef HAVE_NDO_SET_VF_TRUST
-	.ndo_set_vf_trust	= ixgbe_ndo_set_vf_trust,
-#endif /* HAVE_NDO_SET_VF_TRUST */
 #ifdef HAVE_NDO_GET_STATS64
 	.ndo_get_stats64	= ixgbe_get_stats64,
 #else
@@ -10157,7 +10149,10 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	netdev->priv_flags |= IFF_SUPP_NOFCS;
 #endif
 #if IS_ENABLED(CONFIG_DCB)
-	netdev->dcbnl_ops = &dcbnl_ops;
+
+	/* DCB not support on some MAC */
+	if (hw->mac.type != ixgbe_mac_X550EM_x)
+		netdev->dcbnl_ops = &dcbnl_ops;
 #endif /* CONFIG_DCB */
 
 #if IS_ENABLED(CONFIG_FCOE)
@@ -10454,16 +10449,6 @@ no_info_string:
 		hw->mac.ops.setup_link(hw,
 			IXGBE_LINK_SPEED_10GB_FULL | IXGBE_LINK_SPEED_1GB_FULL,
 			true);
-
-	if (hw->mac.ops.setup_eee) {
-		bool eee_enable = false;
-
-		if (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)
-			eee_enable = !!(adapter->flags2 &
-					IXGBE_FLAG2_EEE_ENABLED);
-
-		hw->mac.ops.setup_eee(hw, eee_enable);
-	}
 
 	return 0;
 
