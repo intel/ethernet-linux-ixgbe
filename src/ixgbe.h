@@ -227,8 +227,16 @@ struct vf_data_storage {
 	u16 pf_qos;
 	u16 tx_rate;
 	u16 vlan_count;
+	u8 trusted;
+	int xcast_mode;
 	u8 spoofchk_enabled;
 	unsigned int vf_api;
+};
+
+enum ixgbevf_xcast_modes {
+	IXGBEVF_XCAST_MODE_NONE = 0,
+	IXGBEVF_XCAST_MODE_MULTI,
+	IXGBEVF_XCAST_MODE_ALLMULTI,
 };
 
 struct vf_macvlans {

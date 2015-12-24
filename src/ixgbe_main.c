@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.2.3) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.2.5) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -9565,7 +9565,7 @@ static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 #elif defined(HAVE_NDO_BRIDGE_GETLINK_NLFLAGS)
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode, 0, 0, nlflags);
 #elif defined(HAVE_NDO_FDB_ADD_VID) || \
-      defined NDO_BRIDGE_GETLINK_HAS_FILTER_MASK_PARAM
+      defined NDO_DFLT_BRIDGE_GETLINK_HAS_BRFLAGS
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode, 0, 0);
 #else
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev, mode);
@@ -9626,6 +9626,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #endif
 	.ndo_get_vf_config	= ixgbe_ndo_get_vf_config,
 #endif
+#ifdef HAVE_NDO_SET_VF_TRUST
+	.ndo_set_vf_trust	= ixgbe_ndo_set_vf_trust,
+#endif /* HAVE_NDO_SET_VF_TRUST */
 #ifdef HAVE_NDO_GET_STATS64
 	.ndo_get_stats64	= ixgbe_get_stats64,
 #else
