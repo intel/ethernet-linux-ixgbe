@@ -230,9 +230,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 	ixgbe_link_speed supported_link;
-	u32 link_speed = 0;
 	bool autoneg = false;
-	bool link_up;
 
 	hw->mac.ops.get_link_capabilities(hw, &supported_link, &autoneg);
 
@@ -361,17 +359,6 @@ int ixgbe_get_settings(struct net_device *netdev,
 		break;
 	}
 
-	if (!in_interrupt()) {
-		hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
-	} else {
-		/*
-		 * this case is a special workaround for RHEL5 bonding
-		 * that calls this routine from interrupt context
-		 */
-		link_speed = adapter->link_speed;
-		link_up = adapter->link_up;
-	}
-
 	switch (hw->fc.requested_mode) {
 	case ixgbe_fc_full:
 		ecmd->advertising |= ADVERTISED_Pause;
@@ -388,8 +375,8 @@ int ixgbe_get_settings(struct net_device *netdev,
 				       ADVERTISED_Asym_Pause);
 	}
 
-	if (link_up) {
-		switch (link_speed) {
+	if (netif_carrier_ok(netdev)) {
+		switch (adapter->link_speed) {
 		case IXGBE_LINK_SPEED_10GB_FULL:
 			ethtool_cmd_speed_set(ecmd, SPEED_10000);
 			break;

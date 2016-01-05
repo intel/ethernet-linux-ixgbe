@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.3.9) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.3.13) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -6685,17 +6685,11 @@ static int ixgbe_open(struct net_device *netdev)
 		goto err_req_irq;
 
 	/* Notify the stack of the actual queue counts. */
-#ifdef HAVE_NETIF_SET_REAL_NUM_TX_QUEUES_VOID
-	netif_set_real_num_tx_queues(netdev,
-				     adapter->num_rx_pools > 1 ? 1 :
-				     adapter->num_tx_queues);
-#else
 	err = netif_set_real_num_tx_queues(netdev,
 					   adapter->num_rx_pools > 1 ? 1 :
 					   adapter->num_tx_queues);
 	if (err)
 		goto err_set_queues;
-#endif
 
 	err = netif_set_real_num_rx_queues(netdev,
 					   adapter->num_rx_pools > 1 ? 1 :
@@ -9621,6 +9615,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #endif
 	.ndo_get_vf_config	= ixgbe_ndo_get_vf_config,
 #endif
+#ifdef HAVE_NDO_SET_VF_TRUST
+	.ndo_set_vf_trust       = ixgbe_ndo_set_vf_trust,
+#endif /* HAVE_NDO_SET_VF_TRUST */
 #ifdef HAVE_NDO_GET_STATS64
 	.ndo_get_stats64	= ixgbe_get_stats64,
 #else
