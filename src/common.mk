@@ -45,6 +45,19 @@ cmd_depmod = /sbin/depmod $(if ${SYSTEM_MAP_FILE},-e -F ${SYSTEM_MAP_FILE}) \
                           $(if $(strip ${INSTALL_MOD_PATH}),-b ${INSTALL_MOD_PATH}) \
                           -a ${KVER}
 
+################
+# initrd Macro #
+################
+
+cmd_initrd := $(shell \
+                if which dracut > /dev/null 2>&1 ; then \
+                    echo "dracut --force"; \
+                elif which mkinitrd > /dev/null 2>&1 ; then \
+                    echo "mkinitrd"; \
+                elif which update-initramfs > /dev/null 2>&1 ; then \
+                    echo "update-initramfs -u"; \
+                fi )
+
 #####################
 # Environment tests #
 #####################

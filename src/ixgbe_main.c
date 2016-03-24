@@ -69,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.3.13) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.3.15) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -9574,7 +9574,7 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 
 	if (unlikely(skb_inner_mac_header(skb) - skb_transport_header(skb) >
 		     IXGBE_MAX_TUNNEL_HDR_LEN))
-		return features & ~NETIF_F_ALL_CSUM;
+		return features & ~NETIF_F_CSUM_MASK;
 
 	return features;
 }
