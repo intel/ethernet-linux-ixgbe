@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -50,6 +50,7 @@ s32 ixgbe_update_flash_X540(struct ixgbe_hw *hw);
 
 s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask);
 void ixgbe_release_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask);
+void ixgbe_init_swfw_sync_X540(struct ixgbe_hw *hw);
 
 s32 ixgbe_blink_led_start_X540(struct ixgbe_hw *hw, u32 index);
 s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index);

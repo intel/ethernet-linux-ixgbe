@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -29,7 +29,8 @@ u32 ixgbe_get_pcie_msix_count_82598(struct ixgbe_hw *hw);
 s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw);
 s32 ixgbe_start_hw_82598(struct ixgbe_hw *hw);
 s32 ixgbe_set_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
-s32 ixgbe_set_vfta_82598(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on);
+s32 ixgbe_set_vfta_82598(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on,
+			 bool vlvf_bypass);
 s32 ixgbe_read_analog_reg8_82598(struct ixgbe_hw *hw, u32 reg, u8 *val);
 s32 ixgbe_write_analog_reg8_82598(struct ixgbe_hw *hw, u32 reg, u8 val);
 s32 ixgbe_read_i2c_eeprom_82598(struct ixgbe_hw *hw, u8 byte_offset,

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -640,8 +640,7 @@ static void ixgbe_fcoe_dma_pool_free(struct ixgbe_fcoe *fcoe, unsigned int cpu)
 	struct ixgbe_fcoe_ddp_pool *ddp_pool;
 
 	ddp_pool = per_cpu_ptr(fcoe->ddp_pool, cpu);
-	if (ddp_pool->pool)
-		dma_pool_destroy(ddp_pool->pool);
+	dma_pool_destroy(ddp_pool->pool);
 	ddp_pool->pool = NULL;
 }
 

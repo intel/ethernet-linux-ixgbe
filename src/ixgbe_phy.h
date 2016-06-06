@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -80,8 +80,11 @@
 
 #define IXGBE_CS4227			0xBE	/* CS4227 address */
 #define IXGBE_CS4227_GLOBAL_ID_LSB	0
+#define IXGBE_CS4227_GLOBAL_ID_MSB	1
 #define IXGBE_CS4227_SCRATCH		2
 #define IXGBE_CS4227_GLOBAL_ID_VALUE	0x03E5
+#define IXGBE_CS4223_PHY_ID		0x7003	/* Quad port */
+#define IXGBE_CS4227_PHY_ID		0x3003	/* Dual port */
 #define IXGBE_CS4227_RESET_PENDING	0x1357
 #define IXGBE_CS4227_RESET_COMPLETE	0x5AA5
 #define IXGBE_CS4227_RETRIES		15
@@ -198,4 +201,8 @@ s32 ixgbe_read_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,
 s32 ixgbe_write_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				   u8 eeprom_data);
 void ixgbe_i2c_bus_clear(struct ixgbe_hw *hw);
+s32 ixgbe_read_i2c_combined_generic_int(struct ixgbe_hw *, u8 addr, u16 reg,
+					u16 *val, bool lock);
+s32 ixgbe_write_i2c_combined_generic_int(struct ixgbe_hw *, u8 addr, u16 reg,
+					 u16 val, bool lock);
 #endif /* _IXGBE_PHY_H_ */

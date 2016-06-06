@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -985,16 +985,19 @@ STATIC s32 ixgbe_clear_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
  *  @vlan: VLAN id to write to VLAN filter
  *  @vind: VMDq output index that maps queue to VLAN id in VFTA
  *  @vlan_on: boolean flag to turn on/off VLAN in VFTA
+ *  @vlvf_bypass: boolean flag - unused
  *
  *  Turn on/off specified VLAN in the VLAN filter table.
  **/
 s32 ixgbe_set_vfta_82598(struct ixgbe_hw *hw, u32 vlan, u32 vind,
-			 bool vlan_on)
+			 bool vlan_on, bool vlvf_bypass)
 {
 	u32 regindex;
 	u32 bitindex;
 	u32 bits;
 	u32 vftabyte;
+
+	UNREFERENCED_1PARAMETER(vlvf_bypass);
 
 	DEBUGFUNC("ixgbe_set_vfta_82598");
 

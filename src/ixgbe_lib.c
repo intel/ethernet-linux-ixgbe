@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -930,16 +930,13 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	/* initialize CPU for DCA */
 	q_vector->cpu = -1;
 
-#ifndef IXGBE_NO_LRO
-	/* initialize LRO */
-	__skb_queue_head_init(&q_vector->lrolist.active);
-
-#endif
 	/* initialize NAPI */
 	netif_napi_add(adapter->netdev, &q_vector->napi,
 		       ixgbe_poll, 64);
+#ifndef HAVE_NETIF_NAPI_ADD_CALLS_NAPI_HASH_ADD
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	napi_hash_add(&q_vector->napi);
+#endif
 #endif
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
@@ -1073,9 +1070,6 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 	napi_hash_del(&q_vector->napi);
 #endif
 	netif_napi_del(&q_vector->napi);
-#ifndef IXGBE_NO_LRO
-	__skb_queue_purge(&q_vector->lrolist.active);
-#endif
 	kfree_rcu(q_vector, rcu);
 }
 

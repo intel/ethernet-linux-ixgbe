@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -106,11 +106,12 @@ s32 ixgbe_clear_vmdq_generic(struct ixgbe_hw *hw, u32 rar, u32 vmdq);
 s32 ixgbe_insert_mac_addr_generic(struct ixgbe_hw *hw, u8 *addr, u32 vmdq);
 s32 ixgbe_init_uta_tables_generic(struct ixgbe_hw *hw);
 s32 ixgbe_set_vfta_generic(struct ixgbe_hw *hw, u32 vlan,
-			 u32 vind, bool vlan_on);
+			 u32 vind, bool vlan_on, bool vlvf_bypass);
 s32 ixgbe_set_vlvf_generic(struct ixgbe_hw *hw, u32 vlan, u32 vind,
-			   bool vlan_on, bool *vfta_changed);
+			   bool vlan_on, u32 *vfta_delta, u32 vfta,
+			   bool vlvf_bypass);
 s32 ixgbe_clear_vfta_generic(struct ixgbe_hw *hw);
-s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan);
+s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan, bool vlvf_bypass);
 
 s32 ixgbe_check_mac_link_generic(struct ixgbe_hw *hw,
 			       ixgbe_link_speed *speed,
@@ -120,7 +121,7 @@ s32 ixgbe_get_wwn_prefix_generic(struct ixgbe_hw *hw, u16 *wwnn_prefix,
 				 u16 *wwpn_prefix);
 
 s32 ixgbe_get_fcoe_boot_status_generic(struct ixgbe_hw *hw, u16 *bs);
-void ixgbe_set_mac_anti_spoofing(struct ixgbe_hw *hw, bool enable, int pf);
+void ixgbe_set_mac_anti_spoofing(struct ixgbe_hw *hw, bool enable, int vf);
 void ixgbe_set_vlan_anti_spoofing(struct ixgbe_hw *hw, bool enable, int vf);
 s32 ixgbe_get_device_caps_generic(struct ixgbe_hw *hw, u16 *device_caps);
 void ixgbe_set_rxpba_generic(struct ixgbe_hw *hw, int num_pb, u32 headroom,

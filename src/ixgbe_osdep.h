@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -140,6 +140,7 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
 #define IXGBE_NTOHL(_i) ntohl(_i)
 #define IXGBE_NTOHS(_i) ntohs(_i)
 #define IXGBE_CPU_TO_LE32(_i) cpu_to_le32(_i)
+#define IXGBE_LE32_TO_CPU(_i) le32_to_cpu(_i)
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
 #define EWARN(H, W, S) ewarn(H, W, S)
 

@@ -1,7 +1,7 @@
 ################################################################################
 #
-# Intel 10 Gigabit PCI Express Linux driver
-# Copyright (c) 1999 - 2014 Intel Corporation.
+# Intel(R) 10GbE PCI Express Linux Network Driver
+# Copyright(c) 1999 - 2016 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -135,12 +135,12 @@
 	1563  Ethernet Controller 10G X550T
 		8086 0001  Ethernet Converged Network Adapter X550-T2
 		8086 001A  Ethernet Converged Network Adapter X550-T2
+		8086 001D  Ethernet 10G 2P X550-t Adapter
 		8086 0022  Ethernet Converged Network Adapter X550-T2
 	15AA  Ethernet Connection X552 10 GbE Backplane
 	15AB  Ethernet Connection X552 10 GbE Backplane
 	15AC  Ethernet Connection X552 10 GbE SFP+
 	15AD  Ethernet Connection X552/X557-AT 10GBASE-T
-	15AE  Ethernet Connection X552 1000BASE-T
 	15D1  Ethernet Controller 10G X550T
 		8086 0002  Ethernet Converged Network Adapter X550-T1
 		8086 0021  Ethernet Converged Network Adapter X550-T1

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -88,6 +88,7 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.get_fcoe_boot_status = ixgbe_get_fcoe_boot_status_generic;
 	mac->ops.acquire_swfw_sync = ixgbe_acquire_swfw_sync_X540;
 	mac->ops.release_swfw_sync = ixgbe_release_swfw_sync_X540;
+	mac->ops.init_swfw_sync = ixgbe_init_swfw_sync_X540;
 	mac->ops.disable_sec_rx_path = ixgbe_disable_sec_rx_path_generic;
 	mac->ops.enable_sec_rx_path = ixgbe_enable_sec_rx_path_generic;
 
@@ -256,11 +257,15 @@ mac_reset_top:
 
 	/* Add the SAN MAC address to the RAR only if it's a valid address */
 	if (ixgbe_validate_mac_addr(hw->mac.san_addr) == 0) {
-		hw->mac.ops.set_rar(hw, hw->mac.num_rar_entries - 1,
-				    hw->mac.san_addr, 0, IXGBE_RAH_AV);
-
 		/* Save the SAN MAC RAR index */
 		hw->mac.san_mac_rar_index = hw->mac.num_rar_entries - 1;
+
+		hw->mac.ops.set_rar(hw, hw->mac.san_mac_rar_index,
+				    hw->mac.san_addr, 0, IXGBE_RAH_AV);
+
+		/* clear VMDq pool/queue selection for this RAR */
+		hw->mac.ops.clear_vmdq(hw, hw->mac.san_mac_rar_index,
+				       IXGBE_CLEAR_VMDQ_ALL);
 
 		/* Reserve the last RAR for the SAN MAC address */
 		hw->mac.num_rar_entries--;
@@ -928,6 +933,25 @@ STATIC void ixgbe_release_swfw_sync_semaphore(struct ixgbe_hw *hw)
 	IXGBE_WRITE_REG(hw, IXGBE_SWSM_BY_MAC(hw), swsm);
 
 	IXGBE_WRITE_FLUSH(hw);
+}
+
+/**
+ *  ixgbe_init_swfw_sync_X540 - Release hardware semaphore
+ *  @hw: pointer to hardware structure
+ *
+ *  This function reset hardware semaphore bits for a semaphore that may
+ *  have be left locked due to a catastrophic failure.
+ **/
+void ixgbe_init_swfw_sync_X540(struct ixgbe_hw *hw)
+{
+	/* First try to grab the semaphore but we don't need to bother
+	 * looking to see whether we got the lock or  not since we do
+	 * the same thing regardless of whether we got the lock or not.
+	 * We got the lock - we release it.
+	 * We timeout trying to get the lock - we force its release.
+	 */
+	ixgbe_get_swfw_sync_semaphore(hw);
+	ixgbe_release_swfw_sync_semaphore(hw);
 }
 
 /**

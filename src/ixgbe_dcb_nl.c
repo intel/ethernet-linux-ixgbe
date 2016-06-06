@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -377,7 +377,17 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 		} else {
 			hw->mac.ops.fc_enable(hw);
 		}
+		/* This is known driver so disable MDD before updating SRRCTL */
+		if ((adapter->num_vfs) && (hw->mac.ops.disable_mdd) &&
+		    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+			hw->mac.ops.disable_mdd(hw);
+
 		ixgbe_set_rx_drop_en(adapter);
+
+		if ((adapter->num_vfs) && (hw->mac.ops.enable_mdd) &&
+		    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+			hw->mac.ops.enable_mdd(hw);
+
 		if (ret != DCB_HW_CHG_RST)
 			ret = DCB_HW_CHG;
 	}
@@ -726,7 +736,16 @@ static int ixgbe_dcbnl_ieee_setpfc(struct net_device *dev,
 	else
 		err = hw->mac.ops.fc_enable(hw);
 
+	/* This is known driver so disable MDD before updating SRRCTL */
+	if ((adapter->num_vfs) && (hw->mac.ops.disable_mdd) &&
+	    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+		hw->mac.ops.disable_mdd(hw);
+
 	ixgbe_set_rx_drop_en(adapter);
+
+	if ((adapter->num_vfs) && (hw->mac.ops.enable_mdd) &&
+	    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+		hw->mac.ops.enable_mdd(hw);
 
 	return err;
 }

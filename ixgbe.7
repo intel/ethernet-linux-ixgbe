@@ -5,9 +5,10 @@
 .\" * Other names and brands may be claimed as the property of others.
 .\"
 .
-.TH ixgbe 1 "February 06, 2015"
+.TH ixgbe 1 "March 29, 2016"
 .SH NAME
-ixgbe \-This file describes the Linux* Base Driver for the 10 Gigabit Family of Adapters.
+ixgbe \-This file describes the Linux* Base Driver
+for the 10 Gigabit Family of Adapters.
 .SH SYNOPSIS
 .PD 0.4v
 modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
@@ -199,18 +200,16 @@ buffer before they are passed higher up the networking stack, thus reducing
 the number of packets that have to be processed. LRO combines multiple
 Ethernet frames into a single receive in the stack, thereby potentially
 decreasing CPU utilization for receives.
-.IP
-IXGBE_NO_LRO is a compile time flag. The user can enable it at compile time to add
-support for LRO from the driver. The flag is used by adding
-CFLAGS_EXTRA="-DIXGBE_NO_LRO" to the make file when it's being compiled.
-# make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
+This technique is also referred to as Hardware Receive Side Coalescing
+(HW RSC). 82599 and X540, and X550-based adapters support HW RSC. The
+LRO parameter controls HW RSC enablement.
 .IP
 You can verify that the driver is using LRO by looking at these counters in
 ethtool:
 .LP
-- lro_aggregated - counts total packets that were combined
+- hw_rsc_aggregated - counts total packets that were combined
 .LP
-- lro_flushed - counts the number of packets flushed out of LRO
+- hw_rsc_flushed - counts the number of packets flushed out of LRO
 .IP
 NOTE: IPv6 and UDP are not supported by LRO.
 .SH Jumbo Frames

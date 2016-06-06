@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -36,6 +36,7 @@ extern s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X550(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X550EM(struct ixgbe_hw *hw);
+extern s32 ixgbe_init_ops_X550EM_x(struct ixgbe_hw *hw);
 
 s32 ixgbe_set_mac_type(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw(struct ixgbe_hw *hw);
@@ -112,9 +113,10 @@ s32 ixgbe_enable_mc(struct ixgbe_hw *hw);
 s32 ixgbe_disable_mc(struct ixgbe_hw *hw);
 s32 ixgbe_clear_vfta(struct ixgbe_hw *hw);
 s32 ixgbe_set_vfta(struct ixgbe_hw *hw, u32 vlan,
-		   u32 vind, bool vlan_on);
+		   u32 vind, bool vlan_on, bool vlvf_bypass);
 s32 ixgbe_set_vlvf(struct ixgbe_hw *hw, u32 vlan, u32 vind,
-		   bool vlan_on, bool *vfta_changed);
+		   bool vlan_on, u32 *vfta_delta, u32 vfta,
+		   bool vlvf_bypass);
 s32 ixgbe_fc_enable(struct ixgbe_hw *hw);
 s32 ixgbe_setup_fc(struct ixgbe_hw *hw);
 s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
@@ -164,23 +166,22 @@ s32 ixgbe_read_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
 			u8 *data);
 s32 ixgbe_read_i2c_byte_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
 				 u8 dev_addr, u8 *data);
-s32 ixgbe_read_i2c_combined(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 *val);
-s32 ixgbe_read_i2c_combined_unlocked(struct ixgbe_hw *hw, u8 addr, u16 reg,
-				     u16 *val);
+s32 ixgbe_read_link(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 *val);
+s32 ixgbe_read_link_unlocked(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 *val);
 s32 ixgbe_write_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
 			 u8 data);
 void ixgbe_set_fdir_drop_queue_82599(struct ixgbe_hw *hw, u8 dropqueue);
 s32 ixgbe_write_i2c_byte_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
 				  u8 dev_addr, u8 data);
-s32 ixgbe_write_i2c_combined(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 val);
-s32 ixgbe_write_i2c_combined_unlocked(struct ixgbe_hw *hw, u8 addr, u16 reg,
-				      u16 val);
+s32 ixgbe_write_link(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 val);
+s32 ixgbe_write_link_unlocked(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 val);
 s32 ixgbe_write_i2c_eeprom(struct ixgbe_hw *hw, u8 byte_offset, u8 eeprom_data);
 s32 ixgbe_get_san_mac_addr(struct ixgbe_hw *hw, u8 *san_mac_addr);
 s32 ixgbe_set_san_mac_addr(struct ixgbe_hw *hw, u8 *san_mac_addr);
 s32 ixgbe_get_device_caps(struct ixgbe_hw *hw, u16 *device_caps);
 s32 ixgbe_acquire_swfw_semaphore(struct ixgbe_hw *hw, u32 mask);
 void ixgbe_release_swfw_semaphore(struct ixgbe_hw *hw, u32 mask);
+void ixgbe_init_swfw_semaphore(struct ixgbe_hw *hw);
 s32 ixgbe_get_wwn_prefix(struct ixgbe_hw *hw, u16 *wwnn_prefix,
 			 u16 *wwpn_prefix);
 s32 ixgbe_get_fcoe_boot_status(struct ixgbe_hw *hw, u16 *bs);

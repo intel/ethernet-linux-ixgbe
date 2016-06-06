@@ -4,7 +4,7 @@ ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connection
 
 ================================================================================
 
-October 5, 2015
+March 29, 2016
 
 ================================================================================
 
@@ -64,20 +64,17 @@ frames to be dropped.
 Overview
 --------
 
-This document describes the ixgbe Linux* Base Driver for the 10 Gigabit PCI Express Family of Adapters.
+This driver supports kernel versions 2.6.x and newer.
 
-The Linux* base driver supports the following kernel versions:
-2.6.x and newer
+It supports all Linux systems (Itanium(R)2, x86_64, i686, and PPC).
 
-It includes support for any Linux supported system, including
-Itanium(R)2 based systems, x86_64, i686, and PPC.
+Driver information can be obtained using ethtool, lspci, and ifconfig.
+Instructions on updating ethtool can be found in the section Additional
+Configurations later in this document.
 
 This driver is only supported as a loadable module at this time. Intel is
 not supplying patches against the kernel source to allow for static linking of
 the drivers.
-
-A version of the driver may already be included by your
-distribution and/or the kernel.org kernel.
 
 For questions related to hardware requirements, refer to the documentation
 supplied with your Intel adapter. All hardware requirements listed apply to
@@ -87,27 +84,33 @@ The following features are now available in supported kernels:
 - Native VLANs
 - Channel Bonding (teaming)
 - SNMP
-- Generic Receive Offload
-- Data Center Bridging
 
 Adapter teaming is implemented using the native Linux Channel bonding
 module. This is included in supported Linux kernels.
+
 Channel Bonding documentation can be found in the Linux kernel source:
 /documentation/networking/bonding.txt
 
 The driver information previously displayed in the /proc file system is not
 supported in this release.
 
-Driver information can be obtained using ethtool, lspci, and ifconfig.
-Instructions on updating ethtool can be found in the section Additional 
-Configurations later in this document.
 
+NOTE: Devices based on the Intel(R) Ethernet Controller X552 and
+Intel(R) Ethernet Controller X553 do not support the following features:
+  * Low Latency Interrupts (LLI)
+  * Data Center Bridging (DCB)
+  * Fibre Channel over Ethernet (FCoE)
 
 
 Identifying Your Adapter
 ------------------------
-The driver in this release is compatible with 82598, 82599, X540, x550,
-and X552-based Intel Ethernet Network Connections and Adapters.
+The driver in this release is compatible with devices based on the following:
+  * Intel(R) Ethernet Controller 82598
+  * Intel(R) Ethernet Controller 82599
+  * Intel(R) Ethernet Controller X540
+  * Intel(R) Ethernet Controller x550
+  * Intel(R) Ethernet Controller X552
+  * Intel(R) Ethernet Controller X553
 
 For information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -496,12 +499,10 @@ The Flow Director performs the following tasks:
   - Enables tight control on routing a flow in the platform.
   - Matches flows and CPU cores for flow affinity.
   - Supports multiple parameters for flexible flow classification and load
-    balancing.
+    balancing (in SFP mode only).
 
 NOTES:
 
-  - The Flow Director is enabled only if the kernel supports multiple
-    transmit queues.
   - An included script (set_irq_affinity) automates setting the IRQ to
     CPU affinity.
   - Flow director masking works in the opposite manner from subnet masking. In
@@ -514,20 +515,20 @@ NOTES:
 
 ethtool commands:
 
-  - To enable or disable the Flow Director
+  - To enable or disable the Flow Director:
 
 	# ethtool -K ethX ntuple <on|off>
 
-	When disabling ntuple filters all the user programed filters are flushed
-	from the driver cache and hardware. Filters must be re-added if they are
-	needed when ntuple is re-enabled.
+	When disabling ntuple filters, all the user programed filters are
+	flushed from the driver cache and hardware. All needed filters must
+	be re-added when ntuple is re-enabled.
 
-  - To add a filter that directs packet to queue 2, use -U or -N switch
+  - To add a filter that directs packet to queue 2, use -U or -N switch:
 
 	# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
 	192.168.10.2 src-port 2000 dst-port 2001 action 2 [loc 1]
 
-  - To see the list of filters currently present
+  - To see the list of filters currently present:
 	# ethtool <-u|-n> ethX
 
 
@@ -637,6 +638,8 @@ indicates that ATR should be disabled and no samples will be taken.
 
 max_vfs
 -------
+This parameter adds support for SR-IOV. It causes the driver to spawn up to
+max_vfs worth of virtual functions.
 Valid Range: 1-63
 If the value is greater than 0 it will also force the VMDq parameter to be 1
 or more.
@@ -650,12 +653,22 @@ The parameters for the driver are referenced by position. Thus, if you have a
 dual port adapter, or more than one adapter in your system, and want N virtual
 functions per port, you must specify a number for each port with each parameter
 separated by a comma. For example:
-  modprobe ixgbe max_vfs=4,1
+
+  modprobe ixgbe max_vfs=4
+
+This will spawn 4 VFs on the first port.
+
+  modprobe ixgbe max_vfs=2,4
+
+This will spawn 2 VFs on the first port and 4 VFs on the second port.
+
 NOTE: Caution must be used in loading the driver with these parameters.
 Depending on your system configuration, number of slots, etc., it is impossible
 to predict in all cases where the positions would be on the command line.
-This parameter adds support for SR-IOV. It causes the driver to spawn up to
-max_vfs worth of virtual functions.
+
+NOTE: Neither the device nor the driver control how VFs are mapped into config
+space. Bus layout will vary by operating system. On operating systems that
+support it, you can check sysfs to find the mapping. 
 NOTE: When either SR-IOV mode or VMDq mode is enabled, hardware VLAN
 filtering and VLAN tag stripping/insertion will remain enabled. Please remove
 the old VLAN filter before the new VLAN filter is added. For example,
@@ -694,17 +707,6 @@ When VFs are configured, the PF is allocated one pool as well. The PF supports
 the DCB features with the constraint that each traffic class will only use a
 single queue pair. When zero VFs are configured, the PF can support multiple
 queue pairs per traffic class.
-
-
-Multi Queue Support for Virtual Functions in SR-IOV Mode
---------------------------------------------------------
-
-Multiple queues for virtual functions (VFs) is supported in this driver.
-To enable this feature at compile time, use the following command line:
-
-make CFLAGS_EXTRA="-DIXGBE_ENABLE_VF_MQ" install
-
-NOTE: The ixgbevf driver also needs to support multiple queues.
 
 
 Configuring SR-IOV for improved network security
@@ -751,14 +753,13 @@ buffer before they are passed higher up the networking stack, thus reducing
 the number of packets that have to be processed. LRO combines multiple
 Ethernet frames into a single receive in the stack, thereby potentially
 decreasing CPU utilization for receives.
-IXGBE_NO_LRO is a compile time flag. The user can enable it at compile time to add
-support for LRO from the driver. The flag is used by adding
-CFLAGS_EXTRA="-DIXGBE_NO_LRO" to the make file when it's being compiled.
-# make CFLAGS_EXTRA="-DIXGBE_NO_LRO" install
+This technique is also referred to as Hardware Receive Side Coalescing
+(HW RSC). 82599 and X540, and X550-based adapters support HW RSC. The
+LRO parameter controls HW RSC enablement.
 You can verify that the driver is using LRO by looking at these counters in
 ethtool:
-- lro_aggregated - counts total packets that were combined
-- lro_flushed - counts the number of packets flushed out of LRO
+- hw_rsc_aggregated - counts total packets that were combined
+- hw_rsc_flushed - counts the number of packets flushed out of LRO
 NOTE: IPv6 and UDP are not supported by LRO.
 
 
@@ -767,7 +768,7 @@ DMAC
 Valid Range: 0, 41-10000
 This parameter enables or disables DMA Coalescing feature. Values are in
 microseconds and set the internal DMA Coalescing internal timer.
-DMAC is available on Intel(R) X552 (and later) based adapters.
+DMAC is available on Intel(R) X550 (and later) based adapters.
 DMA (Direct Memory Access) allows the network device to move packet data
 directly to the system's memory, reducing CPU utilization. However, the
 frequency and random intervals at which packets arrive do not allow the
@@ -787,7 +788,7 @@ available on the Intel website.
 AQRate
 ------
 
-Devices that support AQRate (X550 and later) will include 2.5 Gbps and 
+Devices that support AQRate (X550 and later)?will include 2.5 Gbps and 
 5 Gbps in the speeds that the driver advertises during auto-negotiation,
 even though ethtool will not display 2.5 Gbps or 5 Gbps as "Supported link
 modes" or "Advertised link modes." These speeds are only available through
@@ -897,27 +898,6 @@ NOTE: For the Intel(R) Ethernet Connection X552 10 GbE SFP+ you must specify
 the desired speed. 
 
 
-Hardware Receive Side Coalescing (HW RSC)
------------------------------------------
-
-82599 and X540, and X550-based adapters support HW RSC, which can merge multiple
-frames from the same IPv4 TCP/IP flow into a single structure that can span
-one or more descriptors. It works similarly to Software Large Receive Offload
-technique. By default HW RSC is enabled and SW LRO cannot be used for 82599
-or X540, or X550-based adapters unless HW RSC is disabled.
-
-IXGBE_NO_HW_RSC is a compile time flag. The user can enable it at compile time
-to remove support for HW RSC from the driver. The flag is used by adding
-CFLAGS_EXTRA="-DIXGBE_NO_HW_RSC" to the make file when it is being compiled.
-make CFLAGS_EXTRA="-DIXGBE_NO_HW_RSC" install
-
-You can verify that the driver is using HW RSC by looking at the counter in
-ethtool:
-
-- hw_rsc_count. This counts the total number of Ethernet packets that were
-  being combined.
-
-
 MAC and VLAN anti-spoofing feature
 ----------------------------------
 
@@ -980,9 +960,11 @@ operating system. This reduces CPU utilization.
  
 VXLAN offloading is controlled by the tx and rx checksum offload options
 provided by ethtool. That is, if tx checksum offload is enabled, and the adapter
-has the capability, VXLAN offloading is also enabled. If rx checksum offload is
-enabled, then the VXLAN packets rx checksum will be offloaded, unless the module
-parameter vxlan_rx=0,0 was used to specifically disable the VXLAN rx offload.
+has the capability, VXLAN offloading is also enabled.
+
+If rx checksum offload is enabled, then the VXLAN packets rx checksum will
+be offloaded, unless the module parameter vxlan_rx=0,0 was used to specifically
+disable the VXLAN rx offload.
  
 VXLAN Overlay HW Offloading is enabled by default. To view and configure VXLAN
 on a VXLAN-overlay offload enabled device, use the following
@@ -991,7 +973,7 @@ command:
   # ethtool -k ethX
    (This command displays the offloads and their current state.)
 
-For more information on configuring your network for overlay HW offloading
+For more information on configuring your network for overlay HW offloading
 support, refer to the Intel Technical Brief, "Creating Overlay Networks
 Using Intel Ethernet Converged Network Adapters" (Intel Networking Division,
 August 2013):
@@ -1095,7 +1077,7 @@ Another alternative is to install the interfaces in separate broadcast domains
 UDP Stress Test Dropped Packet Issue
 ------------------------------------
 
-Under small packet UDP stress with the ixgbedriver, the system may
+Under small packet UDP stress with the ixgbe driver, the system may
 drop UDP packets due to socket buffers being full. Setting the driver Flow
 Control variables to the minimum may resolve the issue. You may also try
 increasing the kernel's default buffer sizes by changing the values in
@@ -1211,7 +1193,7 @@ Otherwise, the driver can be loaded once and will be safe, but unloading it
 will lead to the issue.
 
 Enabling SR-IOV in a 32-bit Microsoft* Windows* Server 2008 Guest OS Using
-Intel® 82576-based GbE or Intel® 82599-based 10GbE Controller Under KVM
+Intel? 82576-based GbE or Intel? 82599-based 10GbE Controller Under KVM
 KVM Hypervisor/VMM supports direct assignment of a PCIe device to a VM. This
 includes traditional PCIe devices, as well as SR-IOV-capable devices using
 Intel 82576-based and 82599-based controllers.
@@ -1314,9 +1296,7 @@ St - Fifth Floor, Boston, MA 02110-1301 USA.
 The full GNU General Public License is included in this distribution in the
 file called "COPYING".
 
-Intel(R) 10 Gigabit Ethernet Network Driver
-Intel(R) 10 Gigabit Virtual Function Network Driver
-Copyright(c) 1999 - 2015 Intel Corporation.
+Copyright(c) 1999 - 2016 Intel Corporation.
 ================================================================================
 
 

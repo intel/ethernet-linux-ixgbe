@@ -1,7 +1,7 @@
 ################################################################################
 #
-# Intel 10 Gigabit PCI Express Linux driver
-# Copyright (c) 1999 - 2014 Intel Corporation.
+# Intel(R) 10GbE PCI Express Linux Network Driver
+# Copyright(c) 1999 - 2016 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -25,7 +25,7 @@
 ifneq ($(KERNELRELEASE),)
 # kbuild part of makefile
 #
-# Makefile for the Intel(R) 10GbE PCI Express ethernet adapter driver
+# Makefile for the Intel(R) 10GbE PCI Express Linux Network Driver
 #
 
 obj-$(CONFIG_IXGBE) += ixgbe.o
@@ -84,41 +84,19 @@ ifeq (0,$(shell [ ${KVER_CODE} -lt $(call get_kvercode,2,6,0) ]; echo "$?"))
   $(error This driver is not supported on kernel versions older than 2.6.0)
 endif
 
-# set correct CCFLAGS variable for kernels older than 2.6.24
-ifeq (0,$(shell [ ${KVER_CODE} -lt $(call get_kvercode,2,6,24) ]; echo $$?))
-CCFLAGS_VAR := EXTRA_CFLAGS
-else
-CCFLAGS_VAR := ccflags-y
-endif
-
-
-############################
-# Module Install Directory #
-############################
-
-# Default to using updates/drivers/net/ethernet/intel/ path, since depmod since
-# v3.1 defaults to checking updates folder first, and only checking kernels/
-# and extra afterwards. We use updates instead of kernel/* due to desire to
-# prevent over-writing built-in modules files.
-INSTALL_MOD_DIR ?= updates/drivers/net/ethernet/intel/${DRIVER}
-
 ######################
 # Kernel Build Macro #
 ######################
 
-# kernel build function
+# customized kernelbuild function
+#
 # ${1} is the kernel build target
-# ${2] may contain any extra rules to pass directly to the sub-make process
-kernelbuild = ${MAKE} $(if ${GCC_I_SYS},CC:="${GCC_I_SYS}") \
-                      ${CCFLAGS_VAR}:="${EXTRA_CFLAGS}" \
-                      -C ${KSRC} \
-                      $(if ${KOBJ},O:=${KOBJ}) \
-                      CONFIG_${DRIVER_UPPERCASE}=m \
-                      $(if $(filter -DNO_PTP_SUPPORT,${EXTRA_CFLAGS}),CONFIG_PTP_1588_CLOCK=n) \
-                      M:=$(call readlink,.) \
-                      $(if ${INSTALL_MOD_PATH},INSTALL_MOD_PATH:=${INSTALL_MOD_PATH}) \
-                      INSTALL_MOD_DIR:=${INSTALL_MOD_DIR} \
-                      ${2} ${1};
+# ${2} may contain extra rules to pass to kernelbuild macro
+#
+# We customize the kernelbuild target in order to provide our hack to disable
+# CONFIG_PTP_1588_CLOCK support should -DNO_PTP_SUPPORT be defined in the extra
+# cflags given on the command line.
+devkernelbuild = $(call kernelbuild,$(if $(filter -DNO_PTP_SUPPORT,${EXTRA_CFLAGS}),CONFIG_PTP_1588_CLOCK=n) ${2},${1})
 
 ###############
 # Build rules #
@@ -126,27 +104,27 @@ kernelbuild = ${MAKE} $(if ${GCC_I_SYS},CC:="${GCC_I_SYS}") \
 
 # Standard compilation, with regular output
 default:
-	@+$(call kernelbuild,modules)
+	@+$(call devkernelbuild,modules)
 
 # Noisy output, for extra debugging
 noisy:
-	@+$(call kernelbuild,modules,V=1)
+	@+$(call devkernelbuild,modules,V=1)
 
 # Silence any output generated
 silent:
-	@+$(call kernelbuild,modules,>/dev/null)
+	@+$(call devkernelbuild,modules,>/dev/null)
 
 # Enable higher warning level
 checkwarnings: clean
-	@+$(call kernelbuild,modules,W=1)
+	@+$(call devkernelbuild,modules,W=1)
 
 # Run sparse static analyzer
 sparse: clean
-	@+$(call kernelbuild,modules,C=2 CF="-D__CHECK_ENDIAN__ -Wbitwise -Wcontext")
+	@+$(call devkernelbuild,modules,C=2 CF="-D__CHECK_ENDIAN__ -Wbitwise -Wcontext")
 
 # Run coccicheck static analyzer
 ccc: clean
-	@+$(call kernelbuild,modules,coccicheck MODE=report))
+	@+$(call devkernelbuild,modules,coccicheck MODE=report))
 
 # Build manfiles
 manfile:
@@ -154,15 +132,17 @@ manfile:
 
 # Clean the module subdirectories
 clean:
-	@+$(call kernelbuild,clean)
+	@+$(call devkernelbuild,clean)
 	@-rm -rf *.${MANSECTION}.gz *.ko
 
 # Install the modules and manpage
 install: default manfile
-# remove all old versions of the driver
-	install -D -m 644 ${DRIVER}.${MANSECTION}.gz ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz
-	@$(call kernelbuild,modules_install)
-	$(call cmd_depmod)
+	@echo "Copying manpages..."
+	@install -D -m 644 ${DRIVER}.${MANSECTION}.gz ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz
+	@echo "Installing modules..."
+	@+$(call devkernelbuild,modules_install)
+	@echo "Running depmod..."
+	@$(call cmd_depmod)
 
 uninstall:
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/${DRIVER}.ko;

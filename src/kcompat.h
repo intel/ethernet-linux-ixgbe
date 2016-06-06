@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -80,9 +80,7 @@
 
 /* packet split disable/enable */
 #ifdef DISABLE_PACKET_SPLIT
-#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 #define CONFIG_IXGBE_DISABLE_PACKET_SPLIT
-#endif
 #endif /* DISABLE_PACKET_SPLIT */
 
 /* MSI compatibility code for all kernels and drivers */
@@ -722,6 +720,16 @@ struct _kc_ethtool_pauseparam {
 #define RHEL_RELEASE_CODE 0
 #endif
 
+/* RHEL 7 didn't backport the parameter change in
+ * create_singlethread_workqueue.
+ * If/when RH corrects this we will want to tighten up the version check.
+ */
+#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0))
+#undef create_singlethread_workqueue
+#define create_singlethread_workqueue(name)	\
+	alloc_ordered_workqueue("%s", WQ_MEM_RECLAIM, name)
+#endif
+
 /* Ubuntu Release ABI is the 4th digit of their kernel version. You can find
  * it in /usr/src/linux/$(uname -r)/include/generated/utsrelease.h for new
  * enough versions of Ubuntu. Otherwise you can simply see it in the output of
@@ -1132,10 +1140,6 @@ struct vlan_ethhdr {
 /* 2.4.22 => 2.4.17 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,4,22) )
-#ifndef IXGBE_NO_LRO
-/* Don't enable LRO for these legacy kernels */
-#define IXGBE_NO_LRO
-#endif
 #endif
 
 /*****************************************************************************/
@@ -3390,6 +3394,7 @@ static inline void skb_tx_timestamp(struct sk_buff __always_unused *skb)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37) )
+#define HAVE_NON_CONST_PCI_DRIVER_NAME
 #ifndef netif_set_real_num_tx_queues
 static inline int _kc_netif_set_real_num_tx_queues(struct net_device *dev,
 						   unsigned int txq)
@@ -4413,6 +4418,10 @@ extern int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 #undef HAVE_STRUCT_PAGE_PFMEMALLOC
 #define HAVE_DCBNL_OPS_SETAPP_RETURN_INT
 #endif
+#ifndef list_next_entry
+#define list_next_entry(pos, member) \
+	list_entry((pos)->member.next, typeof(*(pos)), member)
+#endif
 
 #else /* >= 3.13.0 */
 #define HAVE_VXLAN_CHECKS
@@ -4617,6 +4626,7 @@ static inline void __kc_dev_mc_unsync(struct net_device __maybe_unused *dev,
 #endif
 
 #else
+#define HAVE_PCI_ERROR_HANDLER_RESET_NOTIFY
 #define HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
 #endif /* 3.16.0 */
 
@@ -4672,6 +4682,14 @@ extern unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_l
 #if RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,1))
 #define HAVE_SKBUFF_CSUM_LEVEL
 #endif /* >= RH 7.1 */
+
+#undef GENMASK
+#define GENMASK(h, l) \
+	(((~0UL) << (l)) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
+#undef GENMASK_ULL
+#define GENMASK_ULL(h, l) \
+	(((~0ULL) << (l)) & (~0ULL >> (BITS_PER_LONG_LONG - 1 - (h))))
+
 #else /*  3.18.0 */
 #define HAVE_SKBUFF_CSUM_LEVEL
 #define HAVE_SKB_XMIT_MORE
@@ -4755,10 +4773,14 @@ static inline struct sk_buff *__kc_napi_alloc_skb(struct napi_struct *napi, unsi
 #define __napi_alloc_skb(napi,len,mask) __kc_napi_alloc_skb(napi,len)
 #endif /* SKB_ALLOC_NAPI */
 #define HAVE_CONFIG_PM_RUNTIME
-#if RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(7,1))
-#define NDO_DFLT_BRIDGE_GETLINK_HAS_BRFLAGS
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,7)) && \
+     (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))
 #define HAVE_RXFH_HASHFUNC
-#endif /* RHEL_RELEASE_CODE */
+#endif /* 6.7 < RHEL < 7.0 */
+#if RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(7,1))
+#define HAVE_RXFH_HASHFUNC
+#define NDO_DFLT_BRIDGE_GETLINK_HAS_BRFLAGS
+#endif /* RHEL > 7.1 */
 #ifndef napi_schedule_irqoff
 #define napi_schedule_irqoff	napi_schedule
 #endif
@@ -4841,5 +4863,31 @@ static inline bool page_is_pfmemalloc(struct page __maybe_unused *page)
 #define HAVE_GENEVE_RX_OFFLOAD
 #define HAVE_NETIF_NAPI_ADD_CALLS_NAPI_HASH_ADD
 #endif /* 4.5.0 */
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0))
+#if !(UBUNTU_VERSION_CODE && UBUNTU_VERSION_CODE >= UBUNTU_VERSION(4,4,0,21))
+static inline void napi_consume_skb(struct sk_buff *skb,
+				    int __always_unused budget)
+{
+	dev_consume_skb_any(skb);
+}
+
+#endif /* UBUNTU_VERSION(4,4,0,21) */
+static inline void csum_replace_by_diff(__sum16 *sum, __wsum diff)
+{
+	* sum = csum_fold(csum_add(diff, ~csum_unfold(*sum)));
+}
+
+static inline void page_ref_inc(struct page *page)
+{
+	atomic_inc(&page->_count);
+}
+
+#endif /* 4.6.0 */
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,7,0))
+#else
+#define HAVE_NETIF_TRANS_UPDATE
+#endif /* 4.7.0 */
 
 #endif /* _KCOMPAT_H_ */

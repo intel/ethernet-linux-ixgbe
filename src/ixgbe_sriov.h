@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -49,12 +49,13 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int min_tx_rate,
 #else
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate);
 #endif /* HAVE_NDO_SET_VF_MIN_MAX_TX_RATE */
-#ifdef HAVE_VF_SPOOFCHK_CONFIGURE
-int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
+#ifdef HAVE_NDO_SET_VF_RSS_QUERY_EN
+int ixgbe_ndo_set_vf_rss_query_en(struct net_device *netdev, int vf,
+				  bool setting);
 #endif
 #ifdef HAVE_NDO_SET_VF_TRUST
 int ixgbe_ndo_set_vf_trust(struct net_device *netdev, int vf, bool setting);
-#endif /* HAVE_NDO_SET_VF_TRUST */
+#endif
 int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 			    int vf, struct ifla_vf_info *ivi);
 #endif /* IFLA_VF_MAX */
@@ -68,6 +69,7 @@ int ixgbe_pci_sriov_configure(struct pci_dev *dev, int num_vfs);
 void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter);
 #endif /* IFLA_VF_MAX */
 void ixgbe_dump_registers(struct ixgbe_adapter *adapter);
+int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 
 /*
  * These are defined in ixgbe_type.h on behalf of the VF driver

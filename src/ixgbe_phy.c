@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -100,8 +100,8 @@ STATIC u8 ixgbe_ones_comp_byte_add(u8 add1, u8 add2)
  *
  * Returns an error code on error.
  */
-STATIC s32 ixgbe_read_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr,
-					       u16 reg, u16 *val, bool lock)
+s32 ixgbe_read_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr, u16 reg,
+					u16 *val, bool lock)
 {
 	u32 swfw_mask = hw->phy.phy_semaphore_mask;
 	int max_retry = 10;
@@ -171,37 +171,6 @@ fail:
 }
 
 /**
- * ixgbe_read_i2c_combined_generic - Perform I2C read combined operation
- * @hw: pointer to the hardware structure
- * @addr: I2C bus address to read from
- * @reg: I2C device register to read from
- * @val: pointer to location to receive read value
- *
- * Returns an error code on error.
- **/
-STATIC s32 ixgbe_read_i2c_combined_generic(struct ixgbe_hw *hw, u8 addr,
-					   u16 reg, u16 *val)
-{
-	return ixgbe_read_i2c_combined_generic_int(hw, addr, reg, val, true);
-}
-
-/**
- * ixgbe_read_i2c_combined_generic_unlocked - Do I2C read combined operation
- * @hw: pointer to the hardware structure
- * @addr: I2C bus address to read from
- * @reg: I2C device register to read from
- * @val: pointer to location to receive read value
- *
- * Returns an error code on error.
- **/
-STATIC s32
-ixgbe_read_i2c_combined_generic_unlocked(struct ixgbe_hw *hw, u8 addr,
-					 u16 reg, u16 *val)
-{
-	return ixgbe_read_i2c_combined_generic_int(hw, addr, reg, val, false);
-}
-
-/**
  * ixgbe_write_i2c_combined_generic_int - Perform I2C write combined operation
  * @hw: pointer to the hardware structure
  * @addr: I2C bus address to write to
@@ -211,8 +180,8 @@ ixgbe_read_i2c_combined_generic_unlocked(struct ixgbe_hw *hw, u8 addr,
  *
  * Returns an error code on error.
  */
-STATIC s32 ixgbe_write_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr,
-						u16 reg, u16 val, bool lock)
+s32 ixgbe_write_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr, u16 reg,
+					 u16 val, bool lock)
 {
 	u32 swfw_mask = hw->phy.phy_semaphore_mask;
 	int max_retry = 1;
@@ -267,37 +236,6 @@ fail:
 }
 
 /**
- * ixgbe_write_i2c_combined_generic - Perform I2C write combined operation
- * @hw: pointer to the hardware structure
- * @addr: I2C bus address to write to
- * @reg: I2C device register to write to
- * @val: value to write
- *
- * Returns an error code on error.
- **/
-STATIC s32 ixgbe_write_i2c_combined_generic(struct ixgbe_hw *hw,
-					    u8 addr, u16 reg, u16 val)
-{
-	return ixgbe_write_i2c_combined_generic_int(hw, addr, reg, val, true);
-}
-
-/**
- * ixgbe_write_i2c_combined_generic_unlocked - Do I2C write combined operation
- * @hw: pointer to the hardware structure
- * @addr: I2C bus address to write to
- * @reg: I2C device register to write to
- * @val: value to write
- *
- * Returns an error code on error.
- **/
-STATIC s32
-ixgbe_write_i2c_combined_generic_unlocked(struct ixgbe_hw *hw,
-					  u8 addr, u16 reg, u16 val)
-{
-	return ixgbe_write_i2c_combined_generic_int(hw, addr, reg, val, false);
-}
-
-/**
  *  ixgbe_init_phy_ops_generic - Inits PHY function ptrs
  *  @hw: pointer to the hardware structure
  *
@@ -328,17 +266,44 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 	phy->ops.i2c_bus_clear = ixgbe_i2c_bus_clear;
 	phy->ops.identify_sfp = ixgbe_identify_module_generic;
 	phy->sfp_type = ixgbe_sfp_type_unknown;
-	phy->ops.read_i2c_combined = ixgbe_read_i2c_combined_generic;
-	phy->ops.write_i2c_combined = ixgbe_write_i2c_combined_generic;
-	phy->ops.read_i2c_combined_unlocked =
-				ixgbe_read_i2c_combined_generic_unlocked;
-	phy->ops.write_i2c_combined_unlocked =
-				ixgbe_write_i2c_combined_generic_unlocked;
 	phy->ops.read_i2c_byte_unlocked = ixgbe_read_i2c_byte_generic_unlocked;
 	phy->ops.write_i2c_byte_unlocked =
 				ixgbe_write_i2c_byte_generic_unlocked;
 	phy->ops.check_overtemp = ixgbe_tn_check_overtemp;
 	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_probe_phy - Probe a single address for a PHY
+ * @hw: pointer to hardware structure
+ * @phy_addr: PHY address to probe
+ *
+ * Returns true if PHY found
+ */
+static bool ixgbe_probe_phy(struct ixgbe_hw *hw, u16 phy_addr)
+{
+	u16 ext_ability = 0;
+
+	if (!ixgbe_validate_phy_addr(hw, phy_addr))
+		return false;
+
+	if (ixgbe_get_phy_id(hw))
+		return false;
+
+	hw->phy.type = ixgbe_get_phy_type_from_id(hw->phy.id);
+
+	if (hw->phy.type == ixgbe_phy_unknown) {
+		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_EXT_ABILITY,
+				     IXGBE_MDIO_PMA_PMD_DEV_TYPE, &ext_ability);
+		if (ext_ability &
+		    (IXGBE_MDIO_PHY_10GBASET_ABILITY |
+		     IXGBE_MDIO_PHY_1000BASET_ABILITY))
+			hw->phy.type = ixgbe_phy_cu_unknown;
+		else
+			hw->phy.type = ixgbe_phy_generic;
+	}
+
+	return true;
 }
 
 /**
@@ -350,8 +315,7 @@ s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw)
 s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 {
 	s32 status = IXGBE_ERR_PHY_ADDR_INVALID;
-	u32 phy_addr;
-	u16 ext_ability = 0;
+	u16 phy_addr;
 
 	DEBUGFUNC("ixgbe_identify_phy_generic");
 
@@ -362,44 +326,22 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 			hw->phy.phy_semaphore_mask = IXGBE_GSSR_PHY0_SM;
 	}
 
-	if (hw->phy.type == ixgbe_phy_unknown) {
-		for (phy_addr = 0; phy_addr < IXGBE_MAX_PHY_ADDR; phy_addr++) {
-			if (ixgbe_validate_phy_addr(hw, phy_addr)) {
-				hw->phy.addr = phy_addr;
-				ixgbe_get_phy_id(hw);
-				hw->phy.type =
-					ixgbe_get_phy_type_from_id(hw->phy.id);
+	if (hw->phy.type != ixgbe_phy_unknown)
+		return IXGBE_SUCCESS;
 
-				if (hw->phy.type == ixgbe_phy_unknown) {
-					hw->phy.ops.read_reg(hw,
-						  IXGBE_MDIO_PHY_EXT_ABILITY,
-						  IXGBE_MDIO_PMA_PMD_DEV_TYPE,
-						  &ext_ability);
-					if (ext_ability &
-					    (IXGBE_MDIO_PHY_10GBASET_ABILITY |
-					     IXGBE_MDIO_PHY_1000BASET_ABILITY))
-						hw->phy.type =
-							 ixgbe_phy_cu_unknown;
-					else
-						hw->phy.type =
-							 ixgbe_phy_generic;
-				}
-
-				status = IXGBE_SUCCESS;
-				break;
-			}
+	for (phy_addr = 0; phy_addr < IXGBE_MAX_PHY_ADDR; phy_addr++) {
+		if (ixgbe_probe_phy(hw, phy_addr)) {
+			status = IXGBE_SUCCESS;
+			break;
 		}
-
-		/* Certain media types do not have a phy so an address will not
-		 * be found and the code will take this path.  Caller has to
-		 * decide if it is an error or not.
-		 */
-		if (status != IXGBE_SUCCESS) {
-			hw->phy.addr = 0;
-		}
-	} else {
-		status = IXGBE_SUCCESS;
 	}
+
+	/* Certain media types do not have a phy so an address will not
+	 * be found and the code will take this path.  Caller has to
+	 * decide if it is an error or not.
+	 */
+	if (status != IXGBE_SUCCESS)
+		hw->phy.addr = 0;
 
 	return status;
 }
@@ -674,13 +616,12 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 
 	DEBUGFUNC("ixgbe_read_phy_reg_generic");
 
-	if (hw->mac.ops.acquire_swfw_sync(hw, gssr) == IXGBE_SUCCESS) {
-		status = ixgbe_read_phy_reg_mdi(hw, reg_addr, device_type,
-						phy_data);
-		hw->mac.ops.release_swfw_sync(hw, gssr);
-	} else {
-		status = IXGBE_ERR_SWFW_SYNC;
-	}
+	if (hw->mac.ops.acquire_swfw_sync(hw, gssr))
+		return IXGBE_ERR_SWFW_SYNC;
+
+	status = hw->phy.ops.read_reg_mdi(hw, reg_addr, device_type, phy_data);
+
+	hw->mac.ops.release_swfw_sync(hw, gssr);
 
 	return status;
 }
@@ -938,6 +879,9 @@ s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 
 	if (speed & IXGBE_LINK_SPEED_100_FULL)
 		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_100_FULL;
+
+	if (speed & IXGBE_LINK_SPEED_10_FULL)
+		hw->phy.autoneg_advertised |= IXGBE_LINK_SPEED_10_FULL;
 
 	/* Setup link based on the new speed settings */
 	ixgbe_setup_phy_link(hw);

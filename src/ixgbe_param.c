@@ -1,7 +1,7 @@
 /*******************************************************************************
 
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright (c) 1999 - 2014 Intel Corporation.
+  Intel(R) 10GbE PCI Express Linux Network Driver
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -69,15 +69,6 @@
 	MODULE_PARM_DESC(X, desc);
 #endif
 
-/* IntMode (Interrupt Mode)
- *
- * Valid Range: 0-2
- *  - 0 - Legacy Interrupt
- *  - 1 - MSI Interrupt
- *  - 2 - MSI-X Interrupt(s)
- *
- * Default Value: 2
- */
 IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
 	    "default IntMode (deprecated)");
 IXGBE_PARAM(IntMode, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
@@ -142,15 +133,15 @@ IXGBE_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues, "
 /* VMDQ - Virtual Machine Device Queues (VMDQ)
  *
  * Valid Range: 1-16
- *  - 1 Disables VMDQ by allocating only a single queue.
+ *  - 0/1 Disables VMDQ by allocating only a single queue.
  *  - 2-16 - enables VMDQ and sets the Desc. Q's to the specified value.
  *
- * Default Value: 1
+ * Default Value: 8
  */
 
 #define IXGBE_DEFAULT_NUM_VMDQ 8
 
-IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable, "
+IXGBE_PARAM(VMDQ, "Number of Virtual Machine Device Queues: 0/1 = disable (1 queue) "
 	    "2-16 enable (default=" XSTRINGIFY(IXGBE_DEFAULT_NUM_VMDQ) ")");
 
 #ifdef CONFIG_PCI_IOV
@@ -434,10 +425,9 @@ static int __devinit ixgbe_validate_option(unsigned int *value,
 		break;
 	case list_option: {
 		int i;
-		const struct ixgbe_opt_list *ent;
 
 		for (i = 0; i < opt->arg.l.nr; i++) {
-			ent = &opt->arg.l.p[i];
+			const struct ixgbe_opt_list *ent = &opt->arg.l.p[i];
 			if (*value == ent->i) {
 				if (ent->str[0] != '\0')
 					printk(KERN_INFO "%s\n", ent->str);
@@ -627,7 +617,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.err  = "using default.",
 			.def  = 0,
 			.arg  = { .r = { .min = 0,
-					 .max = 1} }
+					 .max = 16} }
 		};
 		unsigned int rss = RSS[bd];
 		/* adjust Max allowed RSS queues based on MAC type */
@@ -693,8 +683,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			 * perspective */
 			if (vmdq > 1) {
 				*aflags |= IXGBE_FLAG_VMDQ_ENABLED;
-			}
-			else
+			} else
 				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 
 			feature[RING_F_VMDQ].limit = vmdq;
@@ -1102,11 +1091,9 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		};
 		struct net_device *netdev = adapter->netdev;
 
-#ifdef IXGBE_NO_LRO
 		if (!(adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE))
 			opt.def = OPTION_DISABLED;
 
-#endif
 #ifdef module_param_array
 		if (num_LRO > bd) {
 #endif
@@ -1123,7 +1110,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			netdev->features &= ~NETIF_F_LRO;
 		}
 #endif
-#ifdef IXGBE_NO_LRO
 		if ((netdev->features & NETIF_F_LRO) &&
 		    !(adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE)) {
 			DPRINTK(PROBE, INFO,
@@ -1131,7 +1117,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				"hardware.  Disabling RSC.\n");
 			netdev->features &= ~NETIF_F_LRO;
 		}
-#endif /* IXGBE_NO_LRO */
 	}
 	{ /*
 	   * allow_unsupported_sfp - Enable/Disable support for unsupported
@@ -1267,12 +1252,13 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 					} else {
 						*aflags &= ~IXGBE_FLAG_MDD_ENABLED;
 				}
-#endif
 			}
+#endif
 			break;
 		default:
 			*aflags &= ~IXGBE_FLAG_MDD_ENABLED;
 			break;
 		}
 	}
+
 }

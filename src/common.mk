@@ -1,7 +1,7 @@
 ################################################################################
 #
-# Intel 10 Gigabit PCI Express Linux driver
-# Copyright (c) 1999 - 2014 Intel Corporation.
+# Intel(R) 10GbE PCI Express Linux Network Driver
+# Copyright(c) 1999 - 2016 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -23,6 +23,14 @@
 ################################################################################
 
 # common Makefile rules useful for out-of-tree Linux driver builds
+#
+# Usage: include common.mk
+#
+# After including, you probably want to add a minimum_kver_check call
+#
+# Required Variables:
+# DRIVER
+#   -- Set to the lowercase driver name
 
 #####################
 # Helpful functions #
@@ -46,16 +54,12 @@ cmd_depmod = /sbin/depmod $(if ${SYSTEM_MAP_FILE},-e -F ${SYSTEM_MAP_FILE}) \
                           -a ${KVER}
 
 ################
-# initrd Macro #
+# dracut Macro #
 ################
 
 cmd_initrd := $(shell \
                 if which dracut > /dev/null 2>&1 ; then \
                     echo "dracut --force"; \
-                elif which mkinitrd > /dev/null 2>&1 ; then \
-                    echo "mkinitrd"; \
-                elif which update-initramfs > /dev/null 2>&1 ; then \
-                    echo "update-initramfs -u"; \
                 fi )
 
 #####################
@@ -231,3 +235,60 @@ ifeq (,${MANDIR})
   # fallback to /usr/man
   MANDIR := /usr/man
 endif
+
+####################
+# CCFLAGS variable #
+####################
+
+# set correct CCFLAGS variable for kernels older than 2.6.24
+ifeq (0,$(shell [ ${KVER_CODE} -lt $(call get_kvercode,2,6,24) ]; echo $$?))
+CCFLAGS_VAR := EXTRA_CFLAGS
+else
+CCFLAGS_VAR := ccflags-y
+endif
+
+#################
+# KBUILD_OUTPUT #
+#################
+
+# Only set KBUILD_OUTPUT if KOBJ differs from KSRC
+ifneq (${KSRC},${KOBJ})
+export KBUILD_OUTPUT ?= ${KOBJ}
+endif
+
+############################
+# Module Install Directory #
+############################
+
+# Default to using updates/drivers/net/ethernet/intel/ path, since depmod since
+# v3.1 defaults to checking updates folder first, and only checking kernels/
+# and extra afterwards. We use updates instead of kernel/* due to desire to
+# prevent over-writing built-in modules files.
+export INSTALL_MOD_DIR ?= updates/drivers/net/ethernet/intel/${DRIVER}
+
+######################
+# Kernel Build Macro #
+######################
+
+# kernel build function
+# ${1} is the kernel build target
+# ${2} may contain any extra rules to pass directly to the sub-make process
+#
+# This function is expected to be executed by
+#   @+$(call kernelbuild,<target>,<extra parameters>)
+# from within a Makefile recipe.
+#
+# The following variables are expected to be defined for its use:
+#
+# *) GCC_I_SYS -- if set it will enable use of gcc-i-sys.sh wrapper to use -isystem
+# *) CCFLAGS_VAR -- the CCFLAGS variable to set extra CFLAGS
+# *) EXTRA_CFLAGS -- a set of extra CFLAGS to pass into the ccflags-y variable
+# *) KSRC -- the location of the kernel source tree to build against
+# *) DRIVER_UPPERCASE -- the uppercase name of the kernel module, set from DRIVER
+#
+kernelbuild = ${MAKE} $(if ${GCC_I_SYS},CC="${GCC_I_SYS}") \
+                      ${CCFLAGS_VAR}="${EXTRA_CFLAGS}" \
+                      -C "${KSRC}" \
+                      CONFIG_${DRIVER_UPPERCASE}=m \
+                      M="${CURDIR}" \
+                      ${2} ${1};
