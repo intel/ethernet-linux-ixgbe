@@ -104,7 +104,7 @@ s32 ixgbe_read_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr, u16 reg,
 					u16 *val, bool lock)
 {
 	u32 swfw_mask = hw->phy.phy_semaphore_mask;
-	int max_retry = 10;
+	int max_retry = 3;
 	int retry = 0;
 	u8 csum_byte;
 	u8 high_bits;
@@ -112,8 +112,6 @@ s32 ixgbe_read_i2c_combined_generic_int(struct ixgbe_hw *hw, u8 addr, u16 reg,
 	u8 reg_high;
 	u8 csum;
 
-	if (hw->mac.type >= ixgbe_mac_X550)
-		max_retry = 3;
 	reg_high = ((reg >> 7) & 0xFE) | 1;	/* Indicate read combined */
 	csum = ixgbe_ones_comp_byte_add(reg_high, reg & 0xFF);
 	csum = ~csum;
@@ -329,6 +327,16 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 	if (hw->phy.type != ixgbe_phy_unknown)
 		return IXGBE_SUCCESS;
 
+	if (hw->phy.nw_mng_if_sel) {
+		phy_addr = (hw->phy.nw_mng_if_sel &
+			    IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD) >>
+			   IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD_SHIFT;
+		if (ixgbe_probe_phy(hw, phy_addr))
+			return IXGBE_SUCCESS;
+		else
+			return IXGBE_ERR_PHY_ADDR_INVALID;
+	}
+
 	for (phy_addr = 0; phy_addr < IXGBE_MAX_PHY_ADDR; phy_addr++) {
 		if (ixgbe_probe_phy(hw, phy_addr)) {
 			status = IXGBE_SUCCESS;
@@ -440,7 +448,6 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 	case TN1010_PHY_ID:
 		phy_type = ixgbe_phy_tn;
 		break;
-	case X550_PHY_ID1:
 	case X550_PHY_ID2:
 	case X550_PHY_ID3:
 	case X540_PHY_ID:
@@ -453,6 +460,7 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 		phy_type = ixgbe_phy_nl;
 		break;
 	case X557_PHY_ID:
+	case X557_PHY_ID2:
 		phy_type = ixgbe_phy_x550em_ext_t;
 		break;
 	default:
@@ -504,11 +512,30 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 	 */
 	for (i = 0; i < 30; i++) {
 		msec_delay(100);
-		hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
-				     IXGBE_MDIO_PHY_XS_DEV_TYPE, &ctrl);
-		if (!(ctrl & IXGBE_MDIO_PHY_XS_RESET)) {
-			usec_delay(2);
-			break;
+		if (hw->phy.type == ixgbe_phy_x550em_ext_t) {
+			status = hw->phy.ops.read_reg(hw,
+						  IXGBE_MDIO_TX_VENDOR_ALARMS_3,
+						  IXGBE_MDIO_PMA_PMD_DEV_TYPE,
+						  &ctrl);
+			if (status != IXGBE_SUCCESS)
+				return status;
+
+			if (ctrl & IXGBE_MDIO_TX_VENDOR_ALARMS_3_RST_MASK) {
+				usec_delay(2);
+				break;
+			}
+		} else {
+			status = hw->phy.ops.read_reg(hw,
+						     IXGBE_MDIO_PHY_XS_CONTROL,
+						     IXGBE_MDIO_PHY_XS_DEV_TYPE,
+						     &ctrl);
+			if (status != IXGBE_SUCCESS)
+				return status;
+
+			if (!(ctrl & IXGBE_MDIO_PHY_XS_RESET)) {
+				usec_delay(2);
+				break;
+			}
 		}
 	}
 
@@ -717,7 +744,7 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 	DEBUGFUNC("ixgbe_write_phy_reg_generic");
 
 	if (hw->mac.ops.acquire_swfw_sync(hw, gssr) == IXGBE_SUCCESS) {
-		status = ixgbe_write_phy_reg_mdi(hw, reg_addr, device_type,
+		status = hw->phy.ops.write_reg_mdi(hw, reg_addr, device_type,
 						 phy_data);
 		hw->mac.ops.release_swfw_sync(hw, gssr);
 	} else {
@@ -744,91 +771,63 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 
 	ixgbe_get_copper_link_capabilities_generic(hw, &speed, &autoneg);
 
-	if (speed & IXGBE_LINK_SPEED_10GB_FULL) {
-		/* Set or unset auto-negotiation 10G advertisement */
-		hw->phy.ops.read_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
-				     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				     &autoneg_reg);
+	/* Set or unset auto-negotiation 10G advertisement */
+	hw->phy.ops.read_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
+			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+			     &autoneg_reg);
 
-		autoneg_reg &= ~IXGBE_MII_10GBASE_T_ADVERTISE;
-		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL)
-			autoneg_reg |= IXGBE_MII_10GBASE_T_ADVERTISE;
+	autoneg_reg &= ~IXGBE_MII_10GBASE_T_ADVERTISE;
+	if ((hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10GB_FULL) &&
+	    (speed & IXGBE_LINK_SPEED_10GB_FULL))
+		autoneg_reg |= IXGBE_MII_10GBASE_T_ADVERTISE;
 
-		hw->phy.ops.write_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
-				      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				      autoneg_reg);
-	}
+	hw->phy.ops.write_reg(hw, IXGBE_MII_10GBASE_T_AUTONEG_CTRL_REG,
+			      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+			      autoneg_reg);
+
+	hw->phy.ops.read_reg(hw, IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+			     &autoneg_reg);
 
 	if (hw->mac.type == ixgbe_mac_X550) {
-		if (speed & IXGBE_LINK_SPEED_5GB_FULL) {
-			/* Set or unset auto-negotiation 5G advertisement */
-			hw->phy.ops.read_reg(hw,
-				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
-				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				&autoneg_reg);
+		/* Set or unset auto-negotiation 5G advertisement */
+		autoneg_reg &= ~IXGBE_MII_5GBASE_T_ADVERTISE;
+		if ((hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_5GB_FULL) &&
+		    (speed & IXGBE_LINK_SPEED_5GB_FULL))
+			autoneg_reg |= IXGBE_MII_5GBASE_T_ADVERTISE;
 
-			autoneg_reg &= ~IXGBE_MII_5GBASE_T_ADVERTISE;
-			if (hw->phy.autoneg_advertised &
-			     IXGBE_LINK_SPEED_5GB_FULL)
-				autoneg_reg |= IXGBE_MII_5GBASE_T_ADVERTISE;
-
-			hw->phy.ops.write_reg(hw,
-				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
-				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				autoneg_reg);
-		}
-
-		if (speed & IXGBE_LINK_SPEED_2_5GB_FULL) {
-			/* Set or unset auto-negotiation 2.5G advertisement */
-			hw->phy.ops.read_reg(hw,
-				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
-				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				&autoneg_reg);
-
-			autoneg_reg &= ~IXGBE_MII_2_5GBASE_T_ADVERTISE;
-			if (hw->phy.autoneg_advertised &
-			    IXGBE_LINK_SPEED_2_5GB_FULL)
-				autoneg_reg |= IXGBE_MII_2_5GBASE_T_ADVERTISE;
-
-			hw->phy.ops.write_reg(hw,
-				IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
-				IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				autoneg_reg);
-		}
+		/* Set or unset auto-negotiation 2.5G advertisement */
+		autoneg_reg &= ~IXGBE_MII_2_5GBASE_T_ADVERTISE;
+		if ((hw->phy.autoneg_advertised &
+		     IXGBE_LINK_SPEED_2_5GB_FULL) &&
+		    (speed & IXGBE_LINK_SPEED_2_5GB_FULL))
+			autoneg_reg |= IXGBE_MII_2_5GBASE_T_ADVERTISE;
 	}
 
-	if (speed & IXGBE_LINK_SPEED_1GB_FULL) {
-		/* Set or unset auto-negotiation 1G advertisement */
-		hw->phy.ops.read_reg(hw,
-				     IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
-				     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				     &autoneg_reg);
+	/* Set or unset auto-negotiation 1G advertisement */
+	autoneg_reg &= ~IXGBE_MII_1GBASE_T_ADVERTISE;
+	if ((hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL) &&
+	    (speed & IXGBE_LINK_SPEED_1GB_FULL))
+		autoneg_reg |= IXGBE_MII_1GBASE_T_ADVERTISE;
 
-		autoneg_reg &= ~IXGBE_MII_1GBASE_T_ADVERTISE;
-		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_1GB_FULL)
-			autoneg_reg |= IXGBE_MII_1GBASE_T_ADVERTISE;
+	hw->phy.ops.write_reg(hw, IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
+			      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+			      autoneg_reg);
 
-		hw->phy.ops.write_reg(hw,
-				      IXGBE_MII_AUTONEG_VENDOR_PROVISION_1_REG,
-				      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				      autoneg_reg);
-	}
+	/* Set or unset auto-negotiation 100M advertisement */
+	hw->phy.ops.read_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
+			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+			     &autoneg_reg);
 
-	if (speed & IXGBE_LINK_SPEED_100_FULL) {
-		/* Set or unset auto-negotiation 100M advertisement */
-		hw->phy.ops.read_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
-				     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				     &autoneg_reg);
+	autoneg_reg &= ~(IXGBE_MII_100BASE_T_ADVERTISE |
+			 IXGBE_MII_100BASE_T_ADVERTISE_HALF);
+	if ((hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL) &&
+	    (speed & IXGBE_LINK_SPEED_100_FULL))
+		autoneg_reg |= IXGBE_MII_100BASE_T_ADVERTISE;
 
-		autoneg_reg &= ~(IXGBE_MII_100BASE_T_ADVERTISE |
-				 IXGBE_MII_100BASE_T_ADVERTISE_HALF);
-		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_100_FULL)
-			autoneg_reg |= IXGBE_MII_100BASE_T_ADVERTISE;
-
-		hw->phy.ops.write_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
-				      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
-				      autoneg_reg);
-	}
+	hw->phy.ops.write_reg(hw, IXGBE_MII_AUTONEG_ADVERTISE_REG,
+			      IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
+			      autoneg_reg);
 
 	/* Blocked by MNG FW so don't reset PHY */
 	if (ixgbe_check_reset_blocked(hw))
@@ -920,6 +919,7 @@ static s32 ixgbe_get_copper_speeds_supported(struct ixgbe_hw *hw)
 		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_5GB_FULL;
 		break;
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		hw->phy.speeds_supported &= ~IXGBE_LINK_SPEED_100_FULL;
 		break;
 	default:

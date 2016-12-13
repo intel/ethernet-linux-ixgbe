@@ -119,6 +119,18 @@
 #define IXGBE_DEV_ID_X540T1			0x1560
 #define IXGBE_DEV_ID_X550T			0x1563
 #define IXGBE_DEV_ID_X550T1			0x15D1
+/* Placeholder value, pending official value. */
+#define IXGBE_DEV_ID_X550EM_A_KR		0x15C2
+#define IXGBE_DEV_ID_X550EM_A_KR_L		0x15C3
+#define IXGBE_DEV_ID_X550EM_A_SFP_N		0x15C4
+#define IXGBE_DEV_ID_X550EM_A_SGMII		0x15C6
+#define IXGBE_DEV_ID_X550EM_A_SGMII_L		0x15C7
+#define IXGBE_DEV_ID_X550EM_A_10G_T		0x15C8
+#define IXGBE_DEV_ID_X550EM_A_QSFP		0x15CA
+#define IXGBE_DEV_ID_X550EM_A_QSFP_N		0x15CC
+#define IXGBE_DEV_ID_X550EM_A_SFP		0x15CE
+#define IXGBE_DEV_ID_X550EM_A_1G_T		0x15E4
+#define IXGBE_DEV_ID_X550EM_A_1G_T_L		0x15E5
 #define IXGBE_DEV_ID_X550EM_X_KX4		0x15AA
 #define IXGBE_DEV_ID_X550EM_X_KR		0x15AB
 #define IXGBE_DEV_ID_X550EM_X_SFP		0x15AC
@@ -139,6 +151,7 @@
 #define IXGBE_I2CCTL_X540	IXGBE_I2CCTL_82599
 #define IXGBE_I2CCTL_X550	0x15F5C
 #define IXGBE_I2CCTL_X550EM_x	IXGBE_I2CCTL_X550
+#define IXGBE_I2CCTL_X550EM_a	IXGBE_I2CCTL_X550
 #define IXGBE_I2CCTL_BY_MAC(_hw) IXGBE_BY_MAC((_hw), I2CCTL)
 #define IXGBE_PHY_GPIO		0x00028
 #define IXGBE_MAC_GPIO		0x00030
@@ -156,7 +169,8 @@
 #define IXGBE_EEC_X540		IXGBE_EEC
 #define IXGBE_EEC_X550		IXGBE_EEC
 #define IXGBE_EEC_X550EM_x	IXGBE_EEC
-#define IXGBE_EEC_BY_MAC(_hw)	IXGBE_EEC
+#define IXGBE_EEC_X550EM_a	0x15FF8
+#define IXGBE_EEC_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), EEC)
 
 #define IXGBE_EERD		0x10014
 #define IXGBE_EEWR		0x10018
@@ -165,7 +179,8 @@
 #define IXGBE_FLA_X540		IXGBE_FLA
 #define IXGBE_FLA_X550		IXGBE_FLA
 #define IXGBE_FLA_X550EM_x	IXGBE_FLA
-#define IXGBE_FLA_BY_MAC(_hw)	IXGBE_FLA
+#define IXGBE_FLA_X550EM_a	0x15F68
+#define IXGBE_FLA_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), FLA)
 
 #define IXGBE_EEMNGCTL	0x10110
 #define IXGBE_EEMNGDATA	0x10114
@@ -178,13 +193,15 @@
 #define IXGBE_GRC_X540		IXGBE_GRC
 #define IXGBE_GRC_X550		IXGBE_GRC
 #define IXGBE_GRC_X550EM_x	IXGBE_GRC
-#define IXGBE_GRC_BY_MAC(_hw)	IXGBE_GRC
+#define IXGBE_GRC_X550EM_a	0x15F64
+#define IXGBE_GRC_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), GRC)
 
 #define IXGBE_SRAMREL		0x10210
 #define IXGBE_SRAMREL_X540	IXGBE_SRAMREL
 #define IXGBE_SRAMREL_X550	IXGBE_SRAMREL
 #define IXGBE_SRAMREL_X550EM_x	IXGBE_SRAMREL
-#define IXGBE_SRAMREL_BY_MAC(_hw)	IXGBE_SRAMREL
+#define IXGBE_SRAMREL_X550EM_a	0x15F6C
+#define IXGBE_SRAMREL_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), SRAMREL)
 
 #define IXGBE_PHYDBG	0x10218
 
@@ -200,36 +217,42 @@
 #define IXGBE_I2C_CLK_IN_X540		IXGBE_I2C_CLK_IN
 #define IXGBE_I2C_CLK_IN_X550		0x00004000
 #define IXGBE_I2C_CLK_IN_X550EM_x	IXGBE_I2C_CLK_IN_X550
+#define IXGBE_I2C_CLK_IN_X550EM_a	IXGBE_I2C_CLK_IN_X550
 #define IXGBE_I2C_CLK_IN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), I2C_CLK_IN)
 
 #define IXGBE_I2C_CLK_OUT		0x00000002
 #define IXGBE_I2C_CLK_OUT_X540		IXGBE_I2C_CLK_OUT
 #define IXGBE_I2C_CLK_OUT_X550		0x00000200
 #define IXGBE_I2C_CLK_OUT_X550EM_x	IXGBE_I2C_CLK_OUT_X550
+#define IXGBE_I2C_CLK_OUT_X550EM_a	IXGBE_I2C_CLK_OUT_X550
 #define IXGBE_I2C_CLK_OUT_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), I2C_CLK_OUT)
 
 #define IXGBE_I2C_DATA_IN		0x00000004
 #define IXGBE_I2C_DATA_IN_X540		IXGBE_I2C_DATA_IN
 #define IXGBE_I2C_DATA_IN_X550		0x00001000
 #define IXGBE_I2C_DATA_IN_X550EM_x	IXGBE_I2C_DATA_IN_X550
+#define IXGBE_I2C_DATA_IN_X550EM_a	IXGBE_I2C_DATA_IN_X550
 #define IXGBE_I2C_DATA_IN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), I2C_DATA_IN)
 
 #define IXGBE_I2C_DATA_OUT		0x00000008
 #define IXGBE_I2C_DATA_OUT_X540		IXGBE_I2C_DATA_OUT
 #define IXGBE_I2C_DATA_OUT_X550		0x00000400
 #define IXGBE_I2C_DATA_OUT_X550EM_x	IXGBE_I2C_DATA_OUT_X550
+#define IXGBE_I2C_DATA_OUT_X550EM_a	IXGBE_I2C_DATA_OUT_X550
 #define IXGBE_I2C_DATA_OUT_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), I2C_DATA_OUT)
 
 #define IXGBE_I2C_DATA_OE_N_EN		0
 #define IXGBE_I2C_DATA_OE_N_EN_X540	IXGBE_I2C_DATA_OE_N_EN
 #define IXGBE_I2C_DATA_OE_N_EN_X550	0x00000800
 #define IXGBE_I2C_DATA_OE_N_EN_X550EM_x	IXGBE_I2C_DATA_OE_N_EN_X550
+#define IXGBE_I2C_DATA_OE_N_EN_X550EM_a	IXGBE_I2C_DATA_OE_N_EN_X550
 #define IXGBE_I2C_DATA_OE_N_EN_BY_MAC(_hw) IXGBE_BY_MAC((_hw), I2C_DATA_OE_N_EN)
 
 #define IXGBE_I2C_BB_EN			0
 #define IXGBE_I2C_BB_EN_X540		IXGBE_I2C_BB_EN
 #define IXGBE_I2C_BB_EN_X550		0x00000100
 #define IXGBE_I2C_BB_EN_X550EM_x	IXGBE_I2C_BB_EN_X550
+#define IXGBE_I2C_BB_EN_X550EM_a	IXGBE_I2C_BB_EN_X550
 
 #define IXGBE_I2C_BB_EN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), I2C_BB_EN)
 
@@ -237,6 +260,7 @@
 #define IXGBE_I2C_CLK_OE_N_EN_X540	IXGBE_I2C_CLK_OE_N_EN
 #define IXGBE_I2C_CLK_OE_N_EN_X550	0x00002000
 #define IXGBE_I2C_CLK_OE_N_EN_X550EM_x	IXGBE_I2C_CLK_OE_N_EN_X550
+#define IXGBE_I2C_CLK_OE_N_EN_X550EM_a	IXGBE_I2C_CLK_OE_N_EN_X550
 #define IXGBE_I2C_CLK_OE_N_EN_BY_MAC(_hw) IXGBE_BY_MAC((_hw), I2C_CLK_OE_N_EN)
 #define IXGBE_I2C_CLOCK_STRETCHING_TIMEOUT	500
 
@@ -523,6 +547,13 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_PROXYS	0x05F60 /* Proxying Status Register */
 #define IXGBE_PROXYFC	0x05F64 /* Proxying Filter Control Register */
 #define IXGBE_VXLANCTRL	0x0000507C /* Rx filter VXLAN UDPPORT Register */
+
+/* masks for accessing VXLAN and GENEVE UDP ports */
+#define IXGBE_VXLANCTRL_VXLAN_UDPPORT_MASK	0x0000ffff /* VXLAN port */
+#define IXGBE_VXLANCTRL_GENEVE_UDPPORT_MASK	0xffff0000 /* GENEVE port */
+#define IXGBE_VXLANCTRL_ALL_UDPPORT_MASK	0xffffffff /* GENEVE/VXLAN */
+
+#define IXGBE_VXLANCTRL_GENEVE_UDPPORT_SHIFT	16
 
 #define IXGBE_FHFT(_n)	(0x09000 + ((_n) * 0x100)) /* Flex host filter table */
 /* Ext Flexible Host Filter Table */
@@ -982,7 +1013,7 @@ struct ixgbe_dmac_config {
 #define IXGBE_FTFT		0x09400 /* 0x9400-0x97FC */
 #define IXGBE_METF(_i)		(0x05190 + ((_i) * 4)) /* 4 of these (0-3) */
 #define IXGBE_MDEF_EXT(_i)	(0x05160 + ((_i) * 4)) /* 8 of these (0-7) */
-#define IXGBE_LSWFW		0x15014
+#define IXGBE_LSWFW		0x15F14
 #define IXGBE_BMCIP(_i)		(0x05050 + ((_i) * 4)) /* 0x5050-0x505C */
 #define IXGBE_BMCIPVAL		0x05060
 #define IXGBE_BMCIP_IPADDR_TYPE	0x00000001
@@ -1052,26 +1083,36 @@ struct ixgbe_dmac_config {
 #define IXGBE_GSCN_3_X550EM_x	IXGBE_GSCN_3_X550
 #define IXGBE_FACTPS_X550	IXGBE_FACTPS
 #define IXGBE_FACTPS_X550EM_x	IXGBE_FACTPS
-#define IXGBE_FACTPS_BY_MAC(_hw)	IXGBE_FACTPS
+#define IXGBE_GSCL_1_X550EM_a	IXGBE_GSCL_1_X550
+#define IXGBE_GSCL_2_X550EM_a	IXGBE_GSCL_2_X550
+#define IXGBE_GSCN_0_X550EM_a	IXGBE_GSCN_0_X550
+#define IXGBE_GSCN_1_X550EM_a	IXGBE_GSCN_1_X550
+#define IXGBE_GSCN_2_X550EM_a	IXGBE_GSCN_2_X550
+#define IXGBE_GSCN_3_X550EM_a	IXGBE_GSCN_3_X550
+#define IXGBE_FACTPS_X550EM_a	0x15FEC
+#define IXGBE_FACTPS_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), FACTPS)
 
 #define IXGBE_PCIEANACTL	0x11040
 #define IXGBE_SWSM		0x10140
 #define IXGBE_SWSM_X540		IXGBE_SWSM
 #define IXGBE_SWSM_X550		IXGBE_SWSM
 #define IXGBE_SWSM_X550EM_x	IXGBE_SWSM
-#define IXGBE_SWSM_BY_MAC(_hw)	IXGBE_SWSM
+#define IXGBE_SWSM_X550EM_a	0x15F70
+#define IXGBE_SWSM_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), SWSM)
 
 #define IXGBE_FWSM		0x10148
 #define IXGBE_FWSM_X540		IXGBE_FWSM
 #define IXGBE_FWSM_X550		IXGBE_FWSM
 #define IXGBE_FWSM_X550EM_x	IXGBE_FWSM
-#define IXGBE_FWSM_BY_MAC(_hw)	IXGBE_FWSM
+#define IXGBE_FWSM_X550EM_a	0x15F74
+#define IXGBE_FWSM_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), FWSM)
 
 #define IXGBE_SWFW_SYNC		IXGBE_GSSR
 #define IXGBE_SWFW_SYNC_X540	IXGBE_SWFW_SYNC
 #define IXGBE_SWFW_SYNC_X550	IXGBE_SWFW_SYNC
 #define IXGBE_SWFW_SYNC_X550EM_x	IXGBE_SWFW_SYNC
-#define IXGBE_SWFW_SYNC_BY_MAC(_hw)	IXGBE_SWFW_SYNC
+#define IXGBE_SWFW_SYNC_X550EM_a	0x15F78
+#define IXGBE_SWFW_SYNC_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), SWFW_SYNC)
 
 #define IXGBE_GSSR		0x10160
 #define IXGBE_MREVID		0x11064
@@ -1110,6 +1151,12 @@ struct ixgbe_dmac_config {
 #define IXGBE_CIAD_X550		0x11510
 #define IXGBE_CIAA_X550EM_x	IXGBE_CIAA_X550
 #define IXGBE_CIAD_X550EM_x	IXGBE_CIAD_X550
+#define IXGBE_GSCL_5_X550EM_a	IXGBE_GSCL_5_X550
+#define IXGBE_GSCL_6_X550EM_a	IXGBE_GSCL_6_X550
+#define IXGBE_GSCL_7_X550EM_a	IXGBE_GSCL_7_X550
+#define IXGBE_GSCL_8_X550EM_a	IXGBE_GSCL_8_X550
+#define IXGBE_CIAA_X550EM_a	IXGBE_CIAA_X550
+#define IXGBE_CIAD_X550EM_a	IXGBE_CIAD_X550
 #define IXGBE_CIAA_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), CIAA)
 #define IXGBE_CIAD_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), CIAD)
 #define IXGBE_PICAUSE		0x110B0
@@ -1255,6 +1302,7 @@ struct ixgbe_dmac_config {
 #define IXGBE_XPCSS		0x04290
 #define IXGBE_MFLCN		0x04294
 #define IXGBE_SERDESC		0x04298
+#define IXGBE_MAC_SGMII_BUSY	0x04298
 #define IXGBE_MACS		0x0429C
 #define IXGBE_AUTOC		0x042A0
 #define IXGBE_LINKS		0x042A4
@@ -1567,10 +1615,10 @@ struct ixgbe_dmac_config {
 #define TN1010_PHY_ID	0x00A19410
 #define TNX_FW_REV	0xB
 #define X540_PHY_ID	0x01540200
-#define X550_PHY_ID1	0x01540220
 #define X550_PHY_ID2	0x01540223
 #define X550_PHY_ID3	0x01540221
 #define X557_PHY_ID	0x01540240
+#define X557_PHY_ID2	0x01540250
 #define AQ_FW_REV	0x20
 #define QT2022_PHY_ID	0x0043A400
 #define ATH_PHY_ID	0x03429050
@@ -1604,6 +1652,9 @@ struct ixgbe_dmac_config {
 #define IXGBE_SDP0_GPIEN_X550EM_x	IXGBE_SDP0_GPIEN_X540
 #define IXGBE_SDP1_GPIEN_X550EM_x	IXGBE_SDP1_GPIEN_X540
 #define IXGBE_SDP2_GPIEN_X550EM_x	IXGBE_SDP2_GPIEN_X540
+#define IXGBE_SDP0_GPIEN_X550EM_a	IXGBE_SDP0_GPIEN_X540
+#define IXGBE_SDP1_GPIEN_X550EM_a	IXGBE_SDP1_GPIEN_X540
+#define IXGBE_SDP2_GPIEN_X550EM_a	IXGBE_SDP2_GPIEN_X540
 #define IXGBE_SDP0_GPIEN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), SDP0_GPIEN)
 #define IXGBE_SDP1_GPIEN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), SDP1_GPIEN)
 #define IXGBE_SDP2_GPIEN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), SDP2_GPIEN)
@@ -1796,6 +1847,9 @@ enum {
 #define IXGBE_EICR_GPI_SDP0_X550EM_x	IXGBE_EICR_GPI_SDP0_X540
 #define IXGBE_EICR_GPI_SDP1_X550EM_x	IXGBE_EICR_GPI_SDP1_X540
 #define IXGBE_EICR_GPI_SDP2_X550EM_x	IXGBE_EICR_GPI_SDP2_X540
+#define IXGBE_EICR_GPI_SDP0_X550EM_a	IXGBE_EICR_GPI_SDP0_X540
+#define IXGBE_EICR_GPI_SDP1_X550EM_a	IXGBE_EICR_GPI_SDP1_X540
+#define IXGBE_EICR_GPI_SDP2_X550EM_a	IXGBE_EICR_GPI_SDP2_X540
 #define IXGBE_EICR_GPI_SDP0_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), EICR_GPI_SDP0)
 #define IXGBE_EICR_GPI_SDP1_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), EICR_GPI_SDP1)
 #define IXGBE_EICR_GPI_SDP2_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), EICR_GPI_SDP2)
@@ -2126,6 +2180,7 @@ enum {
 #define IXGBE_LINKS_SPEED_10G_82599	0x30000000
 #define IXGBE_LINKS_SPEED_1G_82599	0x20000000
 #define IXGBE_LINKS_SPEED_100_82599	0x10000000
+#define IXGBE_LINKS_SPEED_10_X550EM_A	0x00000000
 #define IXGBE_LINK_UP_TIME		90 /* 9.0 Seconds */
 #define IXGBE_AUTO_NEG_TIME		45 /* 4.5 Seconds */
 
@@ -2171,6 +2226,7 @@ enum {
 #define IXGBE_GSSR_FLASH_SM		0x0010
 #define IXGBE_GSSR_NVM_UPDATE_SM	0x0200
 #define IXGBE_GSSR_SW_MNG_SM		0x0400
+#define IXGBE_GSSR_TOKEN_SM	0x40000000 /* SW bit for shared access */
 #define IXGBE_GSSR_SHARED_I2C_SM 0x1806 /* Wait for both phys and both I2Cs */
 #define IXGBE_GSSR_I2C_MASK	0x1800
 #define IXGBE_GSSR_NVM_PHY_MASK	0xF
@@ -2213,6 +2269,9 @@ enum {
 #define IXGBE_PBANUM_PTR_GUARD		0xFAFA
 #define IXGBE_EEPROM_CHECKSUM		0x3F
 #define IXGBE_EEPROM_SUM		0xBABA
+#define IXGBE_EEPROM_CTRL_4		0x45
+#define IXGBE_EE_CTRL_4_INST_ID		0x10
+#define IXGBE_EE_CTRL_4_INST_ID_SHIFT	4
 #define IXGBE_PCIE_ANALOG_PTR		0x03
 #define IXGBE_ATLAS0_CONFIG_PTR		0x04
 #define IXGBE_PHY_PTR			0x04
@@ -2254,7 +2313,9 @@ enum {
 
 #define IXGBE_SAN_MAC_ADDR_PTR		0x28
 #define IXGBE_DEVICE_CAPS		0x2C
-#define IXGBE_SERIAL_NUMBER_MAC_ADDR	0x11
+#define IXGBE_82599_SERIAL_NUMBER_MAC_ADDR	0x11
+#define IXGBE_X550_SERIAL_NUMBER_MAC_ADDR	0x04
+
 #define IXGBE_PCIE_MSIX_82599_CAPS	0x72
 #define IXGBE_MAX_MSIX_VECTORS_82599	0x40
 #define IXGBE_PCIE_MSIX_82598_CAPS	0x62
@@ -2703,6 +2764,7 @@ enum {
 #define IXGBE_RXDADV_PKTTYPE_UDP	0x00000200 /* UDP hdr present */
 #define IXGBE_RXDADV_PKTTYPE_SCTP	0x00000400 /* SCTP hdr present */
 #define IXGBE_RXDADV_PKTTYPE_NFS	0x00000800 /* NFS hdr present */
+#define IXGBE_RXDADV_PKTTYPE_GENEVE	0x00000800 /* GENEVE hdr present */
 #define IXGBE_RXDADV_PKTTYPE_VXLAN	0x00000800 /* VXLAN hdr present */
 #define IXGBE_RXDADV_PKTTYPE_TUNNEL	0x00010000 /* Tunnel type */
 #define IXGBE_RXDADV_PKTTYPE_IPSEC_ESP	0x00001000 /* IPSec ESP */
@@ -2945,6 +3007,7 @@ enum ixgbe_fdir_pballoc_type {
 #define FW_CEM_UNUSED_VER		0x0
 #define FW_CEM_MAX_RETRIES		3
 #define FW_CEM_RESP_STATUS_SUCCESS	0x1
+#define FW_CEM_DRIVER_VERSION_SIZE	39 /* +9 would send 48 bytes to fw */
 #define FW_READ_SHADOW_RAM_CMD		0x31
 #define FW_READ_SHADOW_RAM_LEN		0x6
 #define FW_WRITE_SHADOW_RAM_CMD		0x33
@@ -2970,6 +3033,59 @@ enum ixgbe_fdir_pballoc_type {
 #define FW_INT_PHY_REQ_LEN		10
 #define FW_INT_PHY_REQ_READ		0
 #define FW_INT_PHY_REQ_WRITE		1
+#define FW_PHY_ACT_REQ_CMD		5
+#define FW_PHY_ACT_DATA_COUNT		4
+#define FW_PHY_ACT_REQ_LEN		(4 + 4 * FW_PHY_ACT_DATA_COUNT)
+#define FW_PHY_ACT_INIT_PHY		1
+#define FW_PHY_ACT_SETUP_LINK		2
+#define FW_PHY_ACT_LINK_SPEED_10	(1u << 0)
+#define FW_PHY_ACT_LINK_SPEED_100	(1u << 1)
+#define FW_PHY_ACT_LINK_SPEED_1G	(1u << 2)
+#define FW_PHY_ACT_LINK_SPEED_2_5G	(1u << 3)
+#define FW_PHY_ACT_LINK_SPEED_5G	(1u << 4)
+#define FW_PHY_ACT_LINK_SPEED_10G	(1u << 5)
+#define FW_PHY_ACT_LINK_SPEED_20G	(1u << 6)
+#define FW_PHY_ACT_LINK_SPEED_25G	(1u << 7)
+#define FW_PHY_ACT_LINK_SPEED_40G	(1u << 8)
+#define FW_PHY_ACT_LINK_SPEED_50G	(1u << 9)
+#define FW_PHY_ACT_LINK_SPEED_100G	(1u << 10)
+#define FW_PHY_ACT_SETUP_LINK_PAUSE_SHIFT 16
+#define FW_PHY_ACT_SETUP_LINK_PAUSE_MASK (3u << \
+					  FW_PHY_ACT_SETUP_LINK_PAUSE_SHIFT)
+#define FW_PHY_ACT_SETUP_LINK_PAUSE_NONE 0u
+#define FW_PHY_ACT_SETUP_LINK_PAUSE_TX	1u
+#define FW_PHY_ACT_SETUP_LINK_PAUSE_RX	2u
+#define FW_PHY_ACT_SETUP_LINK_PAUSE_RXTX 3u
+#define FW_PHY_ACT_SETUP_LINK_LP	(1u << 18)
+#define FW_PHY_ACT_SETUP_LINK_HP	(1u << 19)
+#define FW_PHY_ACT_SETUP_LINK_EEE	(1u << 20)
+#define FW_PHY_ACT_SETUP_LINK_AN	(1u << 22)
+#define FW_PHY_ACT_SETUP_LINK_RSP_DOWN	(1u << 0)
+#define FW_PHY_ACT_GET_LINK_INFO	3
+#define FW_PHY_ACT_GET_LINK_INFO_EEE	(1u << 19)
+#define FW_PHY_ACT_GET_LINK_INFO_FC_TX	(1u << 20)
+#define FW_PHY_ACT_GET_LINK_INFO_FC_RX	(1u << 21)
+#define FW_PHY_ACT_GET_LINK_INFO_POWER	(1u << 22)
+#define FW_PHY_ACT_GET_LINK_INFO_AN_COMPLETE	(1u << 24)
+#define FW_PHY_ACT_GET_LINK_INFO_TEMP	(1u << 25)
+#define FW_PHY_ACT_GET_LINK_INFO_LP_FC_TX	(1u << 28)
+#define FW_PHY_ACT_GET_LINK_INFO_LP_FC_RX	(1u << 29)
+#define FW_PHY_ACT_FORCE_LINK_DOWN	4
+#define FW_PHY_ACT_FORCE_LINK_DOWN_OFF	(1u << 0)
+#define FW_PHY_ACT_PHY_SW_RESET		5
+#define FW_PHY_ACT_PHY_HW_RESET		6
+#define FW_PHY_ACT_GET_PHY_INFO		7
+#define FW_PHY_ACT_UD_2			0x1002
+#define FW_PHY_ACT_UD_2_10G_KR_EEE	(1u << 6)
+#define FW_PHY_ACT_UD_2_10G_KX4_EEE	(1u << 5)
+#define FW_PHY_ACT_UD_2_1G_KX_EEE	(1u << 4)
+#define FW_PHY_ACT_UD_2_10G_T_EEE	(1u << 3)
+#define FW_PHY_ACT_UD_2_1G_T_EEE	(1u << 2)
+#define FW_PHY_ACT_UD_2_100M_TX_EEE	(1u << 1)
+#define FW_PHY_ACT_RETRIES		50
+#define FW_PHY_INFO_SPEED_MASK		0xFFFu
+#define FW_PHY_INFO_ID_HI_MASK		0xFFFF0000u
+#define FW_PHY_INFO_ID_LO_MASK		0x0000FFFFu
 
 /* Host Interface Command Structures */
 
@@ -3013,6 +3129,16 @@ struct ixgbe_hic_drv_info {
 	u8 ver_maj;
 	u8 pad; /* end spacing to ensure length is mult. of dword */
 	u16 pad2; /* end spacing to ensure length is mult. of dword2 */
+};
+
+struct ixgbe_hic_drv_info2 {
+	struct ixgbe_hic_hdr hdr;
+	u8 port_num;
+	u8 ver_sub;
+	u8 ver_build;
+	u8 ver_min;
+	u8 ver_maj;
+	char driver_string[FW_CEM_DRIVER_VERSION_SIZE];
 };
 
 /* These need to be dword aligned */
@@ -3061,6 +3187,19 @@ struct ixgbe_hic_internal_phy_req {
 struct ixgbe_hic_internal_phy_resp {
 	struct ixgbe_hic_hdr hdr;
 	__be32 read_data;
+};
+
+struct ixgbe_hic_phy_activity_req {
+	struct ixgbe_hic_hdr hdr;
+	u8 port_number;
+	u8 pad;
+	__le16 activity_id;
+	__be32 data[FW_PHY_ACT_DATA_COUNT];
+};
+
+struct ixgbe_hic_phy_activity_resp {
+	struct ixgbe_hic_hdr hdr;
+	__be32 data[FW_PHY_ACT_DATA_COUNT];
 };
 
 #pragma pack(pop)
@@ -3212,12 +3351,14 @@ struct ixgbe_adv_tx_context_desc {
 #define IXGBE_ADVTXD_TUNNEL_TYPE_SHIFT	16 /* Adv Tx Desc Tunnel Type shift */
 #define IXGBE_ADVTXD_OUTERIPCS_SHIFT	17 /* Adv Tx Desc OUTERIPCS Shift */
 #define IXGBE_ADVTXD_TUNNEL_TYPE_NVGRE	1  /* Adv Tx Desc Tunnel Type NVGRE */
+/* Adv Tx Desc OUTERIPCS Shift for X550EM_a */
+#define IXGBE_ADVTXD_OUTERIPCS_SHIFT_X550EM_a	26
 /* Autonegotiation advertised speeds */
 typedef u32 ixgbe_autoneg_advertised;
 /* Link speed */
 typedef u32 ixgbe_link_speed;
 #define IXGBE_LINK_SPEED_UNKNOWN	0
-#define IXGBE_LINK_SPEED_10_FULL	0x0004
+#define IXGBE_LINK_SPEED_10_FULL	0x0002
 #define IXGBE_LINK_SPEED_100_FULL	0x0008
 #define IXGBE_LINK_SPEED_1GB_FULL	0x0020
 #define IXGBE_LINK_SPEED_2_5GB_FULL	0x0400
@@ -3247,6 +3388,7 @@ typedef u32 ixgbe_physical_layer;
 #define IXGBE_PHYSICAL_LAYER_10GBASE_XAUI	0x1000
 #define IXGBE_PHYSICAL_LAYER_SFP_ACTIVE_DA	0x2000
 #define IXGBE_PHYSICAL_LAYER_1000BASE_SX	0x4000
+#define IXGBE_PHYSICAL_LAYER_10BASE_T		0x8000
 
 /* Flow Control Data Sheet defined values
  * Calculation and defines taken from 802.1bb Annex O
@@ -3448,6 +3590,7 @@ enum ixgbe_mac_type {
 	ixgbe_mac_X540,
 	ixgbe_mac_X550,
 	ixgbe_mac_X550EM_x,
+	ixgbe_mac_X550EM_a,
 	ixgbe_num_macs
 };
 
@@ -3476,6 +3619,8 @@ enum ixgbe_phy_type {
 	ixgbe_phy_qsfp_intel,
 	ixgbe_phy_qsfp_unknown,
 	ixgbe_phy_sfp_unsupported, /*Enforce bit set with unsupported module*/
+	ixgbe_phy_sgmii,
+	ixgbe_phy_fw,
 	ixgbe_phy_generic
 };
 
@@ -3754,6 +3899,7 @@ struct ixgbe_mac_operations {
 	s32 (*led_off)(struct ixgbe_hw *, u32);
 	s32 (*blink_led_start)(struct ixgbe_hw *, u32);
 	s32 (*blink_led_stop)(struct ixgbe_hw *, u32);
+	s32 (*init_led_link_act)(struct ixgbe_hw *);
 
 	/* RAR, Multicast, VLAN */
 	s32 (*set_rar)(struct ixgbe_hw *, u32, u8 *, u32, u32);
@@ -3784,7 +3930,8 @@ struct ixgbe_mac_operations {
 	void (*fc_autoneg)(struct ixgbe_hw *);
 
 	/* Manageability interface */
-	s32 (*set_fw_drv_ver)(struct ixgbe_hw *, u8, u8, u8, u8);
+	s32 (*set_fw_drv_ver)(struct ixgbe_hw *, u8, u8, u8, u8, u16,
+			      const char *);
 	s32 (*get_thermal_sensor_data)(struct ixgbe_hw *);
 	s32 (*init_thermal_sensor_thresh)(struct ixgbe_hw *hw);
 	void (*get_rtrup2tc)(struct ixgbe_hw *hw, u8 *map);
@@ -3894,6 +4041,7 @@ struct ixgbe_mac_info {
 	struct ixgbe_dmac_config dmac_config;
 	bool set_lben;
 	u32  max_link_up_time;
+	u8   led_link_act;
 };
 
 struct ixgbe_phy_info {
@@ -3909,6 +4057,8 @@ struct ixgbe_phy_info {
 	bool reset_disable;
 	ixgbe_autoneg_advertised autoneg_advertised;
 	ixgbe_link_speed speeds_supported;
+	ixgbe_link_speed eee_speeds_supported;
+	ixgbe_link_speed eee_speeds_advertised;
 	enum ixgbe_smart_speed smart_speed;
 	bool smart_speed_active;
 	bool multispeed_fiber;
@@ -3970,6 +4120,7 @@ struct ixgbe_hw {
 	bool force_full_reset;
 	bool allow_unsupported_sfp;
 	bool wol_enabled;
+	bool need_crosstalk_fix;
 };
 
 #define ixgbe_call_func(hw, func, params, error) \
@@ -4023,15 +4174,37 @@ struct ixgbe_hw {
 #define IXGBE_FUSES0_REV_MASK		(3 << 6)
 
 #define IXGBE_KRM_PORT_CAR_GEN_CTRL(P)	((P) ? 0x8010 : 0x4010)
+#define IXGBE_KRM_LINK_S1(P)		((P) ? 0x8200 : 0x4200)
 #define IXGBE_KRM_LINK_CTRL_1(P)	((P) ? 0x820C : 0x420C)
 #define IXGBE_KRM_AN_CNTL_1(P)		((P) ? 0x822C : 0x422C)
+#define IXGBE_KRM_AN_CNTL_4(P)		((P) ? 0x8238 : 0x4238)
+#define IXGBE_KRM_AN_CNTL_8(P)		((P) ? 0x8248 : 0x4248)
+#define IXGBE_KRM_PCS_KX_AN(P)		((P) ? 0x9918 : 0x5918)
+#define IXGBE_KRM_PCS_KX_AN_LP(P)	((P) ? 0x991C : 0x591C)
 #define IXGBE_KRM_SGMII_CTRL(P)		((P) ? 0x82A0 : 0x42A0)
+#define IXGBE_KRM_LP_BASE_PAGE_HIGH(P)	((P) ? 0x836C : 0x436C)
 #define IXGBE_KRM_DSP_TXFFE_STATE_4(P)	((P) ? 0x8634 : 0x4634)
 #define IXGBE_KRM_DSP_TXFFE_STATE_5(P)	((P) ? 0x8638 : 0x4638)
 #define IXGBE_KRM_RX_TRN_LINKUP_CTRL(P)	((P) ? 0x8B00 : 0x4B00)
 #define IXGBE_KRM_PMD_DFX_BURNIN(P)	((P) ? 0x8E00 : 0x4E00)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20(P)	((P) ? 0x9054 : 0x5054)
 #define IXGBE_KRM_TX_COEFF_CTRL_1(P)	((P) ? 0x9520 : 0x5520)
 #define IXGBE_KRM_RX_ANA_CTL(P)		((P) ? 0x9A00 : 0x5A00)
+
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SFI_10G_DA		~(0x3 << 20)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SFI_10G_SR		(1u << 20)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SFI_10G_LR		(0x2 << 20)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SGMII_EN		(1u << 25)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_AN37_EN		(1u << 26)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_AN_EN		(1u << 27)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_10M		~(0x7 << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_100M		(1u << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_1G		(0x2 << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_10G		(0x3 << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_AN		(0x4 << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_2_5G		(0x7 << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_SPEED_MASK		(0x7 << 28)
+#define IXGBE_KRM_PMD_FLX_MASK_ST20_FW_AN_RESTART	(1u << 31)
 
 #define IXGBE_KRM_PORT_CAR_GEN_CTRL_NELB_32B		(1 << 9)
 #define IXGBE_KRM_PORT_CAR_GEN_CTRL_NELB_KRPCS		(1 << 11)
@@ -4047,11 +4220,22 @@ struct ixgbe_hw {
 #define IXGBE_KRM_LINK_CTRL_1_TETH_AN_CAP_KR		(1 << 18)
 #define IXGBE_KRM_LINK_CTRL_1_TETH_EEE_CAP_KX		(1 << 24)
 #define IXGBE_KRM_LINK_CTRL_1_TETH_EEE_CAP_KR		(1 << 26)
+#define IXGBE_KRM_LINK_S1_MAC_AN_COMPLETE		(1 << 28)
 #define IXGBE_KRM_LINK_CTRL_1_TETH_AN_ENABLE		(1 << 29)
 #define IXGBE_KRM_LINK_CTRL_1_TETH_AN_RESTART		(1 << 31)
 
 #define IXGBE_KRM_AN_CNTL_1_SYM_PAUSE			(1 << 28)
 #define IXGBE_KRM_AN_CNTL_1_ASM_PAUSE			(1 << 29)
+#define IXGBE_KRM_PCS_KX_AN_SYM_PAUSE			(1 << 1)
+#define IXGBE_KRM_PCS_KX_AN_ASM_PAUSE			(1 << 2)
+#define IXGBE_KRM_PCS_KX_AN_LP_SYM_PAUSE		(1 << 2)
+#define IXGBE_KRM_PCS_KX_AN_LP_ASM_PAUSE		(1 << 3)
+#define IXGBE_KRM_AN_CNTL_4_ECSR_AN37_OVER_73		(1 << 29)
+#define IXGBE_KRM_AN_CNTL_8_LINEAR			(1 << 0)
+#define IXGBE_KRM_AN_CNTL_8_LIMITING			(1 << 1)
+
+#define IXGBE_KRM_LP_BASE_PAGE_HIGH_SYM_PAUSE		(1 << 10)
+#define IXGBE_KRM_LP_BASE_PAGE_HIGH_ASM_PAUSE		(1 << 11)
 
 #define IXGBE_KRM_SGMII_CTRL_MAC_TAR_FORCE_100_D	(1 << 12)
 #define IXGBE_KRM_SGMII_CTRL_MAC_TAR_FORCE_10_D		(1 << 19)
@@ -4088,7 +4272,19 @@ struct ixgbe_hw {
 #define IXGBE_SB_IOSF_TARGET_KR_PHY	0
 
 #define IXGBE_NW_MNG_IF_SEL		0x00011178
-#define IXGBE_NW_MNG_IF_SEL_INT_PHY_MODE (1 << 24)
+#define IXGBE_NW_MNG_IF_SEL_MDIO_ACT	(1u << 1)
+#define IXGBE_NW_MNG_IF_SEL_MDIO_IF_MODE	(1u << 2)
+#define IXGBE_NW_MNG_IF_SEL_EN_SHARED_MDIO	(1u << 13)
+#define IXGBE_NW_MNG_IF_SEL_PHY_SPEED_10M	(1u << 17)
+#define IXGBE_NW_MNG_IF_SEL_PHY_SPEED_100M	(1u << 18)
+#define IXGBE_NW_MNG_IF_SEL_PHY_SPEED_1G	(1u << 19)
+#define IXGBE_NW_MNG_IF_SEL_PHY_SPEED_2_5G	(1u << 20)
+#define IXGBE_NW_MNG_IF_SEL_PHY_SPEED_10G	(1u << 21)
+#define IXGBE_NW_MNG_IF_SEL_SGMII_ENABLE	(1u << 25)
+#define IXGBE_NW_MNG_IF_SEL_INT_PHY_MODE (1 << 24) /* X552 reg field only */
+#define IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD_SHIFT 3
+#define IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD	\
+				(0x1F << IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD_SHIFT)
 
 #include "ixgbe_osdep2.h"
 

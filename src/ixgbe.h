@@ -164,8 +164,6 @@ enum ixgbe_tx_flags {
 #define IXGBE_MAX_VFTA_ENTRIES		128
 #define MAX_EMULATION_MAC_ADDRS		16
 #define IXGBE_MAX_PF_MACVLANS		15
-#define IXGBE_82599_VF_DEVICE_ID	0x10ED
-#define IXGBE_X540_VF_DEVICE_ID		0x1515
 
 /* must account for pools assigned to VFs. */
 #ifdef CONFIG_PCI_IOV
@@ -726,6 +724,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER	(u32)(1 << 27)
 #define IXGBE_FLAG_MDD_ENABLED			(u32)(1 << 29)
 #define IXGBE_FLAG_DCB_CAPABLE			(u32)(1 << 30)
+#define IXGBE_FLAG_GENEVE_OFFLOAD_CAPABLE	BIT(31)
 
 /* preset defaults */
 #define IXGBE_FLAGS_82598_INIT		(IXGBE_FLAG_MSI_CAPABLE |	\
@@ -747,21 +746,27 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_TEMP_SENSOR_EVENT		(u32)(1 << 4)
 #define IXGBE_FLAG2_SEARCH_FOR_SFP		(u32)(1 << 5)
 #define IXGBE_FLAG2_SFP_NEEDS_RESET		(u32)(1 << 6)
-#define IXGBE_FLAG2_RESET_REQUESTED		(u32)(1 << 7)
 #define IXGBE_FLAG2_FDIR_REQUIRES_REINIT	(u32)(1 << 8)
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
-#define IXGBE_FLAG2_VXLAN_REREG_NEEDED		(u32)(1 << 16)
+#define IXGBE_FLAG2_EEE_CAPABLE			(u32)(1 << 14)
+#define IXGBE_FLAG2_EEE_ENABLED			(u32)(1 << 15)
+#define IXGBE_FLAG2_UDP_TUN_REREG_NEEDED	(u32)(1 << 16)
 #define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
 #define IXGBE_FLAG2_VLAN_PROMISC		(u32)(1 << 18)
-
-	bool cloud_mode;
 
 	/* Tx fast path data */
 	int num_tx_queues;
 	u16 tx_itr_setting;
 	u16 tx_work_limit;
+
+#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
+	__be16 vxlan_port;
+#endif /* HAVE_UDP_ENC_RX_OFFLAD || HAVE_VXLAN_RX_OFFLOAD */
+#ifdef HAVE_UDP_ENC_RX_OFFLOAD
+	__be16 geneve_port;
+#endif /* HAVE_UDP_ENC_RX_OFFLOAD */
 
 	/* Rx fast path data */
 	int num_rx_queues;
@@ -835,6 +840,9 @@ struct ixgbe_adapter {
 
 	u32 link_speed;
 	bool link_up;
+
+	bool cloud_mode;
+
 	unsigned long sfp_poll_time;
 	unsigned long link_check_timeout;
 
@@ -898,9 +906,6 @@ struct ixgbe_adapter {
 	u32 vferr_refcount;
 #endif
 	struct ixgbe_mac_addr *mac_table;
-#ifdef HAVE_VXLAN_CHECKS
-	u16 vxlan_port;
-#endif /* HAVE_VXLAN_CHECKS */
 #ifdef IXGBE_SYSFS
 #ifdef IXGBE_HWMON
 	struct hwmon_buff ixgbe_hwmon_buff;
@@ -947,6 +952,7 @@ static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		return IXGBE_MAX_RSS_INDICES_X550;
 		break;
 	default:
@@ -975,6 +981,7 @@ enum ixgbe_state_t {
 	__IXGBE_PTP_RUNNING,
 	__IXGBE_PTP_TX_IN_PROGRESS,
 #endif
+	__IXGBE_RESET_REQUESTED,
 };
 
 struct ixgbe_cb {
@@ -1011,7 +1018,11 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter);
 void ixgbe_assign_netdev_ops(struct net_device *netdev);
 
 /* needed by ixgbe_ethtool.c */
+#ifdef HAVE_NON_CONST_PCI_DRIVER_NAME
 extern char ixgbe_driver_name[];
+#else
+extern const char ixgbe_driver_name[];
+#endif
 extern const char ixgbe_driver_version[];
 
 void ixgbe_up(struct ixgbe_adapter *adapter);
@@ -1043,7 +1054,9 @@ void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter,
 				   struct ixgbe_ring *);
 void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter,
 			       struct ixgbe_ring *);
-void ixgbe_clear_vxlan_port(struct ixgbe_adapter *);
+#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
+void ixgbe_clear_udp_tunnel_port(struct ixgbe_adapter *, u32);
+#endif
 void ixgbe_set_rx_mode(struct net_device *netdev);
 int ixgbe_write_mc_addr_list(struct net_device *netdev);
 int ixgbe_setup_tc(struct net_device *dev, u8 tc);
@@ -1053,8 +1066,8 @@ void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);
 int ixgbe_poll(struct napi_struct *napi, int budget);
 void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter,
 				   struct ixgbe_ring *);
-void ixgbe_vlan_stripping_enable(struct ixgbe_adapter *adapter);
-void ixgbe_vlan_stripping_disable(struct ixgbe_adapter *adapter);
+void ixgbe_vlan_strip_enable(struct ixgbe_adapter *adapter);
+void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter);
 #ifdef ETHTOOL_OPS_COMPAT
 int ethtool_ioctl(struct ifreq *ifr);
 #endif

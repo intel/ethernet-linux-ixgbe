@@ -1401,7 +1401,8 @@ void ixgbe_set_fdir_drop_queue_82599(struct ixgbe_hw *hw, u8 dropqueue)
 	/* Set drop queue */
 	fdirctrl |= (dropqueue << IXGBE_FDIRCTRL_DROP_Q_SHIFT);
 	if ((hw->mac.type == ixgbe_mac_X550) ||
-	    (hw->mac.type == ixgbe_mac_X550EM_x))
+	    (hw->mac.type == ixgbe_mac_X550EM_x) ||
+	    (hw->mac.type == ixgbe_mac_X550EM_a))
 		fdirctrl |= IXGBE_FDIRCTRL_DROP_NO_MATCH;
 
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRCMD,
@@ -1798,14 +1799,23 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		}
 		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRIP6M, fdirip6m);
 
-		/* Set all bits in FDIRTCPM, FDIRUDPM, FDIRSIP4M and
-		 * FDIRDIP4M in cloud mode to allow L3/L3 packets to
-		 * tunnel.
+		/* Set all bits in FDIRTCPM, FDIRUDPM, FDIRSCTPM,
+		 * FDIRSIP4M and FDIRDIP4M in cloud mode to allow
+		 * L3/L3 packets to tunnel.
 		 */
 		IXGBE_WRITE_REG(hw, IXGBE_FDIRTCPM, 0xFFFFFFFF);
 		IXGBE_WRITE_REG(hw, IXGBE_FDIRUDPM, 0xFFFFFFFF);
 		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRDIP4M, 0xFFFFFFFF);
 		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIP4M, 0xFFFFFFFF);
+		switch (hw->mac.type) {
+		case ixgbe_mac_X550:
+		case ixgbe_mac_X550EM_x:
+		case ixgbe_mac_X550EM_a:
+			IXGBE_WRITE_REG(hw, IXGBE_FDIRSCTPM, 0xFFFFFFFF);
+			break;
+		default:
+			break;
+		}
 	}
 
 	/* Now mask VM pool and destination IPv6 - bits 5 and 2 */
@@ -1823,6 +1833,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		switch (hw->mac.type) {
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
+		case ixgbe_mac_X550EM_a:
 			IXGBE_WRITE_REG(hw, IXGBE_FDIRSCTPM, ~fdirtcpm);
 			break;
 		default:

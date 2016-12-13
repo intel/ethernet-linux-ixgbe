@@ -69,6 +69,17 @@
 	MODULE_PARM_DESC(X, desc);
 #endif
 
+IXGBE_PARAM(EEE, "Energy Efficient Ethernet (EEE) ,0=disabled, 1=enabled )"
+	    "default EEE disable");
+/* IntMode (Interrupt Mode)
+ *
+ * Valid Range: 0-2
+ *  - 0 - Legacy Interrupt
+ *  - 1 - MSI Interrupt
+ *  - 2 - MSI-X Interrupt(s)
+ *
+ * Default Value: 2
+ */
 IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
 	    "default IntMode (deprecated)");
 IXGBE_PARAM(IntMode, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
@@ -76,7 +87,6 @@ IXGBE_PARAM(IntMode, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
 #define IXGBE_INT_LEGACY		0
 #define IXGBE_INT_MSI			1
 #define IXGBE_INT_MSIX			2
-#define IXGBE_DEFAULT_INT		IXGBE_INT_MSIX
 
 /* MQ - Multiple Queue enable/disable
  *
@@ -338,6 +348,7 @@ IXGBE_PARAM(dmac_watchdog,
 IXGBE_PARAM(vxlan_rx,
 	    "VXLAN receive checksum offload (0,1), default 1 = Enable");
 
+
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
@@ -480,8 +491,8 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.type = range_option,
 			.name = "Interrupt Mode",
 			.err =
-			  "using default of "__MODULE_STRING(IXGBE_DEFAULT_INT),
-			.def = IXGBE_DEFAULT_INT,
+			  "using default of " __MODULE_STRING(IXGBE_INT_MSIX),
+			.def = IXGBE_INT_MSIX,
 			.arg = { .r = { .min = IXGBE_INT_LEGACY,
 					.max = IXGBE_INT_MSIX} }
 		};
@@ -518,13 +529,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		} else {
 			/* default settings */
-			if (opt.def == IXGBE_INT_MSIX &&
-			    *aflags & IXGBE_FLAG_MSIX_CAPABLE) {
-				*aflags |= IXGBE_FLAG_MSIX_CAPABLE;
-				*aflags |= IXGBE_FLAG_MSI_CAPABLE;
-			} else if (opt.def == IXGBE_INT_MSI &&
-			    *aflags & IXGBE_FLAG_MSI_CAPABLE) {
-				*aflags &= ~IXGBE_FLAG_MSIX_CAPABLE;
+			if (*aflags & IXGBE_FLAG_MSIX_CAPABLE) {
 				*aflags |= IXGBE_FLAG_MSI_CAPABLE;
 			} else {
 				*aflags &= ~IXGBE_FLAG_MSIX_CAPABLE;
@@ -552,10 +557,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				*aflags &= ~IXGBE_FLAG_MQ_CAPABLE;
 #ifdef module_param_array
 		} else {
-			if (opt.def == OPTION_ENABLED)
-				*aflags |= IXGBE_FLAG_MQ_CAPABLE;
-			else
-				*aflags &= ~IXGBE_FLAG_MQ_CAPABLE;
+			*aflags |= IXGBE_FLAG_MQ_CAPABLE;
 		}
 #endif
 		/* Check Interoperability */
@@ -908,10 +910,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				*aflags &= ~IXGBE_FLAG_LLI_PUSH;
 #ifdef module_param_array
 		} else {
-			if (opt.def == OPTION_ENABLED)
-				*aflags |= IXGBE_FLAG_LLI_PUSH;
-			else
-				*aflags &= ~IXGBE_FLAG_LLI_PUSH;
+			*aflags &= ~IXGBE_FLAG_LLI_PUSH;
 		}
 #endif
 	}
@@ -1104,8 +1103,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			else
 				netdev->features &= ~NETIF_F_LRO;
 #ifdef module_param_array
-		} else if (opt.def == OPTION_ENABLED) {
-			netdev->features |= NETIF_F_LRO;
 		} else {
 			netdev->features &= ~NETIF_F_LRO;
 		}
@@ -1140,8 +1137,6 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				adapter->hw.allow_unsupported_sfp = false;
 			}
 #ifdef module_param_array
-		} else if (opt.def == OPTION_ENABLED) {
-				adapter->hw.allow_unsupported_sfp = true;
 		} else {
 				adapter->hw.allow_unsupported_sfp = false;
 		}
@@ -1160,6 +1155,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		switch (adapter->hw.mac.type) {
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
+		case ixgbe_mac_X550EM_a:
 			if (adapter->rx_itr_setting || adapter->tx_itr_setting)
 				break;
 			opt.err = "interrupt throttling disabled also disables DMA coalescing";
@@ -1232,6 +1228,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		switch (adapter->hw.mac.type) {
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
+		case ixgbe_mac_X550EM_a:
 #ifdef module_param_array
 			if (num_MDD > bd) {
 #endif
@@ -1246,12 +1243,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				}
 #ifdef module_param_array
 			} else {
-					if (opt.def == OPTION_ENABLED){
-						*aflags |= IXGBE_FLAG_MDD_ENABLED;
-
-					} else {
-						*aflags &= ~IXGBE_FLAG_MDD_ENABLED;
-				}
+				*aflags |= IXGBE_FLAG_MDD_ENABLED;
 			}
 #endif
 			break;

@@ -331,6 +331,7 @@ static void ixgbe_ptp_convert_to_hwtstamp(struct ixgbe_adapter *adapter,
 	 */
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		/* Upper 32 bits represent billions of cycles, lower 32 bits
 		 * represent cycles. However, we use timespec64_to_ns for the
 		 * correct math even though the units haven't been corrected
@@ -959,6 +960,7 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 	switch (hw->mac.type) {
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		/* enable timestamping all packets only if at least some
 		 * packets were requested. Otherwise, play nice and disable
 		 * timestamping */
@@ -1121,6 +1123,7 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 			cc.shift = 2;
 		}
 		/* fallthrough */
+	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X550:
 		cc.read = ixgbe_ptp_read_X550;
 
@@ -1274,6 +1277,7 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		snprintf(adapter->ptp_caps.name, 16, "%s", netdev->name);
 		adapter->ptp_caps.owner = THIS_MODULE;
 		adapter->ptp_caps.max_adj = 30000000;

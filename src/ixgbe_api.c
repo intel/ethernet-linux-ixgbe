@@ -43,6 +43,10 @@ static const u32 ixgbe_mvals_X550EM_x[IXGBE_MVALS_IDX_LIMIT] = {
 	IXGBE_MVALS_INIT(_X550EM_x)
 };
 
+static const u32 ixgbe_mvals_X550EM_a[IXGBE_MVALS_IDX_LIMIT] = {
+	IXGBE_MVALS_INIT(_X550EM_a)
+};
+
 /**
  * ixgbe_dcb_get_rtrup2tc - read rtrup2tc reg
  * @hw: pointer to hardware structure
@@ -94,6 +98,9 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
 		break;
 	case ixgbe_mac_X550EM_x:
 		status = ixgbe_init_ops_X550EM_x(hw);
+		break;
+	case ixgbe_mac_X550EM_a:
+		status = ixgbe_init_ops_X550EM_a(hw);
 		break;
 	default:
 		status = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
@@ -174,6 +181,20 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_X550EM_X_SFP:
 		hw->mac.type = ixgbe_mac_X550EM_x;
 		hw->mvals = ixgbe_mvals_X550EM_x;
+		break;
+	case IXGBE_DEV_ID_X550EM_A_KR:
+	case IXGBE_DEV_ID_X550EM_A_KR_L:
+	case IXGBE_DEV_ID_X550EM_A_SFP_N:
+	case IXGBE_DEV_ID_X550EM_A_SGMII:
+	case IXGBE_DEV_ID_X550EM_A_SGMII_L:
+	case IXGBE_DEV_ID_X550EM_A_1G_T:
+	case IXGBE_DEV_ID_X550EM_A_1G_T_L:
+	case IXGBE_DEV_ID_X550EM_A_10G_T:
+	case IXGBE_DEV_ID_X550EM_A_QSFP:
+	case IXGBE_DEV_ID_X550EM_A_QSFP_N:
+	case IXGBE_DEV_ID_X550EM_A_SFP:
+		hw->mac.type = ixgbe_mac_X550EM_a;
+		hw->mvals = ixgbe_mvals_X550EM_a;
 		break;
 	default:
 		ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
@@ -1059,12 +1080,15 @@ s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
  * @min: driver minor number to be sent to firmware
  * @build: driver build number to be sent to firmware
  * @ver: driver version number to be sent to firmware
+ * @len: length of driver_ver string
+ * @driver_ver: driver string
  **/
 s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
-			 u8 ver)
+			 u8 ver, u16 len, char *driver_ver)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.set_fw_drv_ver, (hw, maj, min,
-			       build, ver), IXGBE_NOT_IMPLEMENTED);
+			       build, ver, len, driver_ver),
+			       IXGBE_NOT_IMPLEMENTED);
 }
 
 /**

@@ -74,6 +74,7 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		/* start at VMDq register offset for SR-IOV enabled setups */
 		reg_idx = vmdq->offset * __ALIGN_MASK(1, ~vmdq->mask);
 		for (i = 0; i < adapter->num_rx_queues; i++, reg_idx++) {
@@ -150,6 +151,7 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+case ixgbe_mac_X550EM_a:
 		if (num_tcs > 4) {
 			/*
 			 * TCs    : TC0/1 TC2/3 TC4-7
@@ -325,6 +327,7 @@ static void ixgbe_cache_ring_register(struct ixgbe_adapter *adapter)
 	ixgbe_cache_ring_rss(adapter);
 }
 
+#define IXGBE_RSS_64Q_MASK	0x3F
 #define IXGBE_RSS_16Q_MASK	0xF
 #define IXGBE_RSS_8Q_MASK	0x7
 #define IXGBE_RSS_4Q_MASK	0x3
@@ -369,6 +372,7 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -575,6 +579,7 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -681,6 +686,7 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
  **/
 static bool ixgbe_set_rss_queues(struct ixgbe_adapter *adapter)
 {
+	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_ring_feature *f;
 	u16 rss_i;
 
@@ -689,7 +695,10 @@ static bool ixgbe_set_rss_queues(struct ixgbe_adapter *adapter)
 	rss_i = f->limit;
 
 	f->indices = rss_i;
-	f->mask = IXGBE_RSS_16Q_MASK;
+	if (hw->mac.type < ixgbe_mac_X550)
+		f->mask = IXGBE_RSS_16Q_MASK;
+	else
+		f->mask = IXGBE_RSS_64Q_MASK;
 
 	/* disable ATR by default, it will be configured below */
 	adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;

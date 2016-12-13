@@ -1,10 +1,10 @@
 
-ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connection
-===============================================================
+ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
+==================================================================
 
 ================================================================================
 
-March 29, 2016
+November 11, 2016
 
 ================================================================================
 
@@ -95,11 +95,21 @@ The driver information previously displayed in the /proc file system is not
 supported in this release.
 
 
-NOTE: Devices based on the Intel(R) Ethernet Controller X552 and
-Intel(R) Ethernet Controller X553 do not support the following features:
-  * Low Latency Interrupts (LLI)
-  * Data Center Bridging (DCB)
-  * Fibre Channel over Ethernet (FCoE)
+
+NOTE: Devices based on the Intel(R) Ethernet Connection X552 and Intel(R) Ethernet
+Connection X553 do not support the following features:
+* Energy Efficient Ethernet (EEE)
+* Intel PROSet for Windows Device Manager
+* Intel ANS teams or VLANs (LBFO is supported)
+* Fibre Channel over Ethernet (FCoE)
+* Data Center Bridging (DCB)
+* IPSec Offloading
+* MACSec Offloading
+In addition, SFP+ devices based on the Intel(R) Ethernet Connection X552 and Intel(R) Ethernet
+Connection X553 do not support the following features:
+* Speed and duplex auto-negotiation.
+* Wake on LAN
+* 1000BASE-T SFP Modules
 
 
 Identifying Your Adapter
@@ -111,6 +121,8 @@ The driver in this release is compatible with devices based on the following:
   * Intel(R) Ethernet Controller x550
   * Intel(R) Ethernet Controller X552
   * Intel(R) Ethernet Controller X553
+
+
 
 For information on how to identify your adapter, go to the Adapter &
 Driver ID Guide at:
@@ -414,6 +426,7 @@ using MSI or MSI-X (see cat /proc/interrupts) to successfully use LLI.
 Note: LLI is not supported on X550-based adapters.
 
 
+
 LLIPort
 -------
 Valid Range: 0-65535
@@ -428,6 +441,7 @@ panic.
 Note: LLI is not supported on X550-based adapters.
 
 
+
 LLIPush
 -------
 Valid Range: 0-1
@@ -436,6 +450,7 @@ in an environment with many small transactions.
 NOTE: Enabling LLIPush may allow a denial of service attack.
 
 Note: LLI is not supported on X550-based adapters.
+
 
 
 LLISize
@@ -447,12 +462,14 @@ than the specified size.
 Note: LLI is not supported on X550-based adapters.
 
 
+
 LLIEType
 --------
 Valid Range: 0-0x8FFF
 This parameter specifies the Low Latency Interrupt (LLI) Ethernet protocol type.
 
 Note: LLI is not supported on X550-based adapters.
+
 
 
 LLIVLANP
@@ -463,6 +480,7 @@ Valid Range: 0-7
 This parameter specifies the LLI on VLAN priority threshold.
 
 Note: LLI is not supported on X550-based adapters.
+
 
 
 Flow Control
@@ -481,11 +499,17 @@ Use ethtool to change the flow control settings.
 ethtool:
 ethtool -A eth? autoneg off rx off tx off
 
+
+
+
 NOTE: For 82598 backplane cards entering 1 gigabit mode, flow control default
 behavior is changed to off. Flow control in 1 gigabit mode on these devices
 can lead to transmit hangs.
 
+
 NOTE: You must have a flow control capable link partner.
+
+
 
 
 Intel(R) Ethernet Flow Director
@@ -644,10 +668,12 @@ Valid Range: 1-63
 If the value is greater than 0 it will also force the VMDq parameter to be 1
 or more.
 
+
 NOTE: This parameter is only used on kernel 3.7.x and below. On kernel 3.8.x
 and above, use sysfs to enable VFs. For example:
 #echo $num_vf_enabled > /sys/class/net/$dev/device/sriov_numvfs	//enable VFs
 #echo 0 > /sys/class/net/$dev/device/sriov_numvfs	//disable VFs
+
 
 The parameters for the driver are referenced by position. Thus, if you have a
 dual port adapter, or more than one adapter in your system, and want N virtual
@@ -669,12 +695,15 @@ to predict in all cases where the positions would be on the command line.
 NOTE: Neither the device nor the driver control how VFs are mapped into config
 space. Bus layout will vary by operating system. On operating systems that
 support it, you can check sysfs to find the mapping. 
+
+
 NOTE: When either SR-IOV mode or VMDq mode is enabled, hardware VLAN
 filtering and VLAN tag stripping/insertion will remain enabled. Please remove
 the old VLAN filter before the new VLAN filter is added. For example,
 ip link set eth0 vf 0 vlan 100	// set vlan 100 for VF 0
 ip link set eth0 vf 0 vlan 0	// Delete vlan 100
 ip link set eth0 vf 0 vlan 200	// set a new vlan 200 for VF 0
+
 
 With kernel 3.6, the driver supports the simultaneous usage of max_vfs and DCB
 features, subject to the constraints described below. Prior to kernel 3.6, the
@@ -763,6 +792,21 @@ ethtool:
 NOTE: IPv6 and UDP are not supported by LRO.
 
 
+EEE
+---
+Valid Range: 0-1
+0 = Disables EEE
+1 = Enables EEE
+A link between two EEE-compliant devices will result in periodic bursts of
+data followed by periods where the link is in an idle state. This Low Power
+Idle (LPI) state is supported in both 1 Gbps and 10 Gbps link speeds.
+
+NOTES: EEE support requires auto-negotiation.
+  Both link partners must support EEE.
+  EEE is not supported on all Intel(R) Ethernet Network devices or at all link speeds.
+
+
+
 DMAC
 ----
 Valid Range: 0, 41-10000
@@ -783,6 +827,16 @@ InterruptThrottleRate (ITR) should be set to dynamic. When ITR=0, DMA
 Coalescing is automatically disabled.
 A whitepaper containing information on how to best configure your platform is
 available on the Intel website.
+
+
+MDD (Malicious Driver Detection)
+--------------------------------
+Valid Range: 0-1
+0 = Disabled
+1 = Enabled
+This parameter is only relevant for devices operating in SR-IOV mode.
+When this parameter is set, the driver detects malicious VF driver and
+disables its Tx/Rx queues until a VF driver reset occurs.
 
 
 AQRate
@@ -851,9 +905,11 @@ NOTES:
 - This driver will attempt to use multiple page sized buffers to receive
   each jumbo packet. This should help to avoid buffer starvation issues
   when allocating receive packets.
+
 - For 82599-based network connections, if you are enabling jumbo frames in a
   virtual function (VF), jumbo frames must first be enabled in the physical
   function (PF). The VF MTU setting cannot be larger than the PF MTU.
+
 
 
 ethtool
@@ -878,21 +934,28 @@ partner to identical settings to establish link and pass packets. This
 should only be needed when attempting to link with an older switch that
 does not support auto-negotiation or one that has been forced to a specific
 speed or duplex mode. Your link partner must match the setting you choose.
+1 Gbps speeds and higher cannot be forced. Use the autonegotiation
+advertising setting to manually set devices for 1 Gbps and higher.
 
-Speed and Duplex are configured through the ethtool* utility. ethtool is
-included with all versions of Red Hat after Red Hat 7.2. For other Linux
-distributions, download and install ethtool from the following website:
+
+Speed, duplex, and autonegotiation advertising are configured through
+the ethtool* utility. ethtool is included with all versions of Red Hat
+after Red Hat 7.2. For the latest version, download and install
+ethtool from the following website:
 
    http://ftp.kernel.org/pub/software/network/ethtool/
 
+
 Caution: Only experienced network administrators should force speed and
-duplex manually. The settings at the switch must always match the adapter
-settings. Adapter performance may suffer or your adapter may not
-operate if you configure the adapter differently from your switch.
+duplex or change autonegotiation advertising manually. The settings at
+the switch must always match the adapter settings. Adapter performance
+may suffer or your adapter may not operate if you configure the adapter
+differently from your switch.
 
 An Intel(R) Network Adapter using fiber-based connections, however, will not
 attempt to auto-negotiate with its link partner since those adapters operate
 only in full duplex and only at their native speed.
+
 
 NOTE: For the Intel(R) Ethernet Connection X552 10 GbE SFP+ you must specify
 the desired speed. 
@@ -907,8 +970,10 @@ the hardware and not transmitted.
 An interrupt is sent to the PF driver notifying it of the spoof attempt.
 When a spoofed packet is detected, the PF driver will send the following
 message to the system log (displayed by the "dmesg" command):
+
 ixgbe ethX: ixgbe_spoof_check: n spoofed packets detected
 where "x" is the PF interface number; and "n" is number of spoofed packets.
+
 NOTE: This feature can be disabled for a specific Virtual Function (VF).
 ip link set <pf dev> vf <vf id> spoofchk {off|on}
 
@@ -941,7 +1006,9 @@ IEEE 1588 Precision Time Protocol (PTP) Hardware Clock (PHC)
 ------------------------------------------------------------
 
 Precision Time Protocol (PTP) is used to synchronize clocks in a computer
-network and is supported in the ixgbe driver.
+network. PTP support varies among Intel devices that support this driver.
+Use "ethtool ?T <netdev name>" to get a definitive list of PTP capabilities
+supported by the device.
 
 IXGBE_PTP is a compile time flag. The user can enable it at compile time to add
 support for PTP from the driver. The flag is used by editing the make file
@@ -959,15 +1026,15 @@ Ethernet Network devices perform VXLAN processing, offloading it from the
 operating system. This reduces CPU utilization.
  
 VXLAN offloading is controlled by the tx and rx checksum offload options
-provided by ethtool. That is, if tx checksum offload is enabled, and the adapter
-has the capability, VXLAN offloading is also enabled.
+provided by ethtool. That is, if tx checksum offload is enabled, and the
+adapter has the capability, VXLAN offloading is also enabled.
 
-If rx checksum offload is enabled, then the VXLAN packets rx checksum will
-be offloaded, unless the module parameter vxlan_rx=0,0 was used to specifically
-disable the VXLAN rx offload.
- 
-VXLAN Overlay HW Offloading is enabled by default. To view and configure VXLAN
-on a VXLAN-overlay offload enabled device, use the following
+Support for VXLAN and Geneve HW offloading is dependent on
+kernel support of the HW offloading features.
+
+
+VXLAN Overlay HW Offloading is enabled by default. To view and configure
+VXLAN offload on a VXLAN-overlay offload enabled device, use the following
 command:
 
   # ethtool -k ethX
@@ -1270,9 +1337,11 @@ www.intel.com/support/
 
 or the Intel Wired Networking project hosted by Sourceforge at:
 http://sourceforge.net/projects/e1000
+
 If an issue is identified with the released source code on a supported
 kernel with a supported adapter, email the specific information related to the
 issue to e1000-devel@lists.sf.net.
+
 
 
 ================================================================================

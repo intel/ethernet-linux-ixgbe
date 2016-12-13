@@ -64,11 +64,11 @@ int ixgbe_cna_enable(struct ixgbe_adapter *adapter)
 {
 	struct net_device *cnadev;
 	struct net_device *netdev;
-	int i, err;
+	int err;
 	u64 wwpn;
 	u64 wwnn;
-	u16 device_caps;
 
+	netdev = adapter->netdev;
 	/*
 	 * Oppositely to regular net device, CNA device doesn't have
 	 * a private allocated region as we don't want to duplicate
@@ -81,7 +81,6 @@ int ixgbe_cna_enable(struct ixgbe_adapter *adapter)
 		err = -ENOMEM;
 		goto err_alloc_etherdev;
 	}
-	netdev = adapter->netdev;
 	adapter->cnadev = cnadev;
 	SET_MODULE_OWNER(cnadev);
 

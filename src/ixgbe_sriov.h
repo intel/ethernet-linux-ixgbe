@@ -41,8 +41,13 @@ void ixgbe_disable_tx_rx(struct ixgbe_adapter *adapter);
 void ixgbe_ping_all_vfs(struct ixgbe_adapter *adapter);
 #ifdef IFLA_VF_MAX
 int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int queue, u8 *mac);
+#ifdef IFLA_VF_VLAN_INFO_MAX
+int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int queue, u16 vlan,
+			  u8 qos, __be16 vlan_proto);
+#else
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int queue, u16 vlan,
 			  u8 qos);
+#endif
 #ifdef HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int min_tx_rate,
 			int max_tx_rate);
@@ -63,13 +68,13 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter);
 #ifdef CONFIG_PCI_IOV
 int ixgbe_vf_configuration(struct pci_dev *pdev, unsigned int event_mask);
 void ixgbe_enable_sriov(struct ixgbe_adapter *adapter);
+int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 #endif
 int ixgbe_pci_sriov_configure(struct pci_dev *dev, int num_vfs);
 #ifdef IFLA_VF_MAX
 void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter);
 #endif /* IFLA_VF_MAX */
 void ixgbe_dump_registers(struct ixgbe_adapter *adapter);
-int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 
 /*
  * These are defined in ixgbe_type.h on behalf of the VF driver
@@ -78,5 +83,7 @@ int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 #define IXGBE_DEV_ID_82599_VF			0x10ED
 #define IXGBE_DEV_ID_X540_VF			0x1515
 #define IXGBE_DEV_ID_X550_VF			0x1565
+#define IXGBE_DEV_ID_X550EM_X_VF		0x15A8
+#define IXGBE_DEV_ID_X550EM_A_VF		0x15C5
 #endif /* _IXGBE_SRIOV_H_ */
 

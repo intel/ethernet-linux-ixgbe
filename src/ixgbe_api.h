@@ -37,6 +37,7 @@ extern s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X550(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X550EM(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X550EM_x(struct ixgbe_hw *hw);
+extern s32 ixgbe_init_ops_X550EM_a(struct ixgbe_hw *hw);
 
 s32 ixgbe_set_mac_type(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw(struct ixgbe_hw *hw);
@@ -120,7 +121,7 @@ s32 ixgbe_set_vlvf(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 s32 ixgbe_fc_enable(struct ixgbe_hw *hw);
 s32 ixgbe_setup_fc(struct ixgbe_hw *hw);
 s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
-			 u8 ver);
+			 u8 ver, u16 len, char *driver_ver);
 s32 ixgbe_get_thermal_sensor_data(struct ixgbe_hw *hw);
 s32 ixgbe_init_thermal_sensor_thresh(struct ixgbe_hw *hw);
 void ixgbe_set_mta(struct ixgbe_hw *hw, u8 *mc_addr);
@@ -206,5 +207,7 @@ s32 ixgbe_handle_lasi(struct ixgbe_hw *hw);
 void ixgbe_set_rate_select_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed);
 void ixgbe_disable_rx(struct ixgbe_hw *hw);
 void ixgbe_enable_rx(struct ixgbe_hw *hw);
+s32 ixgbe_negotiate_fc(struct ixgbe_hw *hw, u32 adv_reg, u32 lp_reg,
+			u32 adv_sym, u32 adv_asm, u32 lp_sym, u32 lp_asm);
 
 #endif /* _IXGBE_API_H_ */

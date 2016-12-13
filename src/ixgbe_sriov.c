@@ -340,13 +340,15 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 	for (i = 0; i < adapter->num_vfs; i++)
 		ixgbe_vf_configuration(dev, (i | 0x10000000));
 
+	/* reset before enabling SRIOV to avoid mailbox issues */
+	ixgbe_sriov_reinit(adapter);
+
 	err = pci_enable_sriov(dev, num_vfs);
 	if (err) {
 		e_dev_warn("Failed to enable PCI sriov: %d\n", err);
 		goto err_out;
 	}
 	ixgbe_get_vfs(adapter);
-	ixgbe_sriov_reinit(adapter);
 
 out:
 	return num_vfs;
@@ -878,7 +880,7 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 
 	/* reply to reset with ack and vf mac address */
 	msgbuf[0] = IXGBE_VF_RESET;
-	if (!is_zero_ether_addr(vf_mac)) {
+	if (!is_zero_ether_addr(vf_mac) && adapter->vfinfo[vf].pf_set_mac) {
 		msgbuf[0] |= IXGBE_VT_MSGTYPE_ACK;
 		memcpy(addr, vf_mac, ETH_ALEN);
 	} else {
@@ -908,7 +910,7 @@ static int ixgbe_set_vf_mac_addr(struct ixgbe_adapter *adapter,
 		return -1;
 	}
 
-	if (adapter->vfinfo[vf].pf_set_mac &&
+	if (adapter->vfinfo[vf].pf_set_mac && !adapter->vfinfo[vf].trusted &&
 	    memcmp(adapter->vfinfo[vf].vf_mac_addresses, new_mac,
 		   ETH_ALEN)) {
 		u8 *pm = adapter->vfinfo[vf].vf_mac_addresses;
@@ -940,8 +942,13 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 	/* VLAN 0 is a special case, don't allow it to be removed */
 	if (!vid && !add)
 		return 0;
-#ifdef HAVE_VLAN_RX_REGISTER
 
+	err = ixgbe_set_vf_vlan(adapter, add, vid, vf);
+
+	if (err)
+		return err;
+
+#ifdef HAVE_VLAN_RX_REGISTER
 	/* in case of promiscuous mode any VLAN filter set for a VF must
 	 * also have the PF pool added to it.
 	 */
@@ -950,17 +957,8 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 		if (err)
 			return err;
 	}
-#else
 
-	err = ixgbe_set_vf_vlan(adapter, add, vid, vf);
-
-	if (err)
-		return err;
-#endif /* HAVE_VLAN_RX_REGISTER */
-
-#ifdef HAVE_VLAN_RX_REGISTER
 #ifdef CONFIG_PCI_IOV
-
 	/* Go through all the checks to see if the VLAN filter should
 	 * be wiped completely.
 	 */
@@ -993,18 +991,15 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 		 * because the PF is in promiscuous mode.
 		 */
 		if ((vlvf & VLAN_VID_MASK) == vid && !bits)
-			ixgbe_set_vf_vlan(adapter, add, vid, VMDQ_P(0));
+			err = ixgbe_set_vf_vlan(adapter, add, vid, VMDQ_P(0));
 	}
 
 out:
-#endif
-#endif /* HAVE_VLAN_RX_REGISTER */
-
-#ifndef HAVE_VLAN_RX_REGISTER
-	return 0;
-#else
+#endif /* CONFIG_PCI_IOV */
 	return err;
-#endif
+#else /* HAVE_VLAN_RX_REGISTER */
+	return 0;
+#endif /* HAVE_VLAN_RX_REGISTER */
 }
 
 static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
@@ -1522,7 +1517,13 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	return err;
 }
 
+#ifdef IFLA_VF_MAX
+#ifdef IFLA_VF_VLAN_INFO_MAX
+int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan,
+			  u8 qos, __be16 vlan_proto)
+#else
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
+#endif
 {
 	int err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -1530,6 +1531,10 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 	/* VLAN IDs accepted range 0-4094 */
 	if ((vf >= adapter->num_vfs) || (vlan > VLAN_VID_MASK-1) || (qos > 7))
 		return -EINVAL;
+#ifdef IFLA_VF_VLAN_INFO_MAX
+	if (vlan_proto != htons(ETH_P_8021Q))
+		return -EPROTONOSUPPORT;
+#endif
 	if (vlan || qos) {
 		/*
 		 * Check if there is already a port VLAN set, if so
@@ -1551,6 +1556,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
 	return err;
 }
+#endif /* IFLA_VF_MAX */
 
 static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {

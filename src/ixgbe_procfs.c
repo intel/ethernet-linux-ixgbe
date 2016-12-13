@@ -133,12 +133,10 @@ static int ixgbe_xflowctl(char *page, char __always_unused **start,
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
 	struct ixgbe_hw *hw;
 
-	if (adapter == NULL)
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", hw->fc.current_mode);
 }
@@ -182,12 +180,11 @@ static int ixgbe_rxupacks(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", IXGBE_READ_REG(hw, IXGBE_TPR));
 }
@@ -198,12 +195,11 @@ static int ixgbe_rxmpacks(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", IXGBE_READ_REG(hw, IXGBE_MPRC));
 }
@@ -214,12 +210,11 @@ static int ixgbe_rxbpacks(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", IXGBE_READ_REG(hw, IXGBE_BPRC));
 }
@@ -230,12 +225,11 @@ static int ixgbe_txupacks(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", IXGBE_READ_REG(hw, IXGBE_TPT));
 }
@@ -246,12 +240,11 @@ static int ixgbe_txmpacks(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", IXGBE_READ_REG(hw, IXGBE_MPTC));
 }
@@ -262,12 +255,11 @@ static int ixgbe_txbpacks(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "%d\n", IXGBE_READ_REG(hw, IXGBE_BPTC));
 }
@@ -384,12 +376,10 @@ static int ixgbe_linkstat(char *page, char __always_unused **start,
 	u32 link_speed;
 	bool link_up = false;
 
-	if (adapter == NULL)
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		bitmask |= 1;
@@ -417,12 +407,10 @@ static int ixgbe_funcid(char *page, char __always_unused **start,
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
 	struct ixgbe_hw *hw;
 
-	if (adapter == NULL)
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "0x%X\n", hw->bus.func);
 }
@@ -440,12 +428,11 @@ static int ixgbe_macburn(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "0x%02X%02X%02X%02X%02X%02X\n",
 		       (unsigned int)hw->mac.perm_addr[0],
@@ -462,12 +449,11 @@ static int ixgbe_macadmn(char *page, char __always_unused **start,
 {
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
-	if (adapter == NULL)
+
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	return snprintf(page, count, "0x%02X%02X%02X%02X%02X%02X\n",
 		       (unsigned int)hw->mac.addr[0],
@@ -489,12 +475,10 @@ static int ixgbe_maclla1(char *page, char __always_unused **start,
 	u16 first_word = 0x37;
 	const u16 word_count = ARRAY_SIZE(eeprom_buff);
 
-	if (adapter == NULL)
+	if (!adapter)
 		return snprintf(page, count, "error: no adapter\n");
 
 	hw = &adapter->hw;
-	if (hw == NULL)
-		return snprintf(page, count, "error: no hw data\n");
 
 	rc = hw->eeprom.ops.read_buffer(hw, first_word, 1, &first_word);
 	if (rc != 0)

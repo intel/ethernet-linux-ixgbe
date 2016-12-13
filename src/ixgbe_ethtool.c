@@ -291,6 +291,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 	case ixgbe_phy_tn:
 	case ixgbe_phy_aq:
 	case ixgbe_phy_x550em_ext_t:
+	case ixgbe_phy_fw:
 	case ixgbe_phy_cu_unknown:
 		ecmd->supported |= SUPPORTED_TP;
 		ecmd->advertising |= ADVERTISED_TP;
@@ -366,6 +367,9 @@ int ixgbe_get_settings(struct net_device *netdev,
 		ecmd->port = PORT_OTHER;
 		break;
 	}
+
+	/* Indicate pause support */
+	ecmd->supported |= SUPPORTED_Pause;
 
 	switch (hw->fc.requested_mode) {
 	case ixgbe_fc_full:
@@ -1536,6 +1540,7 @@ static bool ixgbe_reg_test(struct ixgbe_adapter *adapter, u64 *data)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		toggle = 0x7FFFF30F;
 		test = reg_test_82599;
 		break;
@@ -1779,6 +1784,7 @@ static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		reg_ctl = IXGBE_READ_REG(hw, IXGBE_DMATXCTL);
 		reg_ctl &= ~IXGBE_DMATXCTL_TE;
 		IXGBE_WRITE_REG(hw, IXGBE_DMATXCTL, reg_ctl);
@@ -1817,6 +1823,7 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		reg_data = IXGBE_READ_REG(&adapter->hw, IXGBE_DMATXCTL);
 		reg_data |= IXGBE_DMATXCTL_TE;
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_DMATXCTL, reg_data);
@@ -1875,6 +1882,7 @@ static int ixgbe_setup_loopback_test(struct ixgbe_adapter *adapter)
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X540:
 		reg_data = IXGBE_READ_REG(hw, IXGBE_MACC);
 		reg_data |= IXGBE_MACC_FLU;
@@ -2541,7 +2549,8 @@ static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 		netdev->hw_enc_features &= ~(NETIF_F_RXCSUM |
 					     NETIF_F_IP_CSUM |
 					     NETIF_F_IPV6_CSUM);
-		ixgbe_clear_vxlan_port(adapter);
+		ixgbe_clear_udp_tunnel_port(adapter,
+					    IXGBE_VXLANCTRL_ALL_UDPPORT_MASK);
 	}
 #endif /* HAVE_VXLAN_RX_OFFLOAD */
 
@@ -2565,6 +2574,7 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 #ifdef HAVE_ENCAP_TSO_OFFLOAD
 		if (data)
 			netdev->hw_enc_features |= NETIF_F_GSO_UDP_TUNNEL;
@@ -2649,6 +2659,7 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X540:
 	case ixgbe_mac_82599EB:
 		supported_flags |= ETH_FLAG_NTUPLE;
@@ -2670,12 +2681,13 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 		ixgbe_vlan_mode(netdev, netdev->features);
 #endif
 
-#ifdef HAVE_VXLAN_CHECKS
+#ifdef HAVE_VXLAN_RX_OFFLOAD
 	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE &&
 	    netdev->features & NETIF_F_RXCSUM) {
 		vxlan_get_rx_port(netdev);
 	else
-		ixgbe_clear_vxlan_port(adapter);
+		ixgbe_clear_udp_tunnel_port(adapter,
+					    IXGBE_VXLANCTRL_ALL_UDPPORT_MASK);
 	}
 #endif /* HAVE_VXLAN_RX_OFFLOAD */
 
@@ -3424,6 +3436,7 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 #ifdef HAVE_PTP_1588_CLOCK
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
 		info->rx_filters |= 1 << HWTSTAMP_FILTER_ALL;
 		/* fallthrough */
 	case ixgbe_mac_X540:
@@ -3654,6 +3667,145 @@ static int ixgbe_get_module_eeprom(struct net_device *dev,
 }
 #endif /* ETHTOOL_GMODULEINFO */
 
+#ifdef ETHTOOL_GEEE
+
+static const struct {
+	ixgbe_link_speed mac_speed;
+	u32 supported;
+} ixgbe_ls_map[] = {
+	{ IXGBE_LINK_SPEED_10_FULL, SUPPORTED_10baseT_Full },
+	{ IXGBE_LINK_SPEED_100_FULL, SUPPORTED_100baseT_Full },
+	{ IXGBE_LINK_SPEED_1GB_FULL, SUPPORTED_1000baseT_Full },
+	{ IXGBE_LINK_SPEED_2_5GB_FULL, SUPPORTED_2500baseX_Full },
+	{ IXGBE_LINK_SPEED_10GB_FULL, SUPPORTED_10000baseT_Full },
+};
+
+static const struct {
+	u32 lp_advertised;
+	u32 mac_speed;
+} ixgbe_lp_map[] = {
+	{ FW_PHY_ACT_UD_2_100M_TX_EEE, SUPPORTED_100baseT_Full },
+	{ FW_PHY_ACT_UD_2_1G_T_EEE, SUPPORTED_1000baseT_Full },
+	{ FW_PHY_ACT_UD_2_10G_T_EEE, SUPPORTED_10000baseT_Full },
+	{ FW_PHY_ACT_UD_2_1G_KX_EEE, SUPPORTED_1000baseKX_Full },
+	{ FW_PHY_ACT_UD_2_10G_KX4_EEE, SUPPORTED_10000baseKX4_Full },
+	{ FW_PHY_ACT_UD_2_10G_KR_EEE, SUPPORTED_10000baseKR_Full},
+};
+
+static int
+ixgbe_get_eee_fw(struct ixgbe_adapter *adapter, struct ethtool_eee *edata)
+{
+	u32 info[FW_PHY_ACT_DATA_COUNT] = { 0 };
+	struct ixgbe_hw *hw = &adapter->hw;
+	s32 rc;
+	u16 i;
+
+	rc = ixgbe_fw_phy_activity(hw, FW_PHY_ACT_UD_2, &info);
+	if (rc)
+		return rc;
+
+	edata->lp_advertised = 0;
+	for (i = 0; i < ARRAY_SIZE(ixgbe_lp_map); ++i) {
+		if (info[0] & ixgbe_lp_map[i].lp_advertised)
+			edata->lp_advertised |= ixgbe_lp_map[i].mac_speed;
+	}
+
+	edata->supported = 0;
+	for (i = 0; i < ARRAY_SIZE(ixgbe_ls_map); ++i) {
+		if (hw->phy.eee_speeds_supported & ixgbe_ls_map[i].mac_speed)
+			edata->supported |= ixgbe_ls_map[i].supported;
+	}
+
+	edata->advertised = 0;
+	for (i = 0; i < ARRAY_SIZE(ixgbe_ls_map); ++i) {
+		if (hw->phy.eee_speeds_advertised & ixgbe_ls_map[i].mac_speed)
+			edata->advertised |= ixgbe_ls_map[i].supported;
+	}
+
+	edata->eee_enabled = !!edata->advertised;
+	edata->tx_lpi_enabled = edata->eee_enabled;
+	if (edata->advertised & edata->lp_advertised)
+		edata->eee_active = true;
+
+	return 0;
+}
+
+static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	if (!hw->mac.ops.setup_eee)
+		return -EOPNOTSUPP;
+
+	if (!(adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE))
+		return -EOPNOTSUPP;
+
+	if (hw->phy.eee_speeds_supported && hw->phy.type == ixgbe_phy_fw)
+		return ixgbe_get_eee_fw(adapter, edata);
+
+	return -EOPNOTSUPP;
+}
+#endif /* ETHTOOL_GEEE */
+
+#ifdef ETHTOOL_SEEE
+static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ethtool_eee eee_data;
+	s32 ret_val;
+
+	if (!(hw->mac.ops.setup_eee &&
+	    (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)))
+		return -EOPNOTSUPP;
+
+	memset(&eee_data, 0, sizeof(struct ethtool_eee));
+
+	ret_val = ixgbe_get_eee(netdev, &eee_data);
+	if (ret_val)
+		return ret_val;
+
+	if (eee_data.eee_enabled && !edata->eee_enabled) {
+		if (eee_data.tx_lpi_enabled != edata->tx_lpi_enabled) {
+			e_dev_err("Setting EEE tx-lpi is not supported\n");
+			return -EINVAL;
+		}
+
+		if (eee_data.tx_lpi_timer != edata->tx_lpi_timer) {
+			e_dev_err("Setting EEE Tx LPI timer is not supported\n");
+			return -EINVAL;
+		}
+
+		if (eee_data.advertised != edata->advertised) {
+			e_dev_err("Setting EEE advertised speeds is not supported\n");
+			return -EINVAL;
+		}
+
+	}
+
+	if (eee_data.eee_enabled != edata->eee_enabled) {
+
+		if (edata->eee_enabled) {
+			adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
+			hw->phy.eee_speeds_advertised =
+						   hw->phy.eee_speeds_supported;
+		} else {
+			adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
+			hw->phy.eee_speeds_advertised = 0;
+		}
+
+		/* reset link */
+		if (netif_running(netdev))
+			ixgbe_reinit_locked(adapter);
+		else
+			ixgbe_reset(adapter);
+	}
+
+	return 0;
+}
+#endif /* ETHTOOL_SEEE */
+
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 /**
  * ixgbe_get_priv_flags - report device private flags
@@ -3782,6 +3934,12 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif
 #endif /* ETHTOOL_GRXRINGS */
 #ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#ifdef ETHTOOL_GEEE
+	.get_eee		= ixgbe_get_eee,
+#endif /* ETHTOOL_GEEE */
+#ifdef ETHTOOL_SEEE
+	.set_eee		= ixgbe_set_eee,
+#endif /* ETHTOOL_SEEE */
 #ifdef ETHTOOL_SCHANNELS
 	.get_channels		= ixgbe_get_channels,
 	.set_channels		= ixgbe_set_channels,
@@ -3819,6 +3977,12 @@ static const struct ethtool_ops_ext ixgbe_ethtool_ops_ext = {
 	.get_rxfh		= ixgbe_get_rxfh,
 	.set_rxfh		= ixgbe_set_rxfh,
 #endif /* ETHTOOL_GRSSH && ETHTOOL_SRSSH */
+#ifdef ETHTOOL_GEEE
+	.get_eee		= ixgbe_get_eee,
+#endif /* ETHTOOL_GEEE */
+#ifdef ETHTOOL_SEEE
+	.set_eee		= ixgbe_set_eee,
+#endif /* ETHTOOL_SEEE */
 };
 
 #endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */

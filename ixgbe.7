@@ -17,6 +17,7 @@ modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
 This driver is intended for \fB2.6.x\fR or later kernels. 
 This driver includes support for any 64 bit Linux supported system, 
 including Itanium(R)2, x86_64, PPC64,ARM, etc.
+
 .LP
 This driver is only supported as a loadable module at this time. Intel is
 not supplying patches against the kernel source to allow for static linking of
@@ -24,6 +25,8 @@ the drivers.
 
 A version of the driver may already be included by your
 distribution and/or the kernel.org kernel.
+
+
 
 
 For questions related to hardware requirements, refer to the documentation
@@ -212,6 +215,18 @@ ethtool:
 - hw_rsc_flushed - counts the number of packets flushed out of LRO
 .IP
 NOTE: IPv6 and UDP are not supported by LRO.
+.LP
+.B MDD (Malicious Driver Detection)
+.IP
+.B Valid Range: 0-1
+.IP
+0 = Disabled
+.IP
+1 = Enabled
+.IP
+This parameter is only relevant for devices operating in SR-IOV mode.
+When this parameter is set, the driver detects malicious VF driver and
+disables its Tx/Rx queues until a VF driver reset occurs.
 .SH Jumbo Frames
 .LP
 Jumbo Frames support is enabled by changing the Maximum Transmission Unit
@@ -229,9 +244,11 @@ NOTES:
 - This driver will attempt to use multiple page sized buffers to receive
   each jumbo packet. This should help to avoid buffer starvation issues
   when allocating receive packets.
+
 - For 82599-based network connections, if you are enabling jumbo frames in a
   virtual function (VF), jumbo frames must first be enabled in the physical
   function (PF). The VF MTU setting cannot be larger than the PF MTU.
+
 See the section "Jumbo Frames" in the Readme.
 .SH SUPPORT
 .LP
@@ -245,4 +262,5 @@ For general information, go to the Intel support website at:
 If an issue is identified with the released source code on a supported
 kernel with a supported adapter, email the specific information related to the
 issue to e1000-devel@lists.sf.net.
+
 .LP

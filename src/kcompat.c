@@ -698,7 +698,7 @@ int _kc_skb_pad(struct sk_buff *skb, int pad)
 
 	ntail = skb->data_len + pad - (skb->end - skb->tail);
 	if (likely(skb_cloned(skb) || ntail > 0)) {
-		if (pskb_expand_head(skb, 0, ntail, GFP_ATOMIC));
+		if (pskb_expand_head(skb, 0, ntail, GFP_ATOMIC))
 			goto free_skb;
 	}
 
@@ -781,8 +781,7 @@ void _kc_free_netdev(struct net_device *netdev)
 {
 	struct adapter_struct *adapter = netdev_priv(netdev);
 
-	if (adapter->config_space != NULL)
-		kfree(adapter->config_space);
+	kfree(adapter->config_space);
 #ifdef CONFIG_SYSFS
 	if (netdev->reg_state == NETREG_UNINITIALIZED) {
 		kfree((char *)netdev - netdev->padded);
@@ -2108,6 +2107,10 @@ void __kc_dev_addr_unsync_dev(struct dev_addr_list **list, int *count,
 #endif /* NETDEV_HW_ADDR_T_MULTICAST  */
 #endif /* HAVE_SET_RX_MODE */
 #endif /* 3.16.0 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0) )
+#endif /* 3.17.0 */
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0) )
