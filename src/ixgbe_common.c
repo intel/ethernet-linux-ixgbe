@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -918,7 +918,7 @@ s32 ixgbe_init_led_link_act_generic(struct ixgbe_hw *hw)
 {
 	struct ixgbe_mac_info *mac = &hw->mac;
 	u32 led_reg, led_mode;
-	u16 i;
+	u8 i;
 
 	led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
 

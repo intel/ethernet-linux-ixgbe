@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -70,7 +70,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"4.5.4" \
+#define DRV_VERSION	"4.6.4" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -81,7 +81,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2016 Intel Corporation.";
+static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2017 Intel Corporation.";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -129,6 +129,7 @@ static const struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550T), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550T1), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_KX4), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_XFI), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_KR), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_SFP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_10G_T), 0},
@@ -10005,11 +10006,11 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 #ifdef CONFIG_PCI_IOV
 #ifdef HAVE_SRIOV_CONFIGURE
-	if (adapter->num_vfs > 0) {
+	if (adapter->max_vfs > 0) {
 		e_dev_warn("Enabling SR-IOV VFs using the max_vfs module parameter is deprecated.\n");
 		e_dev_warn("Please use the pci sysfs interface instead. Ex:\n");
 		e_dev_warn("echo '%d' > /sys/bus/pci/devices/%04x:%02x:%02x.%1x/sriov_numvfs\n",
-			   adapter->num_vfs,
+			   adapter->max_vfs,
 			   pci_domain_nr(pdev->bus),
 			   pdev->bus->number,
 			   PCI_SLOT(pdev->devfn),

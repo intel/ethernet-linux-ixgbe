@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -30,6 +30,9 @@
  * 63 (IXGBE_MAX_VF_FUNCTIONS - 1)
  */
 #define IXGBE_MAX_VFS_DRV_LIMIT  (IXGBE_MAX_VF_FUNCTIONS - 1)
+#define IXGBE_MAX_VFS_1TC	 IXGBE_MAX_VFS_DRV_LIMIT
+#define IXGBE_MAX_VFS_4TC	 31
+#define IXGBE_MAX_VFS_8TC	 15
 
 void ixgbe_restore_vf_multicasts(struct ixgbe_adapter *adapter);
 int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf);

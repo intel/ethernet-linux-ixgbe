@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -440,6 +440,9 @@ STATIC s32 ixgbe_identify_phy_x550em(struct ixgbe_hw *hw)
 		break;
 	case IXGBE_DEV_ID_X550EM_X_KX4:
 		hw->phy.type = ixgbe_phy_x550em_kx4;
+		break;
+	case IXGBE_DEV_ID_X550EM_X_XFI:
+		hw->phy.type = ixgbe_phy_x550em_xfi;
 		break;
 	case IXGBE_DEV_ID_X550EM_X_KR:
 	case IXGBE_DEV_ID_X550EM_A_KR:
@@ -1561,6 +1564,7 @@ enum ixgbe_media_type ixgbe_get_media_type_X550em(struct ixgbe_hw *hw)
 	switch (hw->device_id) {
 	case IXGBE_DEV_ID_X550EM_X_KR:
 	case IXGBE_DEV_ID_X550EM_X_KX4:
+	case IXGBE_DEV_ID_X550EM_X_XFI:
 	case IXGBE_DEV_ID_X550EM_A_KR:
 	case IXGBE_DEV_ID_X550EM_A_KR_L:
 		media_type = ixgbe_media_type_backplane;
@@ -2381,6 +2385,12 @@ s32 ixgbe_init_phy_ops_X550em(struct ixgbe_hw *hw)
 		phy->ops.read_reg = ixgbe_read_phy_reg_x550em;
 		phy->ops.write_reg = ixgbe_write_phy_reg_x550em;
 		break;
+	case ixgbe_phy_x550em_xfi:
+		/* link is managed by HW */
+		phy->ops.setup_link = NULL;
+		phy->ops.read_reg = ixgbe_read_phy_reg_x550em;
+		phy->ops.write_reg = ixgbe_write_phy_reg_x550em;
+		break;
 	case ixgbe_phy_x550em_ext_t:
 		/* If internal link mode is XFI, then setup iXFI internal link,
 		 * else setup KR now.
@@ -2603,12 +2613,11 @@ s32 ixgbe_init_ext_t_x550em(struct ixgbe_hw *hw)
 /**
  *  ixgbe_setup_kr_x550em - Configure the KR PHY.
  *  @hw: pointer to hardware structure
- *
- *  Configures the integrated KR PHY for X550EM_x.
  **/
 s32 ixgbe_setup_kr_x550em(struct ixgbe_hw *hw)
 {
-	if (hw->mac.type != ixgbe_mac_X550EM_x)
+	/* leave link alone for 2.5G */
+	if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_2_5GB_FULL)
 		return IXGBE_SUCCESS;
 
 	return ixgbe_setup_kr_speed_x550em(hw, hw->phy.autoneg_advertised);
@@ -2785,12 +2794,26 @@ s32 ixgbe_setup_mac_link_sfp_x550a(struct ixgbe_hw *hw,
 
 		/* Configure CS4227/CS4223 LINE side to proper mode. */
 		reg_slice = IXGBE_CS4227_LINE_SPARE24_LSB + slice_offset;
+
+		ret_val = hw->phy.ops.read_reg(hw, reg_slice,
+					IXGBE_MDIO_ZERO_DEV_TYPE, &reg_phy_ext);
+
+		if (ret_val != IXGBE_SUCCESS)
+			return ret_val;
+
+		reg_phy_ext &= ~((IXGBE_CS4227_EDC_MODE_CX1 << 1) |
+				 (IXGBE_CS4227_EDC_MODE_SR << 1));
+
 		if (setup_linear)
 			reg_phy_ext = (IXGBE_CS4227_EDC_MODE_CX1 << 1) | 0x1;
 		else
 			reg_phy_ext = (IXGBE_CS4227_EDC_MODE_SR << 1) | 0x1;
 		ret_val = hw->phy.ops.write_reg(hw, reg_slice,
 					 IXGBE_MDIO_ZERO_DEV_TYPE, reg_phy_ext);
+
+		/* Flush previous write with a read */
+		ret_val = hw->phy.ops.read_reg(hw, reg_slice,
+					IXGBE_MDIO_ZERO_DEV_TYPE, &reg_phy_ext);
 	}
 	return ret_val;
 }
@@ -3606,6 +3629,7 @@ u32 ixgbe_get_supported_physical_layer_X550em(struct ixgbe_hw *hw)
 
 	switch (hw->phy.type) {
 	case ixgbe_phy_x550em_kr:
+	case ixgbe_phy_x550em_xfi:
 		physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_KR |
 				 IXGBE_PHYSICAL_LAYER_1000BASE_KX;
 		break;
@@ -3629,6 +3653,9 @@ u32 ixgbe_get_supported_physical_layer_X550em(struct ixgbe_hw *hw)
 			physical_layer |= IXGBE_PHYSICAL_LAYER_100BASE_TX;
 		if (hw->phy.speeds_supported & IXGBE_LINK_SPEED_10_FULL)
 			physical_layer |= IXGBE_PHYSICAL_LAYER_10BASE_T;
+		break;
+	case ixgbe_phy_sgmii:
+		physical_layer = IXGBE_PHYSICAL_LAYER_1000BASE_KX;
 		break;
 	default:
 		break;

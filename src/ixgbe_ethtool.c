@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -217,6 +217,7 @@ static __u32 ixgbe_backplane_type(struct ixgbe_hw *hw)
 		case IXGBE_DEV_ID_82598_BX:
 		case IXGBE_DEV_ID_82599_KR:
 		case IXGBE_DEV_ID_X550EM_X_KR:
+		case IXGBE_DEV_ID_X550EM_X_XFI:
 			mode = SUPPORTED_10000baseKR_Full;
 			break;
 		default:

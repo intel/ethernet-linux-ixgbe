@@ -1,7 +1,7 @@
 ################################################################################
 #
 # Intel(R) 10GbE PCI Express Linux Network Driver
-# Copyright(c) 1999 - 2016 Intel Corporation.
+# Copyright(c) 1999 - 2017 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -145,6 +145,7 @@
 	15AB  Ethernet Connection X552 10 GbE Backplane
 	15AC  Ethernet Connection X552 10 GbE SFP+
 	15AD  Ethernet Connection X552/X557-AT 10GBASE-T
+	15B0  Ethernet Connection X552 Backplane
 	15C2  Ethernet Connection X553 Backplane
 	15C3  Ethernet Connection X553 Backplane
 	15C4  Ethernet Connection X553 10 GbE SFP+

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -733,7 +733,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 					"Disabling SR-IOV.\n");
 			}
 
-			adapter->num_vfs = vfs;
+			adapter->max_vfs = vfs;
 
 			if (vfs)
 				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
@@ -742,10 +742,10 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		} else {
 			if (opt.def == OPTION_DISABLED) {
-				adapter->num_vfs = 0;
+				adapter->max_vfs = 0;
 				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
 			} else {
-				adapter->num_vfs = opt.def;
+				adapter->max_vfs = opt.def;
 				*aflags |= IXGBE_FLAG_SRIOV_ENABLED;
 			}
 		}
@@ -758,14 +758,14 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 					"IOV is not supported on this "
 					"hardware.  Disabling IOV.\n");
 				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
-				adapter->num_vfs = 0;
+				adapter->max_vfs = 0;
 			} else if (!(*aflags & IXGBE_FLAG_MQ_CAPABLE)) {
 				DPRINTK(PROBE, INFO,
 					"IOV is not supported while multiple "
 					"queues are disabled.  "
 					"Disabling IOV.\n");
 				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
-				adapter->num_vfs = 0;
+				adapter->max_vfs = 0;
 			} 
 		}
 	}

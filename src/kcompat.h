@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -35,6 +35,7 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/string.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
@@ -820,10 +821,11 @@ struct _kc_ethtool_pauseparam {
  */
 #define UBUNTU_VERSION(a,b,c,d) ((KERNEL_VERSION(a,b,0) << 8) + (d))
 
-/* SuSE version macro is the same as Linux kernel version */
+/* SuSE version macros are the same as Linux kernel version macro */
 #ifndef SLE_VERSION
-#define SLE_VERSION(a,b,c) KERNEL_VERSION(a,b,c)
+#define SLE_VERSION(a,b,c)	KERNEL_VERSION(a,b,c)
 #endif
+#define SLE_LOCALVERSION(a,b,c)	KERNEL_VERSION(a,b,c)
 #ifdef CONFIG_SUSE_KERNEL
 #if ( LINUX_VERSION_CODE == KERNEL_VERSION(2,6,27) )
 /* SLES11 GA is 2.6.27 based */
@@ -832,29 +834,45 @@ struct _kc_ethtool_pauseparam {
 /* SLES11 SP1 is 2.6.32 based */
 #define SLE_VERSION_CODE SLE_VERSION(11,1,0)
 #elif ( LINUX_VERSION_CODE == KERNEL_VERSION(3,0,13) )
-/* SLES11 SP2 is 3.0.13 based */
+/* SLES11 SP2 GA is 3.0.13-0.27 */
 #define SLE_VERSION_CODE SLE_VERSION(11,2,0)
 #elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,0,76)))
-/* SLES11 SP3 is 3.0.76 based */
+/* SLES11 SP3 GA is 3.0.76-0.11 */
 #define SLE_VERSION_CODE SLE_VERSION(11,3,0)
-#elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,0,101)))
-/* SLES11 SP4 is 3.0.101 based */
-#define SLE_VERSION_CODE SLE_VERSION(11,4,0)
-#elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,12,28)))
-/* SLES12 GA is 3.12.28 based */
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(3,0,101))
+  #if (SLE_LOCALVERSION_CODE < SLE_LOCALVERSION(0,8,0))
+  /* some SLES11sp2 update kernels up to 3.0.101-0.7.x */
+  #define SLE_VERSION_CODE SLE_VERSION(11,2,0)
+  #elif (SLE_LOCALVERSION_CODE < SLE_LOCALVERSION(63,0,0))
+  /* most SLES11sp3 update kernels */
+  #define SLE_VERSION_CODE SLE_VERSION(11,3,0)
+  #else
+  /* SLES11 SP4 GA (3.0.101-63) and update kernels 3.0.101-63+ */
+  #define SLE_VERSION_CODE SLE_VERSION(11,4,0)
+  #endif
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(3,12,28))
+/* SLES12 GA is 3.12.28-4
+ * kernel updates 3.12.xx-<33 thru 52>[.yy] */
 #define SLE_VERSION_CODE SLE_VERSION(12,0,0)
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(3,12,49))
+/* SLES12 SP1 GA is 3.12.49-11
+ * updates 3.12.xx-60.yy where xx={51..} */
+#define SLE_VERSION_CODE SLE_VERSION(12,1,0)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,21))
+/* SLES12 SP2 GA is 4.4.21-69 */
+#define SLE_VERSION_CODE SLE_VERSION(12,2,0)
 /* new SLES kernels must be added here with >= based on kernel
  * the idea is to order from newest to oldest and just catch all
  * of them using the >=
  */
-#elif ((LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,47)))
-/* SLES12 SP1 is 3.12.47-based */
-#define SLE_VERSION_CODE SLE_VERSION(12,1,0)
 #endif /* LINUX_VERSION_CODE == KERNEL_VERSION(x,y,z) */
 #endif /* CONFIG_SUSE_KERNEL */
 #ifndef SLE_VERSION_CODE
 #define SLE_VERSION_CODE 0
 #endif /* SLE_VERSION_CODE */
+#ifndef SLE_LOCALVERSION_CODE
+#define SLE_LOCALVERSION_CODE 0
+#endif /* SLE_LOCALVERSION_CODE */
 
 #ifdef __KLOCWORK__
 #ifdef ARRAY_SIZE
@@ -2146,7 +2164,6 @@ extern void *_kc_kmemdup(const void *src, size_t len, unsigned gfp);
 #endif
 #else /* 2.6.19 */
 #include <linux/aer.h>
-#include <linux/string.h>
 #include <linux/pci_hotplug.h>
 #endif /* < 2.6.19 */
 
@@ -2897,6 +2914,10 @@ static inline void _kc_synchronize_irq(unsigned int a)
 #define ADVERTISED_10000baseKR_Full	(1 << 19)
 #endif
 
+static inline unsigned long dev_trans_start(struct net_device *dev)
+{
+	return dev->trans_start;
+}
 #else /* < 2.6.31 */
 #ifndef HAVE_NETDEV_STORAGE_ADDRESS
 #define HAVE_NETDEV_STORAGE_ADDRESS
@@ -4583,6 +4604,10 @@ extern int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct net_device *dev,
      (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,3)) && \
      (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,0)))
 #define HAVE_RHEL7_NET_DEVICE_OPS_EXT
+#define HAVE_GENEVE_RX_OFFLOAD
+#ifdef ETHTOOL_GLINKSETTINGS
+#define HAVE_ETHTOOL_25G_BITS
+#endif /* ETHTOOL_GLINKSETTINGS */
 #endif
 #endif /* >= 3.10.0 */
 
@@ -5074,8 +5099,12 @@ static inline void __kc_timecounter_adjtime(struct timecounter *tc, s64 delta)
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,1,9))
-#if (!(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(12,1,0))) && \
-	!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(7,2)))
+#if (!(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(7,2)) && \
+     !((SLE_VERSION_CODE == SLE_VERSION(11,3,0)) && \
+       (SLE_LOCALVERSION_CODE >= SLE_LOCALVERSION(0,47,71))) && \
+     !((SLE_VERSION_CODE == SLE_VERSION(11,4,0)) && \
+       (SLE_LOCALVERSION_CODE >= SLE_LOCALVERSION(65,0,0))) && \
+     !(SLE_VERSION_CODE >= SLE_VERSION(12,1,0)))
 static inline bool page_is_pfmemalloc(struct page __maybe_unused *page)
 {
 #ifdef HAVE_STRUCT_PAGE_PFMEMALLOC
@@ -5084,13 +5113,29 @@ static inline bool page_is_pfmemalloc(struct page __maybe_unused *page)
 	return false;
 #endif
 }
-#endif /* !SLES12sp1 */
+#endif /* !RHEL7.2+ && !SLES11sp3(3.0.101-0.47.71+ update) && !SLES11sp4(3.0.101-65+ update) & !SLES12sp1+ */
 #else
 #undef HAVE_STRUCT_PAGE_PFMEMALLOC
 #endif /* 4.1.9 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0))
+#if (!(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,2)) && \
+     !(SLE_VERSION_CODE >= SLE_VERSION(12,1,0)))
+#define ETHTOOL_RX_FLOW_SPEC_RING	0x00000000FFFFFFFFULL
+#define ETHTOOL_RX_FLOW_SPEC_RING_VF	0x000000FF00000000ULL
+#define ETHTOOL_RX_FLOW_SPEC_RING_VF_OFF 32
+static inline __u64 ethtool_get_flow_spec_ring(__u64 ring_cookie)
+{
+	return ETHTOOL_RX_FLOW_SPEC_RING & ring_cookie;
+};
+
+static inline __u64 ethtool_get_flow_spec_ring_vf(__u64 ring_cookie)
+{
+	return (ETHTOOL_RX_FLOW_SPEC_RING_VF & ring_cookie) >>
+				ETHTOOL_RX_FLOW_SPEC_RING_VF_OFF;
+};
+#endif /* ! RHEL >= 7.2 && ! SLES >= 12.1 */
 #else
 #define HAVE_NDO_DFLT_BRIDGE_GETLINK_VLAN_SUPPORT
 #endif /* 4.2.0 */
@@ -5183,6 +5228,9 @@ static inline void page_ref_inc(struct page *page)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,7,0))
 #else
 #define HAVE_NETIF_TRANS_UPDATE
+#ifdef ETHTOOL_GLINKSETTINGS
+#define HAVE_ETHTOOL_25G_BITS
+#endif /* ETHTOOL_GLINKSETTINGS */
 #endif /* 4.7.0 */
 
 /*****************************************************************************/

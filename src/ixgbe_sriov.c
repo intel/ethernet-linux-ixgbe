@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2016 Intel Corporation.
+  Copyright(c) 1999 - 2017 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -39,52 +39,54 @@
 #include "ixgbe_sriov.h"
 
 #ifdef CONFIG_PCI_IOV
-static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
+static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
+				unsigned int num_vfs)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	int num_vf_macvlans, i;
 	struct vf_macvlans *mv_list;
 
 	adapter->flags |= IXGBE_FLAG_SRIOV_ENABLED;
-	e_dev_info("SR-IOV enabled with %d VFs\n", adapter->num_vfs);
-	if (hw->mac.type < ixgbe_mac_X550)
-		e_dev_info("configure port vlans to keep your VFs secure\n");
 
 	/* Enable VMDq flag so device will be set in VM mode */
 	adapter->flags |= IXGBE_FLAG_VMDQ_ENABLED;
 	if (!adapter->ring_feature[RING_F_VMDQ].limit)
 		adapter->ring_feature[RING_F_VMDQ].limit = 1;
-	adapter->ring_feature[RING_F_VMDQ].offset = adapter->num_vfs;
+
+	/* Allocate memory for per VF control structures */
+	adapter->vfinfo = kcalloc(num_vfs, sizeof(struct vf_data_storage),
+				  GFP_KERNEL);
+	if (!adapter->vfinfo)
+		return -ENOMEM;
 
 	num_vf_macvlans = hw->mac.num_rar_entries -
-		(IXGBE_MAX_PF_MACVLANS + 1 + adapter->num_vfs);
+		(IXGBE_MAX_PF_MACVLANS + 1 + num_vfs);
 
-	adapter->mv_list = mv_list = kcalloc(num_vf_macvlans,
-					     sizeof(struct vf_macvlans),
-					     GFP_KERNEL);
+	mv_list = kcalloc(num_vf_macvlans, sizeof(struct vf_macvlans),
+			  GFP_KERNEL);
 	if (mv_list) {
 		/* Initialize list of VF macvlans */
+		struct vf_macvlans *mv_list_tmp = mv_list;
+
 		INIT_LIST_HEAD(&adapter->vf_mvs.l);
 		for (i = 0; i < num_vf_macvlans; i++) {
-			mv_list->vf = -1;
-			mv_list->free = true;
-			list_add(&mv_list->l, &adapter->vf_mvs.l);
-			mv_list++;
+			mv_list_tmp->vf = -1;
+			mv_list_tmp->free = true;
+			list_add(&mv_list_tmp->l, &adapter->vf_mvs.l);
+			mv_list_tmp++;
 		}
+		adapter->mv_list = mv_list;
 	}
 
 	/* Initialize default switching mode VEB */
 	IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LBEN);
 
-	/* If call to enable VFs succeeded then allocate memory
-	 * for per VF control structures.
+	/* set adapter->num_vfs only after allocating vfinfo to avoid
+	 * NULL pointer issues when accessing adapter->vfinfo
 	 */
-	adapter->vfinfo =
-		kcalloc(adapter->num_vfs,
-			sizeof(struct vf_data_storage), GFP_KERNEL);
+	adapter->num_vfs = num_vfs;
 
-	if (!adapter->vfinfo)
-		return -ENOMEM;
+	adapter->ring_feature[RING_F_VMDQ].offset = num_vfs;
 
 	/* enable L2 switch and replication */
 	adapter->flags |= IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE |
@@ -135,6 +137,10 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 		adapter->vfinfo[i].xcast_mode = IXGBEVF_XCAST_MODE_NONE;
 	}
 
+	e_dev_info("SR-IOV enabled with %d VFs\n", num_vfs);
+	if (hw->mac.type < ixgbe_mac_X550)
+		e_dev_info("configure port vlans to keep your VFs secure\n");
+
 	return 0;
 }
 
@@ -176,9 +182,10 @@ static void ixgbe_get_vfs(struct ixgbe_adapter *adapter)
 void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 {
 	int pre_existing_vfs = 0;
+	unsigned int num_vfs;
 
 	pre_existing_vfs = pci_num_vf(adapter->pdev);
-	if (!pre_existing_vfs && !adapter->num_vfs)
+	if (!pre_existing_vfs && !adapter->max_vfs)
 		return;
 
 	/* If there are pre-existing VFs then we have to force
@@ -188,7 +195,7 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 	 * have been created via the new PCI SR-IOV sysfs interface.
 	 */
 	if (pre_existing_vfs) {
-		adapter->num_vfs = pre_existing_vfs;
+		num_vfs = pre_existing_vfs;
 		dev_warn(&adapter->pdev->dev,
 			 "Virtual Functions already enabled for this device - Please reload all VF drivers to avoid spoofed packet errors\n");
 	} else {
@@ -200,17 +207,17 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 		 * physical function.  If the user requests greater thn
 		 * 63 VFs then it is an error - reset to default of zero.
 		 */
-		adapter->num_vfs = min_t(unsigned int, adapter->num_vfs, IXGBE_MAX_VFS_DRV_LIMIT);
+		num_vfs = min_t(unsigned int, adapter->max_vfs,
+				IXGBE_MAX_VFS_DRV_LIMIT);
 
-		err = pci_enable_sriov(adapter->pdev, adapter->num_vfs);
+		err = pci_enable_sriov(adapter->pdev, num_vfs);
 		if (err) {
 			e_err(probe, "Failed to enable PCI sriov: %d\n", err);
-			adapter->num_vfs = 0;
 			return;
 		}
 	}
 
-	if (!__ixgbe_enable_sriov(adapter)) {
+	if (!__ixgbe_enable_sriov(adapter, num_vfs)) {
 		ixgbe_get_vfs(adapter);
 		return;
 	}
@@ -304,6 +311,7 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 #ifdef CONFIG_PCI_IOV
 	struct ixgbe_adapter *adapter = pci_get_drvdata(dev);
 	int err = 0;
+	u8 num_tc;
 	int i;
 	int pre_existing_vfs = pci_num_vf(dev);
 
@@ -321,19 +329,38 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 		goto err_out;
 
 	/* While the SR-IOV capability structure reports total VFs to be
-	 * 64 we limit the actual number that can be allocated to 63 so
-	 * that some transmit/receive resources can be reserved to the
+	 * 64 we limit the actual number that can be allocated as below
+	 * so that some transmit/receive resources can be reserved to the
 	 * PF.  The PCI bus driver already checks for other values out of
 	 * range.
+	 *    Num_TCs	MAX_VFs
+	 *	1	  63
+	 *	<=4	  31
+	 *	>4	  15
 	 */
-	if (num_vfs > IXGBE_MAX_VFS_DRV_LIMIT) {
-		err = -EPERM;
-		goto err_out;
+	num_tc = netdev_get_num_tc(adapter->netdev);
+
+	if (num_tc > 4) {
+		if (num_vfs > IXGBE_MAX_VFS_8TC) {
+			e_dev_err("Currently the device is configured with %d TCs, Creating more than %d VFs is not allowed\n", num_tc, IXGBE_MAX_VFS_8TC);
+			err = -EPERM;
+			goto err_out;
+		}
+	} else if ((num_tc > 1) && (num_tc <= 4)) {
+		if (num_vfs > IXGBE_MAX_VFS_4TC) {
+			e_dev_err("Currently the device is configured with %d TCs, Creating more than %d VFs is not allowed\n", num_tc, IXGBE_MAX_VFS_4TC);
+			err = -EPERM;
+			goto err_out;
+		}
+	} else {
+		if (num_vfs > IXGBE_MAX_VFS_1TC) {
+			e_dev_err("Currently the device is configured with %d TCs, Creating more than %d VFs is not allowed\n", num_tc, IXGBE_MAX_VFS_1TC);
+			err = -EPERM;
+			goto err_out;
+		}
 	}
 
-	adapter->num_vfs = num_vfs;
-
-	err = __ixgbe_enable_sriov(adapter);
+	err = __ixgbe_enable_sriov(adapter, num_vfs);
 	if (err)
 		goto err_out;
 
@@ -996,10 +1023,10 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 
 out:
 #endif /* CONFIG_PCI_IOV */
-	return err;
 #else /* HAVE_VLAN_RX_REGISTER */
 	return 0;
 #endif /* HAVE_VLAN_RX_REGISTER */
+	return err;
 }
 
 static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
@@ -1357,7 +1384,7 @@ void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 vf;
 
-	if (adapter->flags & IXGBE_FLAG_MDD_ENABLED)
+	if (adapter->flags & IXGBE_FLAG_MDD_ENABLED && adapter->vfinfo)
 		ixgbe_check_mdd_event(adapter);
 
 	for (vf = 0; vf < adapter->num_vfs; vf++) {
