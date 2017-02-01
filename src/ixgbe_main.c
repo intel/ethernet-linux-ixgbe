@@ -70,7 +70,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"4.6.4" \
+#define DRV_VERSION	"5.0.4" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -135,9 +135,13 @@ static const struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_10G_T), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_KR), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_KR_L), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_SFP_N), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_SGMII), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_SGMII_L), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_10G_T), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_QSFP), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_QSFP_N), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_SFP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_1G_T), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_1G_T_L), 0},
 	/* required last entry */
@@ -4683,6 +4687,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 
 	IXGBE_WRITE_REG(hw, IXGBE_FCTRL, fctrl);
 
+#ifdef HAVE_8021P_SUPPORT
 #ifdef NETIF_F_HW_VLAN_CTAG_RX
 	if (features & NETIF_F_HW_VLAN_CTAG_RX)
 #else
@@ -4691,6 +4696,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 		ixgbe_vlan_strip_enable(adapter);
 	else
 		ixgbe_vlan_strip_disable(adapter);
+#endif /* HAVE_8021P_SUPPORT */
 
 #if defined(NETIF_F_HW_VLAN_CTAG_FILTER)
 	if (features & NETIF_F_HW_VLAN_CTAG_FILTER)
@@ -4837,7 +4843,7 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 			/* We previously disabled TSO, so we should enable it
 			 * now. */
 			netdev->features |= ixgbe_tso_features();
-#endif
+#endif /* NETDEV_CAN_SET_GSO_MAX_SIZE */
 		}
 		return;
 	}
@@ -4849,7 +4855,7 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 		/* Simply disable TSO since we cannot change the maximum
 		 * segment size. */
 		netdev->features &= ~ixgbe_tso_features();
-#endif
+#endif /* NETDEV_CAN_SET_GSO_MAX_SIZE */
 	}
 
 #if IS_ENABLED(CONFIG_FCOE)
@@ -10025,6 +10031,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	}
 
 #endif /* CONFIG_PCI_IOV */
+
 	netdev->features |= NETIF_F_SG |
 			    NETIF_F_IP_CSUM;
 
@@ -10109,8 +10116,8 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		netdev->hw_enc_features |= NETIF_F_IP_CSUM |
 					   NETIF_F_IPV6_CSUM;
 	}
+#endif /* NETIF_F_GSO_PARTIAL */
 
-#endif /* HAVE_VXLAN_RX_OFFLOAD */
 	if (netdev->features & NETIF_F_LRO) {
 		if ((adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE) &&
 		    ((adapter->rx_itr_setting == 1) ||

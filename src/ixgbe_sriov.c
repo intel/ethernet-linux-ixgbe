@@ -39,12 +39,36 @@
 #include "ixgbe_sriov.h"
 
 #ifdef CONFIG_PCI_IOV
+static inline void ixgbe_alloc_vf_macvlans(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct vf_macvlans *mv_list;
+	int num_vf_macvlans, i;
+
+	num_vf_macvlans = hw->mac.num_rar_entries -
+			  (IXGBE_MAX_PF_MACVLANS + 1 + adapter->num_vfs);
+	if (!num_vf_macvlans)
+		return;
+
+	mv_list = kcalloc(num_vf_macvlans, sizeof(struct vf_macvlans),
+			  GFP_KERNEL);
+	if (mv_list) {
+		/* Initialize list of VF macvlans */
+		INIT_LIST_HEAD(&adapter->vf_mvs.l);
+		for (i = 0; i < num_vf_macvlans; i++) {
+			mv_list[i].vf = -1;
+			mv_list[i].free = true;
+			list_add(&mv_list[i].l, &adapter->vf_mvs.l);
+		}
+		adapter->mv_list = mv_list;
+	}
+}
+
 static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 				unsigned int num_vfs)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	int num_vf_macvlans, i;
-	struct vf_macvlans *mv_list;
+	int i;
 
 	adapter->flags |= IXGBE_FLAG_SRIOV_ENABLED;
 
@@ -59,24 +83,7 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 	if (!adapter->vfinfo)
 		return -ENOMEM;
 
-	num_vf_macvlans = hw->mac.num_rar_entries -
-		(IXGBE_MAX_PF_MACVLANS + 1 + num_vfs);
-
-	mv_list = kcalloc(num_vf_macvlans, sizeof(struct vf_macvlans),
-			  GFP_KERNEL);
-	if (mv_list) {
-		/* Initialize list of VF macvlans */
-		struct vf_macvlans *mv_list_tmp = mv_list;
-
-		INIT_LIST_HEAD(&adapter->vf_mvs.l);
-		for (i = 0; i < num_vf_macvlans; i++) {
-			mv_list_tmp->vf = -1;
-			mv_list_tmp->free = true;
-			list_add(&mv_list_tmp->l, &adapter->vf_mvs.l);
-			mv_list_tmp++;
-		}
-		adapter->mv_list = mv_list;
-	}
+	ixgbe_alloc_vf_macvlans(adapter);
 
 	/* Initialize default switching mode VEB */
 	IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LBEN);
@@ -1037,7 +1044,8 @@ static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
 		    IXGBE_VT_MSGINFO_SHIFT;
 	int err;
 
-	if (adapter->vfinfo[vf].pf_set_mac && index > 0) {
+	if (adapter->vfinfo[vf].pf_set_mac && !adapter->vfinfo[vf].trusted &&
+	    index > 0) {
 		e_warn(drv,
 		       "VF %d requested MACVLAN filter but is administratively denied\n",
 		       vf);
