@@ -131,7 +131,7 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 u32 ixgbe_read_reg(struct ixgbe_hw *, u32 reg, bool quiet);
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
-extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
+extern void ewarn(struct ixgbe_hw *hw, const char *str);
 
 #define IXGBE_READ_PCIE_WORD ixgbe_read_pci_cfg_word
 #define IXGBE_WRITE_PCIE_WORD ixgbe_write_pci_cfg_word
@@ -143,7 +143,7 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
 #define IXGBE_CPU_TO_LE16(_i) cpu_to_le16(_i)
 #define IXGBE_LE32_TO_CPU(_i) le32_to_cpu(_i)
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
-#define EWARN(H, W, S) ewarn(H, W, S)
+#define EWARN(H, W) ewarn(H, W)
 
 enum {
 	IXGBE_ERROR_SOFTWARE,

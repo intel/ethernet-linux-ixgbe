@@ -4,7 +4,7 @@ ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 
 ================================================================================
 
-November 11, 2016
+March 21, 2017
 
 ================================================================================
 
@@ -184,6 +184,8 @@ Laser turns off for SFP+ when ifconfig ethX down
 
 "ifconfig ethX down" turns off the laser for 82599-based SFP+ fiber adapters.
 "ifconfig ethX up" turns on the laser.
+Alternatively, you can use "ip link set [down/up] dev ethX" to turn the
+laser off and on.
 
 
 82599-based QSFP+ Adapters
@@ -559,10 +561,10 @@ ethtool commands:
 Perfect Filter
 --------------
 
-Perfect filter is an interface to load the filter table that funnels all flow
-into queue_0 unless an alternative queue is specified using "action". In that
-case, any flow that matches the filter criteria will be directed to the
-appropriate queue.
+Perfect filter is an interface to load the filter table that funnels all
+traffic through RSS for queue assignment unless an alternative queue is
+specified using "action". In that case, any traffic flow that matches the
+filter criteria is directed to the specified queue.
 
 Support for Virtual Function (VF) is through the user data field. ethtool must
 be updated to the version built for the 2.6.40 kernel. Perfect Filter is
@@ -898,6 +900,9 @@ Use the ifconfig command to increase the MTU size. For example, enter the
 following where <x> is the interface number:
 
    ifconfig eth<x> mtu 9000 up
+Alternatively, you can use the ip command as follows:
+   ip link set mtu 9000 dev eth<x>
+   ip link set up dev eth<x>
 
 NOTES:
 - The maximum MTU setting for Jumbo Frames is 9710. This value coincides
@@ -1029,7 +1034,7 @@ VXLAN offloading is controlled by the tx and rx checksum offload options
 provided by ethtool. That is, if tx checksum offload is enabled, and the
 adapter has the capability, VXLAN offloading is also enabled.
 
-Support for VXLAN and Geneve HW offloading is dependent on
+Support for VXLAN HW offloading is dependent on
 kernel support of the HW offloading features.
 
 
@@ -1192,16 +1197,6 @@ receive queues.
 82599 and X540, and X550-based network connections support up to 64 queues.
 
 
-Disable GRO when routing/bridging
----------------------------------
-
-Due to a known kernel issue, GRO must be turned off when routing/bridging. GRO
-can be turned off via ethtool.
-ethtool -K ethX gro off
-
-where ethX is the ethernet interface being modified.
-
-
 Lower than expected performance
 -------------------------------
 
@@ -1283,15 +1278,21 @@ when using qemu to create the KVM guest:
 Unable to obtain DHCP lease on boot with RedHat
 -----------------------------------------------
 
-For configurations where the auto-negotiation process takes more than 5
+In configurations where the auto-negotiation process takes more than 5
 seconds, the boot script may fail with the following message:
 "ethX: failed. No link present. Check cable?"
 
-If this error appears even though the presence of a link can be confirmed
-using ethtool ethX, try setting "LINKDELAY=5" in
-/etc/sysconfig/network-scripts/ifcfg-ethX.
+This error may occur even though the presence of link can be confirmed using
+ethtool ethx. In this case, try setting "LINKDELAY=30" in
+/etc/sysconfig/network-scripts/ifdfg-ethx.
 
-NOTE: Link time can take up to 30 seconds. Adjust LINKDELAY value accordingly.
+The same issue can occur during a network boot (via PXE) on RedHat
+distributions that use the dracut script:
+"Warning: No carrier detected on interface <interface_name>"
+
+In this case add "rd.net.timeout.carrier=30" at the kernel command line.
+
+NOTE: Link time can vary. Adjust LINKDELAY value accordingly.
 
 
 Host May Reboot after Removing PF when VF is Active in Guest
@@ -1365,7 +1366,7 @@ St - Fifth Floor, Boston, MA 02110-1301 USA.
 The full GNU General Public License is included in this distribution in the
 file called "COPYING".
 
-Copyright(c) 1999 - 2016 Intel Corporation.
+Copyright(c) 1999 - 2017 Intel Corporation.
 ================================================================================
 
 
@@ -1374,7 +1375,7 @@ Trademarks
 ----------
 
 Intel, Itanium, and Pentium are trademarks or registered trademarks of Intel
-Corporation or its subsidiaries in the United States and other countries.
+Corporation or its subsidiaries in the United States and/or other countries.
 
 * Other names and brands may be claimed as the property of others.
 

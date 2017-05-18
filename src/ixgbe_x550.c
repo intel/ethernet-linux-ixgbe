@@ -77,6 +77,10 @@ s32 ixgbe_init_ops_X550(struct ixgbe_hw *hw)
 	/* Manageability interface */
 	mac->ops.set_fw_drv_ver = ixgbe_set_fw_drv_ver_x550;
 	switch (hw->device_id) {
+	case IXGBE_DEV_ID_X550EM_X_1G_T:
+		hw->mac.ops.led_on = NULL;
+		hw->mac.ops.led_off = NULL;
+		break;
 	case IXGBE_DEV_ID_X550EM_X_10G_T:
 	case IXGBE_DEV_ID_X550EM_A_10G_T:
 		hw->mac.ops.led_on = ixgbe_led_on_t_X550em;
@@ -452,6 +456,11 @@ STATIC s32 ixgbe_identify_phy_x550em(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_X550EM_A_10G_T:
 	case IXGBE_DEV_ID_X550EM_X_10G_T:
 		return ixgbe_identify_phy_generic(hw);
+	case IXGBE_DEV_ID_X550EM_X_1G_T:
+		hw->phy.type = ixgbe_phy_ext_1g_t;
+		hw->phy.ops.read_reg = NULL;
+		hw->phy.ops.write_reg = NULL;
+		break;
 	case IXGBE_DEV_ID_X550EM_A_1G_T:
 	case IXGBE_DEV_ID_X550EM_A_1G_T_L:
 		hw->phy.type = ixgbe_phy_fw;
@@ -741,6 +750,11 @@ s32 ixgbe_init_ops_X550EM(struct ixgbe_hw *hw)
 		phy->ops.set_phy_power = NULL;
 		phy->ops.get_firmware_version = NULL;
 		break;
+	case IXGBE_DEV_ID_X550EM_X_1G_T:
+		mac->ops.setup_fc = NULL;
+		phy->ops.identify = ixgbe_identify_phy_x550em;
+		phy->ops.set_phy_power = NULL;
+		break;
 	default:
 		phy->ops.identify = ixgbe_identify_phy_x550em;
 	}
@@ -933,6 +947,12 @@ s32 ixgbe_init_ops_X550EM_x(struct ixgbe_hw *hw)
 	link->ops.write_link_unlocked =
 				      ixgbe_write_i2c_combined_generic_unlocked;
 	link->addr = IXGBE_CS4227;
+
+	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_1G_T) {
+		mac->ops.setup_fc = NULL;
+		mac->ops.setup_eee = NULL;
+		mac->ops.init_led_link_act = NULL;
+	}
 
 	return ret_val;
 }
@@ -1299,13 +1319,20 @@ s32 ixgbe_get_phy_token(struct ixgbe_hw *hw)
 					      sizeof(token_cmd),
 					      IXGBE_HI_COMMAND_TIMEOUT,
 					      true);
-	if (status)
+	if (status) {
+		DEBUGOUT1("Issuing host interface command failed with Status = %d\n",
+			  status);
 		return status;
+	}
 	if (token_cmd.hdr.cmd_or_resp.ret_status == FW_PHY_TOKEN_OK)
 		return IXGBE_SUCCESS;
-	if (token_cmd.hdr.cmd_or_resp.ret_status != FW_PHY_TOKEN_RETRY)
+	if (token_cmd.hdr.cmd_or_resp.ret_status != FW_PHY_TOKEN_RETRY) {
+		DEBUGOUT1("Host interface command returned 0x%08x , returning IXGBE_ERR_FW_RESP_INVALID\n",
+			  token_cmd.hdr.cmd_or_resp.ret_status);
 		return IXGBE_ERR_FW_RESP_INVALID;
+	}
 
+	DEBUGOUT("Returning  IXGBE_ERR_TOKEN_RETRY\n");
 	return IXGBE_ERR_TOKEN_RETRY;
 }
 
@@ -1576,6 +1603,7 @@ enum ixgbe_media_type ixgbe_get_media_type_X550em(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_X550EM_A_QSFP_N:
 		media_type = ixgbe_media_type_fiber;
 		break;
+	case IXGBE_DEV_ID_X550EM_X_1G_T:
 	case IXGBE_DEV_ID_X550EM_X_10G_T:
 	case IXGBE_DEV_ID_X550EM_A_10G_T:
 		media_type = ixgbe_media_type_copper;
@@ -1895,6 +1923,8 @@ void ixgbe_init_mac_link_ops_X550em(struct ixgbe_hw *hw)
 						ixgbe_setup_mac_link_sfp_x550em;
 		break;
 	case ixgbe_media_type_copper:
+		if (hw->device_id == IXGBE_DEV_ID_X550EM_X_1G_T)
+			break;
 		if (hw->mac.type == ixgbe_mac_X550EM_a) {
 			if (hw->device_id == IXGBE_DEV_ID_X550EM_A_1G_T ||
 			    hw->device_id == IXGBE_DEV_ID_X550EM_A_1G_T_L) {
@@ -1961,6 +1991,7 @@ s32 ixgbe_get_link_capabilities_X550em(struct ixgbe_hw *hw,
 			*speed = IXGBE_LINK_SPEED_10GB_FULL;
 	} else {
 		switch (hw->phy.type) {
+		case ixgbe_phy_ext_1g_t:
 		case ixgbe_phy_sgmii:
 			*speed = IXGBE_LINK_SPEED_1GB_FULL;
 			break;
@@ -2385,6 +2416,11 @@ s32 ixgbe_init_phy_ops_X550em(struct ixgbe_hw *hw)
 		phy->ops.read_reg = ixgbe_read_phy_reg_x550em;
 		phy->ops.write_reg = ixgbe_write_phy_reg_x550em;
 		break;
+	case ixgbe_phy_ext_1g_t:
+		/* link is managed by FW */
+		phy->ops.setup_link = NULL;
+		phy->ops.reset = NULL;
+		break;
 	case ixgbe_phy_x550em_xfi:
 		/* link is managed by HW */
 		phy->ops.setup_link = NULL;
@@ -2467,14 +2503,16 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 	u32 ctrl = 0;
 	u32 i;
 	bool link_up = false;
+	u32 swfw_mask = hw->phy.phy_semaphore_mask;
 
 	DEBUGFUNC("ixgbe_reset_hw_X550em");
 
 	/* Call adapter stop to disable Tx/Rx and clear interrupts */
 	status = hw->mac.ops.stop_adapter(hw);
-	if (status != IXGBE_SUCCESS)
+	if (status != IXGBE_SUCCESS) {
+		DEBUGOUT1("Failed to stop adapter, STATUS = %d\n", status);
 		return status;
-
+	}
 	/* flush pending Tx transactions */
 	ixgbe_clear_tx_pending(hw);
 
@@ -2483,14 +2521,23 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 	/* PHY ops must be identified and initialized prior to reset */
 	status = hw->phy.ops.init(hw);
 
-	if (status == IXGBE_ERR_SFP_NOT_SUPPORTED)
+	if (status)
+		DEBUGOUT1("Failed to initialize PHY ops, STATUS = %d\n",
+			  status);
+
+	if (status == IXGBE_ERR_SFP_NOT_SUPPORTED) {
+		DEBUGOUT("Returning from reset HW due to PHY init failure\n");
 		return status;
+	}
 
 	/* start the external PHY */
 	if (hw->phy.type == ixgbe_phy_x550em_ext_t) {
 		status = ixgbe_init_ext_t_x550em(hw);
-		if (status)
+		if (status) {
+			DEBUGOUT1("Failed to start the external PHY, STATUS = %d\n",
+				  status);
 			return status;
+		}
 	}
 
 	/* Setup SFP module if there is one present. */
@@ -2521,9 +2568,16 @@ mac_reset_top:
 			ctrl = IXGBE_CTRL_RST;
 	}
 
+	status = hw->mac.ops.acquire_swfw_sync(hw, swfw_mask);
+	if (status != IXGBE_SUCCESS) {
+		ERROR_REPORT2(IXGBE_ERROR_CAUTION,
+			"semaphore failed with %d", status);
+		return IXGBE_ERR_SWFW_SYNC;
+	}
 	ctrl |= IXGBE_READ_REG(hw, IXGBE_CTRL);
 	IXGBE_WRITE_REG(hw, IXGBE_CTRL, ctrl);
 	IXGBE_WRITE_FLUSH(hw);
+	hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 
 	/* Poll for reset bit to self-clear meaning reset is complete */
 	for (i = 0; i < 10; i++) {
@@ -2563,6 +2617,9 @@ mac_reset_top:
 
 	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_SFP)
 		ixgbe_setup_mux_ctl(hw);
+
+	if (status != IXGBE_SUCCESS)
+		DEBUGOUT1("Reset HW failed, STATUS = %d\n", status);
 
 	return status;
 }
@@ -2619,6 +2676,9 @@ s32 ixgbe_setup_kr_x550em(struct ixgbe_hw *hw)
 	/* leave link alone for 2.5G */
 	if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_2_5GB_FULL)
 		return IXGBE_SUCCESS;
+
+	if (ixgbe_check_reset_blocked(hw))
+		return 0;
 
 	return ixgbe_setup_kr_speed_x550em(hw, hw->phy.autoneg_advertised);
 }
@@ -3618,9 +3678,9 @@ s32 ixgbe_update_flash_X550(struct ixgbe_hw *hw)
  *
  *  Determines physical layer capabilities of the current configuration.
  **/
-u32 ixgbe_get_supported_physical_layer_X550em(struct ixgbe_hw *hw)
+u64 ixgbe_get_supported_physical_layer_X550em(struct ixgbe_hw *hw)
 {
-	u32 physical_layer = IXGBE_PHYSICAL_LAYER_UNKNOWN;
+	u64 physical_layer = IXGBE_PHYSICAL_LAYER_UNKNOWN;
 	u16 ext_ability = 0;
 
 	DEBUGFUNC("ixgbe_get_supported_physical_layer_X550em");
@@ -3629,6 +3689,20 @@ u32 ixgbe_get_supported_physical_layer_X550em(struct ixgbe_hw *hw)
 
 	switch (hw->phy.type) {
 	case ixgbe_phy_x550em_kr:
+		if (hw->mac.type == ixgbe_mac_X550EM_a) {
+			if (hw->phy.nw_mng_if_sel &
+			    IXGBE_NW_MNG_IF_SEL_PHY_SPEED_2_5G) {
+				physical_layer =
+					IXGBE_PHYSICAL_LAYER_2500BASE_KX;
+				break;
+			} else if (hw->device_id ==
+				   IXGBE_DEV_ID_X550EM_A_KR_L) {
+				physical_layer =
+					IXGBE_PHYSICAL_LAYER_1000BASE_KX;
+				break;
+			}
+		}
+		/* fall through */
 	case ixgbe_phy_x550em_xfi:
 		physical_layer = IXGBE_PHYSICAL_LAYER_10GBASE_KR |
 				 IXGBE_PHYSICAL_LAYER_1000BASE_KX;
@@ -3656,6 +3730,9 @@ u32 ixgbe_get_supported_physical_layer_X550em(struct ixgbe_hw *hw)
 		break;
 	case ixgbe_phy_sgmii:
 		physical_layer = IXGBE_PHYSICAL_LAYER_1000BASE_KX;
+		break;
+	case ixgbe_phy_ext_1g_t:
+		physical_layer |= IXGBE_PHYSICAL_LAYER_1000BASE_T;
 		break;
 	default:
 		break;
@@ -3954,6 +4031,9 @@ s32 ixgbe_setup_fc_X550em(struct ixgbe_hw *hw)
 					IXGBE_SB_IOSF_TARGET_KR_PHY, reg_val);
 
 		/* This device does not fully support AN. */
+		hw->fc.disable_fc_autoneg = true;
+		break;
+	case IXGBE_DEV_ID_X550EM_X_XFI:
 		hw->fc.disable_fc_autoneg = true;
 		break;
 	default:
@@ -4275,21 +4355,34 @@ STATIC s32 ixgbe_acquire_swfw_sync_X550a(struct ixgbe_hw *hw, u32 mask)
 		status = IXGBE_SUCCESS;
 		if (hmask)
 			status = ixgbe_acquire_swfw_sync_X540(hw, hmask);
-		if (status)
+		if (status) {
+			DEBUGOUT1("Could not acquire SWFW semaphore, Status = %d\n",
+				  status);
 			return status;
+		}
 		if (!(mask & IXGBE_GSSR_TOKEN_SM))
 			return IXGBE_SUCCESS;
 
 		status = ixgbe_get_phy_token(hw);
+		if (status == IXGBE_ERR_TOKEN_RETRY)
+			DEBUGOUT1("Could not acquire PHY token, Status = %d\n",
+				  status);
+
 		if (status == IXGBE_SUCCESS)
 			return IXGBE_SUCCESS;
 
 		if (hmask)
 			ixgbe_release_swfw_sync_X540(hw, hmask);
-		if (status != IXGBE_ERR_TOKEN_RETRY)
+
+		if (status != IXGBE_ERR_TOKEN_RETRY) {
+			DEBUGOUT1("Unable to retry acquiring the PHY token, Status = %d\n",
+				  status);
 			return status;
+		}
 	}
 
+	DEBUGOUT1("Semaphore acquisition retries failed!: PHY ID = 0x%08X\n",
+		  hw->phy.id);
 	return status;
 }
 
@@ -4522,7 +4615,8 @@ s32 ixgbe_led_on_t_X550em(struct ixgbe_hw *hw, u32 led_idx)
 	ixgbe_write_phy_reg(hw, IXGBE_X557_LED_PROVISIONING + led_idx,
 			    IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE, phy_data);
 
-	return IXGBE_SUCCESS;
+	/* Some designs have the LEDs wired to the MAC */
+	return ixgbe_led_on_generic(hw, led_idx);
 }
 
 /**
@@ -4546,7 +4640,8 @@ s32 ixgbe_led_off_t_X550em(struct ixgbe_hw *hw, u32 led_idx)
 	ixgbe_write_phy_reg(hw, IXGBE_X557_LED_PROVISIONING + led_idx,
 			    IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE, phy_data);
 
-	return IXGBE_SUCCESS;
+	/* Some designs have the LEDs wired to the MAC */
+	return ixgbe_led_off_generic(hw, led_idx);
 }
 
 /**

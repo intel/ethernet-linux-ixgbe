@@ -76,8 +76,8 @@ endif
 
 # Kernel Search Path
 # All the places we look for kernel source
-KSP :=  /lib/modules/${BUILD_KERNEL}/build \
-        /lib/modules/${BUILD_KERNEL}/source \
+KSP :=  /lib/modules/${BUILD_KERNEL}/source \
+        /lib/modules/${BUILD_KERNEL}/build \
         /usr/src/linux-${BUILD_KERNEL} \
         /usr/src/linux-$(${BUILD_KERNEL} | sed 's/-.*//') \
         /usr/src/kernel-headers-${BUILD_KERNEL} \
@@ -277,8 +277,8 @@ endif
 # KBUILD_OUTPUT #
 #################
 
-# Only set KBUILD_OUTPUT if KOBJ differs from KSRC
-ifneq (${KSRC},${KOBJ})
+# Only set KBUILD_OUTPUT if the real paths of KOBJ and KSRC differ
+ifneq ($(call readlink,${KSRC}),$(call readlink,${KOBJ}))
 export KBUILD_OUTPUT ?= ${KOBJ}
 endif
 

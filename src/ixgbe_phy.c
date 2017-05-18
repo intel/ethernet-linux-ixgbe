@@ -282,8 +282,11 @@ static bool ixgbe_probe_phy(struct ixgbe_hw *hw, u16 phy_addr)
 {
 	u16 ext_ability = 0;
 
-	if (!ixgbe_validate_phy_addr(hw, phy_addr))
+	if (!ixgbe_validate_phy_addr(hw, phy_addr)) {
+		DEBUGOUT1("Unable to validate PHY address 0x%04X\n",
+			phy_addr);
 		return false;
+	}
 
 	if (ixgbe_get_phy_id(hw))
 		return false;
@@ -402,6 +405,8 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 	if (phy_id != 0xFFFF && phy_id != 0x0)
 		valid = true;
 
+	DEBUGOUT1("PHY ID HIGH is 0x%04X\n", phy_id);
+
 	return valid;
 }
 
@@ -430,6 +435,9 @@ s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 		hw->phy.id |= (u32)(phy_id_low & IXGBE_PHY_REVISION_MASK);
 		hw->phy.revision = (u32)(phy_id_low & ~IXGBE_PHY_REVISION_MASK);
 	}
+	DEBUGOUT2("PHY_ID_HIGH 0x%04X, PHY_ID_LOW 0x%04X\n",
+		  phy_id_high, phy_id_low);
+
 	return status;
 }
 
@@ -462,6 +470,10 @@ enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id)
 	case X557_PHY_ID:
 	case X557_PHY_ID2:
 		phy_type = ixgbe_phy_x550em_ext_t;
+		break;
+	case IXGBE_M88E1500_E_PHY_ID:
+	case IXGBE_M88E1543_E_PHY_ID:
+		phy_type = ixgbe_phy_ext_1g_t;
 		break;
 	default:
 		phy_type = ixgbe_phy_unknown;
@@ -557,7 +569,7 @@ out:
  *  @phy_data: Pointer to read data from PHY register
  **/
 s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
-		       u16 *phy_data)
+			   u16 *phy_data)
 {
 	u32 i, data, command;
 
@@ -579,12 +591,13 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 
 		command = IXGBE_READ_REG(hw, IXGBE_MSCA);
 		if ((command & IXGBE_MSCA_MDI_COMMAND) == 0)
-				break;
+			break;
 	}
 
 
 	if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
 		ERROR_REPORT1(IXGBE_ERROR_POLLING, "PHY address command did not complete.\n");
+		DEBUGOUT("PHY address command did not complete, returning IXGBE_ERR_PHY\n");
 		return IXGBE_ERR_PHY;
 	}
 
@@ -614,6 +627,7 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 
 	if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
 		ERROR_REPORT1(IXGBE_ERROR_POLLING, "PHY read command didn't complete\n");
+		DEBUGOUT("PHY read command didn't complete, returning IXGBE_ERR_PHY\n");
 		return IXGBE_ERR_PHY;
 	}
 
@@ -1517,16 +1531,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 				status = IXGBE_SUCCESS;
 			} else {
 				if (hw->allow_unsupported_sfp == true) {
-					EWARN(hw, "WARNING: Intel (R) Network "
-					      "Connections are quality tested "
-					      "using Intel (R) Ethernet Optics."
-					      " Using untested modules is not "
-					      "supported and may cause unstable"
-					      " operation or damage to the "
-					      "module or the adapter. Intel "
-					      "Corporation is not responsible "
-					      "for any harm caused by using "
-					      "untested modules.\n", status);
+					EWARN(hw, "WARNING: Intel (R) Network Connections are quality tested using Intel (R) Ethernet Optics. Using untested modules is not supported and may cause unstable operation or damage to the module or the adapter. Intel Corporation is not responsible for any harm caused by using untested modules.\n");
 					status = IXGBE_SUCCESS;
 				} else {
 					DEBUGOUT("SFP+ module not supported\n");
@@ -1558,9 +1563,9 @@ err_read_i2c_eeprom:
  *
  *  Determines physical layer capabilities of the current SFP.
  */
-s32 ixgbe_get_supported_phy_sfp_layer_generic(struct ixgbe_hw *hw)
+u64 ixgbe_get_supported_phy_sfp_layer_generic(struct ixgbe_hw *hw)
 {
-	u32 physical_layer = IXGBE_PHYSICAL_LAYER_UNKNOWN;
+	u64 physical_layer = IXGBE_PHYSICAL_LAYER_UNKNOWN;
 	u8 comp_codes_10g = 0;
 	u8 comp_codes_1g = 0;
 
@@ -1779,16 +1784,7 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 				status = IXGBE_SUCCESS;
 			} else {
 				if (hw->allow_unsupported_sfp == true) {
-					EWARN(hw, "WARNING: Intel (R) Network "
-					      "Connections are quality tested "
-					      "using Intel (R) Ethernet Optics."
-					      " Using untested modules is not "
-					      "supported and may cause unstable"
-					      " operation or damage to the "
-					      "module or the adapter. Intel "
-					      "Corporation is not responsible "
-					      "for any harm caused by using "
-					      "untested modules.\n", status);
+					EWARN(hw, "WARNING: Intel (R) Network Connections are quality tested using Intel (R) Ethernet Optics. Using untested modules is not supported and may cause unstable operation or damage to the module or the adapter. Intel Corporation is not responsible for any harm caused by using untested modules.\n");
 					status = IXGBE_SUCCESS;
 				} else {
 					DEBUGOUT("QSFP module not supported\n");
@@ -1812,7 +1808,6 @@ err_read_i2c_eeprom:
 
 	return IXGBE_ERR_SFP_NOT_PRESENT;
 }
-
 
 /**
  *  ixgbe_get_sfp_init_sequence_offsets - Provides offset of PHY init sequence

@@ -587,15 +587,16 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 		vmdq_i = min_t(u16, IXGBE_MAX_VMDQ_INDICES, vmdq_i);
 
 		/* 64 pool mode with 2 queues per pool */
-		if ((vmdq_i > 32) || (rss_i < 4)) {
+		if (vmdq_i > 32) {
 			vmdq_m = IXGBE_82599_VMDQ_2Q_MASK;
 			rss_m = IXGBE_RSS_2Q_MASK;
 			rss_i = min_t(u16, rss_i, 2);
-		/* 32 pool mode with 4 queues per pool */
+		/* 32 pool mode with up to 4 queues per pool */
 		} else {
 			vmdq_m = IXGBE_82599_VMDQ_4Q_MASK;
 			rss_m = IXGBE_RSS_4Q_MASK;
-			rss_i = 4;
+			/* We can support 4, 2, or 1 queues */
+			rss_i = (rss_i > 3) ? 4 : (rss_i > 1) ? 2 : 1;
 		}
 
 #if IS_ENABLED(CONFIG_FCOE)
@@ -943,12 +944,12 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	netif_napi_add(adapter->netdev, &q_vector->napi,
 		       ixgbe_poll, 64);
 #ifndef HAVE_NETIF_NAPI_ADD_CALLS_NAPI_HASH_ADD
-#ifdef CONFIG_NET_RX_BUSY_POLL
+#ifdef HAVE_NDO_BUSY_POLL
 	napi_hash_add(&q_vector->napi);
 #endif
 #endif
 
-#ifdef CONFIG_NET_RX_BUSY_POLL
+#ifdef HAVE_NDO_BUSY_POLL
 	/* initialize busy poll */
 	atomic_set(&q_vector->state, IXGBE_QV_STATE_DISABLE);
 
@@ -1075,7 +1076,7 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 		adapter->rx_ring[ring->queue_index] = NULL;
 
 	adapter->q_vector[v_idx] = NULL;
-#ifdef CONFIG_NET_RX_BUSY_POLL
+#ifdef HAVE_NDO_BUSY_POLL
 	napi_hash_del(&q_vector->napi);
 #endif
 	netif_napi_del(&q_vector->napi);

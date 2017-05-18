@@ -48,8 +48,10 @@
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
 #include <net/busy_poll.h>
+#ifdef HAVE_NDO_BUSY_POLL
 #define BP_EXTENDED_STATS
 #endif
+#endif /* CONFIG_NET_RX_BUSY_POLL */
 
 #ifdef HAVE_SCTP
 #include <linux/sctp.h>
@@ -109,6 +111,12 @@
 #define IXGBE_RXBUFFER_2K	2048
 #define IXGBE_RXBUFFER_3K	3072
 #define IXGBE_RXBUFFER_4K	4096
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+#define IXGBE_RXBUFFER_1536	1536
+#define IXGBE_RXBUFFER_7K	7168
+#define IXGBE_RXBUFFER_8K	8192
+#define IXGBE_RXBUFFER_15K	15360
+#endif /* CONFIG_IXGBE_DISABLE_PACKET_SPLIT */
 #define IXGBE_MAX_RXBUFFER	16384  /* largest size for single descriptor */
 
 /*
@@ -224,12 +232,6 @@ struct vf_data_storage {
 	unsigned int vf_api;
 };
 
-enum ixgbevf_xcast_modes {
-	IXGBEVF_XCAST_MODE_NONE = 0,
-	IXGBEVF_XCAST_MODE_MULTI,
-	IXGBEVF_XCAST_MODE_ALLMULTI,
-};
-
 struct vf_macvlans {
 	struct list_head l;
 	int vf;
@@ -268,18 +270,15 @@ struct ixgbe_tx_buffer {
 struct ixgbe_rx_buffer {
 	struct sk_buff *skb;
 	dma_addr_t dma;
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	struct page *page;
 	unsigned int page_offset;
+#endif
 };
 
 struct ixgbe_queue_stats {
 	u64 packets;
 	u64 bytes;
-#ifdef BP_EXTENDED_STATS
-	u64 yields;
-	u64 misses;
-	u64 cleaned;
-#endif  /* BP_EXTENDED_STATS */
 };
 
 struct ixgbe_tx_queue_stats {
@@ -357,7 +356,11 @@ struct ixgbe_ring {
 
 #endif
 	union {
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+		u16 rx_buf_len;
+#else
 		u16 next_to_alloc;
+#endif
 		struct {
 			u8 atr_sample_rate;
 			u8 atr_count;
@@ -410,6 +413,7 @@ struct ixgbe_ring_feature {
 #define IXGBE_82599_VMDQ_4Q_MASK 0x7C
 #define IXGBE_82599_VMDQ_2Q_MASK 0x7E
 
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 /*
  * FCoE requires that all Rx buffers be over 2200 bytes in length.  Since
  * this is twice the size of a half page we need to double the page order
@@ -439,6 +443,7 @@ static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring __maybe_unused *r
 }
 #define ixgbe_rx_pg_size(_ring) (PAGE_SIZE << ixgbe_rx_pg_order(_ring))
 
+#endif
 struct ixgbe_ring_container {
 	struct ixgbe_ring *ring;	/* pointer to linked list of rings */
 	unsigned int total_bytes;	/* total bytes processed this int */
@@ -480,15 +485,15 @@ struct ixgbe_q_vector {
 	char name[IFNAMSIZ + 9];
 	bool netpoll_rx;
 
-#ifdef CONFIG_NET_RX_BUSY_POLL
+#ifdef HAVE_NDO_BUSY_POLL
 	atomic_t state;
-#endif  /* CONFIG_NET_RX_BUSY_POLL */
+#endif  /* HAVE_NDO_BUSY_POLL */
 
 	/* for dynamic allocation of rings associated with this q_vector */
 	struct ixgbe_ring ring[0] ____cacheline_internodealigned_in_smp;
 };
 
-#ifdef CONFIG_NET_RX_BUSY_POLL
+#ifdef HAVE_NDO_BUSY_POLL
 enum ixgbe_qv_state_t {
 	IXGBE_QV_STATE_IDLE = 0,
 	IXGBE_QV_STATE_NAPI,
@@ -507,10 +512,6 @@ static inline bool ixgbe_qv_lock_napi(struct ixgbe_q_vector *q_vector)
 {
 	int rc = atomic_cmpxchg(&q_vector->state, IXGBE_QV_STATE_IDLE,
 				IXGBE_QV_STATE_NAPI);
-#ifdef BP_EXTENDED_STATS
-	if (rc != IXGBE_QV_STATE_IDLE)
-		q_vector->tx.ring->stats.yields++;
-#endif
 
 	return rc == IXGBE_QV_STATE_IDLE;
 }
@@ -533,10 +534,6 @@ static inline bool ixgbe_qv_lock_poll(struct ixgbe_q_vector *q_vector)
 {
 	int rc = atomic_cmpxchg(&q_vector->state, IXGBE_QV_STATE_IDLE,
 				IXGBE_QV_STATE_POLL);
-#ifdef BP_EXTENDED_STATS
-	if (rc != IXGBE_QV_STATE_IDLE)
-		q_vector->tx.ring->stats.yields++;
-#endif
 	return rc == IXGBE_QV_STATE_IDLE;
 }
 
@@ -564,7 +561,7 @@ static inline bool ixgbe_qv_disable(struct ixgbe_q_vector *q_vector)
 	return rc == IXGBE_QV_STATE_IDLE;
 }
 
-#endif /* CONFIG_NET_RX_BUSY_POLL */
+#endif /* HAVE_NDO_BUSY_POLL */
 #ifdef IXGBE_HWMON
 
 #define IXGBE_HWMON_TYPE_LOC		0
@@ -986,12 +983,20 @@ enum ixgbe_state_t {
 };
 
 struct ixgbe_cb {
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+	union {				/* Union defining head/tail partner */
+		struct sk_buff *head;
+		struct sk_buff *tail;
+	};
+#endif
 	dma_addr_t dma;
 #ifdef HAVE_VLAN_RX_REGISTER
 	u16	vid;			/* VLAN tag */
 #endif
 	u16	append_cnt;		/* number of skb's appended */
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	bool	page_released;
+#endif
 };
 #define IXGBE_CB(skb) ((struct ixgbe_cb *)(skb)->cb)
 
@@ -1132,8 +1137,6 @@ s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
 bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			 u16 subdevice_id);
 void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring);
-int ixgbe_get_settings(struct net_device *netdev,
-			      struct ethtool_cmd *ecmd);
 int ixgbe_write_uc_addr_list(struct net_device *netdev, int vfn);
 void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter);
 int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,

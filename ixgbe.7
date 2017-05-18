@@ -5,7 +5,7 @@
 .\" * Other names and brands may be claimed as the property of others.
 .\"
 .
-.TH ixgbe 1 "March 29, 2016"
+.TH ixgbe 1 "February 23, 2017"
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver
 for the 10 Gigabit Family of Adapters.
@@ -236,6 +236,9 @@ Use the ifconfig command to increase the MTU size. For example, enter the
 following where <x> is the interface number:
 
    ifconfig eth<x> mtu 9000 up
+Alternatively, you can use the ip command as follows:
+   ip link set mtu 9000 dev eth<x>
+   ip link set up dev eth<x>
 
 .LP
 NOTES:
