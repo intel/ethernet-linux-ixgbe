@@ -137,6 +137,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("os2bmc_rx_by_host", stats.b2ogprc),
 #ifdef HAVE_PTP_1588_CLOCK
 	IXGBE_STAT("tx_hwtstamp_timeouts", tx_hwtstamp_timeouts),
+	IXGBE_STAT("tx_hwtstamp_skipped", tx_hwtstamp_skipped),
 	IXGBE_STAT("rx_hwtstamp_cleared", rx_hwtstamp_cleared),
 #endif /* HAVE_PTP_1588_CLOCK */
 };
@@ -192,7 +193,12 @@ static const char ixgbe_gstrings_test[][ETH_GSTRING_LEN] = {
 
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 static const char ixgbe_priv_flags_strings[][ETH_GSTRING_LEN] = {
+#define IXGBE_PRIV_FLAGS_FD_ATR		BIT(0)
 	"flow-director-atr",
+#ifdef HAVE_SWIOTLB_SKIP_CPU_SYNC
+#define IXGBE_PRIV_FLAGS_LEGACY_RX	BIT(1)
+	"legacy-rx",
+#endif
 };
 
 #define IXGBE_PRIV_FLAGS_STR_LEN ARRAY_SIZE(ixgbe_priv_flags_strings)
@@ -1282,6 +1288,10 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 		sizeof(drvinfo->fw_version) - 1);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev),
 		sizeof(drvinfo->bus_info) - 1);
+#ifdef HAVE_ETHTOOL_GET_SSET_COUNT
+
+	drvinfo->n_priv_flags = IXGBE_PRIV_FLAGS_STR_LEN;
+#endif
 }
 
 static void ixgbe_get_ringparam(struct net_device *netdev,
@@ -1479,6 +1489,11 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		if (!ring) {
 			data[i++] = 0;
 			data[i++] = 0;
+#ifdef BP_EXTENDED_STATS
+			data[i++] = 0;
+			data[i++] = 0;
+			data[i++] = 0;
+#endif
 			continue;
 		}
 
@@ -1492,12 +1507,23 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 #endif
 		i += 2;
+#ifdef BP_EXTENDED_STATS
+		data[i] = ring->stats.yields;
+		data[i+1] = ring->stats.misses;
+		data[i+2] = ring->stats.cleaned;
+		i += 3;
+#endif
 	}
 	for (j = 0; j < IXGBE_NUM_RX_QUEUES; j++) {
 		ring = adapter->rx_ring[j];
 		if (!ring) {
 			data[i++] = 0;
 			data[i++] = 0;
+#ifdef BP_EXTENDED_STATS
+			data[i++] = 0;
+			data[i++] = 0;
+			data[i++] = 0;
+#endif
 			continue;
 		}
 
@@ -1511,6 +1537,12 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 #endif
 		i += 2;
+#ifdef BP_EXTENDED_STATS
+		data[i] = ring->stats.yields;
+		data[i+1] = ring->stats.misses;
+		data[i+2] = ring->stats.cleaned;
+		i += 3;
+#endif
 	}
 	for (j = 0; j < IXGBE_MAX_PACKET_BUFFERS; j++) {
 		data[i++] = adapter->stats.pxontxc[j];
@@ -1560,12 +1592,28 @@ static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 			p += ETH_GSTRING_LEN;
 			sprintf(p, "tx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
+#ifdef BP_EXTENDED_STATS
+			sprintf(p, "tx_queue_%u_bp_napi_yield", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "tx_queue_%u_bp_misses", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "tx_queue_%u_bp_cleaned", i);
+			p += ETH_GSTRING_LEN;
+#endif /* BP_EXTENDED_STATS */
 		}
 		for (i = 0; i < IXGBE_NUM_RX_QUEUES; i++) {
 			sprintf(p, "rx_queue_%u_packets", i);
 			p += ETH_GSTRING_LEN;
 			sprintf(p, "rx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
+#ifdef BP_EXTENDED_STATS
+			sprintf(p, "rx_queue_%u_bp_poll_yield", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "rx_queue_%u_bp_misses", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "rx_queue_%u_bp_cleaned", i);
+			p += ETH_GSTRING_LEN;
+#endif /* BP_EXTENDED_STATS */
 		}
 		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
 			sprintf(p, "tx_pb_%u_pxon", i);
@@ -1595,11 +1643,8 @@ static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 		break;
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 	case ETH_SS_PRIV_FLAGS:
-		for (i = 0; i < IXGBE_PRIV_FLAGS_STR_LEN; i++) {
-			memcpy(data, ixgbe_priv_flags_strings[i],
-			       ETH_GSTRING_LEN);
-			data += ETH_GSTRING_LEN;
-		}
+		memcpy(data, ixgbe_priv_flags_strings,
+		       IXGBE_PRIV_FLAGS_STR_LEN * ETH_GSTRING_LEN);
 		break;
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 	}
@@ -2225,7 +2270,7 @@ static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
 	tx_ntc = tx_ring->next_to_clean;
 	rx_desc = IXGBE_RX_DESC(rx_ring, rx_ntc);
 
-	while (ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_DD)) {
+	while (rx_desc->wb.upper.length) {
 		struct ixgbe_rx_buffer *rx_buffer;
 		struct ixgbe_tx_buffer *tx_buffer;
 
@@ -3121,9 +3166,11 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 	switch (cmd->flow_type) {
 	case TCP_V4_FLOW:
 		cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		/* fall through */
 	case UDP_V4_FLOW:
 		if (adapter->flags2 & IXGBE_FLAG2_RSS_FIELD_IPV4_UDP)
 			cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		/* fall through */
 	case SCTP_V4_FLOW:
 	case AH_ESP_V4_FLOW:
 	case AH_V4_FLOW:
@@ -3133,9 +3180,11 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 		break;
 	case TCP_V6_FLOW:
 		cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		/* fall through */
 	case UDP_V6_FLOW:
 		if (adapter->flags2 & IXGBE_FLAG2_RSS_FIELD_IPV6_UDP)
 			cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		/* fall through */
 	case SCTP_V6_FLOW:
 	case AH_ESP_V6_FLOW:
 	case AH_V6_FLOW:
@@ -3281,6 +3330,7 @@ static int ixgbe_flowspec_to_flow_type(struct ethtool_rx_flow_spec *fsp,
 				*flow_type = IXGBE_ATR_FLOW_TYPE_IPV4;
 				break;
 			}
+			/* fall through */
 		default:
 			return 0;
 		}
@@ -3590,9 +3640,7 @@ static int ixgbe_rss_indir_tbl_max(struct ixgbe_adapter *adapter)
 
 static u32 ixgbe_get_rxfh_key_size(struct net_device *netdev)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-
-	return sizeof(adapter->rss_key);
+	return IXGBE_RSS_KEY_SIZE;
 }
 
 static u32 ixgbe_rss_indir_size(struct net_device *netdev)
@@ -3678,8 +3726,10 @@ static int ixgbe_set_rxfh(struct net_device *netdev, const u32 *indir,
 	}
 
 	/* Fill out the rss hash key */
-	if (key)
+	if (key) {
 		memcpy(adapter->rss_key, key, ixgbe_get_rxfh_key_size(netdev));
+		ixgbe_store_key(adapter);
+	}
 
 	ixgbe_store_reta(adapter);
 
@@ -4073,7 +4123,7 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 /**
  * ixgbe_get_priv_flags - report device private flags
- * @dev: network interface device structure
+ * @netdev: network interface device structure
  *
  * The get string set count and the string set should be matched for each
  * flag returned.  Add new strings for each flag to the ixgbe_priv_flags_strings
@@ -4081,36 +4131,46 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
  *
  * Returns a u32 bitmap of flags.
  **/
-static u32 ixgbe_get_priv_flags(struct net_device *dev)
+static u32 ixgbe_get_priv_flags(struct net_device *netdev)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(dev);
-	u32 ret_flags = 0;
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	u32 priv_flags = 0;
 
-	ret_flags |= (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE) ?
-		     IXGBE_PRIV_FLAGS_FD_ATR : 0;
+	if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
+		priv_flags |= IXGBE_PRIV_FLAGS_FD_ATR;
+#ifdef HAVE_SWIOTLB_SKIP_CPU_SYNC
 
-	return ret_flags;
+	if (adapter->flags2 & IXGBE_FLAG2_RX_LEGACY)
+		priv_flags |= IXGBE_PRIV_FLAGS_LEGACY_RX;
+#endif
+
+	return priv_flags;
 }
 
 /**
  * ixgbe_set_priv_flags - set private flags
- * @dev: network interface device structure
+ * @netdev: network interface device structure
  * @flags: bit flags to be set
  **/
-static int ixgbe_set_priv_flags(struct net_device *dev, u32 flags)
+static int ixgbe_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(dev);
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+#ifdef HAVE_SWIOTLB_SKIP_CPU_SYNC
+	unsigned int flags2 = adapter->flags2;
+#endif
+	unsigned int flags = adapter->flags;
 
 	/* allow the user to control the state of the Flow
 	 * Director ATR (Application Targeted Routing) feature
 	 * of the driver
 	 */
-	if (flags & IXGBE_PRIV_FLAGS_FD_ATR) {
+	flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+	if (priv_flags & IXGBE_PRIV_FLAGS_FD_ATR) {
 		/* We cannot enable ATR if VMDq is enabled */
-		if (adapter->flags & IXGBE_FLAG_VMDQ_ENABLED)
+		if (flags & IXGBE_FLAG_VMDQ_ENABLED)
 			return -EINVAL;
 		/* We cannot enable ATR if we have 2 or more traffic classes */
-		if (netdev_get_num_tc(dev) > 1)
+		if (netdev_get_num_tc(netdev) > 1)
 			return -EINVAL;
 		/* We cannot enable ATR if RSS is disabled */
 		if (adapter->ring_feature[RING_F_RSS].limit <= 1)
@@ -4118,13 +4178,31 @@ static int ixgbe_set_priv_flags(struct net_device *dev, u32 flags)
 		/* A sample rate of 0 indicates ATR disabled */
 		if (!adapter->atr_sample_rate)
 			return -EINVAL;
-		adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
-	} else {
-		adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+		flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
 	}
+#ifdef HAVE_SWIOTLB_SKIP_CPU_SYNC
 
-	/* ATR state change requires a reset */
-	ixgbe_do_reset(dev);
+	flags2 &= ~IXGBE_FLAG2_RX_LEGACY;
+	if (priv_flags & IXGBE_PRIV_FLAGS_LEGACY_RX)
+		flags2 |= IXGBE_FLAG2_RX_LEGACY;
+#endif
+
+	if (flags != adapter->flags) {
+		adapter->flags = flags;
+
+		/* ATR state change requires a reset */
+		ixgbe_do_reset(netdev);
+#ifndef HAVE_SWIOTLB_SKIP_CPU_SYNC
+	}
+#else
+	} else if (flags2 != adapter->flags2) {
+		adapter->flags2 = flags2;
+
+		/* reset interface to repopulate queues */
+		if (netif_running(netdev))
+			ixgbe_reinit_locked(adapter);
+	}
+#endif
 
 	return 0;
 }

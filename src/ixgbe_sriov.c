@@ -565,16 +565,15 @@ static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf
 		case ixgbe_mbox_api_11:
 		case ixgbe_mbox_api_12:
 		case ixgbe_mbox_api_13:
-			/*
-			 * Version 1.1 supports jumbo frames on VFs if PF has
+			/* Version 1.1 supports jumbo frames on VFs if PF has
 			 * jumbo frames enabled which means legacy VFs are
 			 * disabled
 			 */
 			if (pf_max_frame > ETH_FRAME_LEN)
 				break;
+			/* fall through */
 		default:
-			/*
-			 * If the PF or VF are running w/ jumbo frames enabled
+			/* If the PF or VF are running w/ jumbo frames enabled
 			 * we need to shut down the VF Rx path as we cannot
 			 * support jumbo frames on legacy VFs
 			 */
@@ -647,39 +646,39 @@ static void ixgbe_clear_vmvir(struct ixgbe_adapter *adapter, u32 vf)
 static void ixgbe_clear_vf_vlans(struct ixgbe_adapter *adapter, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	u32 i;
+	u32 vlvfb_mask, pool_mask, i;
+
+	/* create mask for VF and other pools */
+	pool_mask = (u32)~BIT(VMDQ_P(0) % 32);
+	vlvfb_mask = BIT(vf % 32);
 
 	/* post increment loop, covers VLVF_ENTRIES - 1 to 0 */
 	for (i = IXGBE_VLVF_ENTRIES; i--;) {
 		u32 bits[2], vlvfb, vid, vfta, vlvf;
 		u32 word = i * 2 + vf / 32;
-		u32 mask = 1 << (vf % 32);
+		u32 mask;
 
 		vlvfb = IXGBE_READ_REG(hw, IXGBE_VLVFB(word));
 
 		/* if our bit isn't set we can skip it */
-		if (!(vlvfb & mask))
+		if (!(vlvfb & vlvfb_mask))
 			continue;
 
 		/* clear our bit from vlvfb */
-		vlvfb ^= mask;
+		vlvfb ^= vlvfb_mask;
 
 		/* create 64b mask to check to see if we should clear VLVF */
 		bits[word % 2] = vlvfb;
 		bits[~word % 2] = IXGBE_READ_REG(hw, IXGBE_VLVFB(word ^ 1));
 
-		/* if promisc is enabled, PF will be present, leave VFTA */
-		if (adapter->flags2 & IXGBE_FLAG2_VLAN_PROMISC) {
-			bits[VMDQ_P(0) / 32] &= ~(1 << (VMDQ_P(0) % 32));
-
-			if (bits[0] || bits[1])
-				goto update_vlvfb;
-			goto update_vlvf;
-		}
-
 		/* if other pools are present, just remove ourselves */
-		if (bits[0] || bits[1])
+		if (bits[(VMDQ_P(0) / 32) ^ 1] ||
+		    (bits[VMDQ_P(0) / 32] & pool_mask))
 			goto update_vlvfb;
+
+		/* if PF is present, leave VFTA */
+		if (bits[0] || bits[1])
+			goto update_vlvf;
 
 		/* if we cannot determine VLAN just remove ourselves */
 		vlvf = IXGBE_READ_REG(hw, IXGBE_VLVF(i));
@@ -687,7 +686,7 @@ static void ixgbe_clear_vf_vlans(struct ixgbe_adapter *adapter, u32 vf)
 			goto update_vlvfb;
 
 		vid = vlvf & VLAN_VID_MASK;
-		mask = 1 << (vid % 32);
+		mask = BIT(vid % 32);
 
 		/* clear bit from VFTA */
 		vfta = IXGBE_READ_REG(hw, IXGBE_VFTA(vid / 32));
@@ -696,6 +695,9 @@ static void ixgbe_clear_vf_vlans(struct ixgbe_adapter *adapter, u32 vf)
 update_vlvf:
 		/* clear POOL selection enable */
 		IXGBE_WRITE_REG(hw, IXGBE_VLVF(i), 0);
+
+		if (!(adapter->flags2 & IXGBE_FLAG2_VLAN_PROMISC))
+			vlvfb = 0;
 update_vlvfb:
 		/* clear pool bits */
 		IXGBE_WRITE_REG(hw, IXGBE_VLVFB(word), vlvfb);
@@ -1205,7 +1207,7 @@ static int ixgbe_get_vf_rss_key(struct ixgbe_adapter *adapter,
 		return -EOPNOTSUPP;
 	}
 
-	memcpy(rss_key, adapter->rss_key, sizeof(adapter->rss_key));
+	memcpy(rss_key, adapter->rss_key, IXGBE_RSS_KEY_SIZE);
 
 	return 0;
 }
@@ -1520,26 +1522,51 @@ int ixgbe_ndo_set_vf_trust(struct net_device *netdev, int vf, bool setting)
 #ifdef IFLA_VF_MAX
 int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 {
-	s32 retval = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	if (!is_valid_ether_addr(mac) || (vf >= adapter->num_vfs))
-		return -EINVAL;
-	dev_info(pci_dev_to_dev(adapter->pdev), "setting MAC %pM on VF %d\n", mac, vf);
-	dev_info(pci_dev_to_dev(adapter->pdev), "Reload the VF driver to make this change effective.\n");
-	retval = ixgbe_set_vf_mac(adapter, vf, mac);
-	if (retval >= 0) {
-		/* pf_set_mac is used in ESX5.1 and base driver but not in ESX5.5 */
-		adapter->vfinfo[vf].pf_set_mac = true;
-		if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-			dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address has been set, but the PF device is not up.\n");
-			dev_warn(pci_dev_to_dev(adapter->pdev), "Bring the PF device up before attempting to use the VF device.\n");
-		}
+	s32 retval = 0;
 
-		return 0;
-	} else {
-		dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address was NOT set due to invalid or duplicate MAC address.\n");
+	if (vf >= adapter->num_vfs)
 		return -EINVAL;
+
+	if (is_valid_ether_addr(mac)) {
+		dev_info(pci_dev_to_dev(adapter->pdev), "setting MAC %pM on VF %d\n",
+			 mac, vf);
+		dev_info(pci_dev_to_dev(adapter->pdev), "Reload the VF driver to make this change effective.\n");
+
+		retval = ixgbe_set_vf_mac(adapter, vf, mac);
+		if (retval >= 0) {
+		/* pf_set_mac is used in ESX5.1 and base driver but not in ESX5.5 */
+			adapter->vfinfo[vf].pf_set_mac = true;
+
+			if (test_bit(__IXGBE_DOWN, &adapter->state)) {
+				dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address has been set, but the PF device is not up.\n");
+				dev_warn(pci_dev_to_dev(adapter->pdev), "Bring the PF device up before attempting to use the VF device.\n");
+			}
+		} else {
+			dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address was NOT set due to invalid or duplicate MAC address.\n");
+		}
+	} else if (is_zero_ether_addr(mac)) {
+		unsigned char *vf_mac_addr =
+					   adapter->vfinfo[vf].vf_mac_addresses;
+
+		/* nothing to do */
+		if (is_zero_ether_addr(vf_mac_addr))
+			return 0;
+
+		dev_info(pci_dev_to_dev(adapter->pdev), "removing MAC on VF %d\n",
+			 vf);
+
+		retval = ixgbe_del_mac_filter(adapter, vf_mac_addr, vf);
+		if (retval >= 0) {
+			adapter->vfinfo[vf].pf_set_mac = false;
+			memcpy(vf_mac_addr, mac, ETH_ALEN);
+		} else {
+			dev_warn(pci_dev_to_dev(adapter->pdev), "Could NOT remove the VF MAC address.\n");
+		}
+	} else {
+		retval = -EINVAL;
 	}
+	return retval;
 }
 
 static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,

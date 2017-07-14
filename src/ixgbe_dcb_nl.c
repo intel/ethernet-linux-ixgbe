@@ -855,7 +855,7 @@ static u8 ixgbe_dcbnl_setdcbx(struct net_device *dev, u8 mode)
 
 #endif
 
-struct dcbnl_rtnl_ops dcbnl_ops = {
+struct dcbnl_rtnl_ops ixgbe_dcbnl_ops = {
 #ifdef HAVE_DCBNL_IEEE
 	.ieee_getets	= ixgbe_dcbnl_ieee_getets,
 	.ieee_setets	= ixgbe_dcbnl_ieee_setets,

@@ -531,6 +531,7 @@ NOTES:
 
   - An included script (set_irq_affinity) automates setting the IRQ to
     CPU affinity.
+
   - Flow director masking works in the opposite manner from subnet masking. In
     the following command:
 	#ethtool -N eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
@@ -1174,8 +1175,9 @@ keep the interfaces up, regardless of errors.
 Rx Page Allocation Errors
 -------------------------
 
-'Page allocation failure. order:0' errors may occur under stress with kernels
-2.6.25 and newer. This is caused by the way the Linux kernel reports this
+'Page allocation failure. order:0' errors may occur under stress.
+with kernels 2.6.25 and newer.
+This is caused by the way the Linux kernel reports this
 stressed condition.
 
 

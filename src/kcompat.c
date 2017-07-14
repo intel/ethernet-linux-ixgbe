@@ -1609,7 +1609,7 @@ struct _kc_netdev_queue_attribute {
 #define to_kc_netdev_queue_attr(_attr) container_of(_attr,		\
     struct _kc_netdev_queue_attribute, attr)
 
-int __kc_netif_set_xps_queue(struct net_device *dev, struct cpumask *mask,
+int __kc_netif_set_xps_queue(struct net_device *dev, const struct cpumask *mask,
 			     u16 index)
 {
 	struct netdev_queue *txq = netdev_get_tx_queue(dev, index);
@@ -1965,6 +1965,23 @@ int __kc_pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
         return nvec;
 }
 #endif /* 3.14.0 */
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0))
+char *_kc_devm_kstrdup(struct device *dev, const char *s, gfp_t gfp)
+{
+	size_t size;
+	char *buf;
+
+	if (!s)
+		return NULL;
+
+	size = strlen(s) + 1;
+	buf = devm_kzalloc(dev, size, gfp);
+	if (buf)
+		memcpy(buf, s, size);
+	return buf;
+}
+#endif /* 3.15.0 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) )
 #ifdef HAVE_SET_RX_MODE
