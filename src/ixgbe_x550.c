@@ -2525,7 +2525,8 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 		DEBUGOUT1("Failed to initialize PHY ops, STATUS = %d\n",
 			  status);
 
-	if (status == IXGBE_ERR_SFP_NOT_SUPPORTED) {
+	if (status == IXGBE_ERR_SFP_NOT_SUPPORTED ||
+	    status == IXGBE_ERR_PHY_ADDR_INVALID) {
 		DEBUGOUT("Returning from reset HW due to PHY init failure\n");
 		return status;
 	}
