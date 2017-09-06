@@ -5537,6 +5537,7 @@ pci_release_mem_regions(struct pci_dev *pdev)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0))
 #if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0)))
 #define HAVE_STRUCT_DMA_ATTRS
+#define HAVE_NETDEVICE_MIN_MAX_MTU
 #endif
 
 #if !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0)))
