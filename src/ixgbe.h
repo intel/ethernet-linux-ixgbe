@@ -379,11 +379,12 @@ enum ixgbe_ring_state_t {
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
 };
-
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+
 #define ring_uses_build_skb(ring) \
 	test_bit(__IXGBE_RX_BUILD_SKB_ENABLED, &(ring)->state)
 #endif
+
 #define check_for_tx_hang(ring) \
 	test_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
 #define set_check_for_tx_hang(ring) \
@@ -477,6 +478,7 @@ enum ixgbe_ring_f_enum {
 #define MAX_RX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #define MAX_TX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #endif /* CONFIG_FCOE */
+
 struct ixgbe_ring_feature {
 	u16 limit;	/* upper limit on feature indices */
 	u16 indices;	/* current value of indices */
@@ -1222,7 +1224,6 @@ s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
 
 bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			 u16 subdevice_id);
-void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring);
 int ixgbe_write_uc_addr_list(struct net_device *netdev, int vfn);
 void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter);
 int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,

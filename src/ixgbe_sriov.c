@@ -305,12 +305,11 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	if (adapter->ring_feature[RING_F_VMDQ].limit == 1)
 		adapter->flags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 
+	adapter->flags &= ~IXGBE_FLAG_SRIOV_ENABLED;
 	adapter->ring_feature[RING_F_VMDQ].offset = 0;
 
 	/* take a breather then clean up driver data */
 	msleep(100);
-
-	adapter->flags &= ~IXGBE_FLAG_SRIOV_ENABLED;
 	return 0;
 }
 
@@ -707,9 +706,9 @@ update_vlvfb:
 static int ixgbe_set_vf_macvlan(struct ixgbe_adapter *adapter,
 				int vf, int index, unsigned char *mac_addr)
 {
-	struct list_head *pos;
 	struct vf_macvlans *entry;
-	s32 retval = 0;
+	struct list_head *pos;
+	int retval = 0;
 
 	if (index <= 1) {
 		list_for_each(pos, &adapter->vf_mvs.l) {
@@ -751,14 +750,15 @@ static int ixgbe_set_vf_macvlan(struct ixgbe_adapter *adapter,
 		return -ENOSPC;
 
 	retval = ixgbe_add_mac_filter(adapter, mac_addr, vf);
-	if (retval >= 0) {
-		entry->free = false;
-        	entry->is_macvlan = true;
-        	entry->vf = vf;
-        	memcpy(entry->vf_macvlan, mac_addr, ETH_ALEN);
-	}
+	if (retval < 0)
+		return retval;
 
-	return retval;
+	entry->free = false;
+	entry->is_macvlan = true;
+	entry->vf = vf;
+	memcpy(entry->vf_macvlan, mac_addr, ETH_ALEN);
+
+	return 0;
 }
 
 static inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
@@ -1623,7 +1623,6 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	return err;
 }
 
-#ifdef IFLA_VF_MAX
 #ifdef IFLA_VF_VLAN_INFO_MAX
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan,
 			  u8 qos, __be16 vlan_proto)
@@ -1662,7 +1661,6 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
 	return err;
 }
-#endif /* IFLA_VF_MAX */
 
 static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {
@@ -1791,6 +1789,8 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int max_tx_rate)
 	return 0;
 }
 
+#endif /* IFLA_VF_MAX */
+#if IS_ENABLED(CONFIG_PCI_IOV)
 int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -1826,6 +1826,8 @@ int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting)
 	return 0;
 }
 
+#endif /* CONFIG_PCI_IOV */
+#ifdef IFLA_VF_MAX
 #ifdef HAVE_NDO_SET_VF_RSS_QUERY_EN
 int ixgbe_ndo_set_vf_rss_query_en(struct net_device *netdev, int vf,
 				  bool setting)

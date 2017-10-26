@@ -62,17 +62,17 @@
 		8086 000d  Ethernet Mezzanine Adapter X520-KX4-2
 	10f8  82599 10 Gigabit Dual Port Backplane Connection
 		1028 1f63  10GbE 2P X520k bNDC
-		103c 17d2  Ethernet 10Gb 2-port 560M Adapter
-		103c 18d0  HP Ethernet 10Gb 2-port 560FLB Adapter
+		103c 17d2  HPE Ethernet 10Gb 2-port 560M Adapter
+		103c 18d0  HPE Ethernet 10Gb 2-port 560FLB Adapter
 		8086 000c  Ethernet X520 10GbE Dual Port KX4-KR Mezz
 	10f9  82599 10 Gigabit CX4 Dual Port Network Connection
 	10fb  82599 10 Gigabit Dual Port Network Connection
 		1028 06ee  Ethernet 10G X520 LOM
 		1028 1f72  Ethernet 10G 4P X520/I350 rNDC
-		103c 17d0  HP Ethernet 10Gb 2-port 560FLR-SFP+ Adapter
-		103c 17d3  HP Ethernet 10Gb 2-port 560SFP+ Adapter
-		103c 211b  HP Ethernet 10Gb 1-port P560FLR-SFP+ Adapter
-		103c 2159  HP Ethernet 10Gb 2-port 562i Adapter
+		103c 17d0  HPE Ethernet 10Gb 2-port 560FLR-SFP+ Adapter
+		103c 17d3  HPE Ethernet 10Gb 2-port 560SFP+ Adapter
+		103c 211b  HPE Ethernet 10Gb 1-port P560FLR-SFP+ Adapter
+		103c 2159  HPE Ethernet 10Gb 2-port 562i Adapter
 		108e 7b11  Ethernet Server Adapter X520-2
 		17aa 1071  ThinkServer X520-2 AnyFabric
 		8086 0002  Ethernet Server Adapter X520-DA2
@@ -104,8 +104,8 @@
 		8086 a21c  Ethernet Server Adapter X520-T2
 	1528  Ethernet Controller X540-AT2
 		1028 1f61  Ethernet 10G 4P X540/I350 rNDC
-		103c 192d  HP Ethernet 10Gb 2-port 561FLR-T Adapter
-		103c 211a  HP Ethernet 10Gb 2-port 561T Adapter
+		103c 192d  HPE Ethernet 10Gb 2-port 561FLR-T Adapter
+		103c 211a  HPE Ethernet 10Gb 2-port 561T Adapter
 		108e 7b14  Sun Dual Port 10 GbE PCIe 2.0 ExpressModule, Base-T
 		108e 7b15  Sun Dual Port 10 GbE PCIe 2.0 Low Profile Adapter, Base-T
 		1137 00bf  Ethernet Converged Network Adapter X540-T2
@@ -133,34 +133,34 @@
 		8086 011b  Ethernet Converged Network Adapter X520-Q1
 	1560  Ethernet Controller X540
 	1563  Ethernet Controller 10G X550T
-		1028 1FA8  Intel(R) Ethernet 10G 4P X550/I350 rNDC
-		1028 1FA9  Intel(R) Ethernet 10G 4P X550 rNDC
-		1590 00D1  HPE Ethernet 10Gb 2-port 562T Adapter
-		1590 00D2  HPE Ethernet 10Gb 2-port 562FLR-T Adapter
+		1028 1fa8  Intel(R) Ethernet 10G 4P X550/I350 rNDC
+		1028 1fa9  Intel(R) Ethernet 10G 4P X550 rNDC
+		1590 00d1  HPE Ethernet 10Gb 2-port 562T Adapter
+		1590 00d2  HPE Ethernet 10Gb 2-port 562FLR-T Adapter
 		8086 0001  Ethernet Converged Network Adapter X550-T2
-		8086 001A  Ethernet Converged Network Adapter X550-T2
-		8086 001B  Ethernet Server Adapter X550-T2 for OCP
-		8086 001D  Ethernet 10G 2P X550-t Adapter
+		8086 001a  Ethernet Converged Network Adapter X550-T2
+		8086 001b  Ethernet Server Adapter X550-T2 for OCP
+		8086 001d  Ethernet 10G 2P X550-t Adapter
 		8086 0022  Ethernet Converged Network Adapter X550-T2
-	15AA  Ethernet Connection X552 10 GbE Backplane
-	15AB  Ethernet Connection X552 10 GbE Backplane
-	15AC  Ethernet Connection X552 10 GbE SFP+
-	15AD  Ethernet Connection X552/X557-AT 10GBASE-T
-	15AE  Ethernet Connection X552 1000BASE-T
-	15B0  Ethernet Connection X552 Backplane
-	15C2  Ethernet Connection X553 Backplane
-	15C3  Ethernet Connection X553 Backplane
-	15C4  Ethernet Connection X553 10 GbE SFP+
-	15C6  Ethernet Connection X553 1GbE
-	15C7  Ethernet Connection X553 1GbE
-	15C8  Ethernet Connection X553/X557-AT 10GBASE-T
-	15CA  Ethernet Connection X553 QSFP+
-	15CC  Ethernet Connection X553 QSFP+
-	15CE  Ethernet Connection X553 10 GbE SFP+
-	15D1  Ethernet Controller 10G X550T
+	15aa  Ethernet Connection X552 10 GbE Backplane
+	15ab  Ethernet Connection X552 10 GbE Backplane
+	15ac  Ethernet Connection X552 10 GbE SFP+
+	15ad  Ethernet Connection X552/X557-AT 10GBASE-T
+	15ae  Ethernet Connection X552 1000BASE-T
+	15b0  Ethernet Connection X552 Backplane
+	15c2  Ethernet Connection X553 Backplane
+	15c3  Ethernet Connection X553 Backplane
+	15c4  Ethernet Connection X553 10 GbE SFP+
+	15c6  Ethernet Connection X553 1GbE
+	15c7  Ethernet Connection X553 1GbE
+	15c8  Ethernet Connection X553/X557-AT 10GBASE-T
+	15ca  Ethernet Connection X553 QSFP+
+	15cc  Ethernet Connection X553 QSFP+
+	15ce  Ethernet Connection X553 10 GbE SFP+
+	15d1  Ethernet Controller 10G X550T
 		8086 0002  Ethernet Converged Network Adapter X550-T1
-		8086 001B  Ethernet Server Adapter X550-T1 for OCP
+		8086 001b  Ethernet Server Adapter X550-T1 for OCP
 		8086 0021  Ethernet Converged Network Adapter X550-T1
-		8086 00A2  Ethernet Converged Network Adapter X550-T1
-	15E4  Ethernet Connection X553 1GbE
-	15E5  Ethernet Connection X553 1GbE
+		8086 00a2  Ethernet Converged Network Adapter X550-T1
+	15e4  Ethernet Connection X553 1GbE
+	15e5  Ethernet Connection X553 1GbE

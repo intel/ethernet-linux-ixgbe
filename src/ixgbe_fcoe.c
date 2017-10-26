@@ -715,7 +715,8 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 				   IXGBE_FCRETA_ENTRY_HIGH_MASK;
 		}
 		fcoe_i = fcoe->offset + (i % fcoe->indices);
-		fcoe_i &= IXGBE_FCRETA_ENTRY_MASK;
+		if (fcoe_i >= MAX_RX_QUEUES)
+			fcoe_i = MAX_RX_QUEUES - 1;
 		fcoe_q = adapter->rx_ring[fcoe_i]->reg_idx;
 		fcoe_q |= fcoe_q_h;
 		IXGBE_WRITE_REG(hw, IXGBE_FCRETA(i), fcoe_q);

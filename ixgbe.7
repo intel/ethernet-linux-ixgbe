@@ -17,7 +17,6 @@ modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
 This driver is intended for \fB2.6.x\fR or later kernels. 
 This driver includes support for any 64 bit Linux supported system, 
 including Itanium(R)2, x86_64, PPC64,ARM, etc.
-
 .LP
 This driver is only supported as a loadable module at this time. Intel is
 not supplying patches against the kernel source to allow for static linking of
@@ -25,8 +24,6 @@ the drivers.
 
 A version of the driver may already be included by your
 distribution and/or the kernel.org kernel.
-
-
 
 
 For questions related to hardware requirements, refer to the documentation
@@ -229,11 +226,9 @@ When this parameter is set, the driver detects malicious VF driver and
 disables its Tx/Rx queues until a VF driver reset occurs.
 .SH Jumbo Frames
 .LP
-Jumbo Frames support is enabled by changing the Maximum Transmission Unit
-(MTU) to a value larger than the default value of 1500.
+Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU) to a value larger than the default value of 1500.
 
-Use the ifconfig command to increase the MTU size. For example, enter the
-following where <x> is the interface number:
+Use the ifconfig command to increase the MTU size. For example, enter the following where <x> is the interface number:
 
    ifconfig eth<x> mtu 9000 up
 Alternatively, you can use the ip command as follows:
@@ -241,29 +236,19 @@ Alternatively, you can use the ip command as follows:
    ip link set up dev eth<x>
 
 .LP
-NOTES:
-- The maximum MTU setting for Jumbo Frames is 9710. This value coincides
-  with the maximum Jumbo Frames size of 9728 bytes.
-- This driver will attempt to use multiple page sized buffers to receive
-  each jumbo packet. This should help to avoid buffer starvation issues
-  when allocating receive packets.
+NOTE: The maximum MTU setting for Jumbo Frames is 9710. This value coincides with the maximum Jumbo Frames size of 9728 bytes.
 
-- For 82599-based network connections, if you are enabling jumbo frames in a
-  virtual function (VF), jumbo frames must first be enabled in the physical
-  function (PF). The VF MTU setting cannot be larger than the PF MTU.
+NOTE: This driver will attempt to use multiple page sized buffers to receive each jumbo packet. This should help to avoid buffer starvation issues when allocating receive packets.
 
+NOTE: For 82599-based network connections, if you are enabling jumbo frames in a virtual function (VF), jumbo frames must first be enabled in the physical function (PF). The VF MTU setting cannot be larger than the PF MTU.
 See the section "Jumbo Frames" in the Readme.
 .SH SUPPORT
 .LP
-For additional information regarding building and installation,
-see the
+For additional information regarding building and installation, see the
 README
 included with the driver.
 For general information, go to the Intel support website at:
 .B www.intel.com/support/
 .LP
-If an issue is identified with the released source code on a supported
-kernel with a supported adapter, email the specific information related to the
-issue to e1000-devel@lists.sf.net.
-
+If an issue is identified with the released source code on a supported kernel with a supported adapter, email the specific information related to the issue to e1000-devel@lists.sf.net.
 .LP

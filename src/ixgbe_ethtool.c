@@ -2270,13 +2270,37 @@ static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
 	tx_ntc = tx_ring->next_to_clean;
 	rx_desc = IXGBE_RX_DESC(rx_ring, rx_ntc);
 
-	while (rx_desc->wb.upper.length) {
-		struct ixgbe_rx_buffer *rx_buffer;
+	while (tx_ntc != tx_ring->next_to_use) {
+		union ixgbe_adv_tx_desc *tx_desc;
 		struct ixgbe_tx_buffer *tx_buffer;
+
+		tx_desc = IXGBE_TX_DESC(tx_ring, tx_ntc);
+
+		/* if DD is not set transmit has not completed */
+		if (!(tx_desc->wb.status & cpu_to_le32(IXGBE_TXD_STAT_DD)))
+			return count;
 
 		/* unmap buffer on Tx side */
 		tx_buffer = &tx_ring->tx_buffer_info[tx_ntc];
-		ixgbe_unmap_and_free_tx_resource(tx_ring, tx_buffer);
+
+		/* Free all the Tx ring sk_buffs */
+		dev_kfree_skb_any(tx_buffer->skb);
+
+		/* unmap skb header data */
+		dma_unmap_single(tx_ring->dev,
+				 dma_unmap_addr(tx_buffer, dma),
+				 dma_unmap_len(tx_buffer, len),
+				 DMA_TO_DEVICE);
+		dma_unmap_len_set(tx_buffer, len, 0);
+
+		/* increment Tx next to clean counter */
+		tx_ntc++;
+		if (tx_ntc == tx_ring->count)
+			tx_ntc = 0;
+	}
+
+	while (rx_desc->wb.upper.length) {
+		struct ixgbe_rx_buffer *rx_buffer;
 
 		/* check Rx buffer */
 		rx_buffer = &rx_ring->rx_buffer_info[rx_ntc];
@@ -2290,6 +2314,8 @@ static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
 		/* verify contents of skb */
 		if (ixgbe_check_lbtest_frame(rx_buffer, size))
 			count++;
+		else
+			break;
 
 		/* sync Rx buffer for device write */
 		dma_sync_single_for_device(rx_ring->dev,
@@ -2297,13 +2323,10 @@ static u16 ixgbe_clean_test_rings(struct ixgbe_ring *rx_ring,
 					   bufsz,
 					   DMA_FROM_DEVICE);
 
-		/* increment Rx/Tx next to clean counters */
+		/* increment Rx next to clean counter */
 		rx_ntc++;
 		if (rx_ntc == rx_ring->count)
 			rx_ntc = 0;
-		tx_ntc++;
-		if (tx_ntc == tx_ring->count)
-			tx_ntc = 0;
 
 		/* fetch next descriptor */
 		rx_desc = IXGBE_RX_DESC(rx_ring, rx_ntc);
@@ -3456,7 +3479,7 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 
 	spin_unlock(&adapter->fdir_perfect_lock);
 
-	return err;
+	return 0;
 err_out_w_lock:
 	spin_unlock(&adapter->fdir_perfect_lock);
 err_out:
@@ -4080,22 +4103,19 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 	if (ret_val)
 		return ret_val;
 
-	if (eee_data.eee_enabled && !edata->eee_enabled) {
-		if (eee_data.tx_lpi_enabled != edata->tx_lpi_enabled) {
-			e_dev_err("Setting EEE tx-lpi is not supported\n");
-			return -EINVAL;
-		}
+	if (eee_data.tx_lpi_enabled != edata->tx_lpi_enabled) {
+		e_dev_err("Setting EEE tx-lpi is not supported\n");
+		return -EINVAL;
+	}
 
-		if (eee_data.tx_lpi_timer != edata->tx_lpi_timer) {
-			e_dev_err("Setting EEE Tx LPI timer is not supported\n");
-			return -EINVAL;
-		}
+	if (eee_data.tx_lpi_timer != edata->tx_lpi_timer) {
+		e_dev_err("Setting EEE Tx LPI timer is not supported\n");
+		return -EINVAL;
+	}
 
-		if (eee_data.advertised != edata->advertised) {
-			e_dev_err("Setting EEE advertised speeds is not supported\n");
-			return -EINVAL;
-		}
-
+	if (eee_data.advertised != edata->advertised) {
+		e_dev_err("Setting EEE advertised speeds is not supported\n");
+		return -EINVAL;
 	}
 
 	if (eee_data.eee_enabled != edata->eee_enabled) {

@@ -1856,7 +1856,7 @@ int __kc_pci_vfs_assigned(struct pci_dev __maybe_unused *dev)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
-const unsigned char pcie_link_speed[] = {
+static const unsigned char pcie_link_speed[] = {
 	PCI_SPEED_UNKNOWN,      /* 0 */
 	PCIE_SPEED_2_5GT,       /* 1 */
 	PCIE_SPEED_5_0GT,       /* 2 */
@@ -2321,6 +2321,53 @@ void __kc_netdev_rss_key_fill(void *buffer, size_t len)
 	BUG_ON(len > sizeof(__kc_netdev_rss_key));
 	net_get_random_once(__kc_netdev_rss_key, sizeof(__kc_netdev_rss_key));
 	memcpy(buffer, __kc_netdev_rss_key, len);
+}
+#endif
+#endif
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0) )
+#if !((RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,8) && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)) && \
+      (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(7,2)) && \
+      (SLE_VERSION_CODE > SLE_VERSION(12,1,0)))
+unsigned int _kc_cpumask_local_spread(unsigned int i, int node)
+{
+	int cpu;
+
+	/* Wrap: we always want a cpu. */
+	i %= num_online_cpus();
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28) )
+	/* Kernels prior to 2.6.28 do not have for_each_cpu or
+	 * cpumask_of_node, so just use for_each_online_cpu()
+	 */
+	for_each_online_cpu(cpu)
+		if (i-- == 0)
+			return cpu;
+
+	return 0;
+#else
+	if (node == -1) {
+		for_each_cpu(cpu, cpu_online_mask)
+			if (i-- == 0)
+				return cpu;
+	} else {
+		/* NUMA first. */
+		for_each_cpu_and(cpu, cpumask_of_node(node), cpu_online_mask)
+			if (i-- == 0)
+				return cpu;
+
+		for_each_cpu(cpu, cpu_online_mask) {
+			/* Skip NUMA nodes, done above. */
+			if (cpumask_test_cpu(cpu, cpumask_of_node(node)))
+				continue;
+
+			if (i-- == 0)
+				return cpu;
+		}
+	}
+#endif /* KERNEL_VERSION >= 2.6.28 */
+	BUG();
 }
 #endif
 #endif
