@@ -51,6 +51,7 @@
 #include <linux/if_bridge.h>
 #include "ixgbe.h"
 #ifdef HAVE_UDP_ENC_RX_OFFLOAD
+#include <net/vxlan.h>
 #include <net/udp_tunnel.h>
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD */
 #ifdef HAVE_VXLAN_RX_OFFLOAD
@@ -70,7 +71,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.3.3" \
+#define DRV_VERSION	"5.3.4" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -8524,11 +8525,11 @@ static void ixgbe_service_task(struct work_struct *work)
 	ixgbe_service_event_complete(adapter);
 }
 
-#ifdef NETIF_F_GSO_PARTIAL
 static int ixgbe_tso(struct ixgbe_ring *tx_ring,
 		     struct ixgbe_tx_buffer *first,
 		     u8 *hdr_len)
 {
+#ifdef NETIF_F_TSO
 	u32 vlan_macip_lens, type_tucmd, mss_l4len_idx;
 	struct sk_buff *skb = first->skb;
 	union {
@@ -8561,11 +8562,15 @@ static int ixgbe_tso(struct ixgbe_ring *tx_ring,
 
 	/* initialize outer IP header fields */
 	if (ip.v4->version == 4) {
+		unsigned char *csum_start = skb_checksum_start(skb);
+		unsigned char *trans_start = ip.hdr + (ip.v4->ihl * 4);
+
 		/* IP header will have to cancel out any data that
 		 * is not a part of the outer IP header
 		 */
-		ip.v4->check = csum_fold(csum_add(lco_csum(skb),
-						  csum_unfold(l4.tcp->check)));
+		ip.v4->check = csum_fold(csum_partial(trans_start,
+						      csum_start - trans_start,
+						      0));
 		type_tucmd |= IXGBE_ADVTXD_TUCMD_IPV4;
 
 		ip.v4->tot_len = 0;
@@ -8605,6 +8610,9 @@ static int ixgbe_tso(struct ixgbe_ring *tx_ring,
 			  mss_l4len_idx);
 
 	return 1;
+#else
+	return 0;
+#endif /* NETIF_F_TSO */
 }
 
 static inline bool ixgbe_ipv6_csum_is_sctp(struct sk_buff *skb)
@@ -8663,225 +8671,6 @@ no_csum:
 
 	ixgbe_tx_ctxtdesc(tx_ring, vlan_macip_lens, 0, type_tucmd, 0);
 }
-#else
-static int ixgbe_tso(struct ixgbe_ring *tx_ring,
-		     struct ixgbe_tx_buffer *first,
-		     u8 *hdr_len)
-{
-#ifndef NETIF_F_TSO
-	return 0;
-#else
-	struct sk_buff *skb = first->skb;
-	u32 vlan_macip_lens, type_tucmd;
-	u32 mss_l4len_idx, l4len;
-
-	if (skb->ip_summed != CHECKSUM_PARTIAL)
-		return 0;
-
-	if (!skb_is_gso(skb))
-		return 0;
-
-	if (skb_header_cloned(skb)) {
-		int err = pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
-		if (err)
-			return err;
-	}
-
-	/* ADV DTYP TUCMD MKRLOC/ISCSIHEDLEN */
-	type_tucmd = IXGBE_ADVTXD_TUCMD_L4T_TCP;
-
-	if (first->protocol == htons(ETH_P_IP)) {
-		struct iphdr *iph = ip_hdr(skb);
-		iph->tot_len = 0;
-		iph->check = 0;
-		tcp_hdr(skb)->check = ~csum_tcpudp_magic(iph->saddr,
-							 iph->daddr, 0,
-							 IPPROTO_TCP,
-							 0);
-		type_tucmd |= IXGBE_ADVTXD_TUCMD_IPV4;
-		first->tx_flags |= IXGBE_TX_FLAGS_TSO |
-				   IXGBE_TX_FLAGS_CSUM |
-				   IXGBE_TX_FLAGS_IPV4;
-#ifdef NETIF_F_TSO6
-	} else if (skb_is_gso_v6(skb)) {
-		ipv6_hdr(skb)->payload_len = 0;
-		tcp_hdr(skb)->check =
-		    ~csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
-				     &ipv6_hdr(skb)->daddr,
-				     0, IPPROTO_TCP, 0);
-		first->tx_flags |= IXGBE_TX_FLAGS_TSO |
-				   IXGBE_TX_FLAGS_CSUM;
-#endif /* NETIF_F_TSO6 */
-	}
-
-	/* compute header lengths */
-	l4len = tcp_hdrlen(skb);
-	*hdr_len = skb_transport_offset(skb) + l4len;
-
-	/* update gso size and bytecount with header size */
-	first->gso_segs = skb_shinfo(skb)->gso_segs;
-	first->bytecount += (first->gso_segs - 1) * *hdr_len;
-
-	/* mss_l4len_id: use 0 as index for TSO */
-	mss_l4len_idx = l4len << IXGBE_ADVTXD_L4LEN_SHIFT;
-	mss_l4len_idx |= skb_shinfo(skb)->gso_size << IXGBE_ADVTXD_MSS_SHIFT;
-
-	/* vlan_macip_lens: HEADLEN, MACLEN, VLAN tag */
-	vlan_macip_lens = skb_network_header_len(skb);
-	vlan_macip_lens |= skb_network_offset(skb) << IXGBE_ADVTXD_MACLEN_SHIFT;
-	vlan_macip_lens |= first->tx_flags & IXGBE_TX_FLAGS_VLAN_MASK;
-
-	ixgbe_tx_ctxtdesc(tx_ring, vlan_macip_lens, 0, type_tucmd,
-			  mss_l4len_idx);
-
-	return 1;
-#endif /* !NETIF_F_TSO */
-}
-
-static void ixgbe_tx_csum(struct ixgbe_ring *tx_ring,
-			  struct ixgbe_tx_buffer *first)
-{
-	struct sk_buff *skb = first->skb;
-	u32 vlan_macip_lens = 0;
-	u32 mss_l4len_idx = 0;
-	u32 type_tucmd = 0;
-
-	if (skb->ip_summed != CHECKSUM_PARTIAL) {
-		if (!(first->tx_flags & IXGBE_TX_FLAGS_HW_VLAN) &&
-		    !(first->tx_flags & IXGBE_TX_FLAGS_CC))
-			return;
-		vlan_macip_lens = skb_network_offset(skb) <<
-				  IXGBE_ADVTXD_MACLEN_SHIFT;
-	} else {
-		u8 l4_hdr = 0;
-#ifdef HAVE_ENCAP_TSO_OFFLOAD
-		union {
-			struct iphdr *ipv4;
-			struct ipv6hdr *ipv6;
-			u8 *raw;
-		} network_hdr;
-		union {
-			struct tcphdr *tcphdr;
-			u8 *raw;
-		} transport_hdr;
-		__be16 frag_off;
-
-		if (skb->encapsulation) {
-			network_hdr.raw = skb_inner_network_header(skb);
-			transport_hdr.raw = skb_inner_transport_header(skb);
-			vlan_macip_lens = skb_inner_network_offset(skb) <<
-					  IXGBE_ADVTXD_MACLEN_SHIFT;
-		} else {
-			network_hdr.raw = skb_network_header(skb);
-			transport_hdr.raw = skb_transport_header(skb);
-			vlan_macip_lens = skb_network_offset(skb) <<
-					  IXGBE_ADVTXD_MACLEN_SHIFT;
-		}
-
-		/* use first 4 bits to determine IP version */
-		switch (network_hdr.ipv4->version) {
-		case IPVERSION:
-			vlan_macip_lens |= transport_hdr.raw - network_hdr.raw;
-			type_tucmd |= IXGBE_ADVTXD_TUCMD_IPV4;
-			l4_hdr = network_hdr.ipv4->protocol;
-			break;
-		case 6:
-			vlan_macip_lens |= transport_hdr.raw - network_hdr.raw;
-			l4_hdr = network_hdr.ipv6->nexthdr;
-			if (likely((transport_hdr.raw - network_hdr.raw) ==
-				   sizeof(struct ipv6hdr)))
-				break;
-			ipv6_skip_exthdr(skb, network_hdr.raw - skb->data +
-					      sizeof(struct ipv6hdr),
-					 &l4_hdr, &frag_off);
-			if (unlikely(frag_off))
-				l4_hdr = NEXTHDR_FRAGMENT;
-			break;
-		default:
-			break;
-		}
-
-#else /* HAVE_ENCAP_TSO_OFFLOAD */
-		switch (first->protocol) {
-		case __constant_htons(ETH_P_IP):
-			vlan_macip_lens |= skb_network_header_len(skb);
-			type_tucmd |= IXGBE_ADVTXD_TUCMD_IPV4;
-			l4_hdr = ip_hdr(skb)->protocol;
-			break;
-#ifdef NETIF_F_IPV6_CSUM
-		case __constant_htons(ETH_P_IPV6):
-			vlan_macip_lens |= skb_network_header_len(skb);
-			l4_hdr = ipv6_hdr(skb)->nexthdr;
-			break;
-#endif /* NETIF_F_IPV6_CSUM */
-		default:
-			if (unlikely(net_ratelimit())) {
-				dev_warn(tx_ring->dev,
-				 "partial checksum but proto=%x!\n",
-				 first->protocol);
-			}
-			break;
-		}
-#endif /* HAVE_ENCAP_TSO_OFFLOAD */
-
-		switch (l4_hdr) {
-		case IPPROTO_TCP:
-			type_tucmd |= IXGBE_ADVTXD_TUCMD_L4T_TCP;
-#ifdef HAVE_ENCAP_TSO_OFFLOAD
-			mss_l4len_idx = (transport_hdr.tcphdr->doff * 4) <<
-					IXGBE_ADVTXD_L4LEN_SHIFT;
-#else
-			mss_l4len_idx = tcp_hdrlen(skb) <<
-					IXGBE_ADVTXD_L4LEN_SHIFT;
-#endif /* HAVE_ENCAP_TSO_OFFLOAD */
-			break;
-#ifdef HAVE_SCTP
-		case IPPROTO_SCTP:
-			type_tucmd |= IXGBE_ADVTXD_TUCMD_L4T_SCTP;
-			mss_l4len_idx = sizeof(struct sctphdr) <<
-					IXGBE_ADVTXD_L4LEN_SHIFT;
-			break;
-#endif /* HAVE_SCTP */
-		case IPPROTO_UDP:
-			mss_l4len_idx = sizeof(struct udphdr) <<
-					IXGBE_ADVTXD_L4LEN_SHIFT;
-			break;
-		default:
-#ifdef HAVE_ENCAP_TSO_OFFLOAD
-			if (unlikely(net_ratelimit())) {
-				dev_warn(tx_ring->dev,
-					 "partial checksum, version=%d, l4 proto=%x\n",
-					 network_hdr.ipv4->version, l4_hdr);
-			}
-			skb_checksum_help(skb);
-			goto no_csum;
-#else
-			if (unlikely(net_ratelimit())) {
-				dev_warn(tx_ring->dev,
-				 "partial checksum but l4 proto=%x!\n",
-				 l4_hdr);
-			}
-#endif /* HAVE_ENCAP_TSO_OFFLOAD */
-			break;
-		}
-
-		/* update TX checksum flag */
-		first->tx_flags |= IXGBE_TX_FLAGS_CSUM;
-	}
-
-#ifdef HAVE_ENCAP_TSO_OFFLOAD
-no_csum:
-#endif /* HAVE_ENCAP_TSO_OFFLOAD */
-	/* vlan_macip_lens: MACLEN, VLAN tag */
-#ifndef HAVE_ENCAP_TSO_OFFLOAD
-	vlan_macip_lens |= skb_network_offset(skb) << IXGBE_ADVTXD_MACLEN_SHIFT;
-#endif /* !HAVE_ENCAP_TSO_OFFLOAD */
-	vlan_macip_lens |= first->tx_flags & IXGBE_TX_FLAGS_VLAN_MASK;
-
-	ixgbe_tx_ctxtdesc(tx_ring, vlan_macip_lens, 0,
-			  type_tucmd, mss_l4len_idx);
-}
-#endif /* NETIF_F_GSO_PARTIAL */
 
 #define IXGBE_SET_FLAG(_input, _flag, _result) \
 	((_flag <= _result) ? \
@@ -9114,28 +8903,22 @@ static int ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 	return 0;
 dma_error:
 	dev_err(tx_ring->dev, "TX DMA map failed\n");
-	tx_buffer = &tx_ring->tx_buffer_info[i];
 
 	/* clear dma mappings for failed tx_buffer_info map */
-	while (tx_buffer != first) {
+	for (;;) {
+		tx_buffer = &tx_ring->tx_buffer_info[i];
 		if (dma_unmap_len(tx_buffer, len))
 			dma_unmap_page(tx_ring->dev,
 				       dma_unmap_addr(tx_buffer, dma),
 				       dma_unmap_len(tx_buffer, len),
 				       DMA_TO_DEVICE);
 		dma_unmap_len_set(tx_buffer, len, 0);
-
-		if (i--)
+		if (tx_buffer == first)
+			break;
+		if (i == 0)
 			i += tx_ring->count;
-		tx_buffer = &tx_ring->tx_buffer_info[i];
+		i--;
 	}
-
-	if (dma_unmap_len(tx_buffer, len))
-		dma_unmap_single(tx_ring->dev,
-				 dma_unmap_addr(tx_buffer, dma),
-				 dma_unmap_len(tx_buffer, len),
-				 DMA_TO_DEVICE);
-	dma_unmap_len_set(tx_buffer, len, 0);
 
 	dev_kfree_skb_any(first->skb);
 	first->skb = NULL;
@@ -9157,15 +8940,10 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 		struct ipv6hdr *ipv6;
 	} hdr;
 	struct tcphdr *th;
-#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 	struct sk_buff *skb;
-#else
-#define IXGBE_NO_VXLAN
-#endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
-#ifdef IXGBE_NO_VXLAN
 	unsigned int hlen;
-#endif /* IXGBE_NO_VXLAN */
 	__be16 vlan_id;
+	int l4_proto;
 
 	/* if ring doesn't have a interrupt vector, cannot perform ATR */
 	if (!q_vector)
@@ -9177,85 +8955,74 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 
 	ring->atr_count++;
 
+	/* currently only IPv4/IPv6 with TCP is supported */
+	if (first->protocol != htons(ETH_P_IP) &&
+	    first->protocol != htons(ETH_P_IPV6))
+		return;
+
 	/* snag network header to get L4 type and address */
-#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 	skb = first->skb;
 	hdr.network = skb_network_header(skb);
-	th = tcp_hdr(skb);
+
+#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
+	if (unlikely(hdr.network <= skb->data))
+		return;
 
 	if (skb->encapsulation &&
 	    first->protocol == htons(ETH_P_IP) &&
 	    hdr.ipv4->protocol == IPPROTO_UDP) {
 		struct ixgbe_adapter *adapter = q_vector->adapter;
 
+		if (unlikely(skb_tail_pointer(skb) < hdr.network +
+			     VXLAN_HEADROOM))
+			return;
+
 		/* verify the port is recognized as VXLAN or GENEVE*/
 		if (adapter->vxlan_port &&
-		    udp_hdr(skb)->dest == adapter->vxlan_port) {
+		    udp_hdr(skb)->dest == adapter->vxlan_port)
 			hdr.network = skb_inner_network_header(skb);
-			th = inner_tcp_hdr(skb);
-		}
 
 #ifdef HAVE_UDP_ENC_RX_OFFLOAD
 		if (adapter->geneve_port &&
-		    udp_hdr(skb)->dest == adapter->geneve_port) {
+		    udp_hdr(skb)->dest == adapter->geneve_port)
 			hdr.network = skb_inner_network_header(skb);
-			th = inner_tcp_hdr(skb);
-		}
 #endif
 	}
+#endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
+
+	/* Make sure we have at least [minimum IPv4 header + TCP]
+	 * or [IPv6 header] bytes
+	 */
+	if (unlikely(skb_tail_pointer(skb) < hdr.network + 40))
+		return;
 
 	/* Currently only IPv4/IPv6 with TCP is supported */
 	switch (hdr.ipv4->version) {
 	case IPVERSION:
-		if (hdr.ipv4->protocol != IPPROTO_TCP)
-			return;
+		/* access ihl as u8 to avoid unaligned access on ia64 */
+		hlen = (hdr.network[0] & 0x0F) << 2;
+		l4_proto = hdr.ipv4->protocol;
 		break;
 	case 6:
-		if (likely((unsigned char *)th - hdr.network ==
-			   sizeof(struct ipv6hdr))) {
-			if (hdr.ipv6->nexthdr != IPPROTO_TCP)
-				return;
-		} else {
-			__be16 frag_off;
-			u8 l4_hdr;
-
-			ipv6_skip_exthdr(skb, hdr.network - skb->data +
-					      sizeof(struct ipv6hdr),
-					 &l4_hdr, &frag_off);
-			if (unlikely(frag_off))
-				return;
-			if (l4_hdr != IPPROTO_TCP)
-				return;
-		}
+		hlen = hdr.network - skb->data;
+		l4_proto = ipv6_find_hdr(skb, &hlen, IPPROTO_TCP, NULL, NULL);
+		hlen -= hdr.network - skb->data;
 		break;
 	default:
 		return;
 	}
 
-#endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
-#ifdef IXGBE_NO_VXLAN
-	hdr.network = skb_network_header(first->skb);
-	/* Currently only IPv4/IPv6 with TCP is supported */
-	if (first->protocol == htons(ETH_P_IP)) {
-		if (hdr.ipv4->protocol != IPPROTO_TCP)
-			return;
-
-		/* access ihl as a u8 to avoid unaligned access on ia64 */
-		hlen = (hdr.network[0] & 0x0F) << 2;
-	} else if (first->protocol == htons(ETH_P_IPV6)) {
-		if (hdr.ipv6->nexthdr != IPPROTO_TCP)
-			return;
-
-		hlen = sizeof(struct ipv6hdr);
-	} else {
+	if (l4_proto != IPPROTO_TCP)
 		return;
-	}
+
+	if (unlikely(skb_tail_pointer(skb) < hdr.network +
+		     hlen + sizeof(struct tcphdr)))
+		return;
 
 	th = (struct tcphdr *)(hdr.network + hlen);
 
-#endif /* IXGBE_NO_VXLAN */
-	/* skip this packet since it is invalid or the socket is closing */
-	if (!th || th->fin)
+	/* skip this packet since the socket is closing */
+	if (th->fin)
 		return;
 
 	/* sample on all syn packets or once every atr sample count */
@@ -9286,7 +9053,6 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 		common.port.src ^= th->dest ^ first->protocol;
 	common.port.dst ^= th->source;
 
-#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 	switch (hdr.ipv4->version) {
 	case IPVERSION:
 		input.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_TCPV4;
@@ -9307,25 +9073,10 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 		break;
 	}
 
+#if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 	if (hdr.network != skb_network_header(skb))
 		input.formatted.flow_type |= IXGBE_ATR_L4TYPE_TUNNEL_MASK;
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
-#ifdef IXGBE_NO_VXLAN
-	if (first->protocol == htons(ETH_P_IP)) {
-		input.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_TCPV4;
-		common.ip ^= hdr.ipv4->saddr ^ hdr.ipv4->daddr;
-	} else {
-		input.formatted.flow_type = IXGBE_ATR_FLOW_TYPE_TCPV6;
-		common.ip ^= hdr.ipv6->saddr.s6_addr32[0] ^
-			     hdr.ipv6->saddr.s6_addr32[1] ^
-			     hdr.ipv6->saddr.s6_addr32[2] ^
-			     hdr.ipv6->saddr.s6_addr32[3] ^
-			     hdr.ipv6->daddr.s6_addr32[0] ^
-			     hdr.ipv6->daddr.s6_addr32[1] ^
-			     hdr.ipv6->daddr.s6_addr32[2] ^
-			     hdr.ipv6->daddr.s6_addr32[3];
-	}
-#endif /* IXGBE_NO_VXLAN */
 
 	/* This assumes the Rx queue and Tx queue are bound to the same CPU */
 	ixgbe_fdir_add_signature_filter_82599(&q_vector->adapter->hw,
