@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2017 Intel Corporation.
+  Copyright(c) 1999 - 2018 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -35,7 +35,7 @@ static inline void IXGBE_WRITE_REG(struct ixgbe_hw *hw, u32 reg, u32 value)
 {
 	u8 __iomem *reg_addr;
 
-	reg_addr = ACCESS_ONCE(hw->hw_addr);
+	reg_addr = READ_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return;
 #ifdef DBG
@@ -59,7 +59,7 @@ static inline void IXGBE_WRITE_REG64(struct ixgbe_hw *hw, u32 reg, u64 value)
 {
 	u8 __iomem *reg_addr;
 
-	reg_addr = ACCESS_ONCE(hw->hw_addr);
+	reg_addr = READ_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return;
 	writeq(value, reg_addr + reg);

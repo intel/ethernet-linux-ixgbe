@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2017 Intel Corporation.
+  Copyright(c) 1999 - 2018 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -5187,6 +5187,13 @@ extern unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_l
 #endif /* 3.18.4 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,18,13) )
+#ifndef WRITE_ONCE
+#define WRITE_ONCE(x, val) ({ ACCESS_ONCE(x) = (val); })
+#endif
+#endif /* 3.18.13 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0) )
 /* netdev_phys_port_id renamed to netdev_phys_item_id */
 #define netdev_phys_item_id netdev_phys_port_id
@@ -5700,13 +5707,9 @@ static inline void __page_frag_cache_drain(struct page *page,
 #define TIMER_DATA_TYPE		unsigned long
 #define TIMER_FUNC_TYPE		void (*)(TIMER_DATA_TYPE)
 
-static inline void timer_setup(struct timer_list *timer,
-			       void (*callback)(struct timer_list *),
-			       unsigned int flags)
-{
-	__setup_timer(timer, (TIMER_FUNC_TYPE)callback,
-		      (TIMER_DATA_TYPE)timer, flags);
-}
+#define timer_setup(timer, callback, flags)				\
+	__setup_timer((timer), (TIMER_FUNC_TYPE)(callback),		\
+		      (TIMER_DATA_TYPE)(timer), (flags))
 
 #define from_timer(var, callback_timer, timer_fieldname) \
 	container_of(callback_timer, typeof(*var), timer_fieldname)

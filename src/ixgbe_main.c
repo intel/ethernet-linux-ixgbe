@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2017 Intel Corporation.
+  Copyright(c) 1999 - 2018 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -71,7 +71,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.3.5" \
+#define DRV_VERSION	"5.3.6" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -82,7 +82,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2017 Intel Corporation.";
+static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2018 Intel Corporation.";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -416,7 +416,7 @@ ixgbe_validate_register_read(struct ixgbe_hw *_hw, u32 reg, bool quiet)
 	u8 __iomem *reg_addr;
 	struct ixgbe_adapter *adapter = _hw->back;
 
-	reg_addr = ACCESS_ONCE(_hw->hw_addr);
+	reg_addr = READ_ONCE(_hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return IXGBE_FAILED_READ_REG;
 	for (i = 0; i < IXGBE_DEAD_READ_RETRIES; ++i) {
@@ -439,7 +439,7 @@ u32 ixgbe_read_reg(struct ixgbe_hw *hw, u32 reg, bool quiet)
 	u32 value;
 	u8 __iomem *reg_addr;
 
-	reg_addr = ACCESS_ONCE(hw->hw_addr);
+	reg_addr = READ_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return IXGBE_FAILED_READ_REG;
 	if (unlikely(hw->phy.nw_mng_if_sel &
@@ -7451,7 +7451,7 @@ static struct rtnl_link_stats64 *ixgbe_get_stats64(struct net_device *netdev,
 
 	rcu_read_lock();
 	for (i = 0; i < adapter->num_rx_queues; i++) {
-		struct ixgbe_ring *ring = ACCESS_ONCE(adapter->rx_ring[i]);
+		struct ixgbe_ring *ring = READ_ONCE(adapter->rx_ring[i]);
 		u64 bytes, packets;
 		unsigned int start;
 
@@ -7467,7 +7467,7 @@ static struct rtnl_link_stats64 *ixgbe_get_stats64(struct net_device *netdev,
 	}
 
 	for (i = 0; i < adapter->num_tx_queues; i++) {
-		struct ixgbe_ring *ring = ACCESS_ONCE(adapter->tx_ring[i]);
+		struct ixgbe_ring *ring = READ_ONCE(adapter->tx_ring[i]);
 		u64 bytes, packets;
 		unsigned int start;
 
@@ -8422,11 +8422,11 @@ static void ixgbe_sfp_link_config_subtask(struct ixgbe_adapter *adapter)
 
 /**
  * ixgbe_service_timer - Timer Call-back
- * @data: pointer to adapter cast into an unsigned long
+ * @t: pointer to timer_list
  **/
-static void ixgbe_service_timer(unsigned long data)
+static void ixgbe_service_timer(struct timer_list *t)
 {
-	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
+	struct ixgbe_adapter *adapter = from_timer(adapter, t, service_timer);
 	unsigned long next_event_offset;
 
 	/* poll faster when waiting for link */
@@ -9641,7 +9641,7 @@ __ixgbe_setup_tc(struct net_device *dev, __always_unused u32 handle,
 #endif
 #endif
 	switch (type) {
-	case TC_SETUP_MQPRIO:
+	case TC_SETUP_QDISC_MQPRIO:
 #if defined(HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV)
 		return ixgbe_setup_tc_mqprio(dev, type_data);
 #elif defined(TC_MQPRIO_HW_OFFLOAD_MAX)
@@ -11016,8 +11016,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	ether_addr_copy(hw->mac.addr, hw->mac.perm_addr);
 	ixgbe_mac_set_default_filter(adapter);
 
-	setup_timer(&adapter->service_timer, &ixgbe_service_timer,
-		    (unsigned long) adapter);
+	timer_setup(&adapter->service_timer, ixgbe_service_timer, 0);
 
 	if (IXGBE_REMOVED(hw->hw_addr)) {
 		err = -EIO;
