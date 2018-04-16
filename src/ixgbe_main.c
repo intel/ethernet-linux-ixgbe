@@ -71,7 +71,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.3.6" \
+#define DRV_VERSION	"5.3.7" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -10249,7 +10249,11 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_set_rx_mode	= ixgbe_set_rx_mode,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address	= ixgbe_set_mac,
+#ifdef HAVE_RHEL7_EXTENDED_MIN_MAX_MTU
+	.extended.ndo_change_mtu = ixgbe_change_mtu,
+#else
 	.ndo_change_mtu		= ixgbe_change_mtu,
+#endif
 	.ndo_tx_timeout		= ixgbe_tx_timeout,
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	.ndo_vlan_rx_add_vid	= ixgbe_vlan_rx_add_vid,
@@ -10297,12 +10301,16 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_get_stats		= ixgbe_get_stats,
 #endif /* HAVE_NDO_GET_STATS64 */
 #ifdef HAVE_SETUP_TC
+#ifdef HAVE_RHEL7_NETDEV_OPS_EXT_NDO_SETUP_TC
+	.extended.ndo_setup_tc_rh = __ixgbe_setup_tc,
+#else
 #ifdef NETIF_F_HW_TC
 	.ndo_setup_tc		= __ixgbe_setup_tc,
 #else
 	.ndo_setup_tc		= ixgbe_setup_tc,
 #endif /* NETIF_F_HW_TC */
-#endif
+#endif /* HAVE_RHEL7_NETDEV_OPS_EXT_NDO_SETUP_TC */
+#endif /* HAVE_SETUP_TC */
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= ixgbe_netpoll,
 #endif
@@ -10945,8 +10953,14 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 #ifdef HAVE_NETDEVICE_MIN_MAX_MTU
 	/* MTU range: 68 - 9710 */
+#ifdef HAVE_RHEL7_EXTENDED_MIN_MAX_MTU
+	netdev->extended->min_mtu = ETH_MIN_MTU;
+	netdev->extended->max_mtu = IXGBE_MAX_JUMBO_FRAME_SIZE -
+				    (ETH_HLEN + ETH_FCS_LEN);
+#else
 	netdev->min_mtu = ETH_MIN_MTU;
 	netdev->max_mtu = IXGBE_MAX_JUMBO_FRAME_SIZE - (ETH_HLEN + ETH_FCS_LEN);
+#endif
 
 #endif
 #if IS_ENABLED(CONFIG_DCB)
