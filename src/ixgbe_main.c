@@ -71,7 +71,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.3.7" \
+#define DRV_VERSION	"5.3.8" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -8474,6 +8474,24 @@ static void ixgbe_reset_subtask(struct ixgbe_adapter *adapter)
 }
 
 /**
+ * ixgbe_check_fw_error - Check firmware for errors
+ * @adapter: the adapter private structure
+ *
+ * Check firmware errors in register FWSM
+ **/
+static bool ixgbe_check_fw_error(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	if (hw->mac.ops.fw_recovery_mode && hw->mac.ops.fw_recovery_mode(hw)) {
+		e_dev_err("Firmware recovery mode detected. Limiting functionality. Refer to the Intel(R) Ethernet Adapters and Devices User Guide for details on firmware recovery mode.\n");
+		return true;
+	}
+
+	return false;
+}
+
+/**
  * ixgbe_service_task - manages and runs subtasks
  * @work: pointer to work_struct containing our data
  **/
@@ -8487,6 +8505,15 @@ static void ixgbe_service_task(struct work_struct *work)
 			rtnl_lock();
 			ixgbe_down(adapter);
 			rtnl_unlock();
+		}
+		ixgbe_service_event_complete(adapter);
+		return;
+	}
+
+	if (ixgbe_check_fw_error(adapter)) {
+		if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
+			unregister_netdev(adapter->netdev);
+			adapter->netdev_registered = false;
 		}
 		ixgbe_service_event_complete(adapter);
 		return;
@@ -11007,8 +11034,12 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 	}
 
-	/* make sure the EEPROM is good */
-	if (hw->eeprom.ops.validate_checksum &&
+	if (ixgbe_check_fw_error(adapter)) {
+		err = -EIO;
+		goto err_sw_init;
+	}
+
+	if (hw->eeprom.ops.validate_checksum  &&
 	    (hw->eeprom.ops.validate_checksum(hw, NULL) < 0)) {
 		e_dev_err("The EEPROM Checksum Is Not Valid\n");
 		err = -EIO;
