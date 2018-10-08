@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 
 #include <linux/types.h>
@@ -288,7 +267,6 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	/* disable iov and allow time for transactions to clear */
 	pci_disable_sriov(adapter->pdev);
 #endif
-
 	/* turn off device IOV mode */
 	IXGBE_WRITE_REG(hw, IXGBE_GCR_EXT, 0);
 	gpie = IXGBE_READ_REG(hw, IXGBE_GPIE);
@@ -763,9 +741,14 @@ static int ixgbe_set_vf_macvlan(struct ixgbe_adapter *adapter,
 
 static inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
 {
-	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	struct vf_data_storage *vfinfo = &adapter->vfinfo[vf];
 	u8 num_tcs = netdev_get_num_tc(adapter->netdev);
+	u32 q_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 reg_val;
+	u32 queue;
+	u32 word;
 
 	/* remove VLAN filters belonging to this VF */
 	ixgbe_clear_vf_vlans(adapter, vf);
@@ -799,6 +782,27 @@ static inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
 
 	/* reset VF api back to unknown */
 	adapter->vfinfo[vf].vf_api = ixgbe_mbox_api_10;
+
+	/* Restart each queue for given VF */
+	for (queue = 0; queue < q_per_pool; queue++) {
+		unsigned int reg_idx = (vf * q_per_pool) + queue;
+
+		reg_val = IXGBE_READ_REG(hw, IXGBE_PVFTXDCTL(reg_idx));
+
+		/* Re-enabling only configured queues */
+		if (reg_val) {
+			reg_val |= IXGBE_TXDCTL_ENABLE;
+			IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx), reg_val);
+			reg_val &= ~IXGBE_TXDCTL_ENABLE;
+			IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx), reg_val);
+		}
+	}
+
+	/* Clear VF's mailbox memory */
+	for (word = 0; word < IXGBE_VFMAILBOX_SIZE; word++)
+		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_PFMBMEM(vf), word, 0);
+
+	IXGBE_WRITE_FLUSH(hw);
 }
 
 int ixgbe_set_vf_mac(struct ixgbe_adapter *adapter,
@@ -884,7 +888,11 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	IXGBE_WRITE_REG(hw, IXGBE_VFTE(reg_offset), reg);
 
 	/* force drop enable for all VF Rx queues */
-	ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE);
+	reg = IXGBE_QDE_ENABLE;
+	if (adapter->vfinfo[vf].pf_vlan)
+		reg |= IXGBE_QDE_HIDE_VLAN;
+
+	ixgbe_write_qde(adapter, vf, reg);
 
 	/* enable receive for vf */
 	reg = IXGBE_READ_REG(hw, IXGBE_VFRE(reg_offset));
@@ -931,9 +939,6 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 		memcpy(addr, vf_mac, ETH_ALEN);
 	} else {
 		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
-		dev_warn(pci_dev_to_dev(adapter->pdev),
-			 "VF %d has no MAC address assigned, you may have to assign one manually\n",
-			 vf);
 	}
 
 	/*
@@ -1605,6 +1610,9 @@ out:
 static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
+	u32 q_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
+	u32 queue, reg_val;
 	int err;
 
 	err = ixgbe_set_vf_vlan(adapter, false,
@@ -1615,8 +1623,21 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	ixgbe_set_vmolr(hw, vf, true);
 
 	/* disable hide VLAN on X550 */
-	if (hw->mac.type >= ixgbe_mac_X550)
+	if (hw->mac.type >= ixgbe_mac_X550) {
 		ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE);
+		IXGBE_WRITE_REG(hw, IXGBE_PVFCTRL(vf), IXGBE_CTRL_RST);
+		for (queue = 0; queue < q_per_pool; queue++) {
+			unsigned int reg_idx = (vf * q_per_pool) + queue;
+
+			reg_val = IXGBE_READ_REG(hw, IXGBE_TXDCTL(reg_idx));
+			if (reg_val) {
+				reg_val &= ~IXGBE_TXDCTL_ENABLE;
+				IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(reg_idx),
+						reg_val);
+			}
+		}
+	}
+
 	adapter->vfinfo[vf].pf_vlan = 0;
 	adapter->vfinfo[vf].pf_qos = 0;
 

@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #ifndef _IXGBE_TYPE_H_
 #define _IXGBE_TYPE_H_
@@ -37,7 +16,7 @@
  *
  * - IXGBE_ERROR_POLLING
  * This category is for errors related to polling/timeout issues and should be
- * used in any case where the timeout occured, or a failure to obtain a lock, or
+ * used in any case where the timeout occurred, or a failure to obtain a lock, or
  * failure to receive data within the time limit.
  *
  * - IXGBE_ERROR_CAUTION
@@ -114,7 +93,6 @@
 #define IXGBE_SUBDEV_ID_82599EN_SFP_OCP1	0x0001
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
-#define IXGBE_DEV_ID_82599_LS			0x154F
 #define IXGBE_DEV_ID_X540T			0x1528
 #define IXGBE_DEV_ID_X540T1			0x1560
 #define IXGBE_DEV_ID_X550T			0x1563
@@ -255,7 +233,6 @@
 #define IXGBE_I2C_BB_EN_X550		0x00000100
 #define IXGBE_I2C_BB_EN_X550EM_x	IXGBE_I2C_BB_EN_X550
 #define IXGBE_I2C_BB_EN_X550EM_a	IXGBE_I2C_BB_EN_X550
-
 #define IXGBE_I2C_BB_EN_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), I2C_BB_EN)
 
 #define IXGBE_I2C_CLK_OE_N_EN		0
@@ -594,7 +571,6 @@ struct ixgbe_nvm_version {
 #define IXGBE_VXLANCTRL_VXLAN_UDPPORT_MASK	0x0000ffff /* VXLAN port */
 #define IXGBE_VXLANCTRL_GENEVE_UDPPORT_MASK	0xffff0000 /* GENEVE port */
 #define IXGBE_VXLANCTRL_ALL_UDPPORT_MASK	0xffffffff /* GENEVE/VXLAN */
-
 #define IXGBE_VXLANCTRL_GENEVE_UDPPORT_SHIFT	16
 
 #define IXGBE_FHFT(_n)	(0x09000 + ((_n) * 0x100)) /* Flex host filter table */
@@ -604,7 +580,6 @@ struct ixgbe_nvm_version {
 
 /* Four Flexible Filters are supported */
 #define IXGBE_FLEXIBLE_FILTER_COUNT_MAX		4
-
 /* Six Flexible Filters are supported */
 #define IXGBE_FLEXIBLE_FILTER_COUNT_MAX_6	6
 /* Eight Flexible Filters are supported */
@@ -1072,6 +1047,8 @@ struct ixgbe_dmac_config {
 #define IXGBE_FWSM_TS_ENABLED	0x1
 #define IXGBE_FWSM_FW_MODE_PT	0x4
 #define IXGBE_FWSM_FW_NVM_RECOVERY_MODE (1 << 5)
+#define IXGBE_FWSM_EXT_ERR_IND_MASK 0x01F80000
+#define IXGBE_FWSM_FW_VAL_BIT	(1 << 15)
 
 /* ARC Subsystem registers */
 #define IXGBE_HICR		0x15F00
@@ -2436,6 +2413,16 @@ enum {
 #define IXGBE_FW_LESM_PARAMETERS_PTR		0x2
 #define IXGBE_FW_LESM_STATE_1			0x1
 #define IXGBE_FW_LESM_STATE_ENABLED		0x8000 /* LESM Enable bit */
+#define IXGBE_FW_LESM_2_STATES_ENABLED_MASK	0x1F
+#define IXGBE_FW_LESM_2_STATES_ENABLED		0x12
+#define IXGBE_FW_LESM_STATE0_10G_ENABLED	0x6FFF
+#define IXGBE_FW_LESM_STATE1_10G_ENABLED	0x4FFF
+#define IXGBE_FW_LESM_STATE0_10G_DISABLED	0x0FFF
+#define IXGBE_FW_LESM_STATE1_10G_DISABLED	0x2FFF
+#define IXGBE_FW_LESM_PORT0_STATE0_OFFSET	0x2
+#define IXGBE_FW_LESM_PORT0_STATE1_OFFSET	0x3
+#define IXGBE_FW_LESM_PORT1_STATE0_OFFSET	0x6
+#define IXGBE_FW_LESM_PORT1_STATE1_OFFSET	0x7
 #define IXGBE_FW_PASSTHROUGH_PATCH_CONFIG_PTR	0x4
 #define IXGBE_FW_PATCH_VERSION_4		0x7
 #define IXGBE_FCOE_IBA_CAPS_BLK_PTR		0x33 /* iSCSI/FCOE block */
@@ -3708,7 +3695,6 @@ enum ixgbe_media_type {
 	ixgbe_media_type_unknown = 0,
 	ixgbe_media_type_fiber,
 	ixgbe_media_type_fiber_qsfp,
-	ixgbe_media_type_fiber_lco,
 	ixgbe_media_type_copper,
 	ixgbe_media_type_backplane,
 	ixgbe_media_type_cx4,

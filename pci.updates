@@ -1,26 +1,5 @@
-################################################################################
-#
-# Intel(R) 10GbE PCI Express Linux Network Driver
+# SPDX-License-Identifier: GPL-2.0
 # Copyright(c) 1999 - 2018 Intel Corporation.
-#
-# This program is free software; you can redistribute it and/or modify it
-# under the terms and conditions of the GNU General Public License,
-# version 2, as published by the Free Software Foundation.
-#
-# This program is distributed in the hope it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-# more details.
-#
-# The full GNU General Public License is included in this distribution in
-# the file called "COPYING".
-#
-# Contact Information:
-# Linux NICS <linux.nics@intel.com>
-# e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-# Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-#
-################################################################################
 
 # updates for the system pci.ids file
 #
@@ -125,7 +104,6 @@
 		8086 011c  Ethernet Converged Network Adapter X520-4
 	154d  Ethernet 10G 2P X520 Adapter
 		8086 7b11  Ethernet 10G 2P X520 Adapter
-	154f  82599 10 Gigabit Dual Port Network Connection
 	1557  82599 10 Gigabit Network Connection
 		8086 0001  Ethernet OCP Server Adapter X520-1
 	1558  Ethernet Converged Network Adapter X520-Q1

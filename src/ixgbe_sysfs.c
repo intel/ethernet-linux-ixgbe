@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include "ixgbe.h"
 #include "ixgbe_common.h"
@@ -110,37 +89,42 @@ static ssize_t ixgbe_hwmon_show_maxopthresh(struct device __always_unused *dev,
  */
 static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 				unsigned int offset, int type) {
-	int rc;
 	unsigned int n_attr;
 	struct hwmon_attr *ixgbe_attr;
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+
+	n_attr = adapter->ixgbe_hwmon_buff->n_hwmon;
+	ixgbe_attr = &adapter->ixgbe_hwmon_buff->hwmon_list[n_attr];
+#else
+	int rc;
 
 	n_attr = adapter->ixgbe_hwmon_buff.n_hwmon;
 	ixgbe_attr = &adapter->ixgbe_hwmon_buff.hwmon_list[n_attr];
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 
 	switch (type) {
 	case IXGBE_HWMON_TYPE_LOC:
 		ixgbe_attr->dev_attr.show = ixgbe_hwmon_show_location;
 		snprintf(ixgbe_attr->name, sizeof(ixgbe_attr->name),
-			 "temp%u_label", offset);
+			 "temp%u_label", offset + 1);
 		break;
 	case IXGBE_HWMON_TYPE_TEMP:
 		ixgbe_attr->dev_attr.show = ixgbe_hwmon_show_temp;
 		snprintf(ixgbe_attr->name, sizeof(ixgbe_attr->name),
-			 "temp%u_input", offset);
+			 "temp%u_input", offset + 1);
 		break;
 	case IXGBE_HWMON_TYPE_CAUTION:
 		ixgbe_attr->dev_attr.show = ixgbe_hwmon_show_cautionthresh;
 		snprintf(ixgbe_attr->name, sizeof(ixgbe_attr->name),
-			 "temp%u_max", offset);
+			 "temp%u_max", offset + 1);
 		break;
 	case IXGBE_HWMON_TYPE_MAX:
 		ixgbe_attr->dev_attr.show = ixgbe_hwmon_show_maxopthresh;
 		snprintf(ixgbe_attr->name, sizeof(ixgbe_attr->name),
-			 "temp%u_crit", offset);
+			 "temp%u_crit", offset + 1);
 		break;
 	default:
-		rc = -EPERM;
-		return rc;
+		return -EPERM;
 	}
 
 	/* These always the same regardless of type */
@@ -148,9 +132,18 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 		&adapter->hw.mac.thermal_sensor_data.sensor[offset];
 	ixgbe_attr->hw = &adapter->hw;
 	ixgbe_attr->dev_attr.store = NULL;
-	ixgbe_attr->dev_attr.attr.mode = S_IRUGO;
+	ixgbe_attr->dev_attr.attr.mode = 0444;
 	ixgbe_attr->dev_attr.attr.name = ixgbe_attr->name;
 
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+	sysfs_attr_init(&ixgbe_attr->dev_attr.attr);
+
+	adapter->ixgbe_hwmon_buff->attrs[n_attr] = &ixgbe_attr->dev_attr.attr;
+
+	++adapter->ixgbe_hwmon_buff->n_hwmon;
+
+	return 0;
+#else
 	rc = device_create_file(pci_dev_to_dev(adapter->pdev),
 				&ixgbe_attr->dev_attr);
 
@@ -158,12 +151,14 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 		++adapter->ixgbe_hwmon_buff.n_hwmon;
 
 	return rc;
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 }
 #endif /* IXGBE_HWMON */
 
 static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter __maybe_unused *adapter)
 {
 #ifdef IXGBE_HWMON
+#ifndef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
 	int i;
 
 	if (adapter == NULL)
@@ -178,6 +173,7 @@ static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter __maybe_unused *adapter
 
 	if (adapter->ixgbe_hwmon_buff.device)
 		hwmon_device_unregister(adapter->ixgbe_hwmon_buff.device);
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 #endif /* IXGBE_HWMON */
 }
 
@@ -192,13 +188,15 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 {
 	int rc = 0;
 #ifdef IXGBE_HWMON
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+	struct hwmon_buff *ixgbe_hwmon;
+	struct device *hwmon_dev;
+#else
 	struct hwmon_buff *ixgbe_hwmon = &adapter->ixgbe_hwmon_buff;
-	unsigned int i;
 	int n_attrs;
-
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
+	unsigned int i;
 #endif /* IXGBE_HWMON */
-	if (adapter == NULL)
-		goto err;
 
 #ifdef IXGBE_HWMON
 	/* If this method isn't defined we don't support thermals */
@@ -210,6 +208,17 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 	if (adapter->hw.mac.ops.init_thermal_sensor_thresh(&adapter->hw))
 		goto no_thermal;
 
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+	ixgbe_hwmon = devm_kzalloc(&adapter->pdev->dev, sizeof(*ixgbe_hwmon),
+				   GFP_KERNEL);
+
+	if (!ixgbe_hwmon) {
+		rc = -ENOMEM;
+		goto exit;
+	}
+
+	adapter->ixgbe_hwmon_buff = ixgbe_hwmon;
+#else
 	/*
 	 * Allocation space for max attributs
 	 * max num sensors * values (loc, temp, max, caution)
@@ -217,16 +226,12 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 	n_attrs = IXGBE_MAX_SENSORS * 4;
 	ixgbe_hwmon->hwmon_list = kcalloc(n_attrs, sizeof(struct hwmon_attr),
 					  GFP_KERNEL);
+
 	if (!ixgbe_hwmon->hwmon_list) {
 		rc = -ENOMEM;
 		goto err;
 	}
-
-	ixgbe_hwmon->device = hwmon_device_register(pci_dev_to_dev(adapter->pdev));
-	if (IS_ERR(ixgbe_hwmon->device)) {
-		rc = PTR_ERR(ixgbe_hwmon->device);
-		goto err;
-	}
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 
 	for (i = 0; i < IXGBE_MAX_SENSORS; i++) {
 		/*
@@ -238,13 +243,43 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 
 		/* Bail if any hwmon attr struct fails to initialize */
 		rc = ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_CAUTION);
-		rc |= ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_LOC);
-		rc |= ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_TEMP);
-		rc |= ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_MAX);
+		if (rc)
+			goto err;
+		rc = ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_LOC);
+		if (rc)
+			goto err;
+		rc = ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_TEMP);
+		if (rc)
+			goto err;
+		rc = ixgbe_add_hwmon_attr(adapter, i, IXGBE_HWMON_TYPE_MAX);
 		if (rc)
 			goto err;
 	}
 
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+	ixgbe_hwmon->groups[0] = &ixgbe_hwmon->group;
+	ixgbe_hwmon->group.attrs = ixgbe_hwmon->attrs;
+
+	hwmon_dev = devm_hwmon_device_register_with_groups(&adapter->pdev->dev,
+							   "ixgbe",
+							   ixgbe_hwmon,
+							   ixgbe_hwmon->groups);
+
+	if (IS_ERR(hwmon_dev)) {
+		rc = PTR_ERR(hwmon_dev);
+		goto exit;
+	}
+
+#else
+	ixgbe_hwmon->device =
+		hwmon_device_register(pci_dev_to_dev(adapter->pdev));
+
+	if (IS_ERR(ixgbe_hwmon->device)) {
+		rc = PTR_ERR(ixgbe_hwmon->device);
+		goto err;
+	}
+
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 no_thermal:
 #endif /* IXGBE_HWMON */
 	goto exit;

@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 /* ethtool support for ixgbe */
 
@@ -103,6 +82,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("rx_no_buffer_count", stats.rnbc[0]) ,
 	IXGBE_STAT("tx_timeout_count", tx_timeout_count),
 	IXGBE_STAT("tx_restart_queue", restart_queue),
+	IXGBE_STAT("rx_length_errors", stats.rlec),
 	IXGBE_STAT("rx_long_length_errors", stats.roc),
 	IXGBE_STAT("rx_short_length_errors", stats.ruc),
 	IXGBE_STAT("tx_flow_control_xon", stats.lxontxc),
@@ -110,6 +90,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("tx_flow_control_xoff", stats.lxofftxc),
 	IXGBE_STAT("rx_flow_control_xoff", stats.lxoffrxc),
 	IXGBE_STAT("rx_csum_offload_errors", hw_csum_rx_error),
+	IXGBE_STAT("alloc_rx_page", alloc_rx_page),
 	IXGBE_STAT("alloc_rx_page_failed", alloc_rx_page_failed),
 	IXGBE_STAT("alloc_rx_buff_failed", alloc_rx_buff_failed),
 	IXGBE_STAT("rx_no_dma_resources", hw_rx_no_dma_resources),
@@ -1279,15 +1260,15 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	strncpy(drvinfo->driver, ixgbe_driver_name,
-		sizeof(drvinfo->driver) - 1);
-	strncpy(drvinfo->version, ixgbe_driver_version,
-		sizeof(drvinfo->version) - 1);
+	strlcpy(drvinfo->driver, ixgbe_driver_name,
+		sizeof(drvinfo->driver));
+	strlcpy(drvinfo->version, ixgbe_driver_version,
+		sizeof(drvinfo->version));
 
-	strncpy(drvinfo->fw_version, adapter->eeprom_id,
-		sizeof(drvinfo->fw_version) - 1);
-	strncpy(drvinfo->bus_info, pci_name(adapter->pdev),
-		sizeof(drvinfo->bus_info) - 1);
+	strlcpy(drvinfo->fw_version, adapter->eeprom_id,
+		sizeof(drvinfo->fw_version));
+	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev),
+		sizeof(drvinfo->bus_info));
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 
 	drvinfo->n_priv_flags = IXGBE_PRIV_FLAGS_STR_LEN;
@@ -1314,7 +1295,7 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_ring *temp_ring;
-	int i, err = 0;
+	int i, j, err = 0;
 	u32 new_rx_count, new_tx_count;
 
 	if ((ring->rx_mini_pending) || (ring->rx_jumbo_pending))
@@ -1340,15 +1321,19 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 	if (!netif_running(adapter->netdev)) {
 		for (i = 0; i < adapter->num_tx_queues; i++)
 			adapter->tx_ring[i]->count = new_tx_count;
+		for (i = 0; i < adapter->num_xdp_queues; i++)
+			adapter->xdp_ring[i]->count = new_tx_count;
 		for (i = 0; i < adapter->num_rx_queues; i++)
 			adapter->rx_ring[i]->count = new_rx_count;
 		adapter->tx_ring_count = new_tx_count;
+		adapter->xdp_ring_count = new_tx_count;
 		adapter->rx_ring_count = new_rx_count;
 		goto clear_reset;
 	}
 
 	/* allocate temporary buffer to store rings in */
-	i = max_t(int, adapter->num_tx_queues, adapter->num_rx_queues);
+	i = max_t(int, adapter->num_tx_queues + adapter->num_xdp_queues,
+		  adapter->num_rx_queues);
 	temp_ring = vmalloc(i * sizeof(struct ixgbe_ring));
 
 	if (!temp_ring) {
@@ -1380,10 +1365,31 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			}
 		}
 
+		for (j = 0; j < adapter->num_xdp_queues; j++, i++) {
+			memcpy(&temp_ring[i], adapter->xdp_ring[j],
+			       sizeof(struct ixgbe_ring));
+
+			temp_ring[i].count = new_tx_count;
+			err = ixgbe_setup_tx_resources(&temp_ring[i]);
+			if (err) {
+				while (i) {
+					i--;
+					ixgbe_free_tx_resources(&temp_ring[i]);
+				}
+				goto err_setup;
+			}
+		}
+
 		for (i = 0; i < adapter->num_tx_queues; i++) {
 			ixgbe_free_tx_resources(adapter->tx_ring[i]);
 
 			memcpy(adapter->tx_ring[i], &temp_ring[i],
+			       sizeof(struct ixgbe_ring));
+		}
+		for (j = 0; j < adapter->num_xdp_queues; j++, i++) {
+			ixgbe_free_tx_resources(adapter->xdp_ring[j]);
+
+			memcpy(adapter->xdp_ring[j], &temp_ring[i],
 			       sizeof(struct ixgbe_ring));
 		}
 
@@ -1395,9 +1401,15 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			memcpy(&temp_ring[i], adapter->rx_ring[i],
 			       sizeof(struct ixgbe_ring));
+#ifdef HAVE_XDP_BUFF_RXQ
+
+			/* Clear copied XDP RX-queue info */
+			memset(&temp_ring[i].xdp_rxq, 0,
+			       sizeof(temp_ring[i].xdp_rxq));
+#endif
 
 			temp_ring[i].count = new_rx_count;
-			err = ixgbe_setup_rx_resources(&temp_ring[i]);
+			err = ixgbe_setup_rx_resources(adapter, &temp_ring[i]);
 			if (err) {
 				while (i) {
 					i--;
@@ -2047,33 +2059,17 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 
 static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 {
-	struct ixgbe_ring *tx_ring = &adapter->test_tx_ring;
-	struct ixgbe_ring *rx_ring = &adapter->test_rx_ring;
-	struct ixgbe_hw *hw = &adapter->hw;
-	u32 reg_ctl;
-
-	/* shut down the DMA engines now so they can be reinitialized later */
+	/* Shut down the DMA engines now so they can be reinitialized later,
+	 * since the test rings and normally used rings should overlap on
+	 * queue 0 we can just use the standard disable Rx/Tx calls and they
+	 * will take care of disabling the test rings for us.
+	 */
 
 	/* first Rx */
-	ixgbe_disable_rx(hw);
-	ixgbe_disable_rx_queue(adapter, rx_ring);
+	ixgbe_disable_rx_queue(adapter);
 
 	/* now Tx */
-	IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(tx_ring->reg_idx), 0);
-
-	switch (hw->mac.type) {
-	case ixgbe_mac_82599EB:
-	case ixgbe_mac_X540:
-	case ixgbe_mac_X550:
-	case ixgbe_mac_X550EM_x:
-	case ixgbe_mac_X550EM_a:
-		reg_ctl = IXGBE_READ_REG(hw, IXGBE_DMATXCTL);
-		reg_ctl &= ~IXGBE_DMATXCTL_TE;
-		IXGBE_WRITE_REG(hw, IXGBE_DMATXCTL, reg_ctl);
-		break;
-	default:
-		break;
-	}
+	ixgbe_disable_tx_queue(adapter);
 
 	ixgbe_reset(adapter);
 
@@ -2126,7 +2122,7 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 	rx_ring->rx_buf_len = IXGBE_RXBUFFER_2K;
 #endif
 
-	err = ixgbe_setup_rx_resources(rx_ring);
+	err = ixgbe_setup_rx_resources(adapter, rx_ring);
 	if (err) {
 		ret_val = 4;
 		goto err_nomem;
@@ -2819,7 +2815,6 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		struct ixgbe_q_vector *q_vector = adapter->q_vector[i];
 
 		q_vector->tx.work_limit = adapter->tx_work_limit;
-		q_vector->rx.work_limit = adapter->rx_work_limit;
 		if (q_vector->tx.count && !q_vector->rx.count)
 			/* tx only */
 			q_vector->itr = tx_itr_param;
@@ -3746,6 +3741,8 @@ static int ixgbe_set_rxfh(struct net_device *netdev, const u32 *indir,
 
 		for (i = 0; i < reta_entries; i++)
 			adapter->rss_indir_tbl[i] = indir[i];
+
+		ixgbe_store_reta(adapter);
 	}
 
 	/* Fill out the rss hash key */
@@ -3753,8 +3750,6 @@ static int ixgbe_set_rxfh(struct net_device *netdev, const u32 *indir,
 		memcpy(adapter->rss_key, key, ixgbe_get_rxfh_key_size(netdev));
 		ixgbe_store_key(adapter);
 	}
-
-	ixgbe_store_reta(adapter);
 
 	return 0;
 }
@@ -3767,18 +3762,29 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 
 	/* we always support timestamping disabled */
-	info->rx_filters = 1 << HWTSTAMP_FILTER_NONE;
+	info->rx_filters = BIT(HWTSTAMP_FILTER_NONE);
 
 	switch (adapter->hw.mac.type) {
 #ifdef HAVE_PTP_1588_CLOCK
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		info->rx_filters |= 1 << HWTSTAMP_FILTER_ALL;
-		/* fallthrough */
+		info->rx_filters |= BIT(HWTSTAMP_FILTER_ALL);
+		break;
 	case ixgbe_mac_X540:
 	case ixgbe_mac_82599EB:
-		info->so_timestamping =
+		info->rx_filters |=
+			BIT(HWTSTAMP_FILTER_PTP_V1_L4_SYNC) |
+			BIT(HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ) |
+			BIT(HWTSTAMP_FILTER_PTP_V2_EVENT);
+		break;
+#endif /* HAVE_PTP_1588_CLOCK */
+	default:
+		return ethtool_op_get_ts_info(dev, info);
+	}
+#ifdef HAVE_PTP_1588_CLOCK
+
+	info->so_timestamping =
 			SOF_TIMESTAMPING_TX_SOFTWARE |
 			SOF_TIMESTAMPING_RX_SOFTWARE |
 			SOF_TIMESTAMPING_SOFTWARE |
@@ -3786,34 +3792,17 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 			SOF_TIMESTAMPING_RX_HARDWARE |
 			SOF_TIMESTAMPING_RAW_HARDWARE;
 
-		if (adapter->ptp_clock)
-			info->phc_index = ptp_clock_index(adapter->ptp_clock);
-		else
-			info->phc_index = -1;
+	if (adapter->ptp_clock)
+		info->phc_index = ptp_clock_index(adapter->ptp_clock);
+	else
+		info->phc_index = -1;
 
-		info->tx_types =
-			(1 << HWTSTAMP_TX_OFF) |
-			(1 << HWTSTAMP_TX_ON);
+	info->tx_types =
+		BIT(HWTSTAMP_TX_OFF) |
+		BIT(HWTSTAMP_TX_ON);
 
-		info->rx_filters |=
-			(1 << HWTSTAMP_FILTER_PTP_V1_L4_SYNC) |
-			(1 << HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_L2_EVENT) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_L4_EVENT) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_SYNC) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_L2_SYNC) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_L4_SYNC) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_DELAY_REQ) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ) |
-			(1 << HWTSTAMP_FILTER_PTP_V2_EVENT);
-		break;
-#endif /* HAVE_PTP_1588_CLOCK */
-	default:
-		return ethtool_op_get_ts_info(dev, info);
-		break;
-	}
 	return 0;
+#endif /* HAVE_PTP_1588_CLOCK */
 }
 #endif /* HAVE_ETHTOOL_GET_TS_INFO */
 
@@ -4170,7 +4159,7 @@ static u32 ixgbe_get_priv_flags(struct net_device *netdev)
 /**
  * ixgbe_set_priv_flags - set private flags
  * @netdev: network interface device structure
- * @flags: bit flags to be set
+ * @priv_flags: bit flags to be set
  **/
 static int ixgbe_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 {

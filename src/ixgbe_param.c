@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include <linux/types.h>
 #include <linux/module.h>
@@ -69,8 +48,6 @@
 	MODULE_PARM_DESC(X, desc);
 #endif
 
-IXGBE_PARAM(EEE, "Energy Efficient Ethernet (EEE) ,0=disabled, 1=enabled )"
-	    "default EEE disable");
 /* IntMode (Interrupt Mode)
  *
  * Valid Range: 0-2
@@ -80,13 +57,14 @@ IXGBE_PARAM(EEE, "Energy Efficient Ethernet (EEE) ,0=disabled, 1=enabled )"
  *
  * Default Value: 2
  */
-IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
-	    "default IntMode (deprecated)");
 IXGBE_PARAM(IntMode, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
 	    "default 2");
 #define IXGBE_INT_LEGACY		0
 #define IXGBE_INT_MSI			1
 #define IXGBE_INT_MSIX			2
+
+IXGBE_PARAM(InterruptType, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
+	    "default IntMode (deprecated)");
 
 /* MQ - Multiple Queue enable/disable
  *
@@ -373,13 +351,20 @@ struct ixgbe_option {
 #ifndef IXGBE_NO_LLI
 #ifdef module_param_array
 /**
- *  helper function to determine LLI support
+ * helper function to determine LLI support
+ * @adapter: board private structure
+ * @opt: pointer to option struct
  *
- *  LLI is only supported for 82599 and X540
- *  LLIPush is not supported on 82599
+ * LLI is only supported for 82599 and X540
+ * LLIPush is not supported on 82599
  **/
+#ifdef HAVE_CONFIG_HOTPLUG
 static bool __devinit ixgbe_lli_supported(struct ixgbe_adapter *adapter,
 					  struct ixgbe_option *opt)
+#else
+static bool ixgbe_lli_supported(struct ixgbe_adapter *adapter,
+				struct ixgbe_option *opt)
+#endif
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 
@@ -401,8 +386,13 @@ not_supp:
 #endif /* module_param_array */
 #endif /* IXGBE_NO_LLI */
 
+#ifdef HAVE_CONFIG_HOTPLUG
 static int __devinit ixgbe_validate_option(unsigned int *value,
 					   struct ixgbe_option *opt)
+#else
+static int ixgbe_validate_option(unsigned int *value,
+				 struct ixgbe_option *opt)
+#endif
 {
 	if (*value == OPTION_UNSET) {
 		printk(KERN_INFO "ixgbe: Invalid %s specified (%d),  %s\n",
@@ -468,7 +458,11 @@ static int __devinit ixgbe_validate_option(unsigned int *value,
  * value exists, a default value is used.  The final value is stored
  * in a variable in the adapter structure.
  **/
+#ifdef HAVE_CONFIG_HOTPLUG
 void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
+#else
+void ixgbe_check_options(struct ixgbe_adapter *adapter)
+#endif
 {
 	unsigned int mdd;
 	int bd = adapter->bd_number;
@@ -1252,5 +1246,4 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			break;
 		}
 	}
-
 }

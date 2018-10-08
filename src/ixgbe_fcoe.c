@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include "ixgbe.h"
 
@@ -38,7 +17,7 @@
 
 /**
  * ixgbe_fcoe_clear_ddp - clear the given ddp context
- * @ddp - ptr to the ixgbe_fcoe_ddp
+ * @ddp: ptr to the ixgbe_fcoe_ddp
  *
  * Returns : none
  *
@@ -154,6 +133,7 @@ out_ddp_put:
  * @xid: the exchange id requesting ddp
  * @sgl: the scatter-gather list for this request
  * @sgc: the number of scatter-gather items
+ * @target_mode: 1 to setup target mode, 0 to setup initiator mode
  *
  * Returns : 1 for success and 0 for no ddp
  */
@@ -1033,7 +1013,7 @@ int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type)
 #endif /* HAVE_NETDEV_OPS_FCOE_GETWWN */
 /**
  * ixgbe_fcoe_get_tc - get the current TC that fcoe is mapped to
- * @adapter - pointer to the device adapter structure
+ * @adapter: pointer to the device adapter structure
  *
  * Return : TC that FCoE is mapped to
  */

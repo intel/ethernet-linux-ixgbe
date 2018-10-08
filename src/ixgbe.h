@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
@@ -46,6 +25,9 @@
 
 #include "kcompat.h"
 
+#ifdef HAVE_XDP_BUFF_RXQ
+#include <net/xdp.h>
+#endif
 #ifdef CONFIG_NET_RX_BUSY_POLL
 #include <net/busy_poll.h>
 #ifdef HAVE_NDO_BUSY_POLL
@@ -91,7 +73,6 @@
 #define IXGBE_MIN_TXD			64
 
 #define IXGBE_DEFAULT_RXD		512
-#define IXGBE_DEFAULT_RX_WORK		256
 #define IXGBE_MAX_RXD			4096
 #define IXGBE_MIN_RXD			64
 
@@ -315,7 +296,15 @@ struct vf_macvlans {
 struct ixgbe_tx_buffer {
 	union ixgbe_adv_tx_desc *next_to_watch;
 	unsigned long time_stamp;
-	struct sk_buff *skb;
+	union {
+		struct sk_buff *skb;
+#ifdef HAVE_XDP_FRAME_STRUCT
+		struct xdp_frame *xdpf;
+#else
+		/* XDP uses address ptr on irq_clean */
+		void *data;
+#endif
+	};
 	unsigned int bytecount;
 	unsigned short gso_segs;
 	__be16 protocol;
@@ -358,6 +347,7 @@ struct ixgbe_rx_queue_stats {
 	u64 rsc_count;
 	u64 rsc_flush;
 	u64 non_eop_descs;
+	u64 alloc_rx_page;
 	u64 alloc_rx_page_failed;
 	u64 alloc_rx_buff_failed;
 	u64 csum_err;
@@ -378,6 +368,7 @@ enum ixgbe_ring_state_t {
 	__IXGBE_TX_XPS_INIT_DONE,
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
+	__IXGBE_TX_XDP_RING,
 };
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 
@@ -397,6 +388,12 @@ enum ixgbe_ring_state_t {
 	set_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
 #define clear_ring_rsc_enabled(ring) \
 	clear_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+#define ring_is_xdp(ring) \
+	test_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
+#define set_ring_xdp(ring) \
+	set_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
+#define clear_ring_xdp(ring) \
+	clear_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
 #define netdev_ring(ring) (ring->netdev)
 #define ring_queue_index(ring) (ring->queue_index)
 
@@ -405,6 +402,7 @@ struct ixgbe_ring {
 	struct ixgbe_ring *next;	/* pointer to next ring in q_vector */
 	struct ixgbe_q_vector *q_vector; /* backpointer to host q_vector */
 	struct net_device *netdev;	/* netdev ring belongs to */
+	struct bpf_prog *xdp_prog;
 	struct device *dev;		/* device for DMA mapping */
 	void *desc;			/* descriptor ring memory */
 	union {
@@ -452,6 +450,9 @@ struct ixgbe_ring {
 		struct ixgbe_tx_queue_stats tx_stats;
 		struct ixgbe_rx_queue_stats rx_stats;
 	};
+#ifdef HAVE_XDP_BUFF_RXQ
+	struct xdp_rxq_info xdp_rxq;
+#endif
 } ____cacheline_internodealigned_in_smp;
 
 enum ixgbe_ring_f_enum {
@@ -478,6 +479,7 @@ enum ixgbe_ring_f_enum {
 #define MAX_RX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #define MAX_TX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #endif /* CONFIG_FCOE */
+#define MAX_XDP_QUEUES  (IXGBE_MAX_FDIR_INDICES + 1)
 
 struct ixgbe_ring_feature {
 	u16 limit;	/* upper limit on feature indices */
@@ -522,8 +524,15 @@ static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring __maybe_unused *r
 #define ixgbe_rx_pg_size(_ring) (PAGE_SIZE << ixgbe_rx_pg_order(_ring))
 
 #endif
+#define IXGBE_ITR_ADAPTIVE_MIN_INC	2
+#define IXGBE_ITR_ADAPTIVE_MIN_USECS	10
+#define IXGBE_ITR_ADAPTIVE_MAX_USECS	126
+#define IXGBE_ITR_ADAPTIVE_LATENCY	0x80
+#define IXGBE_ITR_ADAPTIVE_BULK		0x00
+
 struct ixgbe_ring_container {
 	struct ixgbe_ring *ring;	/* pointer to linked list of rings */
+	unsigned long next_update;	/* jiffies value of last update */
 	unsigned int total_bytes;	/* total bytes processed this int */
 	unsigned int total_packets;	/* total packets processed this int */
 	u16 work_limit;			/* total work allowed per interrupt */
@@ -558,7 +567,7 @@ struct ixgbe_q_vector {
 #ifdef HAVE_IRQ_AFFINITY_HINT
 	cpumask_t affinity_mask;
 #endif
-	int numa_node;
+	int node;
 	struct rcu_head rcu;	/* to avoid race with update stats on free */
 	char name[IFNAMSIZ + 9];
 	bool netpoll_rx;
@@ -618,7 +627,7 @@ static inline bool ixgbe_qv_lock_poll(struct ixgbe_q_vector *q_vector)
 				IXGBE_QV_STATE_POLL);
 #ifdef BP_EXTENDED_STATS
 	if (rc != IXGBE_QV_STATE_IDLE)
-		q_vector->tx.ring->stats.yields++;
+		q_vector->rx.ring->stats.yields++;
 #endif
 	return rc == IXGBE_QV_STATE_IDLE;
 }
@@ -663,8 +672,15 @@ struct hwmon_attr {
 };
 
 struct hwmon_buff {
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+	struct attribute_group group;
+	const struct attribute_group *groups[2];
+	struct attribute *attrs[IXGBE_MAX_SENSORS * 4 + 1];
+	struct hwmon_attr hwmon_list[IXGBE_MAX_SENSORS * 4];
+#else
 	struct device *device;
 	struct hwmon_attr *hwmon_list;
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 	unsigned int n_hwmon;
 };
 #endif /* IXGBE_HWMON */
@@ -759,6 +775,7 @@ struct ixgbe_adapter {
 #endif /* NETIF_F_HW_VLAN_TX || NETIF_F_HW_VLAN_CTAG_TX */
 	/* OS defined structs */
 	struct net_device *netdev;
+	struct bpf_prog *xdp_prog;
 	struct pci_dev *pdev;
 
 	unsigned long state;
@@ -855,7 +872,10 @@ struct ixgbe_adapter {
 	/* Rx fast path data */
 	int num_rx_queues;
 	u16 rx_itr_setting;
-	u16 rx_work_limit;
+
+	/* XDP */
+	int num_xdp_queues;
+	struct ixgbe_ring *xdp_ring[MAX_XDP_QUEUES];
 
 	/* TX */
 	struct ixgbe_ring *tx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
@@ -873,6 +893,7 @@ struct ixgbe_adapter {
 	u64 rsc_total_count;
 	u64 rsc_total_flush;
 	u64 non_eop_descs;
+	u32 alloc_rx_page;
 	u32 alloc_rx_page_failed;
 	u32 alloc_rx_buff_failed;
 
@@ -920,6 +941,7 @@ struct ixgbe_adapter {
 	u32 *config_space;
 	u64 tx_busy;
 	unsigned int tx_ring_count;
+	unsigned int xdp_ring_count;
 	unsigned int rx_ring_count;
 
 	u32 link_speed;
@@ -994,7 +1016,11 @@ struct ixgbe_adapter {
 	struct ixgbe_mac_addr *mac_table;
 #ifdef IXGBE_SYSFS
 #ifdef IXGBE_HWMON
+#ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
+	struct hwmon_buff *ixgbe_hwmon_buff;
+#else
 	struct hwmon_buff ixgbe_hwmon_buff;
+#endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 #endif /* IXGBE_HWMON */
 #else /* IXGBE_SYSFS */
 #ifdef IXGBE_PROCFS
@@ -1059,7 +1085,7 @@ enum ixgbe_state_t {
 	__IXGBE_RESETTING,
 	__IXGBE_DOWN,
 	__IXGBE_DISABLED,
-	__IXGBE_REMOVE,
+	__IXGBE_REMOVING,
 	__IXGBE_SERVICE_SCHED,
 	__IXGBE_SERVICE_INITED,
 	__IXGBE_IN_SFP_INIT,
@@ -1124,7 +1150,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter);
 void ixgbe_reinit_locked(struct ixgbe_adapter *adapter);
 void ixgbe_reset(struct ixgbe_adapter *adapter);
 void ixgbe_set_ethtool_ops(struct net_device *netdev);
-int ixgbe_setup_rx_resources(struct ixgbe_ring *);
+int ixgbe_setup_rx_resources(struct ixgbe_adapter *, struct ixgbe_ring *);
 int ixgbe_setup_tx_resources(struct ixgbe_ring *);
 void ixgbe_free_rx_resources(struct ixgbe_ring *);
 void ixgbe_free_tx_resources(struct ixgbe_ring *);
@@ -1158,8 +1184,8 @@ void ixgbe_tx_ctxtdesc(struct ixgbe_ring *, u32, u32, u32, u32);
 void ixgbe_do_reset(struct net_device *netdev);
 void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);
 int ixgbe_poll(struct napi_struct *napi, int budget);
-void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter,
-				   struct ixgbe_ring *);
+void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter);
+void ixgbe_disable_tx_queue(struct ixgbe_adapter *adapter);
 void ixgbe_vlan_strip_enable(struct ixgbe_adapter *adapter);
 void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter);
 #ifdef ETHTOOL_OPS_COMPAT

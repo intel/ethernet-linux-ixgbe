@@ -1,31 +1,15 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include "ixgbe_hv_vf.h"
 
 /**
  * Hyper-V variant - just a stub.
+ * @hw: unused
+ * @mc_addr_list: unused
+ * @mc_addr_count: unused
+ * @next: unused
+ * @clear: unused
  */
 s32 ixgbevf_hv_update_mc_addr_list_vf(struct ixgbe_hw *hw, u8 *mc_addr_list,
 				 u32 mc_addr_count, ixgbe_mc_addr_itr next,
@@ -38,6 +22,8 @@ s32 ixgbevf_hv_update_mc_addr_list_vf(struct ixgbe_hw *hw, u8 *mc_addr_list,
 
 /**
  * Hyper-V variant - just a stub.
+ * @hw: unused
+ * @xcast_mode: unused
  */
 s32 ixgbevf_hv_update_xcast_mode(struct ixgbe_hw *hw, int xcast_mode)
 {
@@ -48,6 +34,11 @@ s32 ixgbevf_hv_update_xcast_mode(struct ixgbe_hw *hw, int xcast_mode)
 
 /**
  * Hyper-V variant - just a stub.
+ * @hw: unused
+ * @vlan: unused
+ * @vind: unused
+ * @vlan_on: unused
+ * @vlvf_bypass: unused
  */
 s32 ixgbevf_hv_set_vfta_vf(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 				  bool vlan_on, bool vlvf_bypass)
@@ -66,6 +57,11 @@ s32 ixgbevf_hv_set_uc_addr_vf(struct ixgbe_hw *hw, u32 index, u8 *addr)
 
 /**
  * Hyper-V variant; there is no mailbox communication.
+ * @hw: pointer to hardware structure
+ * @speed: pointer to link speed
+ * @link_up: true is link is up, false otherwise
+ * @autoneg_wait_to_complete: unused
+ *
  */
 s32 ixgbevf_hv_check_mac_link_vf(struct ixgbe_hw *hw,
 					ixgbe_link_speed *speed,

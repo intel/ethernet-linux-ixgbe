@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include "ixgbe.h"
 #include "ixgbe_sriov.h"
@@ -289,13 +268,14 @@ static bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
  **/
 static bool ixgbe_cache_ring_rss(struct ixgbe_adapter *adapter)
 {
-	int i;
+	int i, reg_idx;
 
 	for (i = 0; i < adapter->num_rx_queues; i++)
 		adapter->rx_ring[i]->reg_idx = i;
-
-	for (i = 0; i < adapter->num_tx_queues; i++)
-		adapter->tx_ring[i]->reg_idx = i;
+	for (i = 0, reg_idx = 0; i < adapter->num_tx_queues; i++, reg_idx++)
+		adapter->tx_ring[i]->reg_idx = reg_idx;
+	for (i = 0; i < adapter->num_xdp_queues; i++, reg_idx++)
+		adapter->xdp_ring[i]->reg_idx = reg_idx;
 
 	return true;
 }
@@ -325,6 +305,15 @@ static void ixgbe_cache_ring_register(struct ixgbe_adapter *adapter)
 		return;
 
 	ixgbe_cache_ring_rss(adapter);
+}
+
+static int ixgbe_xdp_queues(struct ixgbe_adapter *adapter)
+{
+#ifdef HAVE_XDP_SUPPORT
+	return adapter->xdp_prog ? nr_cpu_ids : 0;
+#else
+	return 0;
+#endif
 }
 
 #define IXGBE_RSS_64Q_MASK	0x3F
@@ -417,6 +406,7 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	adapter->num_rx_queues_per_pool = tcs;
 
 	adapter->num_tx_queues = vmdq_i * tcs;
+	adapter->num_xdp_queues = 0;
 	adapter->num_rx_queues = vmdq_i * tcs;
 
 	/* disable ATR as it is not supported when VMDq is enabled */
@@ -532,6 +522,7 @@ static bool ixgbe_set_dcb_queues(struct ixgbe_adapter *adapter)
 		netdev_set_tc_queue(dev, i, rss_i, rss_i * i);
 
 	adapter->num_tx_queues = rss_i * tcs;
+	adapter->num_xdp_queues = 0;
 	adapter->num_rx_queues = rss_i * tcs;
 
 	return true;
@@ -632,6 +623,7 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 #else
 	adapter->num_tx_queues = vmdq_i;
 #endif /* HAVE_TX_MQ */
+	adapter->num_xdp_queues = 0;
 
 	/* disable ATR as it is not supported when VMDq is enabled */
 	adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
@@ -752,6 +744,7 @@ static bool ixgbe_set_rss_queues(struct ixgbe_adapter *adapter)
 #ifdef HAVE_TX_MQ
 	adapter->num_tx_queues = rss_i;
 #endif
+	adapter->num_xdp_queues = ixgbe_xdp_queues(adapter);
 
 	return true;
 }
@@ -772,6 +765,7 @@ static void ixgbe_set_num_queues(struct ixgbe_adapter *adapter)
 	/* Start with base case */
 	adapter->num_rx_queues = 1;
 	adapter->num_tx_queues = 1;
+	adapter->num_xdp_queues = 0;
 	adapter->num_rx_pools = adapter->num_rx_queues;
 	adapter->num_rx_queues_per_pool = 1;
 
@@ -805,8 +799,11 @@ static int ixgbe_acquire_msix_vectors(struct ixgbe_adapter *adapter)
 	if (!(adapter->flags & IXGBE_FLAG_MSIX_CAPABLE))
 		return -EOPNOTSUPP;
 
-	/* We start by asking for one vector per queue pair */
+	/* We start by asking for one vector per queue pair with XDP queues
+	 * being stacked with TX queues.
+	 */
 	vectors = max(adapter->num_rx_queues, adapter->num_tx_queues);
+	vectors = max(vectors, adapter->num_xdp_queues);
 
 	/* It is easy to be greedy for MSI-X vectors. However, it really
 	 * doesn't do much good if we have a lot more vectors than CPUs. We'll
@@ -870,7 +867,6 @@ static int ixgbe_acquire_msix_vectors(struct ixgbe_adapter *adapter)
 	return 0;
 }
 
-
 static void ixgbe_add_ring(struct ixgbe_ring *ring,
 			   struct ixgbe_ring_container *head)
 {
@@ -886,6 +882,8 @@ static void ixgbe_add_ring(struct ixgbe_ring *ring,
  * @v_idx: index of vector in adapter struct
  * @txr_count: total number of Tx rings to allocate
  * @txr_idx: index of first Tx ring to allocate
+*  @xdp_count: total number of XDP rings to allocate
+*  @xdp_idx: index of first XDP ring to allocate
  * @rxr_count: total number of Rx rings to allocate
  * @rxr_idx: index of first Rx ring to allocate
  *
@@ -894,6 +892,7 @@ static void ixgbe_add_ring(struct ixgbe_ring *ring,
 static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 				unsigned int v_count, unsigned int v_idx,
 				unsigned int txr_count, unsigned int txr_idx,
+				unsigned int xdp_count, unsigned int xdp_idx,
 				unsigned int rxr_count, unsigned int rxr_idx)
 {
 	struct ixgbe_q_vector *q_vector;
@@ -906,7 +905,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	int ring_count, size;
 
 	/* note this will allocate space for the ring structure as well! */
-	ring_count = txr_count + rxr_count;
+	ring_count = txr_count + rxr_count + xdp_count;
 	size = sizeof(struct ixgbe_q_vector) +
 	       (sizeof(struct ixgbe_ring) * ring_count);
 
@@ -935,7 +934,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	if (cpu != -1)
 		cpumask_set_cpu(cpu, &q_vector->affinity_mask);
 #endif
-	q_vector->numa_node = node;
+	q_vector->node = node;
 
 	/* initialize CPU for DCA */
 	q_vector->cpu = -1;
@@ -961,10 +960,12 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 	/* initialize work limits */
 	q_vector->tx.work_limit = adapter->tx_work_limit;
-	q_vector->rx.work_limit = adapter->rx_work_limit;
 
-	/* initialize pointer to rings */
-	ring = q_vector->ring;
+	/* Initialize setting for adaptive ITR */
+	q_vector->tx.itr = IXGBE_ITR_ADAPTIVE_MAX_USECS |
+			   IXGBE_ITR_ADAPTIVE_LATENCY;
+	q_vector->rx.itr = IXGBE_ITR_ADAPTIVE_MAX_USECS |
+			   IXGBE_ITR_ADAPTIVE_LATENCY;
 
 	/* intialize ITR */
 	if (txr_count && !rxr_count) {
@@ -980,6 +981,9 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		else
 			q_vector->itr = adapter->rx_itr_setting;
 	}
+
+	/* initialize pointer to rings */
+	ring = q_vector->ring;
 
 	while (txr_count) {
 		/* assign generic ring traits */
@@ -1007,6 +1011,32 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		ring++;
 	}
 
+	while (xdp_count) {
+		/* assign generic ring traits */
+		ring->dev = &adapter->pdev->dev;
+		ring->netdev = adapter->netdev;
+
+		/* configure backlink on ring */
+		ring->q_vector = q_vector;
+
+		/* update q_vector Tx values */
+		ixgbe_add_ring(ring, &q_vector->tx);
+
+		/* apply Tx specific ring traits */
+		ring->count = adapter->tx_ring_count;
+		ring->queue_index = xdp_idx;
+		set_ring_xdp(ring);
+
+		/* assign ring to adapter */
+		adapter->xdp_ring[xdp_idx] = ring;
+
+		/* update count and index */
+		xdp_count--;
+		xdp_idx++;
+
+		/* push pointer to next ring */
+		ring++;
+	}
 	while (rxr_count) {
 		/* assign generic ring traits */
 		ring->dev = pci_dev_to_dev(adapter->pdev);
@@ -1069,8 +1099,12 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 	struct ixgbe_q_vector *q_vector = adapter->q_vector[v_idx];
 	struct ixgbe_ring *ring;
 
-	ixgbe_for_each_ring(ring, q_vector->tx)
-		adapter->tx_ring[ring->queue_index] = NULL;
+	ixgbe_for_each_ring(ring, q_vector->tx) {
+		if (ring_is_xdp(ring))
+			adapter->xdp_ring[ring->queue_index] = NULL;
+		else
+			adapter->tx_ring[ring->queue_index] = NULL;
+	}
 
 	ixgbe_for_each_ring(ring, q_vector->rx)
 		adapter->rx_ring[ring->queue_index] = NULL;
@@ -1095,13 +1129,14 @@ static int ixgbe_alloc_q_vectors(struct ixgbe_adapter *adapter)
 	unsigned int q_vectors = adapter->num_q_vectors;
 	unsigned int rxr_remaining = adapter->num_rx_queues;
 	unsigned int txr_remaining = adapter->num_tx_queues;
-	unsigned int rxr_idx = 0, txr_idx = 0, v_idx = 0;
+	unsigned int xdp_remaining = adapter->num_xdp_queues;
+	unsigned int rxr_idx = 0, txr_idx = 0, xdp_idx = 0, v_idx = 0;
 	int err;
 
-	if (q_vectors >= (rxr_remaining + txr_remaining)) {
+	if (q_vectors >= (rxr_remaining + txr_remaining + xdp_remaining)) {
 		for (; rxr_remaining; v_idx++) {
 			err = ixgbe_alloc_q_vector(adapter, q_vectors, v_idx,
-						   0, 0, 1, rxr_idx);
+						   0, 0, 0, 0, 1, rxr_idx);
 			if (err)
 				goto err_out;
 
@@ -1114,8 +1149,11 @@ static int ixgbe_alloc_q_vectors(struct ixgbe_adapter *adapter)
 	for (; v_idx < q_vectors; v_idx++) {
 		int rqpv = DIV_ROUND_UP(rxr_remaining, q_vectors - v_idx);
 		int tqpv = DIV_ROUND_UP(txr_remaining, q_vectors - v_idx);
+		int xqpv = DIV_ROUND_UP(xdp_remaining, q_vectors - v_idx);
+
 		err = ixgbe_alloc_q_vector(adapter, q_vectors, v_idx,
 					   tqpv, txr_idx,
+					   xqpv, xdp_idx,
 					   rqpv, rxr_idx);
 
 		if (err)
@@ -1124,14 +1162,17 @@ static int ixgbe_alloc_q_vectors(struct ixgbe_adapter *adapter)
 		/* update counts and index */
 		rxr_remaining -= rqpv;
 		txr_remaining -= tqpv;
+		xdp_remaining -= xqpv;
 		rxr_idx++;
 		txr_idx++;
+		xdp_idx += xqpv;
 	}
 
 	return IXGBE_SUCCESS;
 
 err_out:
 	adapter->num_tx_queues = 0;
+	adapter->num_xdp_queues = 0;
 	adapter->num_rx_queues = 0;
 	adapter->num_q_vectors = 0;
 
@@ -1154,6 +1195,7 @@ static void ixgbe_free_q_vectors(struct ixgbe_adapter *adapter)
 	int v_idx = adapter->num_q_vectors;
 
 	adapter->num_tx_queues = 0;
+	adapter->num_xdp_queues = 0;
 	adapter->num_rx_queues = 0;
 	adapter->num_q_vectors = 0;
 
@@ -1271,6 +1313,16 @@ int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter)
 
 	ixgbe_cache_ring_register(adapter);
 
+#ifdef HAVE_XDP_SUPPORT
+	e_dev_info("Multiqueue %s: Rx Queue count = %u, Tx Queue count = %u XDP Queue count = %u\n",
+		   (adapter->num_rx_queues > 1) ? "Enabled" : "Disabled",
+		   adapter->num_rx_queues, adapter->num_tx_queues,
+		   adapter->num_xdp_queues);
+#else
+	e_dev_info("Multiqueue %s: Rx Queue count = %u, Tx Queue count = %u\n",
+		   (adapter->num_rx_queues > 1) ? "Enabled" : "Disabled",
+		   adapter->num_rx_queues, adapter->num_tx_queues);
+#endif
 	set_bit(__IXGBE_DOWN, &adapter->state);
 
 	return IXGBE_SUCCESS;
@@ -1285,6 +1337,10 @@ int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter)
  **/
 void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter)
 {
+	adapter->num_tx_queues = 0;
+	adapter->num_xdp_queues = 0;
+	adapter->num_rx_queues = 0;
+
 	ixgbe_free_q_vectors(adapter);
 	ixgbe_reset_interrupt_capability(adapter);
 }

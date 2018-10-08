@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
@@ -1860,6 +1839,7 @@ STATIC void ixgbe_shift_out_eeprom_bits(struct ixgbe_hw *hw, u16 data,
 /**
  *  ixgbe_shift_in_eeprom_bits - Shift data bits in from the EEPROM
  *  @hw: pointer to hardware structure
+ *  @count: number of bits to shift
  **/
 STATIC u16 ixgbe_shift_in_eeprom_bits(struct ixgbe_hw *hw, u16 count)
 {
@@ -1918,7 +1898,7 @@ STATIC void ixgbe_raise_eeprom_clk(struct ixgbe_hw *hw, u32 *eec)
 /**
  *  ixgbe_lower_eeprom_clk - Lowers the EEPROM's clock input.
  *  @hw: pointer to hardware structure
- *  @eecd: EECD's current value
+ *  @eec: EEC's current value
  **/
 STATIC void ixgbe_lower_eeprom_clk(struct ixgbe_hw *hw, u32 *eec)
 {
@@ -2298,6 +2278,7 @@ s32 ixgbe_init_rx_addrs_generic(struct ixgbe_hw *hw)
  *  ixgbe_add_uc_addr - Adds a secondary unicast address.
  *  @hw: pointer to hardware structure
  *  @addr: new address
+ *  @vmdq: VMDq "set" or "pool" index
  *
  *  Adds it to unused receive address register or goes into promiscuous mode.
  **/
@@ -2442,7 +2423,7 @@ STATIC s32 ixgbe_mta_vector(struct ixgbe_hw *hw, u8 *mc_addr)
 /**
  *  ixgbe_set_mta - Set bit-vector in multicast table
  *  @hw: pointer to hardware structure
- *  @hash_value: Multicast address hash value
+ *  @mc_addr: Multicast address
  *
  *  Sets the bit-vector in the multicast table.
  **/
@@ -3144,6 +3125,7 @@ s32 ixgbe_disable_sec_rx_path_generic(struct ixgbe_hw *hw)
 /**
  *  prot_autoc_read_generic - Hides MAC differences needed for AUTOC read
  *  @hw: pointer to hardware structure
+ *  @locked: bool to indicate whether the SW/FW lock was taken
  *  @reg_val: Value we read from AUTOC
  *
  *  The default case requires no protection so just to the register read.
@@ -3670,6 +3652,9 @@ s32 ixgbe_init_uta_tables_generic(struct ixgbe_hw *hw)
  *  ixgbe_find_vlvf_slot - find the vlanid or the first empty slot
  *  @hw: pointer to hardware structure
  *  @vlan: VLAN id to write to VLAN filter
+ *  @vlvf_bypass: true to find vlanid only, false returns first empty slot if
+ *		  vlanid not found
+ *
  *
  *  return the VLVF index where this VLAN id should be placed
  *
@@ -4313,10 +4298,11 @@ s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
 				 u32 length, u32 timeout, bool return_data)
 {
 	u32 hdr_size = sizeof(struct ixgbe_hic_hdr);
-	u16 dword_len;
+	struct ixgbe_hic_hdr *resp = (struct ixgbe_hic_hdr *)buffer;
 	u16 buf_len;
 	s32 status;
 	u32 bi;
+	u32 dword_len;
 
 	DEBUGFUNC("ixgbe_host_interface_command");
 
@@ -4346,8 +4332,23 @@ s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
 		IXGBE_LE32_TO_CPUS(&buffer[bi]);
 	}
 
-	/* If there is any thing in data position pull it in */
-	buf_len = ((struct ixgbe_hic_hdr *)buffer)->buf_len;
+	/*
+	 * If there is any thing in data position pull it in
+	 * Read Flash command requires reading buffer length from
+	 * two byes instead of one byte
+	 */
+	if (resp->cmd == 0x30) {
+		for (; bi < dword_len + 2; bi++) {
+			buffer[bi] = IXGBE_READ_REG_ARRAY(hw, IXGBE_FLEX_MNG,
+							  bi);
+			IXGBE_LE32_TO_CPUS(&buffer[bi]);
+		}
+		buf_len = (((u16)(resp->cmd_or_resp.ret_status) << 3)
+				  & 0xF00) | resp->buf_len;
+		hdr_size += (2 << 2);
+	} else {
+		buf_len = resp->buf_len;
+	}
 	if (!buf_len)
 		goto rel_out;
 
@@ -4379,6 +4380,8 @@ rel_out:
  *  @min: driver version minor number
  *  @build: driver version build number
  *  @sub: driver version sub build number
+ *  @len: unused
+ *  @driver_ver: unused
  *
  *  Sends driver version number to firmware through the manageability
  *  block.  On success return IXGBE_SUCCESS
@@ -4566,7 +4569,6 @@ STATIC const u8 ixgbe_emc_therm_limit[4] = {
 /**
  *  ixgbe_get_thermal_sensor_data - Gathers thermal sensor data
  *  @hw: pointer to hardware structure
- *  @data: pointer to the thermal sensor data structure
  *
  *  Returns the thermal sensor data structure
  **/

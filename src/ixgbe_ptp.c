@@ -1,26 +1,5 @@
-/*******************************************************************************
-
-  Intel(R) 10GbE PCI Express Linux Network Driver
-  Copyright(c) 1999 - 2018 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include "ixgbe.h"
 #include <linux/ptp_classify.h>
@@ -298,7 +277,7 @@ static u64 ixgbe_ptp_read_82599(const struct cyclecounter *hw_cc)
  * ixgbe_ptp_convert_to_hwtstamp - convert register value to hw timestamp
  * @adapter: private adapter structure
  * @hwtstamp: stack timestamp structure
- * @systim: unsigned 64bit system time value
+ * @timestamp: unsigned 64bit system time value
  *
  * We need to convert the adapter's RX/TXSTMP registers into a hwtstamp value
  * which can be used by the stack's ptp functions.
@@ -580,7 +559,6 @@ static int ixgbe_ptp_feature_enable(struct ptp_clock_info *ptp,
 /**
  * ixgbe_ptp_check_pps_event
  * @adapter: the private adapter structure
- * @eicr: the interrupt cause register value
  *
  * This function is called by the interrupt routine when checking for
  * interrupts. It will check and handle a pps event.
@@ -862,7 +840,7 @@ void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
 /**
  * ixgbe_ptp_get_ts_config - get current hardware timestamping configuration
  * @adapter: pointer to adapter structure
- * @ifreq: ioctl data
+ * @ifr: ioctl data
  *
  * This function returns the current timestamping settings. Rather than
  * attempt to deconstruct registers to fill in the values, simply keep a copy
@@ -1055,7 +1033,7 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 /**
  * ixgbe_ptp_set_ts_config - user entry point for timestamp mode
  * @adapter: pointer to adapter struct
- * @ifreq: ioctl data
+ * @ifr: ioctl data
  *
  * Set hardware to requested mode. If unsupported, return an error with no
  * changes. Otherwise, store the mode for future reference.
