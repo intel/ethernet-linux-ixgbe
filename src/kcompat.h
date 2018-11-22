@@ -4914,8 +4914,6 @@ extern int __kc_pcie_get_minimum_link(struct pci_dev *dev,
 #if !defined(HAVE_UDP_ENC_TUNNEL) && IS_ENABLED(CONFIG_VXLAN)
 #define HAVE_UDP_ENC_TUNNEL
 #endif
-#else
-#define HAVE_TCF_EXTS_TO_LIST
 #endif /* < 4.8.0 */
 #define HAVE_NDO_GET_PHYS_PORT_ID
 #define HAVE_NETIF_SET_XPS_QUEUE_CONST_MASK
@@ -5066,6 +5064,15 @@ static inline void __kc_ether_addr_copy(u8 *dst, const u8 *src)
 int __kc_ipv6_find_hdr(const struct sk_buff *skb, unsigned int *offset,
 		       int target, unsigned short *fragoff, int *flags);
 #define ipv6_find_hdr(a, b, c, d, e) __kc_ipv6_find_hdr((a), (b), (c), (d), (e))
+
+#ifndef OPTIMIZE_HIDE_VAR
+#ifdef __GNUC__
+#define OPTIMIZER_HIDE_VAR(var) __asm__ ("" : "=r" (var) : "0" (var))
+#else
+#include <linux/barrier.h>
+#define OPTIMIZE_HIDE_VAR(var)	barrier()
+#endif
+#endif
 #else /* >= 3.14.0 */
 
 /* for ndo_dfwd_ ops add_station, del_station and _start_xmit */
@@ -5684,6 +5691,10 @@ struct udp_tunnel_info {
 };
 #endif
 
+#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5))
+#define HAVE_TCF_EXTS_TO_LIST
+#endif
+
 #if !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0))) &&\
 	!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,4))
 static inline int
@@ -5724,6 +5735,7 @@ pci_release_mem_regions(struct pci_dev *pdev)
 #endif /* !SLE_VERSION(12,3,0) */
 #else
 #define HAVE_UDP_ENC_RX_OFFLOAD
+#define HAVE_TCF_EXTS_TO_LIST
 #endif /* 4.8.0 */
 
 /*****************************************************************************/
@@ -5793,10 +5805,10 @@ pci_release_mem_regions(struct pci_dev *pdev)
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0))
 #ifdef NETIF_F_HW_TC
-#if (!(RHEL_RELEASE_CODE) && \
-     (SLE_VERSION_CODE && (SLE_VERSION_CODE < SLE_VERSION(12,3,0))))
+#if (!(RHEL_RELEASE_CODE) && !(SLE_VERSION_CODE) || \
+    (SLE_VERSION_CODE && (SLE_VERSION_CODE < SLE_VERSION(12,3,0))))
 #define HAVE_TC_FLOWER_VLAN_IN_TAGS
-#endif /* !RHEL_RELEASE_CODE && SLE_VERSION(12,3,0) */
+#endif /* !RHEL_RELEASE_CODE && !SLE_VERSION_CODE || SLE_VERSION(12,3,0) */
 #endif /* NETIF_F_HW_TC */
 #endif /* KERNEL_VERSION(4.9.0) */
 
@@ -6015,7 +6027,9 @@ struct ethtool_link_ksettings {
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
+#if !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6)))
 #define TC_SETUP_QDISC_MQPRIO TC_SETUP_MQPRIO
+#endif
 void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 				      struct ethtool_link_ksettings *src);
 #define ethtool_intersect_link_masks _kc_ethtool_intersect_link_masks
@@ -6037,7 +6051,34 @@ void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 #define pci_notice(pdev, fmt, arg...)	dev_notice(&(pdev)->dev, fmt, ##arg)
 #define pci_info(pdev, fmt, arg...)	dev_info(&(pdev)->dev, fmt, ##arg)
 #define pci_dbg(pdev, fmt, arg...)	dev_dbg(&(pdev)->dev, fmt, ##arg)
+
+#ifndef array_index_nospec
+static inline unsigned long _kc_array_index_mask_nospec(unsigned long index,
+							unsigned long size)
+{
+	/*
+	 * Always calculate and emit the mask even if the compiler
+	 * thinks the mask is not needed. The compiler does not take
+	 * into account the value of @index under speculation.
+	 */
+	OPTIMIZER_HIDE_VAR(index);
+	return ~(long)(index | (size - 1UL - index)) >> (BITS_PER_LONG - 1);
+}
+
+#define array_index_nospec(index, size)					\
+({									\
+	typeof(index) _i = (index);					\
+	typeof(size) _s = (size);					\
+	unsigned long _mask = _kc_array_index_mask_nospec(_i, _s);	\
+									\
+	BUILD_BUG_ON(sizeof(_i) > sizeof(long));			\
+	BUILD_BUG_ON(sizeof(_s) > sizeof(long));			\
+									\
+	(typeof(_i)) (_i & _mask);					\
+})
+#endif /* array_index_nospec */
 #else /* >= 4.16 */
+#include <linux/nospec.h>
 #define HAVE_XDP_BUFF_RXQ
 #endif /* 4.16.0 */
 
@@ -6094,6 +6135,7 @@ static inline void *macvlan_accel_priv(struct net_device *dev)
 #else /* >= 4.19.0 */
 #define HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
 #define NO_NETDEV_BPF_PROG_ATTACHED
+#define HAVE_NDO_SELECT_QUEUE_SB_DEV
 #endif /* 4.19.0 */
 
 #endif /* _KCOMPAT_H_ */

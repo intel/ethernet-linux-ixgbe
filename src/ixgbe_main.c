@@ -55,7 +55,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.5.1" \
+#define DRV_VERSION	"5.5.2" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -9693,7 +9693,11 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 #ifdef HAVE_NETDEV_SELECT_QUEUE
 #if IS_ENABLED(CONFIG_FCOE)
 
-#if defined(HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK)
+#if defined(HAVE_NDO_SELECT_QUEUE_SB_DEV)
+static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb,
+			      __always_unused struct net_device *sb_dev,
+			      select_queue_fallback_t fallback)
+#elif defined(HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK)
 static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb,
 			      __always_unused void *accel,
 			      select_queue_fallback_t fallback)
@@ -9721,7 +9725,9 @@ static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb)
 			break;
 		/* fall through */
 	default:
-#ifdef HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
+#if defined(HAVE_NDO_SELECT_QUEUE_SB_DEV)
+		return fallback(dev, skb, sb_dev);
+#elif defined(HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK)
 		return fallback(dev, skb);
 #else
 		return __netdev_pick_tx(dev, skb);
@@ -10978,7 +10984,9 @@ static int ixgbe_xdp(struct net_device *dev, struct netdev_xdp *xdp)
 	case XDP_SETUP_PROG:
 		return ixgbe_xdp_setup(dev, xdp->prog);
 	case XDP_QUERY_PROG:
+#ifndef NO_NETDEV_BPF_PROG_ATTACHED
 		xdp->prog_attached = !!(adapter->xdp_prog);
+#endif /* !NO_NETDEV_BPF_PROG_ATTACHED */
 		xdp->prog_id = adapter->xdp_prog ?
 			       adapter->xdp_prog->aux->id : 0;
 		return 0;

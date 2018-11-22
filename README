@@ -59,7 +59,7 @@ malicious, frames to be dropped.
 
 
 Overview
---------
+========
 This driver supports kernel versions 2.6.x and newer.
 
 Driver information can be obtained using ethtool, lspci, and ifconfig.
@@ -102,7 +102,7 @@ Intel(R) Ethernet Connection X553 do not support the following features:
 
 
 Identifying Your Adapter
-------------------------
+========================
 The driver is compatible with devices based on the following:
   * Intel(R) Ethernet Controller 82598
   * Intel(R) Ethernet Controller 82599
@@ -283,6 +283,9 @@ VERSION>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
 
    The install location listed above is the default location. This may differ
    for various Linux distributions.
+   NOTE: To compile the driver on some kernel/arch combinations, a
+   package with the development version of libelf (e.g. libelf-dev,
+   libelf-devel, elfutilsl-libelf-devel) may need to be installed.
 
 5. Load the module using the modprobe command:
    modprobe <ixgbe> [parameter=port1_value,port2_value]
@@ -838,13 +841,14 @@ EEE
 Valid Range: 0-1
 0 = Disables EEE
 1 = Enables EEE
-A link between two EEE-compliant devices will result in periodic bursts of
-data followed by periods where the link is in an idle state. This Low Power
-Idle (LPI) state is supported in both 1 Gbps and 10 Gbps link speeds.
+A link between two EEE-compliant devices will result in periodic bursts of data
+followed by periods where the link is in an idle state. This Low Power Idle
+(LPI) state is supported in both 1 Gbps and 10 Gbps link speeds.
 
-NOTES: EEE support requires auto-negotiation.
-  Both link partners must support EEE.
-  EEE is not supported on all Intel(R) Ethernet Network devices or at all link
+NOTES:
+- EEE support requires auto-negotiation.
+- Both link partners must support EEE.
+- EEE is not supported on all Intel(R) Ethernet Network devices or at all link
 speeds.
 
 
@@ -949,6 +953,10 @@ with the maximum Jumbo Frames size of 9728 bytes.
 NOTE: This driver will attempt to use multiple page sized buffers to receive
 each jumbo packet. This should help to avoid buffer starvation issues when
 allocating receive packets.
+
+NOTE: Packet loss may have a greater impact on throughput when you use jumbo
+frames. If you observe a drop in performance after enabling jumbo frames,
+enabling flow control may mitigate the issue.
 
 NOTE: For 82599-based network connections, if you are enabling jumbo frames in
 a virtual function (VF), jumbo frames must first be enabled in the physical
@@ -1091,7 +1099,7 @@ Note that the limit is set per queue and not for the entire VF interface.
 
 
 Known Issues/Troubleshooting
-----------------------------
+============================
 
 MAC address of Virtual Function changes unexpectedly
 ----------------------------------------------------
@@ -1343,7 +1351,7 @@ on older kernels at build time with the following:
 
 
 Support
--------
+=======
 For general information, go to the Intel support website at:
 http://www.intel.com/support/
 
