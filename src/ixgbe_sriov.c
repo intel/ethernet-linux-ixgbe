@@ -413,9 +413,6 @@ static int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 	struct vf_data_storage *vfinfo = &adapter->vfinfo[vf];
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
-	u32 vector_bit;
-	u32 vector_reg;
-	u32 mta_reg;
 	u32 vmolr = IXGBE_READ_REG(hw, IXGBE_VMOLR(vf));
 
 	/* only so many hash values supported */
@@ -432,15 +429,11 @@ static int ixgbe_set_vf_multicasts(struct ixgbe_adapter *adapter,
 	for (i = 0; i < entries; i++)
 		vfinfo->vf_mc_hashes[i] = hash_list[i];
 
-	for (i = 0; i < vfinfo->num_vf_mc_hashes; i++) {
-		vector_reg = (vfinfo->vf_mc_hashes[i] >> 5) & 0x7F;
-		vector_bit = vfinfo->vf_mc_hashes[i] & 0x1F;
-		mta_reg = IXGBE_READ_REG(hw, IXGBE_MTA(vector_reg));
-		mta_reg |= (1 << vector_bit);
-		IXGBE_WRITE_REG(hw, IXGBE_MTA(vector_reg), mta_reg);
-	}
 	vmolr |= IXGBE_VMOLR_ROMPE;
 	IXGBE_WRITE_REG(hw, IXGBE_VMOLR(vf), vmolr);
+
+	/* Sync up the PF and VF in the same MTA table */
+	ixgbe_write_mc_addr_list(adapter->netdev);
 
 	return 0;
 }
@@ -453,7 +446,9 @@ void ixgbe_restore_vf_multicasts(struct ixgbe_adapter *adapter)
 	int i, j;
 	u32 vector_bit;
 	u32 vector_reg;
-	u32 mta_reg;
+
+	/* Clear mta_shadow */
+	memset(&hw->mac.mta_shadow, 0, sizeof(hw->mac.mta_shadow));
 
 	for (i = 0; i < adapter->num_vfs; i++) {
 		u32 vmolr = IXGBE_READ_REG(hw, IXGBE_VMOLR(i));
@@ -462,9 +457,7 @@ void ixgbe_restore_vf_multicasts(struct ixgbe_adapter *adapter)
 			hw->addr_ctrl.mta_in_use++;
 			vector_reg = (vfinfo->vf_mc_hashes[j] >> 5) & 0x7F;
 			vector_bit = vfinfo->vf_mc_hashes[j] & 0x1F;
-			mta_reg = IXGBE_READ_REG(hw, IXGBE_MTA(vector_reg));
-			mta_reg |= (1 << vector_bit);
-			IXGBE_WRITE_REG(hw, IXGBE_MTA(vector_reg), mta_reg);
+			hw->mac.mta_shadow[vector_reg] |= (1 << vector_bit);
 		}
 		if (vfinfo->num_vf_mc_hashes)
 			vmolr |= IXGBE_VMOLR_ROMPE;

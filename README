@@ -4,7 +4,7 @@ ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 
 ================================================================================
 
-June 4, 2018
+December 3, 2018
 
 ================================================================================
 
@@ -53,9 +53,10 @@ SR-IOV, the virtual function (VF) may be subject to malicious behavior.
 Software-generated layer two frames, like IEEE 802.3x (link flow control), IEEE
 802.1Qbb (priority based flow-control), and others of this type, are not
 expected and can throttle traffic between the host and the virtual switch,
-reducing performance. To resolve this issue, configure all SR-IOV enabled ports
-for VLAN tagging. This configuration allows unexpected, and potentially
-malicious, frames to be dropped.
+reducing performance. To resolve this issue, and to ensure isolation from
+unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
+from the administrative interface on the PF. This configuration allows
+unexpected, and potentially malicious, frames to be dropped.
 
 
 Overview
@@ -261,8 +262,12 @@ Note: For the build to work properly, the currently running kernel MUST match
 the version and configuration of the installed kernel sources. If you have just
 recompiled the kernel reboot the system before building.
 
+- To compile the driver on some kernel/arch combinations, a package with the
+development version of libelf (e.g. libelf-dev, libelf-devel,
+elfutilsl-libelf-devel) may need to be installed.
+
 Note: RPM functionality has only been tested in Red Hat distributions.
-_lbank_line_
+
 
 1. Move the base driver tar file to the directory of your choice. For
    example, use '/home/username/ixgbe' or '/usr/local/src/ixgbe'.
@@ -283,9 +288,6 @@ VERSION>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
 
    The install location listed above is the default location. This may differ
    for various Linux distributions.
-   NOTE: To compile the driver on some kernel/arch combinations, a
-   package with the development version of libelf (e.g. libelf-dev,
-   libelf-devel, elfutilsl-libelf-devel) may need to be installed.
 
 5. Load the module using the modprobe command:
    modprobe <ixgbe> [parameter=port1_value,port2_value]
@@ -791,9 +793,10 @@ SR-IOV, the virtual function (VF) may be subject to malicious behavior.
 Software-generated layer two frames, like IEEE 802.3x (link flow control), IEEE
 802.1Qbb (priority based flow-control), and others of this type, are not
 expected and can throttle traffic between the host and the virtual switch,
-reducing performance. To resolve this issue, configure all SR-IOV enabled ports
-for VLAN tagging. This configuration allows unexpected, and potentially
-malicious, frames to be dropped.
+reducing performance. To resolve this issue, and to ensure isolation from
+unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
+from the administrative interface on the PF. This configuration allows
+unexpected, and potentially malicious, frames to be dropped.
 
 
 Configuring VLAN tagging on SR-IOV enabled adapter ports

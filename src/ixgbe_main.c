@@ -55,7 +55,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.5.2" \
+#define DRV_VERSION	"5.5.3" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -5156,10 +5156,13 @@ int ixgbe_write_mc_addr_list(struct net_device *netdev)
 	if (!netif_running(netdev))
 		return 0;
 
+#ifdef CONFIG_PCI_IOV
+	ixgbe_restore_vf_multicasts(adapter);
+#endif
 
 	if (netdev_mc_empty(netdev)) {
 		hw->mac.ops.update_mc_addr_list(hw, NULL, 0,
-						ixgbe_addr_list_itr, true);
+						ixgbe_addr_list_itr, false);
 	} else {
 #ifdef NETDEV_HW_ADDR_T_MULTICAST
 		ha = list_first_entry(&netdev->mc.list,
@@ -5171,12 +5174,9 @@ int ixgbe_write_mc_addr_list(struct net_device *netdev)
 		addr_count = netdev_mc_count(netdev);
 
 		hw->mac.ops.update_mc_addr_list(hw, addr_list, addr_count,
-						ixgbe_addr_list_itr, true);
+						ixgbe_addr_list_itr, false);
 	}
 
-#ifdef CONFIG_PCI_IOV
-	ixgbe_restore_vf_multicasts(adapter);
-#endif
 	return addr_count;
 }
 
@@ -8636,9 +8636,6 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 
 	/* update the default user priority for VFs */
 	ixgbe_update_default_up(adapter);
-
-	/* ping all the active vfs to let them know link has changed */
-	ixgbe_ping_all_vfs(adapter);
 }
 
 /**
