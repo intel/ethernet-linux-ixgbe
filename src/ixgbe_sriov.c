@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2018 Intel Corporation. */
+/* Copyright(c) 1999 - 2019 Intel Corporation. */
 
 
 #include <linux/types.h>
@@ -776,26 +776,34 @@ static inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
 	/* reset VF api back to unknown */
 	adapter->vfinfo[vf].vf_api = ixgbe_mbox_api_10;
 
-	/* Restart each queue for given VF */
-	for (queue = 0; queue < q_per_pool; queue++) {
-		unsigned int reg_idx = (vf * q_per_pool) + queue;
+	/*
+	 * Toggling VF's TX queues and clearing VF Mailbox Memory after VFLR
+	 * should only affect X550 and above
+	 */
+	if (hw->mac.type >= ixgbe_mac_X550) {
+		/* Restart each queue for given VF */
+		for (queue = 0; queue < q_per_pool; queue++) {
+			unsigned int reg_idx = (vf * q_per_pool) + queue;
 
-		reg_val = IXGBE_READ_REG(hw, IXGBE_PVFTXDCTL(reg_idx));
+			reg_val = IXGBE_READ_REG(hw, IXGBE_PVFTXDCTL(reg_idx));
 
-		/* Re-enabling only configured queues */
-		if (reg_val) {
-			reg_val |= IXGBE_TXDCTL_ENABLE;
-			IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx), reg_val);
-			reg_val &= ~IXGBE_TXDCTL_ENABLE;
-			IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx), reg_val);
+			/* Re-enabling only configured queues */
+			if (reg_val) {
+				reg_val |= IXGBE_TXDCTL_ENABLE;
+				IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx),
+						reg_val);
+				reg_val &= ~IXGBE_TXDCTL_ENABLE;
+				IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx),
+						reg_val);
+			}
 		}
+
+		/* Clear VF's mailbox memory */
+		for (word = 0; word < IXGBE_VFMAILBOX_SIZE; word++)
+			IXGBE_WRITE_REG_ARRAY(hw, IXGBE_PFMBMEM(vf), word, 0);
+
+		IXGBE_WRITE_FLUSH(hw);
 	}
-
-	/* Clear VF's mailbox memory */
-	for (word = 0; word < IXGBE_VFMAILBOX_SIZE; word++)
-		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_PFMBMEM(vf), word, 0);
-
-	IXGBE_WRITE_FLUSH(hw);
 }
 
 int ixgbe_set_vf_mac(struct ixgbe_adapter *adapter,

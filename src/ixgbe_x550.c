@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2018 Intel Corporation. */
+/* Copyright(c) 1999 - 2019 Intel Corporation. */
 
 #include "ixgbe_x550.h"
 #include "ixgbe_x540.h"
@@ -1878,7 +1878,14 @@ s32 ixgbe_get_link_capabilities_X550em(struct ixgbe_hw *hw,
 		else
 			*speed = IXGBE_LINK_SPEED_10GB_FULL;
 	} else {
+		*autoneg = true;
+
 		switch (hw->phy.type) {
+		case ixgbe_phy_x550em_xfi:
+			*speed = IXGBE_LINK_SPEED_1GB_FULL |
+				 IXGBE_LINK_SPEED_10GB_FULL;
+			*autoneg = false;
+			break;
 		case ixgbe_phy_ext_1g_t:
 		case ixgbe_phy_sgmii:
 			*speed = IXGBE_LINK_SPEED_1GB_FULL;
@@ -1902,7 +1909,6 @@ s32 ixgbe_get_link_capabilities_X550em(struct ixgbe_hw *hw,
 				 IXGBE_LINK_SPEED_1GB_FULL;
 			break;
 		}
-		*autoneg = true;
 	}
 
 	return IXGBE_SUCCESS;

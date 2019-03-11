@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2018 Intel Corporation. */
+/* Copyright(c) 1999 - 2019 Intel Corporation. */
 
 #ifndef _KCOMPAT_H_
 #define _KCOMPAT_H_
@@ -869,10 +869,25 @@ struct _kc_ethtool_pauseparam {
  *   - 4.4.103-6.33.1, 4.4.103-6.38.1
  *   - 4.4.{114,120}-94.nn.y */
 #define SLE_VERSION_CODE SLE_VERSION(12,3,0)
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,14))
-/* SLES15 Beta1 is 4.12.14-2.
- * SLES12 SP4 will also use 4.12.14-nn.xx.y */
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(4,12,14) && \
+       (SLE_LOCALVERSION_CODE == KERNEL_VERSION(94,41,0) || \
+       (SLE_LOCALVERSION_CODE >= KERNEL_VERSION(95,0,0) && \
+        SLE_LOCALVERSION_CODE < KERNEL_VERSION(96,0,0))))
+/* SLES12 SP4 GM is 4.12.14-94.41 and update kernel is 4.12.14-95.x. */
+#define SLE_VERSION_CODE SLE_VERSION(12,4,0)
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(4,12,14) && \
+       (SLE_LOCALVERSION_CODE == KERNEL_VERSION(23,0,0) || \
+        SLE_LOCALVERSION_CODE == KERNEL_VERSION(2,0,0) || \
+        SLE_LOCALVERSION_CODE == KERNEL_VERSION(136,0,0) || \
+        (SLE_LOCALVERSION_CODE >= KERNEL_VERSION(25,0,0) && \
+         SLE_LOCALVERSION_CODE < KERNEL_VERSION(26,0,0))))
+/* SLES15 Beta1 is 4.12.14-2
+ * SLES15 GM is 4.12.14-23 and update kernel is 4.12.14-{25,136}. */
 #define SLE_VERSION_CODE SLE_VERSION(15,0,0)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,14) && \
+       SLE_LOCALVERSION_CODE >= KERNEL_VERSION(25,23,0))
+/* SLES15 SP1 Beta1 is 4.12.14-25.23 */
+#define SLE_VERSION_CODE SLE_VERSION(15,1,0)
 /* new SLES kernels must be added here with >= based on kernel
  * the idea is to order from newest to oldest and just catch all
  * of them using the >=
@@ -5920,7 +5935,7 @@ static inline void __page_frag_cache_drain(struct page *page,
 #define ethtool_link_ksettings_del_link_mode(ptr, name, mode)		\
 	__clear_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, (ptr)->link_modes.name)
 #endif
-#if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,0,0)))
+#if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,4,0)))
 #define HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
 #endif
 
@@ -6027,9 +6042,10 @@ struct ethtool_link_ksettings {
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
-#if !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6)))
+#if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6))) && \
+     !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0))))
 #define TC_SETUP_QDISC_MQPRIO TC_SETUP_MQPRIO
-#endif
+#endif /* !(RHEL >= 7.6) && !(SLES >= 15.1) */
 void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 				      struct ethtool_link_ksettings *src);
 #define ethtool_intersect_link_masks _kc_ethtool_intersect_link_masks
@@ -6098,7 +6114,9 @@ void _kc_pcie_print_link_status(struct pci_dev *dev);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
 #ifdef NETIF_F_HW_L2FW_DOFFLOAD
 #include <linux/if_macvlan.h>
-static inline bool macvlan_supports_dest_filter(struct net_device *dev)
+#ifndef macvlan_supports_dest_filter
+#define macvlan_supports_dest_filter _kc_macvlan_supports_dest_filter
+static inline bool _kc_macvlan_supports_dest_filter(struct net_device *dev)
 {
 	struct macvlan_dev *macvlan = netdev_priv(dev);
 
@@ -6106,13 +6124,30 @@ static inline bool macvlan_supports_dest_filter(struct net_device *dev)
 	       macvlan->mode == MACVLAN_MODE_VEPA ||
 	       macvlan->mode == MACVLAN_MODE_BRIDGE;
 }
+#endif
 
-static inline void *macvlan_accel_priv(struct net_device *dev)
+#if (!SLE_VERSION_CODE || (SLE_VERSION_CODE < SLE_VERSION(15,1,0)))
+#ifndef macvlan_accel_priv
+#define macvlan_accel_priv _kc_macvlan_accel_priv
+static inline void *_kc_macvlan_accel_priv(struct net_device *dev)
 {
 	struct macvlan_dev *macvlan = netdev_priv(dev);
 
 	return macvlan->fwd_priv;
 }
+#endif
+
+#ifndef macvlan_release_l2fw_offload
+#define macvlan_release_l2fw_offload _kc_macvlan_release_l2fw_offload
+static inline int _kc_macvlan_release_l2fw_offload(struct net_device *dev)
+{
+	struct macvlan_dev *macvlan = netdev_priv(dev);
+
+	macvlan->fwd_priv = NULL;
+	return dev_uc_add(macvlan->lowerdev, dev->dev_addr);
+}
+#endif
+#endif /* !SLES || SLES < 15.1 */
 #endif /* NETIF_F_HW_L2FW_DOFFLOAD */
 #else
 #define HAVE_XDP_FRAME_STRUCT
@@ -6132,6 +6167,11 @@ static inline void *macvlan_accel_priv(struct net_device *dev)
 #define ethtool_ks_test(ptr, name, mode) \
 	ethtool_link_ksettings_test_link_mode(ptr, name, mode)
 #endif /* ETHTOOL_GLINKSETTINGS */
+#define HAVE_NETPOLL_CONTROLLER
+#define REQUIRE_PCI_CLEANUP_AER_ERROR_STATUS
+#if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0)))
+#define HAVE_NDO_SELECT_QUEUE_SB_DEV
+#endif
 #else /* >= 4.19.0 */
 #define HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
 #define NO_NETDEV_BPF_PROG_ATTACHED
