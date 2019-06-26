@@ -102,6 +102,7 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.init_uta_tables = NULL;
 	mac->ops.enable_rx = ixgbe_enable_rx_generic;
 	mac->ops.disable_rx = ixgbe_disable_rx_generic;
+	mac->ops.toggle_txdctl = ixgbe_toggle_txdctl_generic;
 
 	/* Flow Control */
 	mac->ops.fc_enable = ixgbe_fc_enable_generic;
@@ -3877,6 +3878,61 @@ s32 ixgbe_clear_vfta_generic(struct ixgbe_hw *hw)
 }
 
 /**
+ *  ixgbe_toggle_txdctl_generic - Toggle VF's queues
+ *  @hw: pointer to hardware structure
+ *  @vf_number: VF index
+ *
+ *  Enable and disable each queue in VF.
+ */
+s32 ixgbe_toggle_txdctl_generic(struct ixgbe_hw *hw, u32 vf_number)
+{
+	u8  queue_count, i;
+	u32 offset, reg;
+
+	if (vf_number > 63)
+		return IXGBE_ERR_PARAM;
+
+	/*
+	 * Determine number of queues by checking
+	 * number of virtual functions
+	 */
+	reg = IXGBE_READ_REG(hw, IXGBE_GCR_EXT);
+	switch (reg & IXGBE_GCR_EXT_VT_MODE_MASK) {
+	case IXGBE_GCR_EXT_VT_MODE_64:
+		queue_count = 2;
+		break;
+	case IXGBE_GCR_EXT_VT_MODE_32:
+		queue_count = 4;
+		break;
+	case IXGBE_GCR_EXT_VT_MODE_16:
+		queue_count = 8;
+		break;
+	default:
+		return IXGBE_ERR_CONFIG;
+	}
+
+	/* Toggle queues */
+	for (i = 0; i < queue_count; ++i) {
+		/* Calculate offset of current queue */
+		offset = queue_count * vf_number + i;
+
+		/* Enable queue */
+		reg = IXGBE_READ_REG(hw, IXGBE_PVFTXDCTL(offset));
+		reg |= IXGBE_TXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(offset), reg);
+		IXGBE_WRITE_FLUSH(hw);
+
+		/* Disable queue */
+		reg = IXGBE_READ_REG(hw, IXGBE_PVFTXDCTL(offset));
+		reg &= ~IXGBE_TXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(offset), reg);
+		IXGBE_WRITE_FLUSH(hw);
+	}
+
+	return IXGBE_SUCCESS;
+}
+
+/**
  *  ixgbe_need_crosstalk_fix - Determine if we need to do cross talk fix
  *  @hw: pointer to hardware structure
  *
@@ -4265,11 +4321,18 @@ s32 ixgbe_hic_unlocked(struct ixgbe_hw *hw, u32 *buffer, u32 length,
 		msec_delay(1);
 	}
 
+	/* For each command except "Apply Update" perform
+	 * status checks in the HICR registry.
+	 */
+	if ((buffer[0] & IXGBE_HOST_INTERFACE_MASK_CMD) ==
+	    IXGBE_HOST_INTERFACE_APPLY_UPDATE_CMD)
+		return IXGBE_SUCCESS;
+
 	/* Check command completion */
 	if ((timeout && i == timeout) ||
 	    !(IXGBE_READ_REG(hw, IXGBE_HICR) & IXGBE_HICR_SV)) {
 		ERROR_REPORT1(IXGBE_ERROR_CAUTION,
-			     "Command has failed with no status valid.\n");
+			      "Command has failed with no status valid.\n");
 		return IXGBE_ERR_HOST_INTERFACE_COMMAND;
 	}
 
@@ -4337,7 +4400,7 @@ s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
 	 * Read Flash command requires reading buffer length from
 	 * two byes instead of one byte
 	 */
-	if (resp->cmd == 0x30) {
+	if (resp->cmd == 0x30 || resp->cmd == 0x31) {
 		for (; bi < dword_len + 2; bi++) {
 			buffer[bi] = IXGBE_READ_REG_ARRAY(hw, IXGBE_FLEX_MNG,
 							  bi);
@@ -4777,7 +4840,7 @@ void ixgbe_get_oem_prod_version(struct ixgbe_hw *hw,
 	hw->eeprom.ops.read(hw, NVM_OEM_PROD_VER_PTR, &offset);
 
 	/* Return is offset to OEM Product Version block is invalid */
-	if (offset == 0x0 && offset == NVM_INVALID_PTR)
+	if (offset == 0x0 || offset == NVM_INVALID_PTR)
 		return;
 
 	/* Read product version block */

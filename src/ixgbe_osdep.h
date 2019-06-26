@@ -96,6 +96,7 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
 #define IXGBE_READ_REG(h, r) ixgbe_read_reg(h, r, false)
 #define IXGBE_R32_Q(h, r) ixgbe_read_reg(h, r, true)
+#define IXGBE_R8_Q(h, r) readb(READ_ONCE(h->hw_addr) + r)
 
 #define IXGBE_READ_REG_ARRAY(a, reg, offset) ( \
 	IXGBE_READ_REG((a), (reg) + ((offset) << 2)))

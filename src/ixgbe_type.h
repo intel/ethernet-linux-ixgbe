@@ -161,6 +161,10 @@
 #define IXGBE_FLA_X550EM_x	IXGBE_FLA
 #define IXGBE_FLA_X550EM_a	0x15F68
 #define IXGBE_FLA_BY_MAC(_hw)	IXGBE_BY_MAC((_hw), FLA)
+#define IXGBE_FLA_FL_SIZE_SHIFT_X540	17
+#define IXGBE_FLA_FL_SIZE_SHIFT_X550	12
+#define IXGBE_FLA_FL_SIZE_MASK_X540	(0x7 << IXGBE_FLA_FL_SIZE_SHIFT_X540)
+#define IXGBE_FLA_FL_SIZE_MASK_X550	(0x7 << IXGBE_FLA_FL_SIZE_SHIFT_X550)
 
 #define IXGBE_EEMNGCTL	0x10110
 #define IXGBE_EEMNGDATA	0x10114
@@ -841,6 +845,10 @@ struct ixgbe_dmac_config {
 #define IXGBE_RTTDQSEL		0x04904
 #define IXGBE_RTTDT1C		0x04908
 #define IXGBE_RTTDT1S		0x0490C
+#define IXGBE_RTTQCNCR		0x08B00
+#define IXGBE_RTTQCNTG		0x04A90
+#define IXGBE_RTTBCNRD		0x0498C
+#define IXGBE_RTTQCNRR		0x0498C
 #define IXGBE_RTTDTECC		0x04990
 #define IXGBE_RTTDTECC_NO_BCN	0x00000100
 
@@ -851,6 +859,7 @@ struct ixgbe_dmac_config {
 #define IXGBE_RTTBCNRC_RF_INT_MASK \
 	(IXGBE_RTTBCNRC_RF_DEC_MASK << IXGBE_RTTBCNRC_RF_INT_SHIFT)
 #define IXGBE_RTTBCNRM	0x04980
+#define IXGBE_RTTQCNRM	0x04980
 
 /* FCoE DMA Context Registers */
 /* FCoE Direct DMA Context */
@@ -1056,8 +1065,10 @@ struct ixgbe_dmac_config {
 #define IXGBE_HSMC0R		0x15F04
 #define IXGBE_HSMC1R		0x15F08
 #define IXGBE_SWSR		0x15F10
+#define IXGBE_FWRESETCNT	0x15F40
 #define IXGBE_HFDR		0x15FE8
 #define IXGBE_FLEX_MNG		0x15800 /* 0x15800 - 0x15EFC */
+#define IXGBE_FLEX_MNG_PTR(_i)	(IXGBE_FLEX_MNG + ((_i) * 4))
 
 #define IXGBE_HICR_EN		0x01  /* Enable bit - RO */
 /* Driver sets this bit when done to put command in RAM */
@@ -1376,6 +1387,7 @@ struct ixgbe_dmac_config {
 #define IXGBE_BARCTRL_FLSIZE		0x0700
 #define IXGBE_BARCTRL_FLSIZE_SHIFT	8
 #define IXGBE_BARCTRL_CSRSIZE		0x2000
+#define IXGBE_BARCTRL_CSRSIZE_SHIFT	13
 
 /* RSCCTL Bit Masks */
 #define IXGBE_RSCCTL_RSCEN	0x01
@@ -3866,6 +3878,35 @@ struct ixgbe_hw_stats {
 	u64 o2bspc;
 };
 
+/* NVM Update commands */
+#define IXGBE_NVMUPD_CMD_REG_READ	0x0000000B
+#define IXGBE_NVMUPD_CMD_REG_WRITE	0x0000000C
+
+/* NVM Update features API */
+#define IXGBE_NVMUPD_FEATURES_API_VER_MAJOR		0
+#define IXGBE_NVMUPD_FEATURES_API_VER_MINOR		0
+#define IXGBE_NVMUPD_FEATURES_API_FEATURES_ARRAY_LEN	12
+#define IXGBE_NVMUPD_EXEC_FEATURES			0xe
+#define IXGBE_NVMUPD_FEATURE_FLAT_NVM_SUPPORT		BIT(0)
+#define IXGBE_NVMUPD_FEATURE_REGISTER_ACCESS_SUPPORT	BIT(1)
+
+#define IXGBE_NVMUPD_MOD_PNT_MASK			0xFF
+
+struct ixgbe_nvm_access {
+	u32 command;
+	u32 config;
+	u32 offset;	/* in bytes */
+	u32 data_size;	/* in bytes */
+	u8 data[1];
+};
+
+struct ixgbe_nvm_features {
+	u8 major;
+	u8 minor;
+	u16 size;
+	u8 features[IXGBE_NVMUPD_FEATURES_API_FEATURES_ARRAY_LEN];
+};
+
 /* forward declaration */
 struct ixgbe_hw;
 
@@ -3956,6 +3997,7 @@ struct ixgbe_mac_operations {
 	s32 (*init_uta_tables)(struct ixgbe_hw *);
 	void (*set_mac_anti_spoofing)(struct ixgbe_hw *, bool, int);
 	void (*set_vlan_anti_spoofing)(struct ixgbe_hw *, bool, int);
+	s32 (*toggle_txdctl)(struct ixgbe_hw *hw, u32 vf_index);
 
 	/* Flow Control */
 	s32 (*fc_enable)(struct ixgbe_hw *);
@@ -4112,6 +4154,7 @@ struct ixgbe_mbx_operations {
 	s32  (*check_for_msg)(struct ixgbe_hw *, u16);
 	s32  (*check_for_ack)(struct ixgbe_hw *, u16);
 	s32  (*check_for_rst)(struct ixgbe_hw *, u16);
+	s32  (*clear)(struct ixgbe_hw *hw, u16 vf_number);
 };
 
 struct ixgbe_mbx_stats {
@@ -4155,6 +4198,8 @@ struct ixgbe_hw {
 	bool allow_unsupported_sfp;
 	bool wol_enabled;
 	bool need_crosstalk_fix;
+	/* NVM Update features */
+	struct ixgbe_nvm_features nvmupd_features;
 };
 
 #define ixgbe_call_func(hw, func, params, error) \
@@ -4319,6 +4364,18 @@ struct ixgbe_hw {
 #define IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD_SHIFT 3
 #define IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD	\
 				(0x1F << IXGBE_NW_MNG_IF_SEL_MDIO_PHY_ADD_SHIFT)
+
+/* Code Command (Flash I/F Interface) */
+#define IXGBE_HOST_INTERFACE_FLASH_READ_CMD			0x30
+#define IXGBE_HOST_INTERFACE_SHADOW_RAM_READ_CMD		0x31
+#define IXGBE_HOST_INTERFACE_FLASH_WRITE_CMD			0x32
+#define IXGBE_HOST_INTERFACE_SHADOW_RAM_WRITE_CMD		0x33
+#define IXGBE_HOST_INTERFACE_FLASH_MODULE_UPDATE_CMD		0x34
+#define IXGBE_HOST_INTERFACE_FLASH_BLOCK_EREASE_CMD		0x35
+#define IXGBE_HOST_INTERFACE_SHADOW_RAM_DUMP_CMD		0x36
+#define IXGBE_HOST_INTERFACE_FLASH_INFO_CMD			0x37
+#define IXGBE_HOST_INTERFACE_APPLY_UPDATE_CMD			0x38
+#define IXGBE_HOST_INTERFACE_MASK_CMD				0x000000FF
 
 #include "ixgbe_osdep2.h"
 

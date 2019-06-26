@@ -2146,8 +2146,9 @@ void *__kc_devm_kmemdup(struct device *dev, const void *src, size_t len,
 #endif /* 3.16.0 */
 
 /******************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0) )
-#endif /* 3.17.0 */
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)) && \
+     (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,5)))
+#endif /* <3.17.0 && RHEL_RELEASE_CODE < RHEL7.5 */
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0) )
@@ -2209,7 +2210,8 @@ void __kc_skb_complete_tx_timestamp(struct sk_buff *skb,
 #include <linux/sctp.h>
 #endif
 
-unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_len)
+u32 __kc_eth_get_headlen(const struct net_device __always_unused *dev,
+			 unsigned char *data, unsigned int max_len)
 {
 	union {
 		unsigned char *network;
@@ -2442,6 +2444,49 @@ int _kc_eth_platform_get_mac_address(struct device *dev __maybe_unused,
 #endif /* !(RHEL_RELEASE >= 7.3) */
 #endif /* < 4.5.0 */
 
+/*****************************************************************************/
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)) || \
+     (SLE_VERSION_CODE && (SLE_VERSION_CODE <= SLE_VERSION(12,3,0))) || \
+     (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(7,5))))
+const char *_kc_phy_speed_to_str(int speed)
+{
+	switch (speed) {
+	case SPEED_10:
+		return "10Mbps";
+	case SPEED_100:
+		return "100Mbps";
+	case SPEED_1000:
+		return "1Gbps";
+	case SPEED_2500:
+		return "2.5Gbps";
+	case SPEED_5000:
+		return "5Gbps";
+	case SPEED_10000:
+		return "10Gbps";
+	case SPEED_14000:
+		return "14Gbps";
+	case SPEED_20000:
+		return "20Gbps";
+	case SPEED_25000:
+		return "25Gbps";
+	case SPEED_40000:
+		return "40Gbps";
+	case SPEED_50000:
+		return "50Gbps";
+	case SPEED_56000:
+		return "56Gbps";
+#ifdef SPEED_100000
+	case SPEED_100000:
+		return "100Gbps";
+#endif
+	case SPEED_UNKNOWN:
+		return "Unknown";
+	default:
+		return "Unsupported (update phy-core.c)";
+	}
+}
+#endif /* (LINUX < 4.14.0) || (SLES <= 12.3.0) || (RHEL <= 7.5) */
+
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0) )
 void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
@@ -2606,3 +2651,68 @@ void _kc_pcie_print_link_status(struct pci_dev *dev) {
 			 PCIE_SPEED2STR(speed_cap), width_cap);
 }
 #endif /* 4.17.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0))
+
+#ifdef HAVE_TC_SETUP_CLSFLOWER
+#define FLOW_DISSECTOR_MATCH(__rule, __type, __out)				\
+	const struct flow_match *__m = &(__rule)->match;			\
+	struct flow_dissector *__d = (__m)->dissector;				\
+										\
+	(__out)->key = skb_flow_dissector_target(__d, __type, (__m)->key);	\
+	(__out)->mask = skb_flow_dissector_target(__d, __type, (__m)->mask);	\
+
+void flow_rule_match_basic(const struct flow_rule *rule,
+			   struct flow_match_basic *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_BASIC, out);
+}
+
+void flow_rule_match_control(const struct flow_rule *rule,
+			     struct flow_match_control *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_CONTROL, out);
+}
+
+void flow_rule_match_eth_addrs(const struct flow_rule *rule,
+			       struct flow_match_eth_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ETH_ADDRS, out);
+}
+
+#ifdef HAVE_TC_FLOWER_ENC
+void flow_rule_match_enc_keyid(const struct flow_rule *rule,
+			       struct flow_match_enc_keyid *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_KEYID, out);
+}
+#endif
+
+#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
+void flow_rule_match_vlan(const struct flow_rule *rule,
+			  struct flow_match_vlan *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_VLAN, out);
+}
+#endif
+
+void flow_rule_match_ipv4_addrs(const struct flow_rule *rule,
+				struct flow_match_ipv4_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS, out);
+}
+
+void flow_rule_match_ipv6_addrs(const struct flow_rule *rule,
+				struct flow_match_ipv6_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS, out);
+}
+
+void flow_rule_match_ports(const struct flow_rule *rule,
+			   struct flow_match_ports *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_PORTS, out);
+}
+#endif /* HAVE_TC_SETUP_CLSFLOWER */
+#endif /* 5.1.0 */

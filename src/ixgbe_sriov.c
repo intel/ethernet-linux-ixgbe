@@ -50,6 +50,13 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
 
+#ifdef HAVE_XDP_SUPPORT
+	if (adapter->xdp_prog) {
+		e_warn(probe, "SRIOV is not supported with XDP\n");
+		return -EINVAL;
+	}
+#endif /* HAVE_XDP_SUPPORT */
+
 	adapter->flags |= IXGBE_FLAG_SRIOV_ENABLED;
 
 	/* Enable VMDq flag so device will be set in VM mode */
@@ -295,10 +302,9 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 {
 #ifdef CONFIG_PCI_IOV
 	struct ixgbe_adapter *adapter = pci_get_drvdata(dev);
-	int err = 0;
-	u8 num_tc;
-	int i;
 	int pre_existing_vfs = pci_num_vf(dev);
+	int err = 0, i;
+	u8 num_tc;
 
 	if (!(adapter->flags & IXGBE_FLAG_SRIOV_CAPABLE)) {
 		e_dev_warn("SRIOV not supported on this device\n");
@@ -327,7 +333,6 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 	 *	>4	  15
 	 */
 	num_tc = netdev_get_num_tc(adapter->netdev);
-
 	if (num_tc > 4) {
 		if (num_vfs > IXGBE_MAX_VFS_8TC) {
 			e_dev_err("Currently the device is configured with %d TCs, Creating more than %d VFs is not allowed\n", num_tc, IXGBE_MAX_VFS_8TC);

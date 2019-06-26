@@ -87,6 +87,17 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
 	}
 	hw->mac.max_link_up_time = IXGBE_LINK_UP_TIME;
 
+	/* NVM Update features structure initialization */
+	hw->nvmupd_features.major = IXGBE_NVMUPD_FEATURES_API_VER_MAJOR;
+	hw->nvmupd_features.minor = IXGBE_NVMUPD_FEATURES_API_VER_MINOR;
+	hw->nvmupd_features.size = sizeof(hw->nvmupd_features);
+	memset(hw->nvmupd_features.features, 0x0,
+	       IXGBE_NVMUPD_FEATURES_API_FEATURES_ARRAY_LEN *
+	       sizeof(*hw->nvmupd_features.features));
+
+	hw->nvmupd_features.features[0] =
+		IXGBE_NVMUPD_FEATURE_REGISTER_ACCESS_SUPPORT;
+
 	return status;
 }
 
@@ -1041,6 +1052,19 @@ s32 ixgbe_set_vlvf(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on,
 	return ixgbe_call_func(hw, hw->mac.ops.set_vlvf, (hw, vlan, vind,
 			       vlan_on, vfta_delta, vfta, vlvf_bypass),
 			       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ *  ixgbe_toggle_txdctl - Toggle VF's queues
+ *  @hw: pointer to hardware structure
+ *  @vind: VMDq pool index
+ *
+ *  Enable and disable each queue in VF.
+ */
+s32 ixgbe_toggle_txdctl(struct ixgbe_hw *hw, u32 vind)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.toggle_txdctl, (hw,
+			       vind), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**

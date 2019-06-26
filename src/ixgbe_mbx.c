@@ -117,6 +117,26 @@ s32 ixgbe_check_for_rst(struct ixgbe_hw *hw, u16 mbx_id)
 }
 
 /**
+ *  ixgbe_clear_mbx - Clear Mailbox Memory
+ *  @hw: pointer to the HW structure
+ *  @vf_number: id of mailbox to write
+ *
+ *  Set VFMBMEM of given VF to 0x0.
+ **/
+s32 ixgbe_clear_mbx(struct ixgbe_hw *hw, u16 vf_number)
+{
+	struct ixgbe_mbx_info *mbx = &hw->mbx;
+	s32 ret_val = IXGBE_SUCCESS;
+
+	DEBUGFUNC("ixgbe_clear_mbx");
+
+	if (mbx->ops.clear)
+		ret_val = mbx->ops.clear(hw, vf_number);
+
+	return ret_val;
+}
+
+/**
  *  ixgbe_poll_for_msg - Wait for message notification
  *  @hw: pointer to the HW structure
  *  @mbx_id: id of mailbox to write
@@ -485,6 +505,7 @@ void ixgbe_init_mbx_params_vf(struct ixgbe_hw *hw)
 	mbx->ops.check_for_msg = ixgbe_check_for_msg_vf;
 	mbx->ops.check_for_ack = ixgbe_check_for_ack_vf;
 	mbx->ops.check_for_rst = ixgbe_check_for_rst_vf;
+	mbx->ops.clear = NULL;
 
 	mbx->stats.msgs_tx = 0;
 	mbx->stats.msgs_rx = 0;
@@ -702,6 +723,27 @@ out_no_read:
 }
 
 /**
+ *  ixgbe_clear_mbx_pf - Clear Mailbox Memory
+ *  @hw: pointer to the HW structure
+ *  @vf_number: the VF index
+ *
+ *  Set VFMBMEM of given VF to 0x0.
+ **/
+STATIC s32 ixgbe_clear_mbx_pf(struct ixgbe_hw *hw, u16 vf_number)
+{
+	u16 mbx_size = hw->mbx.size;
+	u16 i;
+
+	if (vf_number > 63)
+		return IXGBE_ERR_PARAM;
+
+	for (i = 0; i < mbx_size; ++i)
+		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_PFMBMEM(vf_number), i, 0x0);
+
+	return IXGBE_SUCCESS;
+}
+
+/**
  *  ixgbe_init_mbx_params_pf - set initial values for pf mailbox
  *  @hw: pointer to the HW structure
  *
@@ -730,6 +772,7 @@ void ixgbe_init_mbx_params_pf(struct ixgbe_hw *hw)
 	mbx->ops.check_for_msg = ixgbe_check_for_msg_pf;
 	mbx->ops.check_for_ack = ixgbe_check_for_ack_pf;
 	mbx->ops.check_for_rst = ixgbe_check_for_rst_pf;
+	mbx->ops.clear = ixgbe_clear_mbx_pf;
 
 	mbx->stats.msgs_tx = 0;
 	mbx->stats.msgs_rx = 0;

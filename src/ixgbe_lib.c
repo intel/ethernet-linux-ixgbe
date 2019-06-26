@@ -58,8 +58,9 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 		reg_idx = vmdq->offset * __ALIGN_MASK(1, ~vmdq->mask);
 		for (i = 0; i < adapter->num_rx_queues; i++, reg_idx++) {
 			/* If we are greater than indices move to next pool */
-			if ((reg_idx & ~vmdq->mask) >= tcs)
+			if ((reg_idx & ~vmdq->mask) >= tcs) {
 				reg_idx = __ALIGN_MASK(reg_idx, ~vmdq->mask);
+			}
 			adapter->rx_ring[i]->reg_idx = reg_idx;
 		}
 
@@ -210,8 +211,8 @@ static bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
 #endif /* CONFIG_FCOE */
 	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	struct ixgbe_ring_feature *rss = &adapter->ring_feature[RING_F_RSS];
-	int i;
 	u16 reg_idx;
+	int i;
 
 	/* only proceed if VMDq is enabled */
 	if (!(adapter->flags & IXGBE_FLAG_VMDQ_ENABLED))
@@ -226,15 +227,17 @@ static bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
 			break;
 #endif /* CONFIG_FCOE */
 		/* If we are greater than indices move to next pool */
-		if ((reg_idx & ~vmdq->mask) >= rss->indices)
+		if ((reg_idx & ~vmdq->mask) >= rss->indices) {
 			reg_idx = __ALIGN_MASK(reg_idx, ~vmdq->mask);
+		}
 		adapter->rx_ring[i]->reg_idx = reg_idx;
 	}
 
 #if IS_ENABLED(CONFIG_FCOE)
 	/* FCoE uses a linear block of queues so just assigning 1:1 */
-	for (; i < adapter->num_rx_queues; i++, reg_idx++)
+	for (; i < adapter->num_rx_queues; i++, reg_idx++) {
 		adapter->rx_ring[i]->reg_idx = reg_idx;
+	}
 #endif /* CONFIG_FCOE */
 
 	reg_idx = vmdq->offset * __ALIGN_MASK(1, ~vmdq->mask);
@@ -270,8 +273,9 @@ static bool ixgbe_cache_ring_rss(struct ixgbe_adapter *adapter)
 {
 	int i, reg_idx;
 
-	for (i = 0; i < adapter->num_rx_queues; i++)
+	for (i = 0; i < adapter->num_rx_queues; i++) {
 		adapter->rx_ring[i]->reg_idx = i;
+	}
 	for (i = 0, reg_idx = 0; i < adapter->num_tx_queues; i++, reg_idx++)
 		adapter->tx_ring[i]->reg_idx = reg_idx;
 	for (i = 0; i < adapter->num_xdp_queues; i++, reg_idx++)
@@ -362,6 +366,7 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -571,6 +576,7 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -665,7 +671,6 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 		adapter->num_rx_queues += fcoe_i;
 	}
 #endif /* CONFIG_FCOE */
-
 	return true;
 }
 
@@ -882,8 +887,8 @@ static void ixgbe_add_ring(struct ixgbe_ring *ring,
  * @v_idx: index of vector in adapter struct
  * @txr_count: total number of Tx rings to allocate
  * @txr_idx: index of first Tx ring to allocate
-*  @xdp_count: total number of XDP rings to allocate
-*  @xdp_idx: index of first XDP ring to allocate
+ * @xdp_count: total number of XDP rings to allocate
+ * @xdp_idx: index of first XDP ring to allocate
  * @rxr_count: total number of Rx rings to allocate
  * @rxr_idx: index of first Rx ring to allocate
  *
@@ -902,12 +907,10 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	int cpu = -1;
 	u8 tcs = netdev_get_num_tc(adapter->netdev);
 #endif
-	int ring_count, size;
+	int ring_count;
 
 	/* note this will allocate space for the ring structure as well! */
 	ring_count = txr_count + rxr_count + xdp_count;
-	size = sizeof(struct ixgbe_q_vector) +
-	       (sizeof(struct ixgbe_ring) * ring_count);
 
 #ifdef HAVE_IRQ_AFFINITY_HINT
 	/* customize cpu for Flow Director mapping */
@@ -923,9 +926,12 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 #endif
 	/* allocate q_vector and rings */
-	q_vector = kzalloc_node(size, GFP_KERNEL, node);
+	q_vector = kzalloc_node(struct_size(q_vector, ring, ring_count),
+				GFP_KERNEL, node);
+
 	if (!q_vector)
-		q_vector = kzalloc(size, GFP_KERNEL);
+		q_vector = kzalloc(struct_size(q_vector, ring, ring_count),
+				   GFP_KERNEL);
 	if (!q_vector)
 		return -ENOMEM;
 
@@ -1132,6 +1138,9 @@ static int ixgbe_alloc_q_vectors(struct ixgbe_adapter *adapter)
 	unsigned int xdp_remaining = adapter->num_xdp_queues;
 	unsigned int rxr_idx = 0, txr_idx = 0, xdp_idx = 0, v_idx = 0;
 	int err;
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	int i;
+#endif
 
 	if (q_vectors >= (rxr_remaining + txr_remaining + xdp_remaining)) {
 		for (; rxr_remaining; v_idx++) {
@@ -1168,6 +1177,23 @@ static int ixgbe_alloc_q_vectors(struct ixgbe_adapter *adapter)
 		xdp_idx += xqpv;
 	}
 
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	for (i = 0; i < adapter->num_rx_queues; i++) {
+		if (adapter->rx_ring[i])
+			adapter->rx_ring[i]->ring_idx = i;
+	}
+
+	for (i = 0; i < adapter->num_tx_queues; i++) {
+		if (adapter->tx_ring[i])
+			adapter->tx_ring[i]->ring_idx = i;
+	}
+
+	for (i = 0; i < adapter->num_xdp_queues; i++) {
+		if (adapter->xdp_ring[i])
+			adapter->xdp_ring[i]->ring_idx = i;
+	}
+
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
 	return IXGBE_SUCCESS;
 
 err_out:

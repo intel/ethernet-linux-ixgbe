@@ -28,12 +28,11 @@
 #ifdef HAVE_XDP_BUFF_RXQ
 #include <net/xdp.h>
 #endif
-#ifdef CONFIG_NET_RX_BUSY_POLL
-#include <net/busy_poll.h>
+
 #ifdef HAVE_NDO_BUSY_POLL
+#include <net/busy_poll.h>
 #define BP_EXTENDED_STATS
 #endif
-#endif /* CONFIG_NET_RX_BUSY_POLL */
 
 #ifdef HAVE_SCTP
 #include <linux/sctp.h>
@@ -317,14 +316,20 @@ struct ixgbe_rx_buffer {
 	struct sk_buff *skb;
 	dma_addr_t dma;
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
-	struct page *page;
-#if (BITS_PER_LONG > 32) || (PAGE_SIZE >= 65536)
-	__u32 page_offset;
-#else
-	__u16 page_offset;
+	union {
+		struct {
+			struct page *page;
+			__u32 page_offset;
+			__u16 pagecnt_bias;
+		};
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+		struct {
+			void *addr;
+			u64 handle;
+		};
 #endif
-	__u16 pagecnt_bias;
-#endif
+	};
+#endif /* CONFIG_IXGBE_DISABLE_PACKET_SPLIT */
 };
 
 struct ixgbe_queue_stats {
@@ -369,6 +374,9 @@ enum ixgbe_ring_state_t {
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
 	__IXGBE_TX_XDP_RING,
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	__IXGBE_TX_DISABLED,
+#endif
 };
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 
@@ -452,6 +460,12 @@ struct ixgbe_ring {
 	};
 #ifdef HAVE_XDP_BUFF_RXQ
 	struct xdp_rxq_info xdp_rxq;
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	struct xdp_umem *xsk_umem;
+	struct zero_copy_allocator zca; /* ZC allocator anchor */
+	u16 ring_idx;           /* {rx,tx,xdp}_ring back reference idx */
+	u16 rx_buf_len;
+#endif
 #endif
 } ____cacheline_internodealigned_in_smp;
 
@@ -526,9 +540,11 @@ static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring __maybe_unused *r
 #endif
 #define IXGBE_ITR_ADAPTIVE_MIN_INC	2
 #define IXGBE_ITR_ADAPTIVE_MIN_USECS	10
-#define IXGBE_ITR_ADAPTIVE_MAX_USECS	126
+#define IXGBE_ITR_ADAPTIVE_MAX_USECS	84
 #define IXGBE_ITR_ADAPTIVE_LATENCY	0x80
 #define IXGBE_ITR_ADAPTIVE_BULK		0x00
+#define IXGBE_ITR_ADAPTIVE_MASK_USECS	(IXGBE_ITR_ADAPTIVE_LATENCY - \
+					 IXGBE_ITR_ADAPTIVE_MIN_INC)
 
 struct ixgbe_ring_container {
 	struct ixgbe_ring *ring;	/* pointer to linked list of rings */
@@ -1036,6 +1052,11 @@ struct ixgbe_adapter {
 	struct dentry *ixgbe_dbg_adapter;
 #endif /*HAVE_IXGBE_DEBUG_FS*/
 	u8 default_up;
+#ifdef NETIF_F_HW_TC
+#define IXGBE_MAX_LINK_HANDLE 10
+	struct ixgbe_jump_table *jump_tables[IXGBE_MAX_LINK_HANDLE];
+	unsigned long tables;
+#endif /* NETIF_F_HW_TC */
 
 /* maximum number of RETA entries among all devices supported by ixgbe
  * driver: currently it's x550 device in non-SRIOV mode
@@ -1051,7 +1072,12 @@ struct ixgbe_adapter {
 	unsigned int indices;
 #endif
 #endif
-	bool need_crosstalk_fix;
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	/* AF_XDP zero-copy */
+	struct xdp_umem **xsk_umems;
+	u16 num_xsk_umems_used;
+	u16 num_xsk_umems;
+#endif
 };
 
 static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
@@ -1145,6 +1171,8 @@ extern const char ixgbe_driver_name[];
 #endif
 extern const char ixgbe_driver_version[];
 
+int ixgbe_open(struct net_device *netdev);
+int ixgbe_close(struct net_device *netdev);
 void ixgbe_up(struct ixgbe_adapter *adapter);
 void ixgbe_down(struct ixgbe_adapter *adapter);
 void ixgbe_reinit_locked(struct ixgbe_adapter *adapter);
@@ -1177,6 +1205,9 @@ void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter,
 #if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 void ixgbe_clear_udp_tunnel_port(struct ixgbe_adapter *, u32);
 #endif
+int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
+				    struct ixgbe_fdir_filter *input,
+				    u16 sw_idx);
 void ixgbe_set_rx_mode(struct net_device *netdev);
 int ixgbe_write_mc_addr_list(struct net_device *netdev);
 int ixgbe_setup_tc(struct net_device *dev, u8 tc);
@@ -1250,7 +1281,6 @@ s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
 
 bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			 u16 subdevice_id);
-int ixgbe_write_uc_addr_list(struct net_device *netdev, int vfn);
 void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter);
 int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 				const u8 *addr, u16 queue);

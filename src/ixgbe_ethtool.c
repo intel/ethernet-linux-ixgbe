@@ -825,7 +825,7 @@ static void ixgbe_set_msglevel(struct net_device *netdev, u32 data)
 
 static int ixgbe_get_regs_len(struct net_device __always_unused *netdev)
 {
-#define IXGBE_REGS_LEN  1129
+#define IXGBE_REGS_LEN  1145
 	return IXGBE_REGS_LEN * sizeof(u32);
 }
 
@@ -989,22 +989,53 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 	regs_buff[828] = IXGBE_R32_Q(hw, IXGBE_FHFT(0));
 
 	/* DCB */
-	regs_buff[829] = IXGBE_R32_Q(hw, IXGBE_RMCS);
-	regs_buff[830] = IXGBE_R32_Q(hw, IXGBE_DPMCS);
-	regs_buff[831] = IXGBE_R32_Q(hw, IXGBE_PDPMCS);
-	regs_buff[832] = IXGBE_R32_Q(hw, IXGBE_RUPPBMR);
+	regs_buff[829] = IXGBE_R32_Q(hw, IXGBE_RMCS);   /* same as FCCFG  */
+	regs_buff[831] = IXGBE_R32_Q(hw, IXGBE_PDPMCS); /* same as RTTPCS */
+
+	switch (hw->mac.type) {
+	case ixgbe_mac_82598EB:
+		regs_buff[830] = IXGBE_R32_Q(hw, IXGBE_DPMCS);
+		regs_buff[832] = IXGBE_R32_Q(hw, IXGBE_RUPPBMR);
+		for (i = 0; i < 8; i++)
+			regs_buff[833 + i] =
+				IXGBE_R32_Q(hw, IXGBE_RT2CR(i));
+		for (i = 0; i < 8; i++)
+			regs_buff[841 + i] =
+				IXGBE_R32_Q(hw, IXGBE_RT2SR(i));
+		for (i = 0; i < 8; i++)
+			regs_buff[849 + i] =
+				IXGBE_R32_Q(hw, IXGBE_TDTQ2TCCR(i));
+		for (i = 0; i < 8; i++)
+			regs_buff[857 + i] =
+				IXGBE_R32_Q(hw, IXGBE_TDTQ2TCSR(i));
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		regs_buff[830] = IXGBE_R32_Q(hw, IXGBE_RTTDCS);
+		regs_buff[832] = IXGBE_R32_Q(hw, IXGBE_RTRPCS);
+		for (i = 0; i < 8; i++)
+			regs_buff[833 + i] =
+				IXGBE_R32_Q(hw, IXGBE_RTRPT4C(i));
+		for (i = 0; i < 8; i++)
+			regs_buff[841 + i] =
+				IXGBE_R32_Q(hw, IXGBE_RTRPT4S(i));
+		for (i = 0; i < 8; i++)
+			regs_buff[849 + i] =
+				IXGBE_R32_Q(hw, IXGBE_RTTDT2C(i));
+		for (i = 0; i < 8; i++)
+			regs_buff[857 + i] =
+				IXGBE_R32_Q(hw, IXGBE_RTTDT2S(i));
+		break;
+	default:
+		break;
+	}
+
 	for (i = 0; i < 8; i++)
-		regs_buff[833 + i] = IXGBE_R32_Q(hw, IXGBE_RT2CR(i));
+		regs_buff[865 + i] =
+		IXGBE_R32_Q(hw, IXGBE_TDPT2TCCR(i)); /* same as RTTPT2C */
 	for (i = 0; i < 8; i++)
-		regs_buff[841 + i] = IXGBE_R32_Q(hw, IXGBE_RT2SR(i));
-	for (i = 0; i < 8; i++)
-		regs_buff[849 + i] = IXGBE_R32_Q(hw, IXGBE_TDTQ2TCCR(i));
-	for (i = 0; i < 8; i++)
-		regs_buff[857 + i] = IXGBE_R32_Q(hw, IXGBE_TDTQ2TCSR(i));
-	for (i = 0; i < 8; i++)
-		regs_buff[865 + i] = IXGBE_R32_Q(hw, IXGBE_TDPT2TCCR(i));
-	for (i = 0; i < 8; i++)
-		regs_buff[873 + i] = IXGBE_R32_Q(hw, IXGBE_TDPT2TCSR(i));
+		regs_buff[873 + i] =
+		IXGBE_R32_Q(hw, IXGBE_TDPT2TCSR(i)); /* same as RTTPT2S */
 
 	/* Statistics */
 	regs_buff[881] = IXGBE_GET_STAT(adapter, crcerrs);
@@ -1139,15 +1170,194 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 	regs_buff[1126] = IXGBE_R32_Q(hw, IXGBE_PBTXECC);
 	regs_buff[1127] = IXGBE_R32_Q(hw, IXGBE_PBRXECC);
 
-	/* 82599 X540 specific registers  */
+	/* 82599 X540 specific registers */
 	regs_buff[1128] = IXGBE_R32_Q(hw, IXGBE_MFLCN);
+
+	/* 82599 X540 specific DCB registers */
+	regs_buff[1129] = IXGBE_R32_Q(hw, IXGBE_RTRUP2TC);
+	regs_buff[1130] = IXGBE_R32_Q(hw, IXGBE_RTTUP2TC);
+	for (i = 0; i < 4; i++)
+		regs_buff[1131 + i] = IXGBE_R32_Q(hw, IXGBE_TXLLQ(i));
+	regs_buff[1135] = IXGBE_R32_Q(hw, IXGBE_RTTBCNRM);
+				     /* same as RTTQCNRM */
+	regs_buff[1136] = IXGBE_R32_Q(hw, IXGBE_RTTBCNRD);
+				     /* same as RTTQCNRR */
+
+	/* X540 specific DCB registers */
+	regs_buff[1137] = IXGBE_R32_Q(hw, IXGBE_RTTQCNCR);
+	regs_buff[1138] = IXGBE_R32_Q(hw, IXGBE_RTTQCNTG);
+
+	/* Security config registers */
+	regs_buff[1139] = IXGBE_R32_Q(hw, IXGBE_SECTXCTRL);
+	regs_buff[1140] = IXGBE_R32_Q(hw, IXGBE_SECTXSTAT);
+	regs_buff[1141] = IXGBE_R32_Q(hw, IXGBE_SECTXBUFFAF);
+	regs_buff[1142] = IXGBE_R32_Q(hw, IXGBE_SECTXMINIFG);
+	regs_buff[1143] = IXGBE_R32_Q(hw, IXGBE_SECRXCTRL);
+	regs_buff[1144] = IXGBE_R32_Q(hw, IXGBE_SECRXSTAT);
 
 }
 
 static int ixgbe_get_eeprom_len(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	return adapter->hw.eeprom.word_size * 2;
+	return pci_resource_len(adapter->pdev, 0);
+}
+
+static u8 ixgbe_nvmupd_get_module(u32 val)
+{
+	return (u8)(val & IXGBE_NVMUPD_MOD_PNT_MASK);
+}
+
+static int ixgbe_nvmupd_validate_offset(struct ixgbe_adapter *adapter,
+					u32 offset)
+{
+	struct net_device *netdev = adapter->netdev;
+
+	switch (offset) {
+	case IXGBE_STATUS:
+	case IXGBE_ESDP:
+	case IXGBE_MSCA:
+	case IXGBE_MSRWD:
+	case IXGBE_EEC:
+	case IXGBE_FLA:
+	case IXGBE_FLOP:
+	case IXGBE_SWSM:
+	case IXGBE_FWSM:
+	case IXGBE_FACTPS:
+	case IXGBE_GSSR:
+		return 0;
+	default:
+		if ((offset >= IXGBE_MAVTV(0) && offset <= IXGBE_MAVTV(7)) ||
+		    (offset >= IXGBE_RAL(0) && offset <= IXGBE_RAH(15)))
+			return 0;
+	}
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82599EB:
+		switch (offset) {
+		case IXGBE_AUTOC:
+		case IXGBE_EERD:
+		case IXGBE_BARCTRL:
+			return 0;
+		default:
+			if (offset >= 0x00020000 &&
+			    offset <= ixgbe_get_eeprom_len(netdev))
+				return 0;
+		}
+		break;
+	case ixgbe_mac_X540:
+		switch (offset) {
+		case IXGBE_EERD:
+		case IXGBE_EEWR:
+		case IXGBE_SRAMREL:
+		case IXGBE_BARCTRL:
+			return 0;
+		default:
+			if ((offset >= 0x00020000 &&
+			     offset <= ixgbe_get_eeprom_len(netdev)))
+				return 0;
+		}
+		break;
+	case ixgbe_mac_X550:
+		switch (offset) {
+		case IXGBE_EEWR:
+		case IXGBE_SRAMREL:
+		case IXGBE_PHYCTL_82599:
+		case IXGBE_HICR:
+		case IXGBE_FWSTS:
+		case IXGBE_FWRESETCNT:
+			return 0;
+		default:
+			if (offset >= IXGBE_FLEX_MNG_PTR(0) &&
+			    offset <= IXGBE_FLEX_MNG_PTR(447))
+				return 0;
+		}
+		break;
+	case ixgbe_mac_X550EM_x:
+		switch (offset) {
+		case IXGBE_PHYCTL_82599:
+		case IXGBE_NW_MNG_IF_SEL:
+		case IXGBE_HICR:
+		case IXGBE_FWSTS:
+		case IXGBE_FWRESETCNT:
+		case IXGBE_I2CCTL_X550:
+			return 0;
+		default:
+			if ((offset >= IXGBE_FLEX_MNG_PTR(0) &&
+			     offset <= IXGBE_FLEX_MNG_PTR(447)) ||
+			    (offset >= IXGBE_FUSES0_GROUP(0) &&
+			     offset <= IXGBE_FUSES0_GROUP(7)))
+				return 0;
+		}
+		break;
+	case ixgbe_mac_X550EM_a:
+		switch (offset) {
+		case IXGBE_PHYCTL_82599:
+		case IXGBE_NW_MNG_IF_SEL:
+		case IXGBE_HICR:
+		case IXGBE_FWSTS:
+		case IXGBE_FWRESETCNT:
+		case IXGBE_I2CCTL_X550:
+		case IXGBE_FLA_X550EM_a:
+		case IXGBE_SWSM_X550EM_a:
+		case IXGBE_FWSM_X550EM_a:
+		case IXGBE_SWFW_SYNC_X550EM_a:
+		case IXGBE_FACTPS_X550EM_a:
+		case IXGBE_EEC_X550EM_a:
+			return 0;
+		default:
+			if (offset >= IXGBE_FLEX_MNG_PTR(0) &&
+			    offset <= IXGBE_FLEX_MNG_PTR(447))
+				return 0;
+		}
+	default:
+		break;
+	}
+
+	return -ENOTTY;
+}
+
+static int ixgbe_nvmupd_command(struct ixgbe_hw *hw,
+				struct ixgbe_nvm_access *nvm,
+				u8 *bytes)
+{
+	u32 command;
+	int ret_val = 0;
+	u8 module;
+
+	command = nvm->command;
+	module = ixgbe_nvmupd_get_module(nvm->config);
+
+	switch (command) {
+	case IXGBE_NVMUPD_CMD_REG_READ:
+		switch (module) {
+		case IXGBE_NVMUPD_EXEC_FEATURES:
+			if (nvm->data_size == hw->nvmupd_features.size)
+				memcpy(bytes, &hw->nvmupd_features,
+				       hw->nvmupd_features.size);
+			else
+				ret_val = -ENOMEM;
+		break;
+		default:
+			if (ixgbe_nvmupd_validate_offset(hw->back, nvm->offset))
+				return -ENOTTY;
+
+			if (nvm->data_size == 1)
+				*((u8 *)bytes) = IXGBE_R8_Q(hw, nvm->offset);
+			else
+				*((u32 *)bytes) = IXGBE_R32_Q(hw, nvm->offset);
+		break;
+		}
+	break;
+	case IXGBE_NVMUPD_CMD_REG_WRITE:
+		if (ixgbe_nvmupd_validate_offset(hw->back, nvm->offset))
+			return -ENOTTY;
+
+		IXGBE_WRITE_REG(hw, nvm->offset, *((u32 *)bytes));
+	break;
+	}
+
+	return ret_val;
 }
 
 static int ixgbe_get_eeprom(struct net_device *netdev,
@@ -1157,12 +1367,22 @@ static int ixgbe_get_eeprom(struct net_device *netdev,
 	struct ixgbe_hw *hw = &adapter->hw;
 	u16 *eeprom_buff;
 	int first_word, last_word, eeprom_len;
+	struct ixgbe_nvm_access *nvm;
+	u32 magic;
 	int ret_val = 0;
 	u16 i;
 
 	if (eeprom->len == 0)
 		return -EINVAL;
 
+	magic = hw->vendor_id | (hw->device_id << 16);
+	if (eeprom->magic && eeprom->magic != magic) {
+		nvm = (struct ixgbe_nvm_access *)eeprom;
+		ret_val = ixgbe_nvmupd_command(hw, nvm, bytes);
+		return ret_val;
+	}
+
+	/* normal ethtool get_eeprom support */
 	eeprom->magic = hw->vendor_id | (hw->device_id << 16);
 
 	first_word = eeprom->offset >> 1;
@@ -1192,11 +1412,22 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 	int max_len, first_word, last_word, ret_val = 0;
+	struct ixgbe_nvm_access *nvm;
+	u32 magic;
 	u16 *eeprom_buff, i;
 	void *ptr;
 
 	if (eeprom->len == 0)
 		return -EINVAL;
+
+	magic = hw->vendor_id | (hw->device_id << 16);
+	if (eeprom->magic && eeprom->magic != magic) {
+		nvm = (struct ixgbe_nvm_access *)eeprom;
+		ret_val = ixgbe_nvmupd_command(hw, nvm, bytes);
+		return ret_val;
+	}
+
+	/* normal ethtool set_eeprom support */
 
 	if (eeprom->magic != (hw->vendor_id | (hw->device_id << 16)))
 		return -EINVAL;
@@ -2481,7 +2712,7 @@ static void ixgbe_diag_test(struct net_device *netdev,
 
 		if (if_running)
 			/* indicate we're in test mode */
-			dev_close(netdev);
+			ixgbe_close(netdev);
 		else
 			ixgbe_reset(adapter);
 
@@ -2519,7 +2750,7 @@ skip_loopback:
 		/* clear testing bit and return adapter to previous state */
 		clear_bit(__IXGBE_TESTING, &adapter->state);
 		if (if_running)
-			dev_open(netdev);
+			ixgbe_open(netdev);
 		else if (hw->mac.ops.disable_tx_laser)
 			hw->mac.ops.disable_tx_laser(hw);
 	} else {
@@ -2586,7 +2817,8 @@ static int ixgbe_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	if (wol->wolopts & (WAKE_PHY | WAKE_ARP | WAKE_MAGICSECURE))
+	if (wol->wolopts & (WAKE_PHY | WAKE_ARP | WAKE_MAGICSECURE |
+			    WAKE_FILTER))
 		return -EOPNOTSUPP;
 
 	if (ixgbe_wol_exclusion(adapter, wol))
@@ -3253,9 +3485,9 @@ static int ixgbe_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
 	return ret;
 }
 
-static int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
-					   struct ixgbe_fdir_filter *input,
-					   u16 sw_idx)
+int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
+				    struct ixgbe_fdir_filter *input,
+				    u16 sw_idx)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct hlist_node *node2;
@@ -3368,18 +3600,35 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_fdir_filter *input;
 	union ixgbe_atr_input mask;
+	u8 queue;
 	int err;
 
 	if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
 		return -EOPNOTSUPP;
 
-	/*
-	 * Don't allow programming if the action is a queue greater than
-	 * the number of online Rx queues.
+	/* ring_cookie is a masked into a set of queues and ixgbe pools or
+	 * we use drop index
 	 */
-	if ((fsp->ring_cookie != RX_CLS_FLOW_DISC) &&
-	    (fsp->ring_cookie >= adapter->num_rx_queues))
-		return -EINVAL;
+	if (fsp->ring_cookie == RX_CLS_FLOW_DISC) {
+		queue = IXGBE_FDIR_DROP_QUEUE;
+	} else {
+		u32 ring = ethtool_get_flow_spec_ring(fsp->ring_cookie);
+		u8 vf = ethtool_get_flow_spec_ring_vf(fsp->ring_cookie);
+
+		if (!vf && ring >= adapter->num_rx_queues)
+			return -EINVAL;
+		else if (vf &&
+			 ((vf > adapter->num_vfs) ||
+			   ring >= adapter->num_rx_queues_per_pool))
+			return -EINVAL;
+
+		/* Map the ring onto the absolute queue index */
+		if (!vf)
+			queue = adapter->rx_ring[ring]->reg_idx;
+		else
+			queue = ((vf - 1) *
+				adapter->num_rx_queues_per_pool) + ring;
+	}
 
 	/* Don't allow indexes to exist outside of available space */
 	if (fsp->location >= ((1024 << adapter->fdir_pballoc) - 2)) {
@@ -3461,10 +3710,7 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	 */
 	if (netif_running(adapter->netdev)) {
 		err = ixgbe_fdir_write_perfect_filter_82599(hw,
-					&input->filter, input->sw_idx,
-					(input->action == IXGBE_FDIR_DROP_QUEUE) ?
-					IXGBE_FDIR_DROP_QUEUE :
-					adapter->rx_ring[input->action]->reg_idx,
+					&input->filter, input->sw_idx, queue,
 					adapter->cloud_mode);
 		if (err)
 			goto err_out_w_lock;
