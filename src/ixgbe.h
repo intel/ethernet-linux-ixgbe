@@ -1266,12 +1266,10 @@ void ixgbe_dbg_init(void);
 void ixgbe_dbg_exit(void);
 #endif /* HAVE_IXGBE_DEBUG_FS */
 
-#if IS_ENABLED(CONFIG_BQL) || defined(HAVE_SKB_XMIT_MORE)
 static inline struct netdev_queue *txring_txq(const struct ixgbe_ring *ring)
 {
 	return netdev_get_tx_queue(ring->netdev, ring->queue_index);
 }
-#endif
 
 #if IS_ENABLED(CONFIG_DCB)
 #ifdef HAVE_DCBNL_IEEE

@@ -67,7 +67,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.6.1" \
+#define DRV_VERSION	"5.6.3" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -9523,24 +9523,22 @@ static int ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 
 	skb_tx_timestamp(skb);
 
-#ifdef HAVE_SKB_XMIT_MORE
-	if (netif_xmit_stopped(txring_txq(tx_ring)) || !skb->xmit_more) {
+	if (netif_xmit_stopped(txring_txq(tx_ring)) || !netdev_xmit_more()) {
 		writel(i, tx_ring->tail);
+#ifndef SPIN_UNLOCK_IMPLIES_MMIOWB
 
-		/* we need this if more than one processor can write to our tail
-		 * at a time, it synchronizes IO on IA64/Altix systems
+		/* The following mmiowb() is required on certain
+		 * architechtures (IA64/Altix in particular) in order to
+		 * synchronize the I/O calls with respect to a spin lock. This
+		 * is because the wmb() on those architectures does not
+		 * guarantee anything for posted I/O writes.
+		 *
+		 * Note that the associated spin_unlock() is not within the
+		 * driver code, but in the networking core stack.
 		 */
 		mmiowb();
+#endif /* SPIN_UNLOCK_IMPLIES_MMIOWB */
 	}
-#else
-	/* notify HW of packet */
-	writel(i, tx_ring->tail);
-
-	/* we need this if more than one processor can write to our tail
-	 * at a time, it synchronizes IO on IA64/Altix systems
-	 */
-	mmiowb();
-#endif /* HAVE_SKB_XMIT_MORE */
 
 	return 0;
 dma_error:

@@ -113,6 +113,8 @@
 	1563  Ethernet Controller 10G X550T
 		1028 1fa8  Intel(R) Ethernet 10G 4P X550/I350 rNDC
 		1028 1fa9  Intel(R) Ethernet 10G 4P X550 rNDC
+		1137 02b2  Cisco X550-TX 10 Gig LOM
+		1137 02b3  Cisco X550-TX 10 Gig LOM
 		1590 00d1  HPE Ethernet 10Gb 2-port 562T Adapter
 		1590 00d2  HPE Ethernet 10Gb 2-port 562FLR-T Adapter
 		8086 0001  Ethernet Converged Network Adapter X550-T2

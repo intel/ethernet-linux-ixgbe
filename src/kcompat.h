@@ -2763,9 +2763,11 @@ static inline int _kc_strict_strtol(const char *buf, unsigned int base, long *re
 
 #else /* < 2.6.25 */
 
+#if IS_ENABLED(CONFIG_SYSFS)
 #ifndef IXGBE_SYSFS
 #define IXGBE_SYSFS
 #endif /* IXGBE_SYSFS */
+#endif /* CONFIG_SYSFS */
 #if IS_ENABLED(CONFIG_HWMON)
 #ifndef IXGBE_HWMON
 #define IXGBE_HWMON
@@ -6425,10 +6427,16 @@ static inline bool __kc_napi_if_scheduled_mark_missed(struct napi_struct *n)
 #endif /* HAVE_AF_XDP_SUPPORT */
 #else /* >= 4.20.0 */
 #define HAVE_AF_XDP_ZC_SUPPORT
+#define HAVE_VXLAN_TYPE
 #endif /* 4.20.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0))
+#if (RHEL_RELEASE_CODE && \
+     RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,7) && \
+     RHEL_RELEASE_CODE != RHEL_RELEASE_VERSION(8,0))
+#define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
+#else /* RHEL >= 7.7 && RHEL != 8.0 */
 struct ptp_system_timestamp {
 	struct timespec64 pre_ts;
 	struct timespec64 post_ts;
@@ -6445,10 +6453,12 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 {
 	;
 }
+#endif /* !(RHEL >= 7.7 && RHEL != 8.0) */
 #else /* >= 5.0.0 */
 #define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
 #define HAVE_NDO_BRIDGE_SETLINK_EXTACK
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
+#define HAVE_GENEVE_TYPE
 #endif /* 5.0.0 */
 
 /*****************************************************************************/
@@ -6554,7 +6564,11 @@ static inline bool flow_rule_match_key(const struct flow_rule *rule,
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0))
+#ifdef HAVE_SKB_XMIT_MORE
 #define netdev_xmit_more()	(skb->xmit_more)
+#else
+#define netdev_xmit_more()	(0)
+#endif
 
 #ifndef eth_get_headlen
 static inline u32

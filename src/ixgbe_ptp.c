@@ -603,7 +603,6 @@ static int ixgbe_ptp_gettimex(struct ptp_clock_info *ptp,
 	return 0;
 }
 
-#ifndef HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
 /**
  * ixgbe_ptp_gettime
  * @ptp: the ptp clock structure
@@ -612,11 +611,11 @@ static int ixgbe_ptp_gettimex(struct ptp_clock_info *ptp,
  * read the timecounter and return the correct value on ns,
  * after converting it into a struct timespec64.
  */
-static int ixgbe_ptp_gettime(struct ptp_clock_info *ptp, struct timespec64 *ts)
+static int __maybe_unused ixgbe_ptp_gettime(struct ptp_clock_info *ptp,
+					    struct timespec64 *ts)
 {
 	return ixgbe_ptp_gettimex(ptp, ts, NULL);
 }
-#endif /* HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL */
 
 /**
  * ixgbe_ptp_settime
