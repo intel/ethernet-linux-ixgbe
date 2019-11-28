@@ -5,7 +5,7 @@
 .\" * Other names and brands may be claimed as the property of others.
 .\"
 .
-.TH ixgbe 1 "February 23, 2017"
+.TH ixgbe 1 "October 15, 2019"
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver
 for the 10 Gigabit Family of Adapters.
@@ -178,12 +178,6 @@ packet sample rate. For example, when AtrSampleRate is set to 20, every 20th
 packet looks to see if the packet will create a new flow. A value of 0
 indicates that ATR should be disabled and no samples will be taken.
 .LP
-.B L2LBen
-.B Valid Range: 0 (disabled), 1 (enabled)
-.IP
-This parameter controls the internal switch (L2 loopback between pf and vf).
-By default the switch is enabled.
-.LP
 .B LRO
 .IP
 .B Valid Range: 0(off), 1(on)
@@ -222,14 +216,14 @@ disables its Tx/Rx queues until a VF driver reset occurs.
 .LP
 Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU) to a value larger than the default value of 1500.
 
-Use the ifconfig command to increase the MTU size. For example, enter the following where X is the interface number:
+Use the ifconfig command to increase the MTU size. For example, enter the following where <ethX> is the interface number:
 
-# ifconfig ethX mtu 9000 up
+# ifconfig <ethX> mtu 9000 up
 
 Alternatively, you can use the ip command as follows:
 
-# ip link set mtu 9000 dev ethX
-# ip link set up dev ethX
+# ip link set mtu 9000 dev <ethX>
+# ip link set up dev <ethX>
 
 .LP
 NOTE: The maximum MTU setting for Jumbo Frames is 9710. This value coincides with the maximum Jumbo Frames size of 9728 bytes.
@@ -247,6 +241,7 @@ README
 included with the driver.
 For general information, go to the Intel support website at:
 .B http://www.intel.com/support/
+
 .LP
 If an issue is identified with the released source code on a supported kernel with a supported adapter, email the specific information related to the issue to e1000-devel@lists.sf.net.
 .LP

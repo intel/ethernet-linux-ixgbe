@@ -2,58 +2,20 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-================================================================================
-
-July 12, 2019
-
-================================================================================
+October 15, 2019
 
 Contents
 --------
 
-- Important Note
 - Overview
+- Identifying Your Adapter
+- Important Notes
 - Building and Installation
 - Command Line Parameters
 - Additional Configurations
 - Known Issues/Troubleshooting
 - Support
 - License
-
-
-Important Notes
-===============
-
-Disable LRO if enabling ip forwarding or bridging
--------------------------------------------------
-
-WARNING: The ixgbe driver supports the Large Receive Offload (LRO) feature.
-This option offers the lowest CPU utilization for receives but is completely
-incompatible with *routing/ip forwarding* and *bridging*. If enabling ip
-forwarding or bridging is a requirement, it is necessary to disable LRO using
-compile time options as noted in the LRO section later in this document. The
-result of not disabling LRO when combined with ip forwarding or bridging can be
-low throughput or even a kernel panic.
-
-
-Do not unload port driver if VF with active VM is bound to it
--------------------------------------------------------------
-Do not unload a port's driver if a Virtual Function (VF) with an active Virtual
-Machine (VM) is bound to it. Doing so will cause the port to appear to hang.
-Once the VM shuts down, or otherwise releases the VF, the command will complete.
-
-
-Configuring SR-IOV for improved network security
-------------------------------------------------
-In a virtualized environment, on Intel(R) Ethernet Server Adapters that support
-SR-IOV, the virtual function (VF) may be subject to malicious behavior.
-Software-generated layer two frames, like IEEE 802.3x (link flow control), IEEE
-802.1Qbb (priority based flow-control), and others of this type, are not
-expected and can throttle traffic between the host and the virtual switch,
-reducing performance. To resolve this issue, and to ensure isolation from
-unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
-from the administrative interface on the PF. This configuration allows
-unexpected, and potentially malicious, frames to be dropped.
 
 
 Overview
@@ -75,9 +37,6 @@ with Linux.
 This driver supports XDP (Express Data Path) on kernel 4.14 and later. Note
 that XDP is blocked for frame sizes larger than 3KB. This driver supports
 AF_XDP zero-copy on kernel 4.18 and later.
-
-The driver information previously displayed in the /proc file system is not
-supported in this release.
 
 
 NOTE: Devices based on the Intel(R) Ethernet Connection X552 and Intel(R)
@@ -165,12 +124,12 @@ HP		1000BASE-SX SFP				453153-001
 cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
 
 
-Laser turns off for SFP+ when ifconfig ethX down
+Laser turns off for SFP+ when ifconfig <ethX> down
 ------------------------------------------------
 
-"ifconfig ethX down" turns off the laser for 82599-based SFP+ fiber adapters.
-"ifconfig ethX up" turns on the laser.
-Alternatively, you can use "ip link set [down/up] dev ethX" to turn the
+"ifconfig <ethX> down" turns off the laser for 82599-based SFP+ fiber adapters.
+"ifconfig <ethX> up" turns on the laser.
+Alternatively, you can use "ip link set [down/up] dev <ethX>" to turn the
 laser off and on.
 
 
@@ -245,23 +204,79 @@ WARRANTY, RELATING TO SALE AND/OR USE OF SUCH THIRD PARTY PRODUCTS OR
 SELECTION OF VENDOR BY CUSTOMERS.
 
 
+Important Notes
+===============
+
+Disable LRO if enabling ip forwarding or bridging
+-------------------------------------------------
+
+WARNING: The ixgbe driver supports the Large Receive Offload (LRO) feature.
+This option offers the lowest CPU utilization for receives but is completely
+incompatible with *routing/ip forwarding* and *bridging*. If enabling ip
+forwarding or bridging is a requirement, it is necessary to disable LRO using
+compile time options as noted in the LRO section later in this document. The
+result of not disabling LRO when combined with ip forwarding or bridging can be
+low throughput or even a kernel panic.
+
+
+Do not unload port driver if VF with active VM is bound to it
+-------------------------------------------------------------
+Do not unload a port's driver if a Virtual Function (VF) with an active Virtual
+Machine (VM) is bound to it. Doing so will cause the port to appear to hang.
+Once the VM shuts down, or otherwise releases the VF, the command will complete.
+
+
+Configuring SR-IOV for improved network security
+------------------------------------------------
+In a virtualized environment, on Intel(R) Ethernet Network Adapters that
+support SR-IOV, the virtual function (VF) may be subject to malicious behavior.
+Software-generated layer two frames, like IEEE 802.3x (link flow control), IEEE
+802.1Qbb (priority based flow-control), and others of this type, are not
+expected and can throttle traffic between the host and the virtual switch,
+reducing performance. To resolve this issue, and to ensure isolation from
+unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
+from the administrative interface on the PF. This configuration allows
+unexpected, and potentially malicious, frames to be dropped. See "Configuring
+VLAN Tagging on SR-IOV Enabled Adapter Ports" in this README for configuration
+instructions.
+
+
 Building and Installation
 =========================
-To build a binary RPM* package of this driver, run 'rpmbuild -tb
-ixgbe-<x.x.x>.tar.gz', where <x.x.x> is the version number for the driver tar
-file.
 
-Note: For the build to work properly, the currently running kernel MUST match
-the version and configuration of the installed kernel sources. If you have just
-recompiled the kernel reboot the system before building.
-
-- To compile the driver on some kernel/arch combinations, a package with the
-development version of libelf (e.g. libelf-dev, libelf-devel,
-elfutilsl-libelf-devel) may need to be installed.
-
+To build a binary RPM package of this driver
+--------------------------------------------
 Note: RPM functionality has only been tested in Red Hat distributions.
 
+1. Run the following command, where <x.x.x> is the version number for the
+   driver tar file.
 
+   # rpmbuild -tb ixgbe-<x.x.x>.tar.gz
+
+   NOTE: For the build to work properly, the currently running kernel MUST
+   match the version and configuration of the installed kernel sources. If
+   you have just recompiled the kernel, reboot the system before building.
+
+2. After building the RPM, the last few lines of the tool output contain the
+   location of the RPM file that was built. Install the RPM with one of the
+   following commands, where <RPM> is the location of the RPM file:
+
+   # rpm -Uvh <RPM>
+       or
+   # dnf/yum localinstall <RPM>
+
+NOTES:
+- To compile the driver on some kernel/arch combinations, you may need to
+install a package with the development version of libelf (e.g. libelf-dev,
+libelf-devel, elfutilsl-libelf-devel).
+- When compiling an out-of-tree driver, details will vary by distribution.
+However, you will usually need a kernel-devel RPM or some RPM that provides the
+kernel headers at a minimum. The RPM kernel-devel will usually fill in the link
+at /lib/modules/'uname -r'/build.
+
+
+To manually build the driver
+----------------------------
 1. Move the base driver tar file to the directory of your choice.
    For example, use '/home/username/ixgbe' or '/usr/local/src/ixgbe'.
 
@@ -280,25 +295,27 @@ Note: RPM functionality has only been tested in Red Hat distributions.
    # make install
 
    The binary will be installed as:
-   /lib/modules/<KERNEL
-VERSION>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
+   /lib/modules/<KERNEL VER>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
 
    The install location listed above is the default location. This may differ
    for various Linux distributions.
 
-5. Load the module using the modprobe command:
+5. Load the module using the modprobe command.
 
-   # modprobe <ixgbe> [parameter=port1_value,port2_value]
+   To check the version of the driver and then load it:
 
-   Make sure that any older ixgbe drivers are removed from the kernel before
-   loading the new module:
+   # modinfo ixgbe
+   # modprobe ixgbe [parameter=port1_value,port2_value]
+
+   Alternately, make sure that any older ixgbe drivers are removed from the
+   kernel before loading the new module:
 
    # rmmod ixgbe; modprobe ixgbe
 
 6. Assign an IP address to the interface by entering the following,
-   where ethX is the interface name that was shown in dmesg after modprobe:
+   where <ethX> is the interface name that was shown in dmesg after modprobe:
 
-   # ip address add <IP_address>/<netmask bits> dev ethX
+   # ip address add <IP_address>/<netmask bits> dev <ethX>
 
 7. Verify that the interface works. Enter the following, where IP_address
    is the IP address for another machine on the same subnet as the interface
@@ -306,20 +323,21 @@ VERSION>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
 
    # ping <IP_address>
 
+Note: For certain distributions like (but not limited to) Red Hat Enterprise
+Linux 7 and Ubuntu, once the driver is installed, you may need to update the
+initrd/initramfs file to prevent the OS loading old versions of the ixgbe
+driver. Use the dracut utility on Red Hat distributions:
+	# dracut --force
+
+   For Ubuntu:
+	# update-initramfs -u
+
 To build ixgbe driver with DCA
 ------------------------------
 If your kernel supports DCA, the driver will build by default with DCA enabled.
 
 Note: DCA is not supported on X550-based adapters.
 
-Note: For certain distributions like (but not limited to) RedHat Enterprise
-Linux 7 and Ubuntu, once the driver is installed the initrd/initramfs file may
-need to be updated to prevent the OS loading old versions of the ixgbe driver.
-The dracut utility may be used on RedHat distributions:
-	# dracut --force
-
-   For Ubuntu:
-	# update-initramfs -u
 
 
 Command Line Parameters
@@ -480,258 +498,6 @@ This parameter specifies the LLI on VLAN priority threshold.
 Note: LLI is not supported on X550-based adapters.
 
 
-Flow Control
-------------
-Ethernet Flow Control (IEEE 802.3x) can be configured with ethtool to enable
-receiving and transmitting pause frames for ixgbe. When transmit is enabled,
-pause frames are generated when the receive packet buffer crosses a predefined
-threshold. When receive is enabled, the transmit unit will halt for the time
-delay specified when a pause frame is received.
-
-NOTE: You must have a flow control capable link partner.
-
-Flow Control is enabled by default.
-
-Use ethtool to change the flow control settings.
-
-To enable or disable rx or tx Flow Control:
-
-# ethtool -A eth? rx <on|off> tx <on|off>
-
-Note: This command only enables or disables Flow Control if auto-negotiation is
-disabled. If auto-negotiation is enabled, this command changes the parameters
-used for auto-negotiation with the link partner.
-
-To enable or disable auto-negotiation:
-
-# ethtool -s eth? autoneg <on|off>
-
-Note: Flow Control auto-negotiation is part of link auto-negotiation. Depending
-on your device, you may not be able to change the auto-negotiation setting.
-
-NOTE:
-- The ixgbe driver requires flow control on both the port and link partner. If
-flow control is disabled on one of the sides, the port may appear to hang on
-heavy traffic.
-- For 82598 backplane cards entering 1 gigabit mode, flow control default
-behavior is changed to off. Flow control in 1 gigabit mode on these devices can
-lead to transmit hangs.
-
-
-Intel(R) Ethernet Flow Director
--------------------------------
-NOTE: Intel Ethernet Flow Director parameters are only supported on kernel
-versions 2.6.30 or newer.
-
-The Intel Ethernet Flow Director performs the following tasks:
-
-- Directs receive packets according to their flows to different queues.
-- Enables tight control on routing a flow in the platform.
-- Matches flows and CPU cores for flow affinity.
-- Supports multiple parameters for flexible flow classification and load
-  balancing (in SFP mode only).
-
-NOTE: An included script (set_irq_affinity) automates setting the IRQ to CPU
-affinity.
-
-NOTE: Intel Ethernet Flow Director masking works in the opposite manner from
-subnet masking. For instance, in the following command:
-
-# ethtool -N eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
-172.21.1.1 m 255.128.0.0 action 31
-
-The src-ip value that is written to the filter will be 0.4.1.2, not 172.0.0.0
-as might be expected. Similarly, the dst-ip value written to the filter will be
-0.21.1.1, not 172.0.0.0.
-
-ethtool commands:
-
-To enable or disable the Intel Ethernet Flow Director:
-
-# ethtool -K ethX ntuple <on|off>
-
-When disabling ntuple filters, all the user programmed filters are flushed from
-the driver cache and hardware. All needed filters must be re-added when ntuple
-is re-enabled.
-
-To add a filter that directs packet to queue 2, use -U or -N switch:
-
-# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
-192.168.10.2 src-port 2000 dst-port 2001 action 2 [loc 1]
-
-To see the list of filters currently present:
-
-# ethtool <-u|-n> ethX
-
-
-Sideband Perfect Filters
-------------------------
-Sideband Perfect Filters are used to direct traffic that matches specified
-characteristics. They are enabled through ethtool's ntuple interface. To enable
-or disable sideband perfect filters:
-
-# ethtool -K <device> ntuple [off|on]
-
-To add a new filter, use the following command:
-
-# ethtool -U <device> flow-type <type> src-ip <ip> dst-ip <ip> src-port <port>
-dst-port <port> action <queue>
-  Where:
-    <device> - the ethernet device to program
-    <type> - can be ip4, tcp4, udp4, or sctp4
-    <ip> - the ip address to match on
-    <port> - the port number to match on
-    <queue> - the queue to direct traffic towards (-1 discards the
-              matched traffic)
-
-Use the following command to display all of the active filters:
-
-# ethtool -u <device>
-
-Use the following command to delete a filter:
-
-# ethtool -U <device> delete <N>
-  Where <N> is the filter ID displayed when printing all the active filters,
-  and may also have been specified using "loc <N>" when adding the filter.
-
-The following example matches TCP traffic sent from 192.168.0.1, port 5300,
-directed to 192.168.0.5, port 80, and sends it to queue 7:
-
-# ethtool -U enp130s0 flow-type tcp4 src-ip 192.168.0.1 dst-ip 192.168.0.5
-src-port 5300 dst-port 80 action 7
-
-For each flow-type, the programmed filters must all have the same matching
-input set. For example, issuing the following two commands is acceptable:
-
-# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
-# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.5 src-port 55 action 10
-
-Issuing the next two commands, however, is not acceptable, since the first
-specifies src-ip and the second specifies dst-ip:
-
-# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
-# ethtool -U enp130s0 flow-type ip4 dst-ip 192.168.0.5 src-port 55 action 10
-
-The second command will fail with an error. You may program multiple filters
-with the same fields, using different values, but, on one device, you may not
-program two tcp4 filters with different matching fields.
-
-Matching on a subportion of a field is not supported by the ixgbe driver, thus
-partial mask fields are not supported.
-
-The driver also supports matching user-defined data within the packet payload.
-This flexible data is specified using the "user-def" field of the ethtool
-command in the following way:
-+----------------------------+--------------------------+
-| 31    28    24    20    16 | 15    12    8    4    0  |
-+----------------------------+--------------------------+
-| offset into packet payload | 2 bytes of flexible data |
-+----------------------------+--------------------------+
-
-For example,
-  ... user-def 0x4FFFF ...
-
-tells the filter to look 4 bytes into the payload and match that value against
-0xFFFF. The offset is based on the beginning of the payload, and not the
-beginning of the packet. Thus
-
-  flow-type tcp4 ... user-def 0x8BEAF ...
-
-would match TCP/IPv4 packets which have the value 0xBEAF 8 bytes into the
-TCP/IPv4 payload.
-
-Note that ICMP headers are parsed as 4 bytes of header and 4 bytes of payload.
-Thus to match the first byte of the payload, you must actually add 4 bytes to
-the offset. Also note that ip4 filters match both ICMP frames as well as raw
-(unknown) ip4 frames, where the payload will be the L3 payload of the IP4 frame.
-
-The maximum offset is 64. The hardware will only read up to 64 bytes of data
-from the payload. The offset must be even because the flexible data is 2 bytes
-long and must be aligned to byte 0 of the packet payload.
-
-The user-defined flexible offset is also considered part of the input set and
-cannot be programmed separately for multiple filters of the same type. However,
-the flexible data is not part of the input set and multiple filters may use the
-same offset but match against different data.
-
-It is possible to create filters that direct traffic to a specific Virtual
-Function. For older versions of ethtool, this depends on the "action"
-parameter. Specify the action as a 64-bit value, where the lower 32 bits
-represent the queue number, while the next 8 bits represent the VF ID. Note
-that 0 is the PF, so the VF identifier is offset by 1. For example:
-
-# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
-192.168.10.2 src-port 2000 dst-port 2001 action 0x800000002 [loc 1]
-
-The action field specifies to direct traffic to Virtual Function 7 (8 minus 1)
-into queue 2 of that VF.
-
-Newer versions of ethtool (version 4.11 and later) use "vf" and "queue"
-parameters instead of the "action" parameter. Note that using the new ethtool
-"vf" parameter does not require the value to be offset by 1. This command is
-equivalent to the above example:
-
-# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
-192.168.10.2 src-port 2000 dst-port 2001 vf 7 queue 2 [loc 1]
-
-Note that these filters will not break internal routing rules, and will not
-route traffic that otherwise would not have been sent to the specified VF.
-
-
-Support for UDP RSS
--------------------
-
-This feature adds an ON/OFF switch for hashing over certain flow types. Only
-UDP can be turned on. The default setting is disabled.
-
-Only support for enabling/disabling hashing on ports for UDP over IPv4 (UDP4) or
-IPv6 (UDP6) is supported.
-
-NOTE: Fragmented packets may arrive out of order when RSS UDP support is
-configured.
-
-Supported Ethtool Commands and Options:
-  -n --show-nfc
-    Retrieves the receive network flow classification configurations.
-  rx-flow-hash tcp4|udp4|ah4|esp4|sctp4|tcp6|udp6|ah6|esp6|sctp6
-    Retrieves the hash options for the specified network traffic type.
-  -N --config-nfc
-    Configures the receive network flow classification.
-  rx-flow-hash tcp4|udp4|ah4|esp4|sctp4|tcp6|udp6|ah6|esp6|sctp6
-  m|v|t|s|d|f|n|r...
-    Configures the hash options for the specified network traffic type.
-	udp4	UDP over IPv4
-	udp6	UDP over IPv6
-	f	Hash on bytes 0 and 1 of the Layer 4 header of the rx packet.
-	n	Hash on bytes 2 and 3 of the Layer 4 header of the rx packet.
-
-The following is an example using udp4 (UDP over IPv4):
-  - To include UDP port numbers in RSS hashing run:
-    ethtool -N ethX rx-flow-hash udp4 sdfn
-
-  - To exclude UDP port numbers from RSS hashing run:
-    ethtool -N ethX rx-flow-hash udp4 sd
-
-  - To display UDP hashing current configuration run:
-    ethtool -n ethX rx-flow-hash udp4
-
-The results of running that call will be the following, if UDP hashing is
-enabled.
-
-  UDP over IPV4 flows use these fields for computing Hash flow key:
-    IP SA
-    IP DA
-    L4 bytes 0 & 1 [TCP/UDP src port]
-    L4 bytes 2 & 3 [TCP/UDP dst port]
-
-The results if UDP hashing is disabled are shown below.
-  UDP over IPV4 flows use these fields for computing Hash flow key:
-    IP SA
-    IP DA
-
-Parameters FdirPballoc and AtrSampleRate impact Flow Director.
-
-
 FdirPballoc
 -----------
 Valid Range: 1-3
@@ -765,11 +531,11 @@ sysfs.
 
 For example, you can create 4 VFs as follows:
 
-# echo 4 > /sys/class/net/<dev>/device/sriov_numvfs
+# echo 4 > /sys/class/net/<ethX>/device/sriov_numvfs
 
 To disable VFs, write 0 to the same file:
 
-# echo 0 > /sys/class/net/<dev>/device/sriov_numvfs
+# echo 0 > /sys/class/net/<ethX>/device/sriov_numvfs
 
 The parameters for the driver are referenced by position. Thus, if you have a
 dual port adapter, or more than one adapter in your system, and want N virtual
@@ -832,41 +598,6 @@ single queue pair. When zero VFs are configured, the PF can support multiple
 queue pairs per traffic class.
 
 
-Configuring SR-IOV for improved network security
-------------------------------------------------
-In a virtualized environment, on Intel(R) Ethernet Server Adapters that support
-SR-IOV, the virtual function (VF) may be subject to malicious behavior.
-Software-generated layer two frames, like IEEE 802.3x (link flow control), IEEE
-802.1Qbb (priority based flow-control), and others of this type, are not
-expected and can throttle traffic between the host and the virtual switch,
-reducing performance. To resolve this issue, and to ensure isolation from
-unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
-from the administrative interface on the PF. This configuration allows
-unexpected, and potentially malicious, frames to be dropped.
-
-
-Configuring VLAN Tagging on SR-IOV Enabled Adapter Ports
---------------------------------------------------------
-To configure VLAN tagging for the ports on an SR-IOV enabled adapter, use the
-following command. The VLAN configuration should be done before the VF driver
-is loaded or the VM is booted. The VF is not aware of the VLAN tag being
-inserted on transmit and removed on received frames.
-
-# ip link set dev <PF netdev id> vf <id> vlan <vlan id>
-
-For example, the following instructions will configure PF eth0 and the first VF
-on VLAN 10.
-
-# ip link set dev eth0 vf 0 vlan 10
-
-
-L2LBen
-------
-Valid Range: 0 (disabled), 1 (enabled)
-This parameter controls the internal switch (L2 loopback between pf and vf).
-By default the switch is enabled.
-
-
 LRO
 ---
 Valid Range: 0(off), 1(on)
@@ -905,8 +636,8 @@ speeds.
 
 Example:
 
-# ethtool --show-eee devname
-# ethtool --set-eee devname [eee on|off]
+# ethtool --show-eee <ethX>
+# ethtool --set-eee <ethX> [eee on|off]
 
 
 DMAC
@@ -954,6 +685,14 @@ ethtool will report the correct link speed.
 Additional Features and Configurations
 ======================================
 
+ethtool
+-------
+The driver utilizes the ethtool interface for driver configuration and
+diagnostics, as well as displaying statistical information. The latest ethtool
+version is required for this functionality. Download it at:
+https://kernel.org/pub/software/network/ethtool/
+
+
 Configuring the Driver on Different Distributions
 -------------------------------------------------
 Configuring a network driver to load properly when the system is started is
@@ -990,18 +729,18 @@ Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU)
 to a value larger than the default value of 1500.
 
 Use the ifconfig command to increase the MTU size. For example, enter the
-following where X is the interface number:
+following where <ethX> is the interface number:
 
-# ifconfig ethX mtu 9000 up
+# ifconfig <ethX> mtu 9000 up
 
 Alternatively, you can use the ip command as follows:
 
-# ip link set mtu 9000 dev ethX
-# ip link set up dev ethX
+# ip link set mtu 9000 dev <ethX>
+# ip link set up dev <ethX>
 
 This setting is not saved across reboots. The setting change can be made
 permanent by adding 'MTU=9000' to the following file:
-  /etc/sysconfig/network-scripts/ifcfg-ethX for RHEL
+  /etc/sysconfig/network-scripts/ifcfg-<ethX> for RHEL
       or
   /etc/sysconfig/network/<config_file> for SLES
 
@@ -1019,14 +758,6 @@ enabling flow control may mitigate the issue.
 NOTE: For 82599-based network connections, if you are enabling jumbo frames in
 a virtual function (VF), jumbo frames must first be enabled in the physical
 function (PF). The VF MTU setting cannot be larger than the PF MTU.
-
-
-ethtool
--------
-The driver utilizes the ethtool interface for driver configuration and
-diagnostics, as well as displaying statistical information. The latest ethtool
-version is required for this functionality. Download it at:
-https://kernel.org/pub/software/network/ethtool/
 
 
 Speed and Duplex Configuration
@@ -1054,7 +785,7 @@ following website:
 
 To see the speed configurations your device supports, run the following:
 
-# ethtool ethX
+# ethtool <ethX>
 
 Caution: Only experienced network administrators should force speed and duplex
 or change autonegotiation advertising manually. The settings at the switch must
@@ -1070,17 +801,309 @@ NOTE: For the Intel(R) Ethernet Connection X552 10 GbE SFP+ you must specify
 the desired speed.
 
 
-MAC and VLAN anti-spoofing feature
-----------------------------------
-When a malicious driver attempts to send a spoofed packet, it is dropped by the
-hardware and not transmitted.
+Flow Control
+------------
+Ethernet Flow Control (IEEE 802.3x) can be configured with ethtool to enable
+receiving and transmitting pause frames for ixgbe. When transmit is enabled,
+pause frames are generated when the receive packet buffer crosses a predefined
+threshold. When receive is enabled, the transmit unit will halt for the time
+delay specified when a pause frame is received.
+
+NOTE: You must have a flow control capable link partner.
+
+Flow Control is enabled by default.
+
+Use ethtool to change the flow control settings.
+
+To enable or disable Rx or Tx Flow Control:
+
+# ethtool -A <ethX> rx <on|off> tx <on|off>
+
+Note: This command only enables or disables Flow Control if auto-negotiation is
+disabled. If auto-negotiation is enabled, this command changes the parameters
+used for auto-negotiation with the link partner.
+
+To enable or disable auto-negotiation:
+
+# ethtool -s <ethX> autoneg <on|off>
+
+Note: Flow Control auto-negotiation is part of link auto-negotiation. Depending
+on your device, you may not be able to change the auto-negotiation setting.
+
+NOTE:
+- The ixgbe driver requires flow control on both the port and link partner. If
+flow control is disabled on one of the sides, the port may appear to hang on
+heavy traffic.
+- For 82598 backplane cards entering 1 gigabit mode, flow control default
+behavior is changed to off. Flow control in 1 gigabit mode on these devices can
+lead to transmit hangs.
+
+
+Intel(R) Ethernet Flow Director
+-------------------------------
+NOTE: Intel Ethernet Flow Director parameters are only supported on kernel
+versions 2.6.30 or newer.
+
+The Intel Ethernet Flow Director performs the following tasks:
+
+- Directs receive packets according to their flows to different queues
+- Enables tight control on routing a flow in the platform
+- Matches flows and CPU cores for flow affinity
+- Supports multiple parameters for flexible flow classification and load
+  balancing (in SFP mode only)
+
+NOTE: An included script (set_irq_affinity) automates setting the IRQ to CPU
+affinity.
+
+NOTE: Intel Ethernet Flow Director masking works in the opposite manner from
+subnet masking. For instance, in the following command:
+
+# ethtool -N eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
+172.21.1.1 m 255.128.0.0 action 31
+
+The src-ip value that is written to the filter will be 0.4.1.2, not 172.0.0.0
+as might be expected. Similarly, the dst-ip value written to the filter will be
+0.21.1.1, not 172.0.0.0.
+
+To enable or disable the Intel Ethernet Flow Director:
+
+# ethtool -K <ethX> ntuple <on|off>
+
+When disabling ntuple filters, all the user programmed filters are flushed from
+the driver cache and hardware. All needed filters must be re-added when ntuple
+is re-enabled.
+
+
+Sideband Perfect Filters
+------------------------
+Sideband Perfect Filters are used to direct traffic that matches specified
+characteristics. They are enabled through ethtool's ntuple interface. To enable
+or disable these filters:
+
+# ethtool -K <ethX> ntuple <off|on>
+
+To display all of the active filters:
+
+# ethtool -u <ethX>
+
+To add a new filter:
+
+# ethtool -U <ethX> flow-type <type> src-ip <ip> dst-ip <ip> src-port <port>
+dst-port <port> action <queue>
+  Where:
+    <ethX> - the Ethernet device to program
+    <type> - can be ip4, tcp4, udp4, or sctp4
+    <ip> - the ip address to match on
+    <port> - the port number to match on
+    <queue> - the queue to direct traffic towards (-1 discards the
+              matched traffic)
+
+To delete a filter:
+
+# ethtool -U <ethX> delete <N>
+  Where <N> is the filter ID displayed when printing all the active filters,
+  and may also have been specified using "loc <N>" when adding the filter.
+
+EXAMPLES:
+To add a filter that directs packet to queue 2:
+
+# ethtool -N <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 action 2 [loc 1]
+
+To match TCP traffic sent from 192.168.0.1, port 5300, directed to 192.168.0.5,
+port 80, and then send it to queue 7:
+
+# ethtool -U enp130s0 flow-type tcp4 src-ip 192.168.0.1 dst-ip 192.168.0.5
+src-port 5300 dst-port 80 action 7
+
+NOTES:
+For each flow-type, the programmed filters must all have the same matching
+input set. For example, issuing the following two commands is acceptable:
+
+# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
+# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.5 src-port 55 action 10
+
+Issuing the next two commands, however, is not acceptable, since the first
+specifies src-ip and the second specifies dst-ip:
+
+# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
+# ethtool -U enp130s0 flow-type ip4 dst-ip 192.168.0.5 src-port 55 action 10
+
+The second command will fail with an error. You may program multiple filters
+with the same fields, using different values, but, on one device, you may not
+program two tcp4 filters with different matching fields.
+
+Matching on a subportion of a field is not supported by the ixgbe driver, thus
+partial mask fields are not supported.
+
+
+Flex Byte Flow Director Filters
+-------------------------------
+The driver also supports matching user-defined data within the packet payload.
+This flexible data is specified using the "user-def" field of the ethtool
+command in the following way:
++----------------------------+--------------------------+
+| 31    28    24    20    16 | 15    12    8    4    0  |
++----------------------------+--------------------------+
+| offset into packet payload | 2 bytes of flexible data |
++----------------------------+--------------------------+
+
+For example,
+  ... user-def 0x4FFFF ...
+
+tells the filter to look 4 bytes into the payload and match that value against
+0xFFFF. The offset is based on the beginning of the payload, and not the
+beginning of the packet. Thus
+
+  flow-type tcp4 ... user-def 0x8BEAF ...
+
+would match TCP/IPv4 packets which have the value 0xBEAF 8 bytes into the
+TCP/IPv4 payload.
+
+Note that ICMP headers are parsed as 4 bytes of header and 4 bytes of payload.
+Thus to match the first byte of the payload, you must actually add 4 bytes to
+the offset. Also note that ip4 filters match both ICMP frames as well as raw
+(unknown) ip4 frames, where the payload will be the L3 payload of the IP4 frame.
+
+The maximum offset is 64. The hardware will only read up to 64 bytes of data
+from the payload. The offset must be even because the flexible data is 2 bytes
+long and must be aligned to byte 0 of the packet payload.
+
+The user-defined flexible offset is also considered part of the input set and
+cannot be programmed separately for multiple filters of the same type. However,
+the flexible data is not part of the input set and multiple filters may use the
+same offset but match against different data.
+
+
+Filters to Direct Traffic to a Specific VF
+------------------------------------------
+It is possible to create filters that direct traffic to a specific Virtual
+Function. For older versions of ethtool, this depends on the "action"
+parameter. Specify the action as a 64-bit value, where the lower 32 bits
+represent the queue number, while the next 8 bits represent the VF ID. Note
+that 0 is the PF, so the VF identifier is offset by 1. For example:
+
+# ethtool -N <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 action 0x800000002 [loc 1]
+
+The action field specifies to direct traffic to Virtual Function 7 (8 minus 1)
+into queue 2 of that VF.
+
+Newer versions of ethtool (version 4.11 and later) use "vf" and "queue"
+parameters instead of the "action" parameter. Note that using the new ethtool
+"vf" parameter does not require the value to be offset by 1. This command is
+equivalent to the above example:
+
+# ethtool -N <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 vf 7 queue 2 [loc 1]
+
+Note that these filters will not break internal routing rules, and will not
+route traffic that otherwise would not have been sent to the specified VF.
+
+
+Support for UDP RSS
+-------------------
+
+This feature adds an ON/OFF switch for hashing over certain flow types. Only
+UDP can be turned on. The default setting is disabled.
+
+Only support for enabling/disabling hashing on ports for UDP over IPv4 (UDP4) or
+IPv6 (UDP6) is supported.
+
+NOTE: Fragmented packets may arrive out of order when RSS UDP support is
+configured.
+
+Supported Ethtool Commands and Options:
+  -n --show-nfc
+    Retrieves the receive network flow classification configurations.
+  rx-flow-hash tcp4|udp4|ah4|esp4|sctp4|tcp6|udp6|ah6|esp6|sctp6
+    Retrieves the hash options for the specified network traffic type.
+  -N --config-nfc
+    Configures the receive network flow classification.
+  rx-flow-hash tcp4|udp4|ah4|esp4|sctp4|tcp6|udp6|ah6|esp6|sctp6
+  m|v|t|s|d|f|n|r...
+    Configures the hash options for the specified network traffic type.
+	udp4	UDP over IPv4
+	udp6	UDP over IPv6
+	f	Hash on bytes 0 and 1 of the Layer 4 header of the Rx packet.
+	n	Hash on bytes 2 and 3 of the Layer 4 header of the Rx packet.
+
+The following is an example using udp4 (UDP over IPv4):
+  - To include UDP port numbers in RSS hashing run:
+    ethtool -N <ethX> rx-flow-hash udp4 sdfn
+
+  - To exclude UDP port numbers from RSS hashing run:
+    ethtool -N <ethX> rx-flow-hash udp4 sd
+
+  - To display UDP hashing current configuration run:
+    ethtool -n <ethX> rx-flow-hash udp4
+
+The results of running that call will be the following, if UDP hashing is
+enabled.
+
+  UDP over IPV4 flows use these fields for computing Hash flow key:
+    IP SA
+    IP DA
+    L4 bytes 0 & 1 [TCP/UDP src port]
+    L4 bytes 2 & 3 [TCP/UDP dst port]
+
+The results if UDP hashing is disabled are shown below.
+  UDP over IPV4 flows use these fields for computing Hash flow key:
+    IP SA
+    IP DA
+
+Parameters FdirPballoc and AtrSampleRate impact Flow Director.
+
+
+Configuring VLAN Tagging on SR-IOV Enabled Adapter Ports
+--------------------------------------------------------
+To configure VLAN tagging for the ports on an SR-IOV enabled adapter, use the
+following command. The VLAN configuration should be done before the VF driver
+is loaded or the VM is booted. The VF is not aware of the VLAN tag being
+inserted on transmit and removed on received frames (sometimes called "port
+VLAN" mode).
+
+# ip link set dev <PF netdev id> vf <id> vlan <vlan id>
+
+For example, the following will configure PF eth0 and the first VF on VLAN 10:
+
+# ip link set dev eth0 vf 0 vlan 10
+
+
+Data Center Bridging (DCB)
+--------------------------
+NOTE:
+The kernel assumes that TC0 is available, and will disable Priority Flow
+Control (PFC) on the device if TC0 is not available. To fix this, ensure TC0 is
+enabled when setting up DCB on your switch.
+
+DCB is a configuration Quality of Service implementation in hardware. It uses
+the VLAN priority tag (802.1p) to filter traffic. That means that there are 8
+different priorities that traffic can be filtered into. It also enables
+priority flow control (802.1Qbb) which can limit or eliminate the number of
+dropped packets during network stress. Bandwidth can be allocated to each of
+these priorities, which is enforced at the hardware level (802.1Qaz).
+
+Adapter firmware implements LLDP and DCBX protocol agents as per 802.1AB and
+802.1Qaz respectively. The firmware based DCBX agent runs in willing mode only
+and can accept settings from a DCBX capable peer.
+
+The ixgbe driver implements the DCB netlink interface layer to allow user-space
+to communicate with the driver and query DCB configuration for the port.
+
+
+MAC and VLAN Anti-Spoofing Feature for VFs
+------------------------------------------
+When a malicious driver on a Virtual Function (VF) interface attempts to send a
+spoofed packet, it is dropped by the hardware and not transmitted.
 
 An interrupt is sent to the PF driver notifying it of the spoof attempt. When a
 spoofed packet is detected, the PF driver will send the following message to
 the system log (displayed by the "dmesg" command):
-ixgbe ethX: ixgbe_spoof_check: n spoofed packets detected
-where "x" is the PF interface number; and "n" is number of spoofed packets.
-NOTE: This feature can be disabled for a specific Virtual Function (VF):
+ixgbe <ethX>: ixgbe_spoof_check: n spoofed packets detected
+where "X" is the PF interface number and "n" is number of spoofed packets.
+
+NOTE: This feature can be disabled for a specific VF:
 
 # ip link set <pf dev> vf <vf id> spoofchk {off|on}
 
@@ -1099,7 +1122,7 @@ Wake on LAN Support (WoL)
 
 Some adapters do not support Wake on LAN. To determine if your adapter
 supports Wake on LAN, run
-  ethtool ethX
+  ethtool <ethX>
 
 The Intel(R) Ethernet Converged Network Adapter X550-T1 and Intel(R) Ethernet
 Converged Network Adapter X550-T2 have a manageability/AUX power connector.
@@ -1113,8 +1136,8 @@ IEEE 1588 Precision Time Protocol (PTP) Hardware Clock (PHC)
 ------------------------------------------------------------
 Precision Time Protocol (PTP) is used to synchronize clocks in a computer
 network. PTP support varies among Intel devices that support this driver. Use
-"ethtool -T <netdev name>" to get a definitive list of PTP capabilities
-supported by the device.
+'ethtool -T <ethX>' to get a definitive list of PTP capabilities supported by
+the device.
 
 
 Tunnel/Overlay Stateless Offloads
@@ -1124,17 +1147,55 @@ hardware and software configuration. Stateless offloads are enabled by default.
  
 To view the current state of all offloads:
 
-# ethtool -k ethX
+# ethtool -k <ethX>
 
 
-Virtual Function (VF) TX Rate Limit
+Virtual Function (VF) Tx Rate Limit
 -----------------------------------
-Virtual Function (VF) TX rate limit is configured with an ip command from the
-PF interface. For example:
-  # ip link set eth0 vf 0 rate 1000
-    (This command sets TX Rate Limit of 1000Mbps for VF 0)
+Use the ip command to configure the Tx rate limit for a VF from the PF
+interface.
+
+For example, to set a Tx rate limit of 1000Mbps for VF 0:
+
+# ip link set eth0 vf 0 rate 1000
 
 Note that the limit is set per queue and not for the entire VF interface.
+
+
+Interrupt Rate Limiting
+-----------------------
+This driver supports an adaptive interrupt throttle rate (ITR) mechanism that
+is tuned for general workloads. The user can customize the interrupt rate
+control for specific workloads, via ethtool, adjusting the number of
+microseconds between interrupts.
+
+Syntax:
+
+# ethtool -C <ethX> rx-usecs N
+
+Values for N:
+  0 - no limit
+  1 - adaptive (default)
+  2-1022 - minimum microseconds between each interrupt
+
+The range of 0-1022 microseconds provides an effective range of 978 to 500,000
+interrupts per second. The underlying hardware supports granularity in 2us
+intervals at 1Gbps and 10Gbps and 20us at 100Mbps, so adjacent values may
+result in the same interrupt rate.
+
+For lower CPU utilization:
+ - Lower Rx and Tx interrupts per queue using ethtool.
+
+ - Setting rx-usecs to 125 will limit interrupts to about 8,000 interrupts
+   per second per queue:
+
+   # ethtool -C <ethX> rx-usecs 125
+
+For reduced latency:
+ - Disable ITR by setting rx-usecs to 0 using ethtool:
+
+   # ethtool -C <ethX> rx-usecs 0
+
 
 
 Known Issues/Troubleshooting
@@ -1237,7 +1298,7 @@ keep the interfaces up, regardless of errors.
 
 Rx Page Allocation Errors
 -------------------------
-'Page allocation failure. order:0' errors may occur under stress. with kernels
+'Page allocation failure. order:0' errors may occur under stress with kernels
 2.6.25 and newer. This is caused by the way the Linux kernel reports this
 stressed condition.
 
@@ -1247,7 +1308,7 @@ DCB: Generic segmentation offload on causes bandwidth allocation issues
 In order for DCB to work correctly, Generic Segmentation Offload (GSO), also
 known as software TSO, must be disabled using ethtool. Since the hardware
 supports TSO (hardware offload of segmentation), GSO will not be running by
-default. The GSO state can be queried with ethtool using ethtool -k ethX.
+default. The GSO state can be queried with ethtool using ethtool -k <ethX>.
 
 When using 82598-based network connections, ixgbe driver only supports 16
 queues on a platform with more than 16 cores.
@@ -1298,7 +1359,7 @@ system reboots when the VM is running and VF is loaded on the VM.
 Do not unload the PF driver (ixgbe) while VFs are assigned to guests.
 
 
-Running ethtool -t ethX command causes break between PF and test client
+Running ethtool -t <ethX> command causes break between PF and test client
 -----------------------------------------------------------------------
 When there are active VFs, "ethtool -t" will only run the link test. The driver
 will also log in syslog that VFs should be shut down to run a full diagnostic
@@ -1341,15 +1402,15 @@ Unable to obtain DHCP lease on boot with RedHat
 -----------------------------------------------
 In configurations where the auto-negotiation process takes more than 5 seconds,
 the boot script may fail with the following message:
-"ethX: failed. No link present. Check cable?"
+"<ethX>: failed. No link present. Check cable?"
 
 This error may occur even though the presence of link can be confirmed using
-ethtool ethX. In this case, try setting "LINKDELAY=30" in
-/etc/sysconfig/network-scripts/ifdfg-ethX.
+ethtool <ethX>. In this case, try setting "LINKDELAY=30" in
+/etc/sysconfig/network-scripts/ifdfg-<ethX>.
 
 The same issue can occur during a network boot (via PXE) on RedHat
 distributions that use the dracut script:
-"Warning: No carrier detected on interface <interface_name>"
+"Warning: No carrier detected on interface <ethX>"
 
 In this case add "rd.net.timeout.carrier=30" at the kernel command line.
 

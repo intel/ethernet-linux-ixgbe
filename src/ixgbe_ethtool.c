@@ -1225,6 +1225,8 @@ static int ixgbe_nvmupd_validate_offset(struct ixgbe_adapter *adapter,
 	case IXGBE_FWSM:
 	case IXGBE_FACTPS:
 	case IXGBE_GSSR:
+	case IXGBE_HICR:
+	case IXGBE_FWSTS:
 		return 0;
 	default:
 		if ((offset >= IXGBE_MAVTV(0) && offset <= IXGBE_MAVTV(7)) ||
@@ -1263,8 +1265,6 @@ static int ixgbe_nvmupd_validate_offset(struct ixgbe_adapter *adapter,
 		case IXGBE_EEWR:
 		case IXGBE_SRAMREL:
 		case IXGBE_PHYCTL_82599:
-		case IXGBE_HICR:
-		case IXGBE_FWSTS:
 		case IXGBE_FWRESETCNT:
 			return 0;
 		default:
@@ -1277,8 +1277,6 @@ static int ixgbe_nvmupd_validate_offset(struct ixgbe_adapter *adapter,
 		switch (offset) {
 		case IXGBE_PHYCTL_82599:
 		case IXGBE_NW_MNG_IF_SEL:
-		case IXGBE_HICR:
-		case IXGBE_FWSTS:
 		case IXGBE_FWRESETCNT:
 		case IXGBE_I2CCTL_X550:
 			return 0;
@@ -1294,8 +1292,6 @@ static int ixgbe_nvmupd_validate_offset(struct ixgbe_adapter *adapter,
 		switch (offset) {
 		case IXGBE_PHYCTL_82599:
 		case IXGBE_NW_MNG_IF_SEL:
-		case IXGBE_HICR:
-		case IXGBE_FWSTS:
 		case IXGBE_FWRESETCNT:
 		case IXGBE_I2CCTL_X550:
 		case IXGBE_FLA_X550EM_a:
