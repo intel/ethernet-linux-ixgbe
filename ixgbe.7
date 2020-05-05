@@ -224,10 +224,12 @@ Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU) 
 
 Use the ifconfig command to increase the MTU size. For example, enter the following where X is the interface number:
 
-   ifconfig ethX mtu 9000 up
+# ifconfig ethX mtu 9000 up
+
 Alternatively, you can use the ip command as follows:
-   ip link set mtu 9000 dev ethX
-   ip link set up dev ethX
+
+# ip link set mtu 9000 dev ethX
+# ip link set up dev ethX
 
 .LP
 NOTE: The maximum MTU setting for Jumbo Frames is 9710. This value coincides with the maximum Jumbo Frames size of 9728 bytes.

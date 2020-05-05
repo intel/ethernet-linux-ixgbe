@@ -1052,7 +1052,7 @@ struct ixgbe_adapter {
 	struct dentry *ixgbe_dbg_adapter;
 #endif /*HAVE_IXGBE_DEBUG_FS*/
 	u8 default_up;
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 #define IXGBE_MAX_LINK_HANDLE 10
 	struct ixgbe_jump_table *jump_tables[IXGBE_MAX_LINK_HANDLE];
 	unsigned long tables;

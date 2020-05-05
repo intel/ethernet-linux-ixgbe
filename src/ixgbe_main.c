@@ -53,9 +53,9 @@
 #include "ixgbe_dcb_82599.h"
 #include "ixgbe_sriov.h"
 #include "ixgbe_txrx_common.h"
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 #include "ixgbe_model.h"
-#endif /* NETIF_F_HW_TC */
+#endif /* HAVE_TC_SETUP_CLSU32 */
 
 #define DRV_HW_PERF
 
@@ -67,7 +67,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.6.3" \
+#define DRV_VERSION	"5.6.4" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -7121,7 +7121,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	int err;
 	unsigned int fdir;
 	u32 fwsm;
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 	int i;
 #endif
 
@@ -7144,7 +7144,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		e_err(probe, "init_shared_code failed: %d\n", err);
 		goto out;
 	}
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 	/* initialize static ixgbe jump table entries */
 	adapter->jump_tables[0] = kzalloc(sizeof(*adapter->jump_tables[0]),
 					  GFP_KERNEL);
@@ -7154,7 +7154,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 
 	for (i = 1; i < IXGBE_MAX_LINK_HANDLE; i++)
 		adapter->jump_tables[i] = NULL;
-#endif /* NETIF_F_HW_TC */
+#endif /* HAVE_TC_SETUP_CLSU32 */
 	adapter->mac_table = kzalloc(sizeof(struct ixgbe_mac_addr) *
 				     hw->mac.num_rar_entries,
 				     GFP_KERNEL);
@@ -9725,7 +9725,10 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 #ifdef HAVE_NETDEV_SELECT_QUEUE
 #if IS_ENABLED(CONFIG_FCOE)
 
-#if defined(HAVE_NDO_SELECT_QUEUE_SB_DEV)
+#if defined(HAVE_NDO_SELECT_QUEUE_FALLBACK_REMOVED)
+static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb,
+			      struct net_device *sb_dev)
+#elif defined(HAVE_NDO_SELECT_QUEUE_SB_DEV)
 static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb,
 			      __always_unused struct net_device *sb_dev,
 			      select_queue_fallback_t fallback)
@@ -9757,7 +9760,9 @@ static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb)
 			break;
 		/* fall through */
 	default:
-#if defined(HAVE_NDO_SELECT_QUEUE_SB_DEV)
+#if defined(HAVE_NDO_SELECT_QUEUE_FALLBACK_REMOVED)
+		return netdev_pick_tx(dev, skb, sb_dev);
+#elif defined(HAVE_NDO_SELECT_QUEUE_SB_DEV)
 		return fallback(dev, skb, sb_dev);
 #elif defined(HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK)
 		return fallback(dev, skb);
@@ -10489,6 +10494,7 @@ static void ixgbe_set_prio_tc_map(struct ixgbe_adapter __maybe_unused *adapter)
 }
 
 #ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 static int ixgbe_delete_clsu32(struct ixgbe_adapter *adapter,
 			       struct tc_cls_u32_offload *cls)
 {
@@ -10932,7 +10938,7 @@ static int ixgbe_setup_tc_cls_u32(struct ixgbe_adapter *adapter,
 #else
 static int ixgbe_setup_tc_cls_u32(struct net_device *dev,
 				  struct tc_cls_u32_offload *cls_u32)
-#endif
+#endif /* HAVE_TCF_BLOCK */
 {
 #ifdef HAVE_TCF_BLOCK
 #ifndef HAVE_TCF_MIRRED_DEV
@@ -10963,7 +10969,8 @@ static int ixgbe_setup_tc_cls_u32(struct net_device *dev,
 
 	}
 }
-#endif
+#endif /* HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV */
+#endif /* HAVE_TC_SETUP_CLSU32 */
 
 #ifdef HAVE_TCF_BLOCK
 static int ixgbe_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
@@ -10979,37 +10986,16 @@ static int ixgbe_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 		return -EOPNOTSUPP;
 
 	switch (type) {
+#ifdef HAVE_TC_SETUP_CLSU32
 	case TC_SETUP_CLSU32:
 		return ixgbe_setup_tc_cls_u32(adapter, type_data);
+#endif /* HAVE_TC_SETUP_CLSU32 */
 	default:
 		return -EOPNOTSUPP;
 	}
 }
 
-static int ixgbe_setup_tc_block(struct net_device *dev,
-				struct tc_block_offload *f)
-{
-	struct ixgbe_adapter *adapter = netdev_priv(dev);
-
-	if (f->binder_type != TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
-		return -EOPNOTSUPP;
-
-	switch (f->command) {
-	case TC_BLOCK_BIND:
-		return tcf_block_cb_register(f->block, ixgbe_setup_tc_block_cb,
-#ifdef HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
-					     adapter, adapter, f->extack);
-#else
-					     adapter, adapter);
-#endif
-	case TC_BLOCK_UNBIND:
-		tcf_block_cb_unregister(f->block, ixgbe_setup_tc_block_cb,
-					adapter);
-		return 0;
-	default:
-		return -EOPNOTSUPP;
-	}
-}
+static LIST_HEAD(ixgbe_block_cb_list);
 
 #endif
 #ifdef TC_MQPRIO_HW_OFFLOAD_MAX
@@ -11019,8 +11005,18 @@ static int ixgbe_setup_tc_mqprio(struct net_device *dev,
 	mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
 	return ixgbe_setup_tc(dev, mqprio->num_tc);
 }
-
 #endif
+
+#ifdef HAVE_TCF_BLOCK
+#define IXGBE_SETUP_TC_DECLARE_ADAPTER
+#endif /* HAVE_TCF_BLOCK */
+
+#ifdef HAVE_TC_SETUP_CLSU32
+#ifndef HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
+#define IXGBE_SETUP_TC_DECLARE_ADAPTER
+#endif /* !HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV */
+#endif /* HAVE_TC_SETUP_CLSU32 */
+
 #if defined(HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV)
 static int
 __ixgbe_setup_tc(struct net_device *dev, enum tc_setup_type type,
@@ -11036,15 +11032,18 @@ __ixgbe_setup_tc(struct net_device *dev, __always_unused u32 handle,
 		 __always_unused __be16 proto, struct tc_to_netdev *tc)
 #endif
 {
-#ifndef HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
+#ifdef IXGBE_SETUP_TC_DECLARE_ADAPTER
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
+#endif
+#ifndef HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
 	unsigned int type = tc->type;
-
 #ifdef HAVE_NDO_SETUP_TC_CHAIN_INDEX
+
 	if (chain_index)
 		return -EOPNOTSUPP;
+#endif /* HAVE_NDO_SETUP_TC_CHAIN_INDEX */
+#ifdef HAVE_TC_SETUP_CLSU32
 
-#endif
 	if (TC_H_MAJ(handle) == TC_H_MAJ(TC_H_INGRESS) &&
 	    type == TC_SETUP_CLSU32) {
 
@@ -11066,17 +11065,24 @@ __ixgbe_setup_tc(struct net_device *dev, __always_unused u32 handle,
 			return -EINVAL;
 		}
 	}
-#endif
+#endif /* HAVE_TC_SETUP_CLSU32 */
+#endif /* !HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV */
+
 	switch (type) {
 #if defined(HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV)
 #if defined(HAVE_TCF_BLOCK)
 	case TC_SETUP_BLOCK:
-		return ixgbe_setup_tc_block(dev, type_data);
+		return flow_block_cb_setup_simple(type_data,
+						  &ixgbe_block_cb_list,
+						  ixgbe_setup_tc_block_cb,
+						  adapter, adapter, true);
 #else
+#ifdef HAVE_TC_SETUP_CLSU32
 	case TC_SETUP_CLSU32:
 		return ixgbe_setup_tc_cls_u32(dev, type_data);
-#endif
-#endif
+#endif /* HAVE_TC_SETUP_CLSU32 */
+#endif /* HAVE_TCF_BLOCK */
+#endif /* HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV */
 	case TC_SETUP_QDISC_MQPRIO:
 #if defined(HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV)
 		return ixgbe_setup_tc_mqprio(dev, type_data);
@@ -12904,7 +12910,7 @@ err_sw_init:
 	ixgbe_disable_sriov(adapter);
 #endif /* CONFIG_PCI_IOV */
 	adapter->flags2 &= ~IXGBE_FLAG2_SEARCH_FOR_SFP;
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 	kfree(adapter->jump_tables[0]);
 #endif
 	kfree(adapter->mac_table);
@@ -12940,7 +12946,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	struct ixgbe_adapter *adapter = pci_get_drvdata(pdev);
 	struct net_device *netdev;
 	bool disable_dev;
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 	int i;
 #endif
 
@@ -13002,7 +13008,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 #endif
 	iounmap(adapter->io_addr);
 	pci_release_mem_regions(pdev);
-#ifdef NETIF_F_HW_TC
+#ifdef HAVE_TC_SETUP_CLSU32
 	for (i = 0; i < IXGBE_MAX_LINK_HANDLE; i++) {
 		if (adapter->jump_tables[i]) {
 			kfree(adapter->jump_tables[i]->input);
@@ -13010,7 +13016,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 		}
 		kfree(adapter->jump_tables[i]);
 	}
-#endif
+#endif /* HAVE_TC_SETUP_CLSU32 */
 	kfree(adapter->mac_table);
 	kfree(adapter->rss_key);
 	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);

@@ -629,8 +629,14 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 	union ixgbe_adv_tx_desc *tx_desc = NULL;
 	struct ixgbe_tx_buffer *tx_bi;
 	bool work_done = true;
-	u32 len, cmd_type;
+#ifdef XSK_UMEM_RETURNS_XDP_DESC
+	struct xdp_desc desc;
+#endif
 	dma_addr_t dma;
+	u32 cmd_type;
+#ifndef XSK_UMEM_RETURNS_XDP_DESC
+	u32 len;
+#endif
 
 	while (budget-- > 0) {
 		if (unlikely(!ixgbe_desc_unused(xdp_ring)) ||
@@ -639,6 +645,19 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 			break;
 		}
 
+#ifdef XSK_UMEM_RETURNS_XDP_DESC
+		if (!xsk_umem_consume_tx(xdp_ring->xsk_umem, &desc))
+			break;
+
+		dma = xdp_umem_get_dma(xdp_ring->xsk_umem, desc.addr);
+
+		dma_sync_single_for_device(xdp_ring->dev, dma, desc.len,
+					   DMA_BIDIRECTIONAL);
+
+		tx_bi = &xdp_ring->tx_buffer_info[xdp_ring->next_to_use];
+		tx_bi->bytecount = desc.len;
+		tx_bi->xdpf = NULL;
+#else
 		if (!xsk_umem_consume_tx(xdp_ring->xsk_umem, &dma, &len))
 			break;
 
@@ -648,6 +667,7 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 		tx_bi = &xdp_ring->tx_buffer_info[xdp_ring->next_to_use];
 		tx_bi->bytecount = len;
 		tx_bi->xdpf = NULL;
+#endif
 
 		tx_desc = IXGBE_TX_DESC(xdp_ring, xdp_ring->next_to_use);
 		tx_desc->read.buffer_addr = cpu_to_le64(dma);
@@ -656,10 +676,17 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 		cmd_type = IXGBE_ADVTXD_DTYP_DATA |
 			   IXGBE_ADVTXD_DCMD_DEXT |
 			   IXGBE_ADVTXD_DCMD_IFCS;
+#ifdef XSK_UMEM_RETURNS_XDP_DESC
+		cmd_type |= desc.len | IXGBE_TXD_CMD;
+		tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
+		tx_desc->read.olinfo_status =
+			cpu_to_le32(desc.len << IXGBE_ADVTXD_PAYLEN_SHIFT);
+#else
 		cmd_type |= len | IXGBE_TXD_CMD;
 		tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
 		tx_desc->read.olinfo_status =
 			cpu_to_le32(len << IXGBE_ADVTXD_PAYLEN_SHIFT);
+#endif
 
 		xdp_ring->next_to_use++;
 		if (xdp_ring->next_to_use == xdp_ring->count)

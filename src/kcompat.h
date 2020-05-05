@@ -4966,6 +4966,11 @@ of_get_mac_address(struct device_node __always_unused *np)
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0) )
 #define netdev_notifier_info_to_dev(ptr) ptr
+#ifndef time_in_range64
+#define time_in_range64(a, b, c) \
+	(time_after_eq64(a, b) && \
+	 time_before_eq64(a, c))
+#endif /* time_in_range64 */
 #if ((RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,6)) ||\
      (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,4,0)))
 #define HAVE_NDO_SET_VF_LINK_STATE
@@ -5778,6 +5783,11 @@ static inline void page_ref_inc(struct page *page)
 #define HAVE_TC_FLOWER_ENC
 #endif
 
+#if ((RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,7)) || \
+     (SLE_VERSION_CODE >= SLE_VERSION(12,2,0)))
+#define HAVE_TC_SETUP_CLSU32
+#endif
+
 #if (SLE_VERSION_CODE >= SLE_VERSION(12,2,0))
 #define HAVE_TC_SETUP_CLSFLOWER
 #endif
@@ -5787,6 +5797,7 @@ static inline void page_ref_inc(struct page *page)
 #define HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
 #define HAVE_PTP_CROSSTIMESTAMP
 #define HAVE_TC_SETUP_CLSFLOWER
+#define HAVE_TC_SETUP_CLSU32
 #endif /* 4.6.0 */
 
 /*****************************************************************************/
@@ -6205,13 +6216,13 @@ const char *_kc_phy_speed_to_str(int speed);
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
-#if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6))) && \
-     !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0))))
+#if ((RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6))) || \
+     (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0))))
+#define HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
+#define HAVE_TCF_BLOCK
+#else /* RHEL >= 7.6 || SLES >= 15.1 */
 #define TC_SETUP_QDISC_MQPRIO TC_SETUP_MQPRIO
 #endif /* !(RHEL >= 7.6) && !(SLES >= 15.1) */
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6)))
-#define HAVE_TCF_BLOCK
-#endif
 void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 				      struct ethtool_link_ksettings *src);
 #define ethtool_intersect_link_masks _kc_ethtool_intersect_link_masks
@@ -6260,6 +6271,8 @@ static inline unsigned long _kc_array_index_mask_nospec(unsigned long index,
 	(typeof(_i)) (_i & _mask);					\
 })
 #endif /* array_index_nospec */
+#if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6))) && \
+     !(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0))))
 #ifdef HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
 #include <net/pkt_cls.h>
 static inline bool
@@ -6274,6 +6287,7 @@ tc_cls_can_offload_and_chain0(const struct net_device *dev,
 	return true;
 }
 #endif /* HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO */
+#endif /* !(RHEL >= 7.6) && !(SLES >= 15.1) */
 #else /* >= 4.16 */
 #include <linux/nospec.h>
 #define HAVE_XDP_BUFF_RXQ
@@ -6380,7 +6394,6 @@ static inline dma_addr_t __kc_xdp_umem_get_dma(struct xdp_umem *umem, u64 addr)
 #define HAVE_NETPOLL_CONTROLLER
 #define REQUIRE_PCI_CLEANUP_AER_ERROR_STATUS
 #if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0)))
-#define HAVE_TCF_BLOCK
 #define HAVE_TCF_MIRRED_DEV
 #define HAVE_NDO_SELECT_QUEUE_SB_DEV
 #define HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
@@ -6433,10 +6446,11 @@ static inline bool __kc_napi_if_scheduled_mark_missed(struct napi_struct *n)
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0))
 #if (RHEL_RELEASE_CODE && \
-     RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,7) && \
-     RHEL_RELEASE_CODE != RHEL_RELEASE_VERSION(8,0))
+     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,7) && \
+      RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,0)) || \
+     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
 #define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
-#else /* RHEL >= 7.7 && RHEL != 8.0 */
+#else /* RHEL >= 7.7 && RHEL < 8.0 || RHEL >= 8.1 */
 struct ptp_system_timestamp {
 	struct timespec64 pre_ts;
 	struct timespec64 post_ts;
@@ -6454,16 +6468,22 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 	;
 }
 #endif /* !(RHEL >= 7.7 && RHEL != 8.0) */
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
+#define HAVE_NDO_BRIDGE_SETLINK_EXTACK
+#endif /* RHEL 8.1 */
 #else /* >= 5.0.0 */
 #define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
 #define HAVE_NDO_BRIDGE_SETLINK_EXTACK
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
 #define HAVE_GENEVE_TYPE
+#define HAVE_TC_INDIR_BLOCK
 #endif /* 5.0.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0))
-
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
+#define HAVE_NDO_FDB_ADD_EXTACK
+#else /* RHEL < 8.1 */
 #ifdef HAVE_TC_SETUP_CLSFLOWER
 #include <net/pkt_cls.h>
 
@@ -6539,6 +6559,14 @@ void flow_rule_match_ipv6_addrs(const struct flow_rule *rule,
 void flow_rule_match_ports(const struct flow_rule *rule,
 			   struct flow_match_ports *out);
 #ifdef HAVE_TC_FLOWER_ENC
+void flow_rule_match_enc_ports(const struct flow_rule *rule,
+			       struct flow_match_ports *out);
+void flow_rule_match_enc_control(const struct flow_rule *rule,
+				 struct flow_match_control *out);
+void flow_rule_match_enc_ipv4_addrs(const struct flow_rule *rule,
+				    struct flow_match_ipv4_addrs *out);
+void flow_rule_match_enc_ipv6_addrs(const struct flow_rule *rule,
+				    struct flow_match_ipv6_addrs *out);
 void flow_rule_match_enc_keyid(const struct flow_rule *rule,
 			       struct flow_match_enc_keyid *out);
 #endif
@@ -6556,10 +6584,12 @@ static inline bool flow_rule_match_key(const struct flow_rule *rule,
 }
 #endif /* HAVE_TC_SETUP_CLSFLOWER */
 
+#endif /* RHEL < 8.1 */
 #else /* >= 5.1.0 */
 #define HAVE_NDO_FDB_ADD_EXTACK
 #define NO_XDP_QUERY_XSK_UMEM
 #define HAVE_TC_FLOW_RULE_INFRASTRUCTURE
+#define HAVE_TC_FLOWER_ENC_IP
 #endif /* 5.1.0 */
 
 /*****************************************************************************/
@@ -6590,6 +6620,44 @@ __kc_eth_get_headlen(const struct net_device __always_unused *dev, void *data,
 #endif /* mmiowb */
 
 #else /* >= 5.2.0 */
+#define HAVE_NDO_SELECT_QUEUE_FALLBACK_REMOVED
 #define SPIN_UNLOCK_IMPLIES_MMIOWB
 #endif /* 5.2.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
+#define flow_block_offload tc_block_offload
+#define flow_block_command tc_block_command
+#define flow_block_binder_type tcf_block_binder_type
+#define flow_cls_offload tc_cls_flower_offload
+#define flow_cls_common_offload tc_cls_common_offload
+#define flow_cls_offload_flow_rule tc_cls_flower_offload_flow_rule
+#define FLOW_CLS_REPLACE TC_CLSFLOWER_REPLACE
+#define FLOW_CLS_DESTROY TC_CLSFLOWER_DESTROY
+#define FLOW_CLS_STATS TC_CLSFLOWER_STATS
+#define FLOW_CLS_TMPLT_CREATE TC_CLSFLOWER_TMPLT_CREATE
+#define FLOW_CLS_TMPLT_DESTROY TC_CLSFLOWER_TMPLT_DESTROY
+#define FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS \
+		TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS
+#define FLOW_BLOCK_BIND TC_BLOCK_BIND
+#define FLOW_BLOCK_UNBIND TC_BLOCK_UNBIND
+
+#ifdef HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
+#include <net/pkt_cls.h>
+
+int _kc_flow_block_cb_setup_simple(struct flow_block_offload *f,
+				   struct list_head *driver_list,
+				   tc_setup_cb_t *cb,
+				   void *cb_ident, void *cb_priv,
+				   bool ingress_only);
+
+#define flow_block_cb_setup_simple(f, driver_list, cb, cb_ident, cb_priv, \
+				   ingress_only) \
+	_kc_flow_block_cb_setup_simple(f, driver_list, cb, cb_ident, cb_priv, \
+				       ingress_only)
+#endif /* HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO */
+#else /* >= 5.3.0 */
+#define XSK_UMEM_RETURNS_XDP_DESC
+#define HAVE_FLOW_BLOCK_API
+#endif /* 5.3.0 */
 #endif /* _KCOMPAT_H_ */

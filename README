@@ -58,7 +58,8 @@ unexpected, and potentially malicious, frames to be dropped.
 
 Overview
 ========
-This driver supports kernel versions 2.6.x and newer.
+This driver supports kernel versions 2.6.x and newer. The associated Virtual
+Function (VF) driver for this driver is ixgbevf.
 
 Driver information can be obtained using ethtool, lspci, and ifconfig.
 Instructions on updating ethtool can be found in the section Additional
@@ -261,19 +262,23 @@ elfutilsl-libelf-devel) may need to be installed.
 Note: RPM functionality has only been tested in Red Hat distributions.
 
 
-1. Move the base driver tar file to the directory of your choice. For
-   example, use '/home/username/ixgbe' or '/usr/local/src/ixgbe'.
+1. Move the base driver tar file to the directory of your choice.
+   For example, use '/home/username/ixgbe' or '/usr/local/src/ixgbe'.
 
 2. Untar/unzip the archive, where <x.x.x> is the version number for the
    driver tar file:
-   tar zxf ixgbe-<x.x.x>.tar.gz
+
+   # tar zxf ixgbe-<x.x.x>.tar.gz
 
 3. Change to the driver src directory, where <x.x.x> is the version number
    for the driver tar:
-   cd ixgbe-<x.x.x>/src/
+
+   # cd ixgbe-<x.x.x>/src/
 
 4. Compile the driver module:
+
    # make install
+
    The binary will be installed as:
    /lib/modules/<KERNEL
 VERSION>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
@@ -282,21 +287,24 @@ VERSION>/updates/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
    for various Linux distributions.
 
 5. Load the module using the modprobe command:
-   modprobe <ixgbe> [parameter=port1_value,port2_value]
+
+   # modprobe <ixgbe> [parameter=port1_value,port2_value]
 
    Make sure that any older ixgbe drivers are removed from the kernel before
    loading the new module:
-   rmmod ixgbe; modprobe ixgbe
+
+   # rmmod ixgbe; modprobe ixgbe
 
 6. Assign an IP address to the interface by entering the following,
    where ethX is the interface name that was shown in dmesg after modprobe:
-  
-   ip address add <IP_address>/<netmask bits> dev ethX
+
+   # ip address add <IP_address>/<netmask bits> dev ethX
 
 7. Verify that the interface works. Enter the following, where IP_address
    is the IP address for another machine on the same subnet as the interface
    that is being tested:
-   ping <IP_address>
+
+   # ping <IP_address>
 
 To build ixgbe driver with DCA
 ------------------------------
@@ -309,6 +317,7 @@ Linux 7 and Ubuntu, once the driver is installed the initrd/initramfs file may
 need to be updated to prevent the OS loading old versions of the ixgbe driver.
 The dracut utility may be used on RedHat distributions:
 	# dracut --force
+
    For Ubuntu:
 	# update-initramfs -u
 
@@ -318,12 +327,14 @@ Command Line Parameters
 If the driver is built as a module, the following optional parameters are used
 by entering them on the command line with the modprobe command using this
 syntax:
-modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
+
+# modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
 
 There needs to be a <VAL#> for each network port in the system supported by
 this driver. The values will be applied to each instance, in function order.
 For example:
-modprobe ixgbe InterruptThrottleRate=16000,16000
+
+# modprobe ixgbe InterruptThrottleRate=16000,16000
 
 In this case, there are two network ports supported by ixgbe in the system.
 The default value for each parameter is generally the recommended setting,
@@ -484,13 +495,17 @@ Flow Control is enabled by default.
 Use ethtool to change the flow control settings.
 
 To enable or disable rx or tx Flow Control:
-ethtool -A eth? rx <on|off> tx <on|off>
+
+# ethtool -A eth? rx <on|off> tx <on|off>
+
 Note: This command only enables or disables Flow Control if auto-negotiation is
 disabled. If auto-negotiation is enabled, this command changes the parameters
 used for auto-negotiation with the link partner.
 
 To enable or disable auto-negotiation:
-ethtool -s eth? autoneg <on|off>
+
+# ethtool -s eth? autoneg <on|off>
+
 Note: Flow Control auto-negotiation is part of link auto-negotiation. Depending
 on your device, you may not be able to change the auto-negotiation setting.
 
@@ -520,9 +535,11 @@ NOTE: An included script (set_irq_affinity) automates setting the IRQ to CPU
 affinity.
 
 NOTE: Intel Ethernet Flow Director masking works in the opposite manner from
-subnet masking. In the following command:
-  #ethtool -N eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
-  172.21.1.1 m 255.128.0.0 action 31
+subnet masking. For instance, in the following command:
+
+# ethtool -N eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
+172.21.1.1 m 255.128.0.0 action 31
+
 The src-ip value that is written to the filter will be 0.4.1.2, not 172.0.0.0
 as might be expected. Similarly, the dst-ip value written to the filter will be
 0.21.1.1, not 172.0.0.0.
@@ -531,7 +548,7 @@ ethtool commands:
 
 To enable or disable the Intel Ethernet Flow Director:
 
-  # ethtool -K ethX ntuple <on|off>
+# ethtool -K ethX ntuple <on|off>
 
 When disabling ntuple filters, all the user programmed filters are flushed from
 the driver cache and hardware. All needed filters must be re-added when ntuple
@@ -539,52 +556,67 @@ is re-enabled.
 
 To add a filter that directs packet to queue 2, use -U or -N switch:
 
-  # ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
-  192.168.10.2 src-port 2000 dst-port 2001 action 2 [loc 1]
+# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 action 2 [loc 1]
 
 To see the list of filters currently present:
-  # ethtool <-u|-n> ethX
+
+# ethtool <-u|-n> ethX
 
 
 Sideband Perfect Filters
 ------------------------
 Sideband Perfect Filters are used to direct traffic that matches specified
-characteristics. They are enabled through ethtool's ntuple interface. To add a
-new filter use the following command:
-  ethtool -U <device> flow-type <type> src-ip <ip> dst-ip <ip> src-port <port>
+characteristics. They are enabled through ethtool's ntuple interface. To enable
+or disable sideband perfect filters:
+
+# ethtool -K <device> ntuple [off|on]
+
+To add a new filter, use the following command:
+
+# ethtool -U <device> flow-type <type> src-ip <ip> dst-ip <ip> src-port <port>
 dst-port <port> action <queue>
-Where:
-  <device> - the ethernet device to program
-  <type> - can be ip4, tcp4, udp4, or sctp4
-  <ip> - the ip address to match on
-  <port> - the port number to match on
-  <queue> - the queue to direct traffic towards (-1 discards the matched
-traffic)
+  Where:
+    <device> - the ethernet device to program
+    <type> - can be ip4, tcp4, udp4, or sctp4
+    <ip> - the ip address to match on
+    <port> - the port number to match on
+    <queue> - the queue to direct traffic towards (-1 discards the
+              matched traffic)
+
 Use the following command to display all of the active filters:
-  ethtool -u <device>
+
+# ethtool -u <device>
+
 Use the following command to delete a filter:
-  ethtool -U <device> delete <N>
-Where <N> is the filter id displayed when printing all the active filters, and
-may also have been specified using "loc <N>" when adding the filter.
+
+# ethtool -U <device> delete <N>
+  Where <N> is the filter ID displayed when printing all the active filters,
+  and may also have been specified using "loc <N>" when adding the filter.
 
 The following example matches TCP traffic sent from 192.168.0.1, port 5300,
 directed to 192.168.0.5, port 80, and sends it to queue 7:
-  ethtool -U enp130s0 flow-type tcp4 src-ip 192.168.0.1 dst-ip 192.168.0.5
-  src-port 5300 dst-port 80 action 7
+
+# ethtool -U enp130s0 flow-type tcp4 src-ip 192.168.0.1 dst-ip 192.168.0.5
+src-port 5300 dst-port 80 action 7
 
 For each flow-type, the programmed filters must all have the same matching
 input set. For example, issuing the following two commands is acceptable:
-  ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
-  ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.5 src-port 55 action 10
+
+# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
+# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.5 src-port 55 action 10
+
 Issuing the next two commands, however, is not acceptable, since the first
 specifies src-ip and the second specifies dst-ip:
-  ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
-  ethtool -U enp130s0 flow-type ip4 dst-ip 192.168.0.5 src-port 55 action 10
+
+# ethtool -U enp130s0 flow-type ip4 src-ip 192.168.0.1 src-port 5300 action 7
+# ethtool -U enp130s0 flow-type ip4 dst-ip 192.168.0.5 src-port 55 action 10
+
 The second command will fail with an error. You may program multiple filters
 with the same fields, using different values, but, on one device, you may not
 program two tcp4 filters with different matching fields.
 
-Matching on a sub-portion of a field is not supported by the ixgbe driver, thus
+Matching on a subportion of a field is not supported by the ixgbe driver, thus
 partial mask fields are not supported.
 
 The driver also supports matching user-defined data within the packet payload.
@@ -622,19 +654,28 @@ cannot be programmed separately for multiple filters of the same type. However,
 the flexible data is not part of the input set and multiple filters may use the
 same offset but match against different data.
 
-To create filters that direct traffic to a specific Virtual Function, use the
-"action" parameter. Specify the action as a 64 bit value, where the lower 32
-bits represents the queue number, while the next 8 bits represent which VF.
-Note that 0 is the PF, so the VF identifier is offset by 1. For example:
+It is possible to create filters that direct traffic to a specific Virtual
+Function. For older versions of ethtool, this depends on the "action"
+parameter. Specify the action as a 64-bit value, where the lower 32 bits
+represent the queue number, while the next 8 bits represent the VF ID. Note
+that 0 is the PF, so the VF identifier is offset by 1. For example:
 
-  ... action 0x800000002 ...
+# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 action 0x800000002 [loc 1]
 
-specifies to direct traffic to Virtual Function 7 (8 minus 1) into queue 2 of
-that VF.
+The action field specifies to direct traffic to Virtual Function 7 (8 minus 1)
+into queue 2 of that VF.
+
+Newer versions of ethtool (version 4.11 and later) use "vf" and "queue"
+parameters instead of the "action" parameter. Note that using the new ethtool
+"vf" parameter does not require the value to be offset by 1. This command is
+equivalent to the above example:
+
+# ethtool -N ethX flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 vf 7 queue 2 [loc 1]
 
 Note that these filters will not break internal routing rules, and will not
-route traffic that otherwise would not have been sent to the specified Virtual
-Function.
+route traffic that otherwise would not have been sent to the specified VF.
 
 
 Support for UDP RSS
@@ -713,28 +754,33 @@ max_vfs
 -------
 This parameter adds support for SR-IOV. It causes the driver to spawn up to
 max_vfs worth of virtual functions.
-Valid Range: 1-63
+Valid Range:  1-63
 If the value is greater than 0 it will also force the VMDq parameter to be 1 or
 more.
 
 NOTE: This parameter is only used on kernel 3.7.x and below. On kernel 3.8.x
 and above, use sysfs to enable VFs. Also, for Red Hat distributions, this
 parameter is only used on version 6.6 and older. For version 6.7 and newer, use
-sysfs. For example:
-#echo $num_vf_enabled > /sys/class/net/$dev/device/sriov_numvfs	//enable
-VFs
-#echo 0 > /sys/class/net/$dev/device/sriov_numvfs	//disable VFs
+sysfs.
+
+For example, you can create 4 VFs as follows:
+
+# echo 4 > /sys/class/net/<dev>/device/sriov_numvfs
+
+To disable VFs, write 0 to the same file:
+
+# echo 0 > /sys/class/net/<dev>/device/sriov_numvfs
 
 The parameters for the driver are referenced by position. Thus, if you have a
 dual port adapter, or more than one adapter in your system, and want N virtual
 functions per port, you must specify a number for each port with each parameter
 separated by a comma. For example:
 
-  modprobe ixgbe max_vfs=4
+# modprobe ixgbe max_vfs=4
 
 This will spawn 4 VFs on the first port.
 
-  modprobe ixgbe max_vfs=2,4
+# modprobe ixgbe max_vfs=2,4
 
 This will spawn 2 VFs on the first port and 4 VFs on the second port.
 
@@ -748,10 +794,11 @@ support it, you can check sysfs to find the mapping.
 
 NOTE: When either SR-IOV mode or VMDq mode is enabled, hardware VLAN filtering
 and VLAN tag stripping/insertion will remain enabled. Please remove the old
-VLAN filter before the new VLAN filter is added. For example,
-ip link set eth0 vf 0 vlan 100	// set vlan 100 for VF 0
-ip link set eth0 vf 0 vlan 0	// Delete vlan 100
-ip link set eth0 vf 0 vlan 200	// set a new vlan 200 for VF 0
+VLAN filter before the new VLAN filter is added. For example:
+
+# ip link set eth0 vf 0 vlan 100	// set vlan 100 for VF 0
+# ip link set eth0 vf 0 vlan 0	// Delete vlan 100
+# ip link set eth0 vf 0 vlan 200	// set a new vlan 200 for VF 0
 
 With kernel 3.6, the driver supports the simultaneous usage of max_vfs and DCB
 features, subject to the constraints described below. Prior to kernel 3.6, the
@@ -798,17 +845,19 @@ from the administrative interface on the PF. This configuration allows
 unexpected, and potentially malicious, frames to be dropped.
 
 
-Configuring VLAN tagging on SR-IOV enabled adapter ports
+Configuring VLAN Tagging on SR-IOV Enabled Adapter Ports
 --------------------------------------------------------
 To configure VLAN tagging for the ports on an SR-IOV enabled adapter, use the
 following command. The VLAN configuration should be done before the VF driver
-is loaded or the VM is booted.
+is loaded or the VM is booted. The VF is not aware of the VLAN tag being
+inserted on transmit and removed on received frames.
 
-$ ip link set dev <PF netdev id> vf <id> vlan <vlan id>
+# ip link set dev <PF netdev id> vf <id> vlan <vlan id>
 
 For example, the following instructions will configure PF eth0 and the first VF
 on VLAN 10.
-$ ip link set dev eth0 vf 0 vlan 10
+
+# ip link set dev eth0 vf 0 vlan 10
 
 
 L2LBen
@@ -843,6 +892,7 @@ EEE (Energy Efficient Ethernet)
 Valid Range: 0-1
 0 = Disables EEE
 1 = Enables EEE
+
 A link between two EEE-compliant devices will result in periodic bursts of data
 followed by periods where the link is in an idle state. This Low Power Idle
 (LPI) state is supported at 1 Gbps and 10 Gbps link speeds.
@@ -854,8 +904,9 @@ NOTES:
 speeds.
 
 Example:
-ethtool --show-eee devname
-ethtool --set-eee devname [eee on|off]
+
+# ethtool --show-eee devname
+# ethtool --set-eee devname [eee on|off]
 
 
 DMAC
@@ -917,9 +968,9 @@ or module name, the name for the Base Driver is ixgbe.
 For example, if you install the ixgbe driver for two adapters (eth0 and eth1)
 and want to set the interrupt mode to MSI-X and MSI, respectively, add the
 following to modules.conf or /etc/modprobe.conf:
-alias eth0 ixgbe
-alias eth1 ixgbe
-options ixgbe InterruptThrottleRate=3,1
+  alias eth0 ixgbe
+  alias eth1 ixgbe
+  options ixgbe InterruptThrottleRate=3,1
 
 
 Viewing Link Messages
@@ -927,7 +978,8 @@ Viewing Link Messages
 Link messages will not be displayed to the console if the distribution is
 restricting system messages. In order to see network driver link messages on
 your console, set dmesg to eight by entering the following:
-dmesg -n 8
+
+# dmesg -n 8
 
 NOTE: This setting is not saved across reboots.
 
@@ -940,15 +992,18 @@ to a value larger than the default value of 1500.
 Use the ifconfig command to increase the MTU size. For example, enter the
 following where X is the interface number:
 
-   ifconfig ethX mtu 9000 up
+# ifconfig ethX mtu 9000 up
+
 Alternatively, you can use the ip command as follows:
-   ip link set mtu 9000 dev ethX
-   ip link set up dev ethX
+
+# ip link set mtu 9000 dev ethX
+# ip link set up dev ethX
 
 This setting is not saved across reboots. The setting change can be made
-permanent by adding 'MTU=9000' to the file:
-/etc/sysconfig/network-scripts/ifcfg-ethX for RHEL or to the file
-/etc/sysconfig/network/<config_file> for SLES.
+permanent by adding 'MTU=9000' to the following file:
+  /etc/sysconfig/network-scripts/ifcfg-ethX for RHEL
+      or
+  /etc/sysconfig/network/<config_file> for SLES
 
 NOTE: The maximum MTU setting for Jumbo Frames is 9710. This value coincides
 with the maximum Jumbo Frames size of 9728 bytes.
@@ -998,7 +1053,8 @@ following website:
    https://kernel.org/pub/software/network/ethtool/
 
 To see the speed configurations your device supports, run the following:
-   ethtool ethX
+
+# ethtool ethX
 
 Caution: Only experienced network administrators should force speed and duplex
 or change autonegotiation advertising manually. The settings at the switch must
@@ -1025,7 +1081,8 @@ the system log (displayed by the "dmesg" command):
 ixgbe ethX: ixgbe_spoof_check: n spoofed packets detected
 where "x" is the PF interface number; and "n" is number of spoofed packets.
 NOTE: This feature can be disabled for a specific Virtual Function (VF):
-ip link set <pf dev> vf <vf id> spoofchk {off|on}
+
+# ip link set <pf dev> vf <vf id> spoofchk {off|on}
 
 
 IPRoute2 Tool for setting MAC address, VLAN and rate limit
@@ -1060,33 +1117,14 @@ network. PTP support varies among Intel devices that support this driver. Use
 supported by the device.
 
 
-VXLAN Overlay HW Offloading
----------------------------
-Virtual Extensible LAN (VXLAN) allows you to extend an L2 network over an L3
-network, which may be useful in a virtualized or cloud environment. Some
-Intel(R) Ethernet Network devices perform VXLAN processing, offloading it from
-the operating system. This reduces CPU utilization.
+Tunnel/Overlay Stateless Offloads
+---------------------------------
+Supported tunnels and overlays include VXLAN, GENEVE, and others depending on
+hardware and software configuration. Stateless offloads are enabled by default.
+ 
+To view the current state of all offloads:
 
-VXLAN offloading is controlled by the tx and rx checksum offload options
-provided by ethtool. That is, if tx checksum offload is enabled, and the
-adapter has the capability, VXLAN offloading is also enabled.
-
-Support for VXLAN HW offloading is dependent on kernel support of the HW
-offloading features.
-
-VXLAN Overlay HW Offloading is enabled by default. To view and configure VXLAN
-offload on a VXLAN-overlay offload enabled device, use the following command:
-
-  # ethtool -k ethX
-   (This command displays the offloads and their current state.)
-
-For more information on configuring your network for overlay HW offloading
-support, refer to the Intel Technical Brief, "Creating Overlay Networks Using
-Intel Ethernet Converged Network Adapters" (Intel Networking Division, August
-2013):
-
-http://www.intel.com/content/dam/www/public/us/en/documents/technology-briefs/
-overlay-networks-using-converged-network-adapters-brief.pdf
+# ethtool -k ethX
 
 
 Virtual Function (VF) TX Rate Limit
@@ -1145,7 +1183,8 @@ LRO and iSCSI Incompatibility
 
 LRO is incompatible with iSCSI target or initiator traffic. A panic may occur
 when iSCSI traffic is received through the ixgbe driver with LRO enabled. To
-workaround this, the driver should be built and installed with:
+workaround this, the driver should be built and installed with the following:
+
 # make CFLAGS_EXTRA=-DIXGBE_NO_LRO install
 
 
@@ -1158,15 +1197,16 @@ for any IP address assigned to the system. This results in unbalanced receive
 traffic.
 
 If you have multiple interfaces in a server, either turn on ARP filtering by
-entering:
-echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
+entering the following:
+
+# echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
 
 This only works if your kernel's version is higher than 2.4.5.
 
-
 NOTE: This setting is not saved across reboots. The configuration change can be
 made permanent by adding the following line to the file /etc/sysctl.conf:
-net.ipv4.conf.all.arp_filter = 1
+
+  net.ipv4.conf.all.arp_filter = 1
 
 Another alternative is to install the interfaces in separate broadcast domains
 (either in different switches or in a switch partitioned to VLANs).
@@ -1186,7 +1226,7 @@ Cisco Catalyst 4948-10GE port resets may cause switch to shut down ports
 ------------------------------------------------------------------------
 82598-based hardware can re-establish link quickly and when connected to some
 switches, rapid resets within the driver may cause the switch port to become
-isolated due to "link flap". This is typically indicated by a yellow instead of
+isolated due to "link flap." This is typically indicated by a yellow instead of
 a green link light. Several operations may cause this problem, such as
 repeatedly running ethtool commands that cause a reset.
 
@@ -1198,9 +1238,8 @@ keep the interfaces up, regardless of errors.
 Rx Page Allocation Errors
 -------------------------
 'Page allocation failure. order:0' errors may occur under stress. with kernels
-2.6.25 and newer.
-This is caused by the way the Linux kernel reports this stressed condition.
-
+2.6.25 and newer. This is caused by the way the Linux kernel reports this
+stressed condition.
 
 
 DCB: Generic segmentation offload on causes bandwidth allocation issues
@@ -1229,7 +1268,7 @@ writes one of the following messages in the system log:
 
 "PCI-Express bandwidth available for this card is not sufficient for optimal
 performance. For optimal performance a x8 PCI-Express slot is required."
-or
+  or
 "PCI-Express bandwidth available for this device may be insufficient for
 optimal performance. Please move the device to a different PCI-e link with more
 lanes and/or higher transfer rate."
@@ -1356,6 +1395,7 @@ http://www.intel.com/support/
 
 or the Intel Wired Networking project hosted by Sourceforge at:
 http://sourceforge.net/projects/e1000
+
 If an issue is identified with the released source code on a supported kernel
 with a supported adapter, email the specific information related to the issue
 to e1000-devel@lists.sf.net.

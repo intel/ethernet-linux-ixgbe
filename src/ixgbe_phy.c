@@ -137,12 +137,12 @@ fail:
 		ixgbe_i2c_bus_clear(hw);
 		if (lock)
 			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
-		retry++;
 		if (retry < max_retry)
 			DEBUGOUT("I2C byte read combined error - Retrying.\n");
 		else
 			DEBUGOUT("I2C byte read combined error.\n");
-	} while (retry < max_retry);
+		retry++;
+	} while (retry <= max_retry);
 
 	return IXGBE_ERR_I2C;
 }
@@ -202,12 +202,12 @@ fail:
 		ixgbe_i2c_bus_clear(hw);
 		if (lock)
 			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
-		retry++;
 		if (retry < max_retry)
 			DEBUGOUT("I2C byte write combined error - Retrying.\n");
 		else
 			DEBUGOUT("I2C byte write combined error.\n");
-	} while (retry < max_retry);
+		retry++;
+	} while (retry <= max_retry);
 
 	return IXGBE_ERR_I2C;
 }
@@ -2037,13 +2037,13 @@ fail:
 			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 			msec_delay(100);
 		}
-		retry++;
 		if (retry < max_retry)
 			DEBUGOUT("I2C byte read error - Retrying.\n");
 		else
 			DEBUGOUT("I2C byte read error.\n");
+		retry++;
 
-	} while (retry < max_retry);
+	} while (retry <= max_retry);
 
 	return status;
 }
@@ -2141,12 +2141,12 @@ STATIC s32 ixgbe_write_i2c_byte_generic_int(struct ixgbe_hw *hw, u8 byte_offset,
 
 fail:
 		ixgbe_i2c_bus_clear(hw);
-		retry++;
 		if (retry < max_retry)
 			DEBUGOUT("I2C byte write error - Retrying.\n");
 		else
 			DEBUGOUT("I2C byte write error.\n");
-	} while (retry < max_retry);
+		retry++;
+	} while (retry <= max_retry);
 
 	if (lock)
 		hw->mac.ops.release_swfw_sync(hw, swfw_mask);
