@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #include "ixgbe.h"
 #include "ixgbe_common.h"
@@ -26,7 +26,7 @@ static ssize_t ixgbe_hwmon_show_location(struct device __always_unused *dev,
 {
 	struct hwmon_attr *ixgbe_attr = container_of(attr, struct hwmon_attr,
 						     dev_attr);
-	return sprintf(buf, "loc%u\n",
+	return snprintf(buf, PAGE_SIZE, "loc%u\n",
 		       ixgbe_attr->sensor->location);
 }
 
@@ -46,7 +46,7 @@ static ssize_t ixgbe_hwmon_show_temp(struct device __always_unused *dev,
 	/* display millidegree */
 	value *= 1000;
 
-	return sprintf(buf, "%u\n", value);
+	return snprintf(buf, PAGE_SIZE, "%u\n", value);
 }
 
 static ssize_t ixgbe_hwmon_show_cautionthresh(struct device __always_unused *dev,
@@ -60,7 +60,7 @@ static ssize_t ixgbe_hwmon_show_cautionthresh(struct device __always_unused *dev
 	/* display millidegree */
 	value *= 1000;
 
-	return sprintf(buf, "%u\n", value);
+	return snprintf(buf, PAGE_SIZE, "%u\n", value);
 }
 
 static ssize_t ixgbe_hwmon_show_maxopthresh(struct device __always_unused *dev,
@@ -74,7 +74,7 @@ static ssize_t ixgbe_hwmon_show_maxopthresh(struct device __always_unused *dev,
 	/* display millidegree */
 	value *= 1000;
 
-	return sprintf(buf, "%u\n", value);
+	return snprintf(buf, PAGE_SIZE, "%u\n", value);
 }
 
 /**

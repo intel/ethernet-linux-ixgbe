@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
-# Copyright(c) 1999 - 2019 Intel Corporation.
+# Copyright(c) 1999 - 2020 Intel Corporation.
 
-# SPDX-License-Identifier: GPL-2.0-only
-# Copyright (C) 2015-2019 Intel Corporation
 #
 # common Makefile rules useful for out-of-tree Linux driver builds
 #
@@ -144,6 +142,46 @@ ifneq ($(words $(subst :, ,$(CURDIR))), 1)
   $(error Sources directory '$(CURDIR)' cannot contain spaces nor colons. Rename directory or move sources to another path)
 endif
 
+########################
+# Extract config value #
+########################
+
+get_config_value = $(shell ${CC} -E -dM ${CONFIG_FILE} 2> /dev/null |\
+                           grep -m 1 ${1} | awk '{ print $$3 }')
+
+########################
+# Check module signing #
+########################
+
+CONFIG_MODULE_SIG_ALL := $(call get_config_value,CONFIG_MODULE_SIG_ALL)
+CONFIG_MODULE_SIG_FORCE := $(call get_config_value,CONFIG_MODULE_SIG_FORCE)
+CONFIG_MODULE_SIG_KEY := $(call get_config_value,CONFIG_MODULE_SIG_KEY)
+
+SIG_KEY_SP := ${KOBJ}/${CONFIG_MODULE_SIG_KEY} \
+              ${KOBJ}/certs/signing_key.pem
+
+SIG_KEY_FILE := $(firstword $(foreach file, ${SIG_KEY_SP}, ${test_file}))
+
+# print a warning if the kernel configuration attempts to sign modules but
+# the signing key can't be found.
+ifneq (${SIG_KEY_FILE},)
+warn_signed_modules := : ;
+else
+warn_signed_modules :=
+ifeq (${CONFIG_MODULE_SIG_ALL},1)
+warn_signed_modules += \
+    echo "*** The target kernel has CONFIG_MODULE_SIG_ALL enabled, but" ; \
+    echo "*** the signing key cannot be found. Module signing has been" ; \
+    echo "*** disabled for this build." ;
+endif # CONFIG_MODULE_SIG_ALL=y
+ifeq (${CONFIG_MODULE_SIG_FORCE},1)
+    echo "warning: The target kernel has CONFIG_MODULE_SIG_FORCE enabled," ; \
+    echo "warning: but the signing key cannot be found. The module must" ; \
+    echo "warning: be signed manually using 'scripts/sign-file'." ;
+endif # CONFIG_MODULE_SIG_FORCE
+DISABLE_MODULE_SIGNING := Yes
+endif
+
 #######################
 # Linux Version Setup #
 #######################
@@ -173,14 +211,12 @@ endif
 # additional versioning information (up to 3 numbers), a possible abbreviated
 # git SHA1 commit id and a kernel type, e.g. CONFIG_LOCALVERSION=-1.2.3-default
 # or CONFIG_LOCALVERSION=-999.gdeadbee-default
-ifeq (1,$(shell ${CC} -E -dM ${CONFIG_FILE} 2> /dev/null |\
-          grep -m 1 CONFIG_SUSE_KERNEL | awk '{ print $$3 }'))
+ifeq (1,$(call get_config_value,CONFIG_SUSE_KERNEL))
 
-ifneq (10,$(shell ${CC} -E -dM ${CONFIG_FILE} 2> /dev/null |\
-	  grep -m 1 CONFIG_SLE_VERSION | awk '{ print $$3 }'))
+ifneq (10,$(call get_config_value,CONFIG_SLE_VERSION))
 
-  LOCALVERSION := $(shell ${CC} -E -dM ${CONFIG_FILE} 2> /dev/null |\
-                    grep -m 1 CONFIG_LOCALVERSION | awk '{ print $$3 }' |\
+  CONFIG_LOCALVERSION := $(call get_config_value,CONFIG_LOCALVERSION)
+  LOCALVERSION := $(shell echo ${CONFIG_LOCALVERSION} | \
                     cut -d'-' -f2 | sed 's/\.g[[:xdigit:]]\{7\}//')
   LOCALVER_A := $(shell echo ${LOCALVERSION} | cut -d'.' -f1)
   LOCALVER_B := $(shell echo ${LOCALVERSION} | cut -s -d'.' -f2)
@@ -296,10 +332,17 @@ export INSTALL_MOD_DIR ?= updates/drivers/net/ethernet/intel/${DRIVER}
 # EXTRA_CFLAGS -- a set of extra CFLAGS to pass into the ccflags-y variable
 # KSRC -- the location of the kernel source tree to build against
 # DRIVER_UPPERCASE -- the uppercase name of the kernel module, set from DRIVER
+# W -- if set, enables the W= kernel warnings options
+# C -- if set, enables the C= kernel sparse build options
 #
-kernelbuild = ${MAKE} $(if ${GCC_I_SYS},CC="${GCC_I_SYS}") \
+kernelbuild = $(call warn_signed_modules) \
+              ${MAKE} $(if ${GCC_I_SYS},CC="${GCC_I_SYS}") \
                       ${CCFLAGS_VAR}="${EXTRA_CFLAGS}" \
                       -C "${KSRC}" \
                       CONFIG_${DRIVER_UPPERCASE}=m \
+                      $(if ${DISABLE_MODULE_SIGNING},CONFIG_MODULE_SIG=n) \
+                      $(if ${DISABLE_MODULE_SIGNING},CONFIG_MODULE_SIG_ALL=) \
                       M="${CURDIR}" \
+                      $(if ${W},W="${W}") \
+                      $(if ${C},C="${C}") \
                       ${2} ${1}

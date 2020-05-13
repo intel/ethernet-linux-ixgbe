@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 /* ethtool support for ixgbe */
 
@@ -40,7 +40,7 @@ struct ixgbe_stats {
 
 #define IXGBE_NETDEV_STAT(_net_stat) { \
 	.stat_string = #_net_stat, \
-	.sizeof_stat = FIELD_SIZEOF(struct net_device_stats, _net_stat), \
+	.sizeof_stat = sizeof_field(struct net_device_stats, _net_stat), \
 	.stat_offset = offsetof(struct net_device_stats, _net_stat) \
 }
 static const struct ixgbe_stats ixgbe_gstrings_net_stats[] = {
@@ -67,7 +67,7 @@ static const struct ixgbe_stats ixgbe_gstrings_net_stats[] = {
 
 #define IXGBE_STAT(_name, _stat) { \
 	.stat_string = _name, \
-	.sizeof_stat = FIELD_SIZEOF(struct ixgbe_adapter, _stat), \
+	.sizeof_stat = sizeof_field(struct ixgbe_adapter, _stat), \
 	.stat_offset = offsetof(struct ixgbe_adapter, _stat) \
 }
 static struct ixgbe_stats ixgbe_gstrings_stats[] = {
@@ -409,7 +409,7 @@ static int ixgbe_get_link_ksettings(struct net_device *netdev,
 	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.supported,
 						supported);
 	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.advertising,
-						supported);
+						advertising);
 
 	return 0;
 }
@@ -1827,55 +1827,65 @@ static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 			p += ETH_GSTRING_LEN;
 		}
 		for (i = 0; i < IXGBE_NUM_TX_QUEUES; i++) {
-			sprintf(p, "tx_queue_%u_packets", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "tx_queue_%u_packets", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "tx_queue_%u_bytes", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "tx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
 #ifdef BP_EXTENDED_STATS
-			sprintf(p, "tx_queue_%u_bp_napi_yield", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "tx_queue_%u_bp_napi_yield", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "tx_queue_%u_bp_misses", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "tx_queue_%u_bp_misses", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "tx_queue_%u_bp_cleaned", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "tx_queue_%u_bp_cleaned", i);
 			p += ETH_GSTRING_LEN;
 #endif /* BP_EXTENDED_STATS */
 		}
 		for (i = 0; i < IXGBE_NUM_RX_QUEUES; i++) {
-			sprintf(p, "rx_queue_%u_packets", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "rx_queue_%u_packets", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "rx_queue_%u_bytes", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "rx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
 #ifdef BP_EXTENDED_STATS
-			sprintf(p, "rx_queue_%u_bp_poll_yield", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "rx_queue_%u_bp_poll_yield", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "rx_queue_%u_bp_misses", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "rx_queue_%u_bp_misses", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "rx_queue_%u_bp_cleaned", i);
+			snprintf(p, ETH_GSTRING_LEN,
+				 "rx_queue_%u_bp_cleaned", i);
 			p += ETH_GSTRING_LEN;
 #endif /* BP_EXTENDED_STATS */
 		}
 		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
-			sprintf(p, "tx_pb_%u_pxon", i);
+			snprintf(p, ETH_GSTRING_LEN, "tx_pb_%u_pxon", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "tx_pb_%u_pxoff", i);
+			snprintf(p, ETH_GSTRING_LEN, "tx_pb_%u_pxoff", i);
 			p += ETH_GSTRING_LEN;
 		}
 		for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
-			sprintf(p, "rx_pb_%u_pxon", i);
+			snprintf(p, ETH_GSTRING_LEN, "rx_pb_%u_pxon", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "rx_pb_%u_pxoff", i);
+			snprintf(p, ETH_GSTRING_LEN, "rx_pb_%u_pxoff", i);
 			p += ETH_GSTRING_LEN;
 		}
 		for (i = 0; i < adapter->num_vfs; i++) {
-			sprintf(p, "VF %u Rx Packets", i);
+			snprintf(p, ETH_GSTRING_LEN, "VF %u Rx Packets", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "VF %u Rx Bytes", i);
+			snprintf(p, ETH_GSTRING_LEN, "VF %u Rx Bytes", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "VF %u Tx Packets", i);
+			snprintf(p, ETH_GSTRING_LEN, "VF %u Tx Packets", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "VF %u Tx Bytes", i);
+			snprintf(p, ETH_GSTRING_LEN, "VF %u Tx Bytes", i);
 			p += ETH_GSTRING_LEN;
-			sprintf(p, "VF %u MC Packets", i);
+			snprintf(p, ETH_GSTRING_LEN, "VF %u MC Packets", i);
 			p += ETH_GSTRING_LEN;
 		}
 		/* BUG_ON(p - data != IXGBE_STATS_LEN * ETH_GSTRING_LEN); */

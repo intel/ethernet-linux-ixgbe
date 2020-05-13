@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #include "ixgbe.h"
 
@@ -159,7 +159,11 @@ static int ixgbe_xsk_umem_enable(struct ixgbe_adapter *adapter,
 		ixgbe_txrx_ring_enable(adapter, qid);
 
 		/* Kick start the NAPI context so that receiving will start */
+#ifdef HAVE_NDO_XSK_WAKEUP
+		err = ixgbe_xsk_wakeup(adapter->netdev, qid, XDP_WAKEUP_RX);
+#else
 		err = ixgbe_xsk_async_xmit(adapter->netdev, qid);
+#endif
 		if (err)
 			return err;
 	}
@@ -336,7 +340,7 @@ static bool ixgbe_alloc_buffer_zc(struct ixgbe_ring *rx_ring,
 
 	bi->handle = handle + umem->headroom;
 
-	xsk_umem_discard_addr(umem);
+	xsk_umem_release_addr(umem);
 	return true;
 }
 
@@ -363,7 +367,7 @@ static bool ixgbe_alloc_buffer_slow_zc(struct ixgbe_ring *rx_ring,
 
 	bi->handle = handle + umem->headroom;
 
-	xsk_umem_discard_addr_rq(umem);
+	xsk_umem_release_addr_rq(umem);
 	return true;
 }
 
@@ -774,7 +778,11 @@ bool ixgbe_clean_xdp_tx_irq(struct ixgbe_q_vector *q_vector,
 	return budget > 0 && xmit_done;
 }
 
+#ifdef HAVE_NDO_XSK_WAKEUP
+int ixgbe_xsk_wakeup(struct net_device *dev, u32 qid, u32 __maybe_unused flags)
+#else
 int ixgbe_xsk_async_xmit(struct net_device *dev, u32 qid)
+#endif
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	struct ixgbe_ring *ring;

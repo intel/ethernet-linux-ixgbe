@@ -1,29 +1,6 @@
 #!/bin/bash
-#
-# Copyright (c) 2014, Intel Corporation
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-#     * Redistributions of source code must retain the above copyright notice,
-#       this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * Neither the name of Intel Corporation nor the names of its contributors
-#       may be used to endorse or promote products derived from this software
-#       without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2015 - 2019, Intel Corporation
 #
 # Affinitize interrupts to cores
 #
@@ -36,20 +13,52 @@
 usage()
 {
 	echo
-	echo "Usage: $0 [-x] {all|local|remote|one|custom} [ethX] <[ethY]>"
-	echo "	options: -x		Configure XPS as well as smp_affinity"
-	echo "	options: {remote|one} can be followed by a specific node number"
-	echo "	Ex: $0 local eth0"
-	echo "	Ex: $0 remote 1 eth0"
-	echo "	Ex: $0 custom eth0 eth1"
-	echo "	Ex: $0 0-7,16-23 eth0"
+	echo "Usage: $0 [-x|-X] [all|local|remote [<node>]|one <core>|custom|<cores>] <interface> ..."
+	echo "	Options: "
+	echo "	  -x		Configure XPS as well as smp_affinity"
+	echo "	  -X		Disable XPS but set smp_affinity"
+	echo "	  [all] is the default value"
+	echo "	  [remote [<node>]] can be followed by a specific node number"
+	echo "	Examples:"
+	echo "	  $0 all eth1 eth2      # eth1 and eth2 to all cores"
+	echo "	  $0 one 2 eth1         # eth1 to core 2 only"
+	echo "	  $0 local eth1         # eth1 to local cores only"
+	echo "	  $0 remote eth1        # eth1 to remote cores only"
+	echo "	  $0 custom eth1        # prompt for eth1 interface"
+	echo "	  $0 0-7,16-23 eth0     # eth1 to cores 0-7 and 16-23"
 	echo
+	exit 1
+}
+
+usageX()
+{
+	echo "options -x and -X cannot both be specified, pick one"
 	exit 1
 }
 
 if [ "$1" == "-x" ]; then
 	XPS_ENA=1
 	shift
+fi
+
+if [ "$1" == "-X" ]; then
+	if [ -n "$XPS_ENA" ]; then
+		usageX
+	fi
+	XPS_DIS=2
+	shift
+fi
+
+if [ "$1" == -x ]; then
+	usageX
+fi
+
+if [ -n "$XPS_ENA" ] && [ -n "$XPS_DIS" ]; then
+	usageX
+fi
+
+if [ -z "$XPS_ENA" ]; then
+	XPS_ENA=$XPS_DIS
 fi
 
 num='^[0-9]+$'
@@ -106,10 +115,18 @@ set_affinity()
 
 	printf "%s" $MASK > /proc/irq/$IRQ/smp_affinity
 	printf "%s %d %s -> /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $MASK
-	if ! [ -z "$XPS_ENA" ]; then
+	case "$XPS_ENA" in
+	1)
 		printf "%s %d %s -> /sys/class/net/%s/queues/tx-%d/xps_cpus\n" $IFACE $core $MASK $IFACE $((n-1))
 		printf "%s" $MASK > /sys/class/net/$IFACE/queues/tx-$((n-1))/xps_cpus
-	fi
+	;;
+	2)
+		MASK=0
+		printf "%s %d %s -> /sys/class/net/%s/queues/tx-%d/xps_cpus\n" $IFACE $core $MASK $IFACE $((n-1))
+		printf "%s" $MASK > /sys/class/net/$IFACE/queues/tx-$((n-1))/xps_cpus
+	;;
+	*)
+	esac
 }
 
 # Allow usage of , or -

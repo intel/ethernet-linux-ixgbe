@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-October 15, 2019
+December 19, 2019
 
 Contents
 --------
@@ -12,7 +12,7 @@ Contents
 - Important Notes
 - Building and Installation
 - Command Line Parameters
-- Additional Configurations
+- Additional Features and Configurations
 - Known Issues/Troubleshooting
 - Support
 - License
@@ -53,8 +53,6 @@ Intel(R) Ethernet Connection X553 do not support the following features:
 * Speed and duplex auto-negotiation.
 * Wake on LAN
 * 1000BASE-T SFP Modules
-
-This driver no longer supports Itanium(R)-based systems.
 
 
 Identifying Your Adapter
@@ -398,7 +396,7 @@ Note: DCA is not supported on X550-based adapters.
 IntMode
 -------
 Valid Range: 0-2 (0 = Legacy Int, 1 = MSI and 2 = MSI-X)
-IntMode controls allow load time control over the type of interrupt
+IntMode controls the allowed load time control over the type of interrupt
 registered for by the driver. MSI-X is required for multiple queue
 support, and some kernels and combinations of kernel .config options
 will force a lower level of interrupt support.
@@ -1030,13 +1028,13 @@ Supported Ethtool Commands and Options:
 
 The following is an example using udp4 (UDP over IPv4):
   - To include UDP port numbers in RSS hashing run:
-    ethtool -N <ethX> rx-flow-hash udp4 sdfn
+    # ethtool -N <ethX> rx-flow-hash udp4 sdfn
 
   - To exclude UDP port numbers from RSS hashing run:
-    ethtool -N <ethX> rx-flow-hash udp4 sd
+    # ethtool -N <ethX> rx-flow-hash udp4 sd
 
   - To display UDP hashing current configuration run:
-    ethtool -n <ethX> rx-flow-hash udp4
+    # ethtool -n <ethX> rx-flow-hash udp4
 
 The results of running that call will be the following, if UDP hashing is
 enabled.
@@ -1085,11 +1083,39 @@ dropped packets during network stress. Bandwidth can be allocated to each of
 these priorities, which is enforced at the hardware level (802.1Qaz).
 
 Adapter firmware implements LLDP and DCBX protocol agents as per 802.1AB and
-802.1Qaz respectively. The firmware based DCBX agent runs in willing mode only
-and can accept settings from a DCBX capable peer.
+802.1Qaz respectively. There are potentially two DCBX modes on Linux, depending
+on the underlying PF device:
+- Intel Ethernet Controller 500 Series adapters only support software DCBX
+mode. They do not support firmware DCBX.
 
-The ixgbe driver implements the DCB netlink interface layer to allow user-space
-to communicate with the driver and query DCB configuration for the port.
+DCB parameters can be established via a firmware LLDP/DCBX agent. Only one
+LLDP/DCBX agent can be active on a single interface at a time. When the
+firmware DCBX agent is active, software agents will not be able to receive or
+transmit LLDP frames.
+
+When operating in firmware DCBX mode, the adapter is in an "always willing"
+state. DCB settings are applied on the adapter by transmitting a nonwilling
+configuration from the link partner. Typically this is a switch. For
+configuring DCBX parameters on a switch, please consult the switch
+manufacturer's documentation.
+
+NOTE:
+- You can configure DCB parameters using software LLDP/DCBX agents that
+interface with the Linux kernel's DCB Netlink API. We recommend using OpenLLDP
+as the DCBX agent. For more information, see the OpenLLDP man pages and
+https://github.com/intel/openlldp.
+
+
+Malicious Driver Detection (MDD) for VFs
+----------------------------------------
+Some Intel Ethernet devices use Malicious Driver Detection (MDD) to detect
+malicious traffic from the VF and disable Tx/Rx queues or drop the offending
+packet until a VF driver reset occurs. You can view MDD messages in the PF's
+system log using the dmesg command.
+
+- If the PF driver logs MDD events from the VF, confirm that the correct VF
+driver is installed.
+- To restore functionality, you can manually reload the VF or VM.
 
 
 MAC and VLAN Anti-Spoofing Feature for VFs
@@ -1100,36 +1126,47 @@ spoofed packet, it is dropped by the hardware and not transmitted.
 An interrupt is sent to the PF driver notifying it of the spoof attempt. When a
 spoofed packet is detected, the PF driver will send the following message to
 the system log (displayed by the "dmesg" command):
-ixgbe <ethX>: ixgbe_spoof_check: n spoofed packets detected
-where "X" is the PF interface number and "n" is number of spoofed packets.
+  ixgbe <ethX>: ixgbe_spoof_check: n spoofed packets detected
+  where "X" is the PF interface number and "n" is number of spoofed packets.
 
 NOTE: This feature can be disabled for a specific VF:
 
 # ip link set <pf dev> vf <vf id> spoofchk {off|on}
 
 
-IPRoute2 Tool for setting MAC address, VLAN and rate limit
-----------------------------------------------------------
-
+Setting MAC Address, VLAN and Rate Limit Using IProute2 Tool
+------------------------------------------------------------
 You can set a MAC address of a Virtual Function (VF), a default VLAN and the
 rate limit using the IProute2 tool. Download the latest version of the
-iproute2 tool from Sourceforge if your version does not have all the features
+IProute2 tool from Sourceforge if your version does not have all the features
 you require.
 
 
-Wake on LAN Support (WoL)
+Wake on LAN (WoL) Support
 -------------------------
+Some adapters do not support Wake on LAN (WoL). To determine if your adapter
+supports WoL, run the following command:
 
-Some adapters do not support Wake on LAN. To determine if your adapter
-supports Wake on LAN, run
-  ethtool <ethX>
+# ethtool <ethX>
 
-The Intel(R) Ethernet Converged Network Adapter X550-T1 and Intel(R) Ethernet
-Converged Network Adapter X550-T2 have a manageability/AUX power connector.
-These devices only support WoL if AUX power is supplied via this connector.
-Note that this is system and adapter specific. Some with this connector do not
-support WoL. Some systems do not provide the correct power connection. See your
-system documentation for details.
+WoL is configured through the ethtool utility. ethtool is included with all
+versions of Red Hat after Red Hat 7.2. For other Linux distributions, download
+and install ethtool from the following website:
+https://kernel.org/pub/software/network/ethtool/.
+
+For instructions on enabling WoL with ethtool, refer to the website listed
+above.
+
+WoL will be enabled on the system during the next shutdown or reboot. For this
+driver version, in order to enable WoL, the ixgbe driver must be loaded prior
+to shutting down or suspending the system.
+
+NOTE: The Intel(R) Ethernet Converged Network Adapter X550-T1 and Intel(R)
+Ethernet Converged Network Adapter X550-T2 have a manageability/AUX power
+connector. These devices only support WoL if AUX power is supplied via this
+connector. Note that this is system and adapter specific. Some with this
+connector do not support WoL. Some systems do not provide the correct power
+connection. See your system documentation for details.
 
 
 IEEE 1588 Precision Time Protocol (PTP) Hardware Clock (PHC)
@@ -1484,8 +1521,8 @@ Copyright(c) 1999 - 2019 Intel Corporation.
 
 Trademarks
 ==========
-Intel and Itanium are trademarks or registered trademarks of Intel Corporation
-or its subsidiaries in the United States and/or other countries.
+Intel is a trademark or registered trademark of Intel Corporation or its
+subsidiaries in the United States and/or other countries.
 
 * Other names and brands may be claimed as the property of others.
 

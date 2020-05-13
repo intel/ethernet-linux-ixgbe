@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 
 #include "ixgbe.h"
@@ -9,7 +9,9 @@
 static int ixgbe_cna_open(struct net_device *cnadev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(cnadev);
-	strcpy(cnadev->name, adapter->netdev->name);
+
+	strscpy(cnadev->name, adapter->netdev->name, sizeof(cnadev->name));
+
 	DPRINTK(PROBE, INFO, "CNA pseudo device opened %s\n", cnadev->name);
 	return 0;
 }

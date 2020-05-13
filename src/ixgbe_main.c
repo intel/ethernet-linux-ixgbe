@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -67,7 +67,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.6.5" \
+#define DRV_VERSION	"5.7.1" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -78,7 +78,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2019 Intel Corporation.";
+static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2020 Intel Corporation.";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -197,11 +197,11 @@ static int ixgbe_read_pci_cfg_word_parent(struct ixgbe_hw *hw,
 }
 
 /**
- *  ixgbe_get_parent_bus_info - Set PCI bus info beyond switch
- *  @hw: pointer to hardware structure
+ * ixgbe_get_parent_bus_info - Set PCI bus info beyond switch
+ * @hw: pointer to hardware structure
  *
- *  Sets the PCI bus info (speed, width, type) within the ixgbe_hw structure
- *  when the device is behind a switch.
+ * Sets the PCI bus info (speed, width, type) within the ixgbe_hw structure
+ * when the device is behind a switch.
  **/
 static s32 ixgbe_get_parent_bus_info(struct ixgbe_hw *hw)
 {
@@ -680,10 +680,15 @@ static void ixgbe_tx_timeout_reset(struct ixgbe_adapter *adapter)
 /**
  * ixgbe_tx_timeout - Respond to a Tx Hang
  * @netdev: network interface device structure
+ * @txqueue: specific tx queue
  **/
+#ifdef HAVE_TX_TIMEOUT_TXQUEUE
+static void ixgbe_tx_timeout(struct net_device *netdev, unsigned int txqueue)
+#else
 static void ixgbe_tx_timeout(struct net_device *netdev)
+#endif
 {
-struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	bool real_tx_hang = false;
 	int i;
 
@@ -1637,7 +1642,7 @@ static bool ixgbe_is_non_eop(struct ixgbe_ring *rx_ring,
  */
 static void ixgbe_pull_tail(struct sk_buff *skb)
 {
-	struct skb_frag_struct *frag = &skb_shinfo(skb)->frags[0];
+	skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
 	unsigned char *va;
 	unsigned int pull_len;
 
@@ -1659,7 +1664,7 @@ static void ixgbe_pull_tail(struct sk_buff *skb)
 
 	/* update all of the pointers */
 	skb_frag_size_sub(frag, pull_len);
-	frag->page_offset += pull_len;
+	skb_frag_off_add(frag, pull_len);
 	skb->data_len -= pull_len;
 	skb->tail += pull_len;
 }
@@ -1703,11 +1708,11 @@ static void ixgbe_dma_sync_frag(struct ixgbe_ring *rx_ring,
 					      skb_headlen(skb),
 					      DMA_FROM_DEVICE);
 	} else {
-		struct skb_frag_struct *frag = &skb_shinfo(skb)->frags[0];
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
 
 		dma_sync_single_range_for_cpu(rx_ring->dev,
 					      IXGBE_CB(skb)->dma,
-					      frag->page_offset,
+					      skb_frag_off(frag),
 					      skb_frag_size(frag),
 					      DMA_FROM_DEVICE);
 	}
@@ -9405,7 +9410,7 @@ static int ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 	struct sk_buff *skb = first->skb;
 	struct ixgbe_tx_buffer *tx_buffer;
 	union ixgbe_adv_tx_desc *tx_desc;
-	struct skb_frag_struct *frag;
+	skb_frag_t *frag;
 	dma_addr_t dma;
 	unsigned int data_len, size;
 	u32 tx_flags = first->tx_flags;
@@ -10036,7 +10041,8 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 	 * otherwise try next time
 	 */
 	for (f = 0; f < skb_shinfo(skb)->nr_frags; f++)
-		count += TXD_USE_COUNT(skb_shinfo(skb)->frags[f].size);
+		count += TXD_USE_COUNT(skb_frag_size(&skb_shinfo(skb)->
+						     frags[f]));
 
 	if (ixgbe_maybe_stop_tx(tx_ring, count + 3)) {
 		tx_ring->tx_stats.tx_busy++;
@@ -11748,7 +11754,12 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 	if (need_reset && prog)
 		for (i = 0; i < adapter->num_rx_queues; i++)
 			if (adapter->xdp_ring[i]->xsk_umem)
+#ifdef HAVE_NDO_XSK_WAKEUP
+				(void)ixgbe_xsk_wakeup(adapter->netdev, i,
+						       XDP_WAKEUP_RX);
+#else
 				(void)ixgbe_xsk_async_xmit(adapter->netdev, i);
+#endif
 
 #endif
 	return 0;
@@ -12015,7 +12026,11 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #endif
 	.ndo_xdp_xmit           = ixgbe_xdp_xmit,
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
+#ifdef HAVE_NDO_XSK_WAKEUP
+	.ndo_xsk_wakeup         = ixgbe_xsk_wakeup,
+#else
 	.ndo_xsk_async_xmit     = ixgbe_xsk_async_xmit,
+#endif
 #endif
 #ifndef NO_NDO_XDP_FLUSH
 	.ndo_xdp_flush          = ixgbe_xdp_flush,
@@ -12258,7 +12273,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	struct ixgbe_hw *hw = NULL;
 	static int cards_found;
 	int err, pci_using_dac;
-	char *info_string, *i_s_var;
+	char *info_string;
 	u8 part_str[IXGBE_PBANUM_LENGTH];
 	enum ixgbe_mac_type mac_type = ixgbe_mac_unknown;
 #ifdef HAVE_TX_MQ
@@ -12380,7 +12395,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 
 	ixgbe_assign_netdev_ops(netdev);
 
-	strncpy(netdev->name, pci_name(pdev), sizeof(netdev->name) - 1);
+	strscpy(netdev->name, pci_name(pdev), sizeof(netdev->name));
 
 	adapter->bd_number = cards_found;
 
@@ -12753,7 +12768,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		if (hw->mac.ops.get_bus_info)
 			hw->mac.ops.get_bus_info(hw);
 
-	strcpy(netdev->name, "eth%d");
+	strscpy(netdev->name, "eth%d", sizeof(netdev->name));
 	pci_set_drvdata(pdev, adapter);
 	err = register_netdev(netdev);
 	if (err)
@@ -12804,7 +12819,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	/* First try to read PBA as a string */
 	err = ixgbe_read_pba_string(hw, part_str, IXGBE_PBANUM_LENGTH);
 	if (err)
-		strncpy(part_str, "Unknown", IXGBE_PBANUM_LENGTH);
+		strscpy(part_str, "Unknown", IXGBE_PBANUM_LENGTH);
 	if (ixgbe_is_sfp(hw) && hw->phy.sfp_type != ixgbe_sfp_type_not_present)
 		e_info(probe, "MAC: %d, PHY: %d, SFP+: %d, PBA No: %s\n",
 		       hw->mac.type, hw->phy.type, hw->phy.sfp_type, part_str);
@@ -12823,26 +12838,27 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		e_err(probe, "allocation for info string failed\n");
 		goto no_info_string;
 	}
-	i_s_var = info_string;
-	i_s_var += sprintf(info_string, "Enabled Features: ");
-	i_s_var += sprintf(i_s_var, "RxQ: %d TxQ: %d ",
-			   adapter->num_rx_queues, adapter->num_tx_queues);
+	snprintf(info_string, INFO_STRING_LEN,
+		 "Enabled Features: RxQ: %d TxQ: %d",
+		 adapter->num_rx_queues, adapter->num_tx_queues);
 #if IS_ENABLED(CONFIG_FCOE)
 	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
-		i_s_var += sprintf(i_s_var, "FCoE ");
+		snprintf(info_string, INFO_STRING_LEN,
+			 "%s FCoE", info_string);
 #endif
 	if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
-		i_s_var += sprintf(i_s_var, "FdirHash ");
+		snprintf(info_string, INFO_STRING_LEN,
+			 "%s FdirHash", info_string);
 	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED)
-		i_s_var += sprintf(i_s_var, "DCB ");
+		snprintf(info_string, INFO_STRING_LEN, "%s DCB", info_string);
 	if (adapter->flags & IXGBE_FLAG_DCA_ENABLED)
-		i_s_var += sprintf(i_s_var, "DCA ");
+		snprintf(info_string, INFO_STRING_LEN, "%s DCA", info_string);
 	if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)
-		i_s_var += sprintf(i_s_var, "RSC ");
+		snprintf(info_string, INFO_STRING_LEN, "%s RSC", info_string);
 	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE)
-		i_s_var += sprintf(i_s_var, "vxlan_rx ");
+		snprintf(info_string, INFO_STRING_LEN,
+			 "%s vxlan_rx", info_string);
 
-	BUG_ON(i_s_var > (info_string + INFO_STRING_LEN));
 	/* end features printing */
 	e_info(probe, "%s\n", info_string);
 	kfree(info_string);

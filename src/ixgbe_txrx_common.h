@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #ifndef _IXGBE_TXRX_COMMON_H_
 #define _IXGBE_TXRX_COMMON_H_
@@ -39,7 +39,11 @@ int ixgbe_clean_rx_irq_zc(struct ixgbe_q_vector *q_vector,
 void ixgbe_xsk_clean_rx_ring(struct ixgbe_ring *rx_ring);
 bool ixgbe_clean_xdp_tx_irq(struct ixgbe_q_vector *q_vector,
 			    struct ixgbe_ring *tx_ring, int napi_budget);
+#ifdef HAVE_NDO_XSK_WAKEUP
+int ixgbe_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags);
+#else
 int ixgbe_xsk_async_xmit(struct net_device *dev, u32 queue_id);
+#endif
 void ixgbe_xsk_clean_tx_ring(struct ixgbe_ring *tx_ring);
 #endif
 #endif /* HAVE_XDP_SUPPORT */

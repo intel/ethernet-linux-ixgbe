@@ -1,19 +1,16 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.6.5
+Version: 5.7.1
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
-License: GPL
+License: GPL-2.0
 ExclusiveOS: linux
 Group: System Environment/Kernel
 Provides: %{name}
-URL: http://www.intel.com/network/connectivity/products/server_adapters.htm
+URL: http://support.intel.com
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
-# do not generate debugging packages by default - newer versions of rpmbuild
-# may instead need:
-#%define debug_package %{nil}
-%debug_package %{nil}
+%global debug_package %{nil}
 # macros for finding system files to update at install time (pci.ids, pcitable)
 %define find() %(for f in %*; do if [ -e $f ]; then echo $f; break; fi; done)
 %define _pciids   /usr/share/pci.ids        /usr/share/hwdata/pci.ids
@@ -21,6 +18,14 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 %define pciids    %find %{_pciids}
 %define pcitable  %find %{_pcitable}
 Requires: kernel, fileutils, findutils, gawk, bash
+
+# Check for existence of %kernel_module_package_buildreqs ...
+%if 0%{?!kernel_module_package_buildreqs:1}
+# ... and provide a suitable definition if it is not defined
+%define kernel_module_package_buildreqs kernel-devel
+%endif
+
+BuildRequires: %kernel_module_package_buildreqs
 
 %description
 This package contains the Intel(R) 10GbE PCI Express Linux Network Driver.
@@ -33,19 +38,19 @@ make -C src clean
 make -C src
 
 %install
-make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} install
+make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install mandocs_install
 # Remove modules files that we do not want to include
-find %{buildroot}/lib/modules/%(uname -r) -name 'modules.*' -exec rm -f {} \;
-# Append .new to driver name to avoid conflict with kernel RPM
+find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
 cd %{buildroot}
-find lib -name "ixgbe.*o" -exec mv {} {}.new \; \
-         -fprintf %{_builddir}/%{name}-%{version}/file.list "/%p.new\n"
+find lib -name "ixgbe.ko" \
+	-fprintf %{_builddir}/%{name}-%{version}/file.list "/%p\n"
 
 
 %clean
 rm -rf %{buildroot}
 
 %files -f file.list
+
 %defattr(-,root,root)
 %{_mandir}/man7/ixgbe.7.gz
 %doc COPYING
@@ -54,60 +59,15 @@ rm -rf %{buildroot}
 %doc pci.updates
 
 %post
-FL="%{_docdir}/%{name}-%{version}/file.list
-    %{_docdir}/%{name}/file.list"
-FL=$(for d in $FL ; do if [ -e $d ]; then echo $d; break; fi;  done)
-
-if [ -d /usr/local/lib/%{name} ]; then
-	rm -rf /usr/local/lib/%{name}
-fi
 if [ -d /usr/local/share/%{name} ]; then
 	rm -rf /usr/local/share/%{name}
 fi
-
-# Save old drivers (aka .o and .o.gz)
+mkdir /usr/local/share/%{name}
+cp --parents %{pciids} /usr/local/share/%{name}/
 echo "original pci.ids saved in /usr/local/share/%{name}";
 if [ "%{pcitable}" != "/dev/null" ]; then
+	cp --parents %{pcitable} /usr/local/share/%{name}/
 	echo "original pcitable saved in /usr/local/share/%{name}";
-fi
-for k in $(sed 's/\/lib\/modules\/\([0-9a-zA-Z_\.\-]*\).*/\1/' $FL) ; 
-do
-	d_drivers=/lib/modules/$k
-	d_usr=/usr/local/share/%{name}/$k
-	mkdir -p $d_usr
-	cd $d_drivers; find . -name %{name}.*o -exec cp --parents {} $d_usr \; -exec rm -f {} \;
-	cd $d_drivers; find . -name %{name}_*.*o -exec cp --parents {} $d_usr \; -exec rm -f {} \;
-	cd $d_drivers; find . -name %{name}.*o.gz -exec cp --parents {} $d_usr \; -exec rm -f {} \;
-	cd $d_drivers; find . -name %{name}_*.*o.gz -exec cp --parents {} $d_usr \; -exec rm -f {} \;
-	cp --parents %{pciids} /usr/local/share/%{name}/
-	if [ "%{pcitable}" != "/dev/null" ]; then
-		cp --parents %{pcitable} /usr/local/share/%{name}/
-	fi
-done
-
-# Add driver link
-for f in $(sed 's/\.new$//' $FL) ; do
-	ln -f $f.new $f 
-done
-
-# Check if kernel version rpm was built on IS the same as running kernel
-BK_LIST=$(sed 's/\/lib\/modules\/\([0-9a-zA-Z_\.\-]*\).*/\1/' $FL)
-MATCH=no
-for i in $BK_LIST
-do
-	if [ $(uname -r) == $i ] ; then
-		MATCH=yes
-		break
-	fi
-done
-if [ $MATCH == no ] ; then
-	echo -n "WARNING: Running kernel is $(uname -r).  "
-	echo -n "RPM supports kernels (  "
-	for i in $BK_LIST
-	do
-		echo -n "$i  "
-	done
-	echo ")"
 fi
 
 LD="%{_docdir}/%{name}";
@@ -124,6 +84,8 @@ bash -s %{pciids} \
 	%{name} \
 <<"END"
 #! /bin/bash
+# Copyright (C) 2017 Intel Corporation
+# For licensing information, see the file 'LICENSE' in the root folder
 # $1 = system pci.ids file to update
 # $2 = system pcitable file to update
 # $3 = file with new entries in pci.ids file format
@@ -370,31 +332,62 @@ END
 
 mv -f $LD/pci.ids.new  %{pciids}
 if [ "%{pcitable}" != "/dev/null" ]; then
-mv -f $LD/pcitable.new %{pcitable}
+	mv -f $LD/pcitable.new %{pcitable}
 fi
 
 uname -r | grep BOOT || /sbin/depmod -a > /dev/null 2>&1 || true
 
-%preun
-# If doing RPM un-install
-if [ $1 -eq 0 ] ; then
-	FL="%{_docdir}/%{name}-%{version}/file.list
-    		%{_docdir}/%{name}/file.list"
-	FL=$(for d in $FL ; do if [ -e $d ]; then echo $d; break; fi;  done)
-
-	# Remove driver link
-	for f in $(sed 's/\.new$//' $FL) ; do
-		rm -f $f
-	done
-
-	# Restore old drivers
-	if [ -d /usr/local/share/%{name} ]; then
-		cd /usr/local/share/%{name}; find . -name '%{name}.*o*' -exec cp --parents {} /lib/modules/ \;
-		cd /usr/local/share/%{name}; find . -name '%{name}_*.*o*' -exec cp --parents {} /lib/modules/ \;
-		rm -rf /usr/local/share/%{name}
+if which dracut >/dev/null 2>&1; then
+	echo "Updating initramfs with dracut..."
+	if dracut --force ; then
+		echo "Successfully updated initramfs."
+	else
+		echo "Failed to update initramfs."
+		echo "You must update your initramfs image for changes to take place."
+		exit -1
 	fi
+elif which mkinitrd >/dev/null 2>&1; then
+	echo "Updating initrd with mkinitrd..."
+	if mkinitrd; then
+		echo "Successfully updated initrd."
+	else
+		echo "Failed to update initrd."
+		echo "You must update your initrd image for changes to take place."
+		exit -1
+	fi
+else
+	echo "Unable to determine utility to update initrd image."
+	echo "You must update your initrd manually for changes to take place."
+	exit -1
 fi
+
+%preun
+rm -rf /usr/local/share/%{name}
 
 %postun
 uname -r | grep BOOT || /sbin/depmod -a > /dev/null 2>&1 || true
+
+if which dracut >/dev/null 2>&1; then
+	echo "Updating initramfs with dracut..."
+	if dracut --force ; then
+		echo "Successfully updated initramfs."
+	else
+		echo "Failed to update initramfs."
+		echo "You must update your initramfs image for changes to take place."
+		exit -1
+	fi
+elif which mkinitrd >/dev/null 2>&1; then
+	echo "Updating initrd with mkinitrd..."
+	if mkinitrd; then
+		echo "Successfully updated initrd."
+	else
+		echo "Failed to update initrd."
+		echo "You must update your initrd image for changes to take place."
+		exit -1
+	fi
+else
+	echo "Unable to determine utility to update initrd image."
+	echo "You must update your initrd manually for changes to take place."
+	exit -1
+fi
 

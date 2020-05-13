@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #include "ixgbe_hv_vf.h"
 
@@ -160,10 +160,10 @@ s32 ixgbevf_hv_set_rlpml_vf(struct ixgbe_hw *hw, u16 max_size)
 }
 
 /**
- *  ixgbevf_hv_negotiate_api_version_vf - Negotiate supported API version
- *  @hw: pointer to the HW structure
- *  @api: integer containing requested API version
- *  Hyper-V version - only ixgbe_mbox_api_10 supported.
+ * ixgbevf_hv_negotiate_api_version_vf - Negotiate supported API version
+ * @hw: pointer to the HW structure
+ * @api: integer containing requested API version
+ * Hyper-V version - only ixgbe_mbox_api_10 supported.
  **/
 int ixgbevf_hv_negotiate_api_version_vf(struct ixgbe_hw *hw, int api)
 {
@@ -177,13 +177,13 @@ int ixgbevf_hv_negotiate_api_version_vf(struct ixgbe_hw *hw, int api)
 }
 
 /**
- *  ixgbevf_hv_init_ops_vf - Initialize the pointers for vf
- *  @hw: pointer to hardware structure
+ * ixgbevf_hv_init_ops_vf - Initialize the pointers for vf
+ * @hw: pointer to hardware structure
  *
- *  This will assign function pointers, adapter-specific functions can
- *  override the assignment of generic function pointers by assigning
- *  their own adapter-specific function pointers.
- *  Does not touch the hardware.
+ * This will assign function pointers, adapter-specific functions can
+ * override the assignment of generic function pointers by assigning
+ * their own adapter-specific function pointers.
+ * Does not touch the hardware.
  **/
 s32 ixgbevf_hv_init_ops_vf(struct ixgbe_hw *hw)
 {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 
 #include <linux/types.h>
@@ -1511,7 +1511,7 @@ int ixgbe_ndo_set_vf_trust(struct net_device *netdev, int vf, bool setting)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	if (vf >= adapter->num_vfs)
+	if (vf < 0 || vf >= adapter->num_vfs)
 		return -EINVAL;
 
 	/* nothing to do */
@@ -1536,7 +1536,7 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	s32 retval = 0;
 
-	if (vf >= adapter->num_vfs)
+	if (vf < 0 || vf >= adapter->num_vfs)
 		return -EINVAL;
 
 	if (is_valid_ether_addr(mac)) {
@@ -1661,8 +1661,10 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 	/* VLAN IDs accepted range 0-4094 */
-	if ((vf >= adapter->num_vfs) || (vlan > VLAN_VID_MASK-1) || (qos > 7))
+	if (vf < 0 || vf >= adapter->num_vfs ||
+	    vlan > VLAN_VID_MASK - 1 || qos > 7)
 		return -EINVAL;
+
 #ifdef IFLA_VF_VLAN_INFO_MAX
 	if (vlan_proto != htons(ETH_P_8021Q))
 		return -EPROTONOSUPPORT;
@@ -1790,7 +1792,7 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int max_tx_rate)
 	int link_speed;
 
 	/* verify VF is active */
-	if (vf >= adapter->num_vfs)
+	if (vf < 0 || vf >= adapter->num_vfs)
 		return -EINVAL;
 
 	/* verify link is up */
@@ -1823,7 +1825,7 @@ int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	if (vf >= adapter->num_vfs)
+	if (vf < 0 || vf >= adapter->num_vfs)
 		return -EINVAL;
 
 	adapter->vfinfo[vf].spoofchk_enabled = setting;
@@ -1868,7 +1870,7 @@ int ixgbe_ndo_set_vf_rss_query_en(struct net_device *netdev, int vf,
 	    adapter->hw.mac.type >= ixgbe_mac_X550)
 		return -EOPNOTSUPP;
 
-	if (vf >= adapter->num_vfs)
+	if (vf < 0 || vf >= adapter->num_vfs)
 		return -EINVAL;
 
 	adapter->vfinfo[vf].rss_query_enabled = setting;
@@ -1881,8 +1883,10 @@ int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 			    int vf, struct ifla_vf_info *ivi)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	if (vf >= adapter->num_vfs)
+
+	if (vf < 0 || vf >= adapter->num_vfs)
 		return -EINVAL;
+
 	ivi->vf = vf;
 	memcpy(&ivi->mac, adapter->vfinfo[vf].vf_mac_addresses, ETH_ALEN);
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #include <linux/types.h>
 #include <linux/module.h>
@@ -448,6 +448,7 @@ static int ixgbe_validate_option(unsigned int *value,
 }
 
 #define LIST_LEN(l) (sizeof(l) / sizeof(l[0]))
+#define PSTR_LEN 10
 
 /**
  * ixgbe_check_options - Range Checking for Command Line Parameters
@@ -979,7 +980,7 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.arg = {.r = {.min = IXGBE_FDIR_PBALLOC_64K,
 				      .max = IXGBE_FDIR_PBALLOC_256K} }
 		};
-		char pstring[10];
+		char pstring[PSTR_LEN];
 
 		if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
 			adapter->fdir_pballoc = IXGBE_FDIR_PBALLOC_NONE;
@@ -989,16 +990,16 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 			switch (fdir_pballoc_mode) {
 			case IXGBE_FDIR_PBALLOC_256K:
 				adapter->fdir_pballoc = IXGBE_FDIR_PBALLOC_256K;
-				sprintf(pstring, "256kB");
+				snprintf(pstring, PSTR_LEN, "256kB");
 				break;
 			case IXGBE_FDIR_PBALLOC_128K:
 				adapter->fdir_pballoc = IXGBE_FDIR_PBALLOC_128K;
-				sprintf(pstring, "128kB");
+				snprintf(pstring, PSTR_LEN, "128kB");
 				break;
 			case IXGBE_FDIR_PBALLOC_64K:
 			default:
 				adapter->fdir_pballoc = IXGBE_FDIR_PBALLOC_64K;
-				sprintf(pstring, "64kB");
+				snprintf(pstring, PSTR_LEN, "64kB");
 				break;
 			}
 			DPRINTK(PROBE, INFO, "Flow Director will be allocated "

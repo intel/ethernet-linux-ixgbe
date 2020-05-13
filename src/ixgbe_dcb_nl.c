@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #include "ixgbe.h"
 
@@ -171,6 +171,11 @@ static void ixgbe_dcbnl_set_pg_tc_cfg_tx(struct net_device *netdev, int tc,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
+	if (tc < 0 || tc >= IXGBE_DCB_MAX_TRAFFIC_CLASS) {
+		netdev_err(netdev, "Traffic class out of range.\n");
+		return;
+	}
+
 	if (prio != DCB_ATTR_VALUE_UNDEFINED)
 		adapter->temp_dcb_cfg.tc_config[tc].path[0].tsa = prio;
 	if (bwg_id != DCB_ATTR_VALUE_UNDEFINED)
@@ -188,6 +193,12 @@ static void ixgbe_dcbnl_set_pg_bwg_cfg_tx(struct net_device *netdev, int bwg_id,
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
+	if (bwg_id < 0 || bwg_id >= IXGBE_DCB_MAX_BW_GROUP) {
+		netdev_err(netdev,
+			   "BWG index out of range.\n");
+		return;
+	}
+
 	adapter->temp_dcb_cfg.bw_percentage[0][bwg_id] = bw_pct;
 }
 
@@ -196,6 +207,11 @@ static void ixgbe_dcbnl_set_pg_tc_cfg_rx(struct net_device *netdev, int tc,
 					 u8 up_map)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+	if (tc < 0 || tc >= IXGBE_DCB_MAX_TRAFFIC_CLASS) {
+		netdev_err(netdev, "Traffic class out of range.\n");
+		return;
+	}
 
 	if (prio != DCB_ATTR_VALUE_UNDEFINED)
 		adapter->temp_dcb_cfg.tc_config[tc].path[1].tsa = prio;
@@ -213,6 +229,12 @@ static void ixgbe_dcbnl_set_pg_bwg_cfg_rx(struct net_device *netdev, int bwg_id,
 					  u8 bw_pct)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+	if (bwg_id < 0 || bwg_id >= IXGBE_DCB_MAX_BW_GROUP) {
+		netdev_err(netdev,
+			   "BWG index out of range.\n");
+		return;
+	}
 
 	adapter->temp_dcb_cfg.bw_percentage[1][bwg_id] = bw_pct;
 }

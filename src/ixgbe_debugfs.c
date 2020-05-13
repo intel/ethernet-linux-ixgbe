@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #include "ixgbe.h"
 
@@ -185,7 +185,12 @@ static ssize_t ixgbe_dbg_netdev_ops_write(struct file *filp,
 
 	if (strncmp(ixgbe_dbg_netdev_ops_buf, "tx_timeout", 10) == 0) {
 #ifdef HAVE_NET_DEVICE_OPS
+#ifdef HAVE_TX_TIMEOUT_TXQUEUE
+		adapter->netdev->netdev_ops->ndo_tx_timeout(adapter->netdev,
+							    UINT_MAX);
+#else
 		adapter->netdev->netdev_ops->ndo_tx_timeout(adapter->netdev);
+#endif
 #else
 		adapter->netdev->tx_timeout(adapter->netdev);
 #endif /* HAVE_NET_DEVICE_OPS */

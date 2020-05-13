@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2019 Intel Corporation. */
+/* Copyright(c) 1999 - 2020 Intel Corporation. */
 
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
@@ -564,6 +564,8 @@ struct ixgbe_ring_container {
 				 ? 8 : 1)
 #define MAX_TX_PACKET_BUFFERS	MAX_RX_PACKET_BUFFERS
 
+#define IXGBE_IFNAMSIZ (IFNAMSIZ + 9)
+
 /* MAX_MSIX_Q_VECTORS of these are allocated,
  * but we only use one per queue-specific vector.
  */
@@ -585,7 +587,7 @@ struct ixgbe_q_vector {
 #endif
 	int node;
 	struct rcu_head rcu;	/* to avoid race with update stats on free */
-	char name[IFNAMSIZ + 9];
+	char name[IXGBE_IFNAMSIZ];
 	bool netpoll_rx;
 
 #ifdef HAVE_NDO_BUSY_POLL
