@@ -31,22 +31,8 @@
 
 #ifdef DBG
 #define ASSERT(_x)		BUG_ON(!(_x))
-#define DEBUGOUT(S)		printk(KERN_DEBUG S)
-#define DEBUGOUT1(S, A...)	printk(KERN_DEBUG S, ## A)
-#define DEBUGOUT2(S, A...)	printk(KERN_DEBUG S, ## A)
-#define DEBUGOUT3(S, A...)	printk(KERN_DEBUG S, ## A)
-#define DEBUGOUT4(S, A...)	printk(KERN_DEBUG S, ## A)
-#define DEBUGOUT5(S, A...)	printk(KERN_DEBUG S, ## A)
-#define DEBUGOUT6(S, A...)	printk(KERN_DEBUG S, ## A)
 #else
 #define ASSERT(_x)		do {} while (0)
-#define DEBUGOUT(S)		do {} while (0)
-#define DEBUGOUT1(S, A...)	do {} while (0)
-#define DEBUGOUT2(S, A...)	do {} while (0)
-#define DEBUGOUT3(S, A...)	do {} while (0)
-#define DEBUGOUT4(S, A...)	do {} while (0)
-#define DEBUGOUT5(S, A...)	do {} while (0)
-#define DEBUGOUT6(S, A...)	do {} while (0)
 #endif
 
 #define DEBUGFUNC(S)		do {} while (0)
@@ -60,8 +46,13 @@ struct ixgbe_msg {
 struct net_device *ixgbe_hw_to_netdev(const struct ixgbe_hw *hw);
 struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
+#ifdef DBG
 #define hw_dbg(hw, format, arg...) \
 	netdev_dbg(ixgbe_hw_to_netdev(hw), format, ## arg)
+#else
+#define hw_dbg(hw, format, arg...) do {} while (0)
+#endif
+
 #define hw_err(hw, format, arg...) \
 	netdev_err(ixgbe_hw_to_netdev(hw), format, ## arg)
 #define e_dev_info(format, arg...) \

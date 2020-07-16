@@ -997,7 +997,7 @@ s32 ixgbe_init_eeprom_params_X550(struct ixgbe_hw *hw)
 		eeprom->word_size = 1 << (eeprom_size +
 					  IXGBE_EEPROM_WORD_SIZE_SHIFT);
 
-		DEBUGOUT2("Eeprom params: type = %d, size = %d\n",
+		hw_dbg(hw, "Eeprom params: type = %d, size = %d\n",
 			  eeprom->type, eeprom->word_size);
 	}
 
@@ -1204,19 +1204,19 @@ s32 ixgbe_get_phy_token(struct ixgbe_hw *hw)
 					      IXGBE_HI_COMMAND_TIMEOUT,
 					      true);
 	if (status) {
-		DEBUGOUT1("Issuing host interface command failed with Status = %d\n",
+		hw_dbg(hw, "Issuing host interface command failed with Status = %d\n",
 			  status);
 		return status;
 	}
 	if (token_cmd.hdr.cmd_or_resp.ret_status == FW_PHY_TOKEN_OK)
 		return IXGBE_SUCCESS;
 	if (token_cmd.hdr.cmd_or_resp.ret_status != FW_PHY_TOKEN_RETRY) {
-		DEBUGOUT1("Host interface command returned 0x%08x , returning IXGBE_ERR_FW_RESP_INVALID\n",
+		hw_dbg(hw, "Host interface command returned 0x%08x , returning IXGBE_ERR_FW_RESP_INVALID\n",
 			  token_cmd.hdr.cmd_or_resp.ret_status);
 		return IXGBE_ERR_FW_RESP_INVALID;
 	}
 
-	DEBUGOUT("Returning  IXGBE_ERR_TOKEN_RETRY\n");
+	hw_dbg(hw, "Returning  IXGBE_ERR_TOKEN_RETRY\n");
 	return IXGBE_ERR_TOKEN_RETRY;
 }
 
@@ -1246,7 +1246,7 @@ s32 ixgbe_put_phy_token(struct ixgbe_hw *hw)
 	if (token_cmd.hdr.cmd_or_resp.ret_status == FW_PHY_TOKEN_OK)
 		return IXGBE_SUCCESS;
 
-	DEBUGOUT("Put PHY Token host interface command failed");
+	hw_dbg(hw, "Put PHY Token host interface command failed");
 	return IXGBE_ERR_FW_RESP_INVALID;
 }
 
@@ -1607,7 +1607,7 @@ STATIC s32 ixgbe_restart_an_internal_phy_x550em(struct ixgbe_hw *hw)
 				       IXGBE_SB_IOSF_TARGET_KR_PHY, &link_ctrl);
 
 	if (status) {
-		DEBUGOUT("Auto-negotiation did not complete\n");
+		hw_dbg(hw, "Auto-negotiation did not complete\n");
 		return status;
 	}
 
@@ -1625,7 +1625,7 @@ STATIC s32 ixgbe_restart_an_internal_phy_x550em(struct ixgbe_hw *hw)
 				IXGBE_SB_IOSF_TARGET_KR_PHY, &flx_mask_st20);
 
 		if (status) {
-			DEBUGOUT("Auto-negotiation did not complete\n");
+			hw_dbg(hw, "Auto-negotiation did not complete\n");
 			return status;
 		}
 
@@ -2407,7 +2407,7 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 	/* Call adapter stop to disable Tx/Rx and clear interrupts */
 	status = hw->mac.ops.stop_adapter(hw);
 	if (status != IXGBE_SUCCESS) {
-		DEBUGOUT1("Failed to stop adapter, STATUS = %d\n", status);
+		hw_dbg(hw, "Failed to stop adapter, STATUS = %d\n", status);
 		return status;
 	}
 	/* flush pending Tx transactions */
@@ -2419,12 +2419,12 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 	status = hw->phy.ops.init(hw);
 
 	if (status)
-		DEBUGOUT1("Failed to initialize PHY ops, STATUS = %d\n",
+		hw_dbg(hw, "Failed to initialize PHY ops, STATUS = %d\n",
 			  status);
 
 	if (status == IXGBE_ERR_SFP_NOT_SUPPORTED ||
 	    status == IXGBE_ERR_PHY_ADDR_INVALID) {
-		DEBUGOUT("Returning from reset HW due to PHY init failure\n");
+		hw_dbg(hw, "Returning from reset HW due to PHY init failure\n");
 		return status;
 	}
 
@@ -2432,7 +2432,7 @@ s32 ixgbe_reset_hw_X550em(struct ixgbe_hw *hw)
 	if (hw->phy.type == ixgbe_phy_x550em_ext_t) {
 		status = ixgbe_init_ext_t_x550em(hw);
 		if (status) {
-			DEBUGOUT1("Failed to start the external PHY, STATUS = %d\n",
+			hw_dbg(hw, "Failed to start the external PHY, STATUS = %d\n",
 				  status);
 			return status;
 		}
@@ -2487,7 +2487,7 @@ mac_reset_top:
 
 	if (ctrl & IXGBE_CTRL_RST_MASK) {
 		status = IXGBE_ERR_RESET_FAILED;
-		DEBUGOUT("Reset polling failed to complete.\n");
+		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
 	msec_delay(50);
@@ -2517,7 +2517,7 @@ mac_reset_top:
 		ixgbe_setup_mux_ctl(hw);
 
 	if (status != IXGBE_SUCCESS)
-		DEBUGOUT1("Reset HW failed, STATUS = %d\n", status);
+		hw_dbg(hw, "Reset HW failed, STATUS = %d\n", status);
 
 	return status;
 }
@@ -2734,7 +2734,7 @@ s32 ixgbe_setup_mac_link_sfp_x550a(struct ixgbe_hw *hw,
 
 		if (hw->phy.addr == 0x0 || hw->phy.addr == 0xFFFF) {
 			/* Find Address */
-			DEBUGOUT("Invalid NW_MNG_IF_SEL.MDIO_PHY_ADD value\n");
+			hw_dbg(hw, "Invalid NW_MNG_IF_SEL.MDIO_PHY_ADD value\n");
 			return IXGBE_ERR_PHY_ADDR_INVALID;
 		}
 
@@ -3145,7 +3145,7 @@ s32 ixgbe_read_ee_hostif_buffer_X550(struct ixgbe_hw *hw,
 	/* Take semaphore for the entire operation. */
 	status = hw->mac.ops.acquire_swfw_sync(hw, mask);
 	if (status) {
-		DEBUGOUT("EEPROM read buffer - semaphore failed\n");
+		hw_dbg(hw, "EEPROM read buffer - semaphore failed\n");
 		return status;
 	}
 
@@ -3171,7 +3171,7 @@ s32 ixgbe_read_ee_hostif_buffer_X550(struct ixgbe_hw *hw,
 					    IXGBE_HI_COMMAND_TIMEOUT);
 
 		if (status) {
-			DEBUGOUT("Host interface command failed\n");
+			hw_dbg(hw, "Host interface command failed\n");
 			goto out;
 		}
 
@@ -3225,7 +3225,18 @@ s32 ixgbe_write_ee_hostif_data_X550(struct ixgbe_hw *hw, u16 offset,
 
 	status = ixgbe_host_interface_command(hw, (u32 *)&buffer,
 					      sizeof(buffer),
-					      IXGBE_HI_COMMAND_TIMEOUT, false);
+					      IXGBE_HI_COMMAND_TIMEOUT, true);
+	if (status != IXGBE_SUCCESS) {
+		hw_dbg(hw, "for offset %04x failed with status %d\n",
+			  offset, status);
+		return status;
+	}
+
+	if (buffer.hdr.rsp.buf_lenh_status != FW_CEM_RESP_STATUS_SUCCESS) {
+		hw_dbg(hw, "for offset %04x host interface return status %02x\n",
+			  offset, buffer.hdr.rsp.buf_lenh_status);
+		return IXGBE_ERR_HOST_INTERFACE_COMMAND;
+	}
 
 	return status;
 }
@@ -3250,7 +3261,7 @@ s32 ixgbe_write_ee_hostif_X550(struct ixgbe_hw *hw, u16 offset,
 		status = ixgbe_write_ee_hostif_data_X550(hw, offset, data);
 		hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 	} else {
-		DEBUGOUT("write ee hostif failed to get semaphore");
+		hw_dbg(hw, "write ee hostif failed to get semaphore");
 		status = IXGBE_ERR_SWFW_SYNC;
 	}
 
@@ -3277,7 +3288,7 @@ s32 ixgbe_write_ee_hostif_buffer_X550(struct ixgbe_hw *hw,
 	/* Take semaphore for the entire operation. */
 	status = hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 	if (status != IXGBE_SUCCESS) {
-		DEBUGOUT("EEPROM write buffer - semaphore failed\n");
+		hw_dbg(hw, "EEPROM write buffer - semaphore failed\n");
 		goto out;
 	}
 
@@ -3286,7 +3297,7 @@ s32 ixgbe_write_ee_hostif_buffer_X550(struct ixgbe_hw *hw,
 							 data[i]);
 
 		if (status != IXGBE_SUCCESS) {
-			DEBUGOUT("Eeprom buffered write failed\n");
+			hw_dbg(hw, "Eeprom buffered write failed\n");
 			break;
 		}
 	}
@@ -3323,7 +3334,7 @@ STATIC s32 ixgbe_checksum_ptr_x550(struct ixgbe_hw *hw, u16 ptr,
 	if (!buffer) {
 		status = ixgbe_read_ee_hostif_buffer_X550(hw, ptr, bufsz, buf);
 		if (status) {
-			DEBUGOUT("Failed to read EEPROM image\n");
+			hw_dbg(hw, "Failed to read EEPROM image\n");
 			return status;
 		}
 		local_buffer = buf;
@@ -3360,7 +3371,7 @@ STATIC s32 ixgbe_checksum_ptr_x550(struct ixgbe_hw *hw, u16 ptr,
 			status = ixgbe_read_ee_hostif_buffer_X550(hw, ptr,
 								  bufsz, buf);
 			if (status) {
-				DEBUGOUT("Failed to read EEPROM image\n");
+				hw_dbg(hw, "Failed to read EEPROM image\n");
 				return status;
 			}
 		}
@@ -3395,7 +3406,7 @@ s32 ixgbe_calc_checksum_X550(struct ixgbe_hw *hw, u16 *buffer, u32 buffer_size)
 						     IXGBE_EEPROM_LAST_WORD + 1,
 						     eeprom_ptrs);
 		if (status) {
-			DEBUGOUT("Failed to read EEPROM image\n");
+			hw_dbg(hw, "Failed to read EEPROM image\n");
 			return status;
 		}
 		local_buffer = eeprom_ptrs;
@@ -3485,7 +3496,7 @@ s32 ixgbe_validate_eeprom_checksum_X550(struct ixgbe_hw *hw, u16 *checksum_val)
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 	if (status) {
-		DEBUGOUT("EEPROM read failed\n");
+		hw_dbg(hw, "EEPROM read failed\n");
 		return status;
 	}
 
@@ -3537,7 +3548,7 @@ s32 ixgbe_update_eeprom_checksum_X550(struct ixgbe_hw *hw)
 	 */
 	status = ixgbe_read_ee_hostif_X550(hw, 0, &checksum);
 	if (status) {
-		DEBUGOUT("EEPROM read failed\n");
+		hw_dbg(hw, "EEPROM read failed\n");
 		return status;
 	}
 
@@ -3992,7 +4003,7 @@ void ixgbe_fc_autoneg_backplane_x550em_a(struct ixgbe_hw *hw)
 
 	if (status != IXGBE_SUCCESS ||
 	    (link_s1 & IXGBE_KRM_LINK_S1_MAC_AN_COMPLETE) == 0) {
-		DEBUGOUT("Auto-Negotiation did not complete\n");
+		hw_dbg(hw, "Auto-Negotiation did not complete\n");
 		status = IXGBE_ERR_FC_NOT_NEGOTIATED;
 		goto out;
 	}
@@ -4005,7 +4016,7 @@ void ixgbe_fc_autoneg_backplane_x550em_a(struct ixgbe_hw *hw)
 				IXGBE_SB_IOSF_TARGET_KR_PHY, &an_cntl_1);
 
 	if (status != IXGBE_SUCCESS) {
-		DEBUGOUT("Auto-Negotiation did not complete\n");
+		hw_dbg(hw, "Auto-Negotiation did not complete\n");
 		goto out;
 	}
 
@@ -4014,7 +4025,7 @@ void ixgbe_fc_autoneg_backplane_x550em_a(struct ixgbe_hw *hw)
 				IXGBE_SB_IOSF_TARGET_KR_PHY, &lp_an_page_low);
 
 	if (status != IXGBE_SUCCESS) {
-		DEBUGOUT("Auto-Negotiation did not complete\n");
+		hw_dbg(hw, "Auto-Negotiation did not complete\n");
 		goto out;
 	}
 
@@ -4078,7 +4089,7 @@ void ixgbe_fc_autoneg_sgmii_x550em_a(struct ixgbe_hw *hw)
 	status = ixgbe_fw_phy_activity(hw, FW_PHY_ACT_GET_LINK_INFO, &info);
 	if (status != IXGBE_SUCCESS ||
 	    !(info[0] & FW_PHY_ACT_GET_LINK_INFO_AN_COMPLETE)) {
-		DEBUGOUT("Auto-Negotiation did not complete\n");
+		hw_dbg(hw, "Auto-Negotiation did not complete\n");
 		status = IXGBE_ERR_FC_NOT_NEGOTIATED;
 		goto out;
 	}
@@ -4131,7 +4142,7 @@ s32 ixgbe_setup_fc_backplane_x550em_a(struct ixgbe_hw *hw)
 					IXGBE_SB_IOSF_TARGET_KR_PHY, &an_cntl);
 
 	if (status != IXGBE_SUCCESS) {
-		DEBUGOUT("Auto-Negotiation did not complete\n");
+		hw_dbg(hw, "Auto-Negotiation did not complete\n");
 		return status;
 	}
 
@@ -4267,7 +4278,7 @@ STATIC s32 ixgbe_acquire_swfw_sync_X550a(struct ixgbe_hw *hw, u32 mask)
 		if (hmask)
 			status = ixgbe_acquire_swfw_sync_X540(hw, hmask);
 		if (status) {
-			DEBUGOUT1("Could not acquire SWFW semaphore, Status = %d\n",
+			hw_dbg(hw, "Could not acquire SWFW semaphore, Status = %d\n",
 				  status);
 			return status;
 		}
@@ -4276,7 +4287,7 @@ STATIC s32 ixgbe_acquire_swfw_sync_X550a(struct ixgbe_hw *hw, u32 mask)
 
 		status = ixgbe_get_phy_token(hw);
 		if (status == IXGBE_ERR_TOKEN_RETRY)
-			DEBUGOUT1("Could not acquire PHY token, Status = %d\n",
+			hw_dbg(hw, "Could not acquire PHY token, Status = %d\n",
 				  status);
 
 		if (status == IXGBE_SUCCESS)
@@ -4286,13 +4297,13 @@ STATIC s32 ixgbe_acquire_swfw_sync_X550a(struct ixgbe_hw *hw, u32 mask)
 			ixgbe_release_swfw_sync_X540(hw, hmask);
 
 		if (status != IXGBE_ERR_TOKEN_RETRY) {
-			DEBUGOUT1("Unable to retry acquiring the PHY token, Status = %d\n",
+			hw_dbg(hw, "Unable to retry acquiring the PHY token, Status = %d\n",
 				  status);
 			return status;
 		}
 	}
 
-	DEBUGOUT1("Semaphore acquisition retries failed!: PHY ID = 0x%08X\n",
+	hw_dbg(hw, "Semaphore acquisition retries failed!: PHY ID = 0x%08X\n",
 		  hw->phy.id);
 	return status;
 }

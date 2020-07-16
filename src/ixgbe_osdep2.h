@@ -18,17 +18,20 @@ static inline void IXGBE_WRITE_REG(struct ixgbe_hw *hw, u32 reg, u32 value)
 	if (IXGBE_REMOVED(reg_addr))
 		return;
 #ifdef DBG
-	switch (reg) {
-	case IXGBE_EIMS:
-	case IXGBE_EIMC:
-	case IXGBE_EIAM:
-	case IXGBE_EIAC:
-	case IXGBE_EICR:
-	case IXGBE_EICS:
-		printk("%s: Reg - 0x%05X, value - 0x%08X\n", __func__,
-		       reg, value);
-	default:
-		break;
+	{
+		struct net_device *netdev = ixgbe_hw_to_netdev(hw);
+
+		switch (reg) {
+		case IXGBE_EIMS:
+		case IXGBE_EIMC:
+		case IXGBE_EIAM:
+		case IXGBE_EIAC:
+		case IXGBE_EICR:
+		case IXGBE_EICS:
+			netdev_info(netdev,
+				    "%s: Reg - 0x%05X, value - 0x%08X\n",
+				    __func__, reg, value);
+		}
 	}
 #endif /* DBG */
 	writel(value, reg_addr + reg);

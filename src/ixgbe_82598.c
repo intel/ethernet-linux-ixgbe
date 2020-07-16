@@ -398,7 +398,7 @@ s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw)
 		    hw->fc.high_water[i]) {
 			if (!hw->fc.low_water[i] ||
 			    hw->fc.low_water[i] >= hw->fc.high_water[i]) {
-				DEBUGOUT("Invalid water mark configuration\n");
+				hw_dbg(hw, "Invalid water mark configuration\n");
 				ret_val = IXGBE_ERR_INVALID_LINK_SETTINGS;
 				goto out;
 			}
@@ -476,7 +476,7 @@ s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw)
 		rmcs_reg |= IXGBE_RMCS_TFCE_802_3X;
 		break;
 	default:
-		DEBUGOUT("Flow control param set incorrectly\n");
+		hw_dbg(hw, "Flow control param set incorrectly\n");
 		ret_val = IXGBE_ERR_CONFIG;
 		goto out;
 		break;
@@ -552,7 +552,7 @@ STATIC s32 ixgbe_start_mac_link_82598(struct ixgbe_hw *hw,
 			}
 			if (!(links_reg & IXGBE_LINKS_KX_AN_COMP)) {
 				status = IXGBE_ERR_AUTONEG_NOT_COMPLETE;
-				DEBUGOUT("Autonegotiation did not complete.\n");
+				hw_dbg(hw, "Autonegotiation did not complete.\n");
 			}
 		}
 	}
@@ -591,7 +591,7 @@ STATIC s32 ixgbe_validate_link_ready(struct ixgbe_hw *hw)
 	}
 
 	if (timeout == IXGBE_VALIDATE_LINK_READY_TIMEOUT) {
-		DEBUGOUT("Link was indicated but link is down\n");
+		hw_dbg(hw, "Link was indicated but link is down\n");
 		return IXGBE_ERR_LINK_SETUP;
 	}
 
@@ -857,7 +857,7 @@ mac_reset_top:
 	}
 	if (ctrl & IXGBE_CTRL_RST) {
 		status = IXGBE_ERR_RESET_FAILED;
-		DEBUGOUT("Reset polling failed to complete.\n");
+		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
 	msec_delay(50);
@@ -920,7 +920,7 @@ s32 ixgbe_set_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 
 	/* Make sure we are using a valid rar index range */
 	if (rar >= rar_entries) {
-		DEBUGOUT1("RAR index %d is out of range.\n", rar);
+		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
 		return IXGBE_ERR_INVALID_ARGUMENT;
 	}
 
@@ -946,7 +946,7 @@ STATIC s32 ixgbe_clear_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 
 	/* Make sure we are using a valid rar index range */
 	if (rar >= rar_entries) {
-		DEBUGOUT1("RAR index %d is out of range.\n", rar);
+		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
 		return IXGBE_ERR_INVALID_ARGUMENT;
 	}
 
@@ -1137,7 +1137,7 @@ STATIC s32 ixgbe_read_i2c_phy_82598(struct ixgbe_hw *hw, u8 dev_addr,
 		}
 
 		if (sfp_stat != IXGBE_I2C_EEPROM_STATUS_PASS) {
-			DEBUGOUT("EEPROM read did not pass.\n");
+			hw_dbg(hw, "EEPROM read did not pass.\n");
 			status = IXGBE_ERR_SFP_NOT_PRESENT;
 			goto out;
 		}

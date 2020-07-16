@@ -67,7 +67,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.7.1" \
+#define DRV_VERSION	"5.8.1" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -6090,22 +6090,49 @@ static void ixgbe_fdir_filter_restore(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct hlist_node *node2;
 	struct ixgbe_fdir_filter *filter;
+	u8 queue = 0;
 
 	spin_lock(&adapter->fdir_perfect_lock);
 
 	if (!hlist_empty(&adapter->fdir_filter_list))
-		ixgbe_fdir_set_input_mask_82599(hw, &adapter->fdir_mask, 
-				adapter->cloud_mode);
+		ixgbe_fdir_set_input_mask_82599(hw, &adapter->fdir_mask,
+						adapter->cloud_mode);
 
 	hlist_for_each_entry_safe(filter, node2,
 				  &adapter->fdir_filter_list, fdir_node) {
+		if (filter->action == IXGBE_FDIR_DROP_QUEUE) {
+			queue = IXGBE_FDIR_DROP_QUEUE;
+		} else {
+			u32 ring = ethtool_get_flow_spec_ring(filter->action);
+			u8 vf = ethtool_get_flow_spec_ring_vf(filter->action);
+
+			if (!vf && ring >= adapter->num_rx_queues) {
+				e_err(drv,
+				      "FDIR restore failed w/o vf, ring:%u\n",
+				      ring);
+				continue;
+			} else if (vf &&
+				   ((vf > adapter->num_vfs) ||
+				   ring >= adapter->num_rx_queues_per_pool)) {
+				e_err(drv,
+				      "FDIR restore failed vf:%hhu, ring:%u\n",
+				      vf, ring);
+				continue;
+			}
+
+			/* Map the ring onto the absolute queue index */
+			if (!vf)
+				queue = adapter->rx_ring[ring]->reg_idx;
+			else
+				queue = ((vf - 1) *
+					adapter->num_rx_queues_per_pool) + ring;
+		}
+
 		ixgbe_fdir_write_perfect_filter_82599(hw,
-				&filter->filter,
-				filter->sw_idx,
-				(filter->action == IXGBE_FDIR_DROP_QUEUE) ?
-				IXGBE_FDIR_DROP_QUEUE :
-				adapter->rx_ring[filter->action]->reg_idx,
-				adapter->cloud_mode);
+						      &filter->filter,
+						      filter->sw_idx,
+						      queue,
+						      adapter->cloud_mode);
 	}
 
 	spin_unlock(&adapter->fdir_perfect_lock);
@@ -12843,21 +12870,18 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		 adapter->num_rx_queues, adapter->num_tx_queues);
 #if IS_ENABLED(CONFIG_FCOE)
 	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
-		snprintf(info_string, INFO_STRING_LEN,
-			 "%s FCoE", info_string);
+		strlcat(info_string, " FCoE", INFO_STRING_LEN);
 #endif
 	if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE)
-		snprintf(info_string, INFO_STRING_LEN,
-			 "%s FdirHash", info_string);
+		strlcat(info_string, " FdirHash", INFO_STRING_LEN);
 	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED)
-		snprintf(info_string, INFO_STRING_LEN, "%s DCB", info_string);
+		strlcat(info_string, " DCB", INFO_STRING_LEN);
 	if (adapter->flags & IXGBE_FLAG_DCA_ENABLED)
-		snprintf(info_string, INFO_STRING_LEN, "%s DCA", info_string);
+		strlcat(info_string, " DCA", INFO_STRING_LEN);
 	if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)
-		snprintf(info_string, INFO_STRING_LEN, "%s RSC", info_string);
+		strlcat(info_string, " RSC", INFO_STRING_LEN);
 	if (adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE)
-		snprintf(info_string, INFO_STRING_LEN,
-			 "%s vxlan_rx", info_string);
+		strlcat(info_string, " vxlan_rx", INFO_STRING_LEN);
 
 	/* end features printing */
 	e_info(probe, "%s\n", info_string);
@@ -13203,7 +13227,7 @@ static pci_ers_result_t ixgbe_io_error_detected(struct pci_dev *pdev,
 			pci_dev_put(vfdev);
 		}
 
-		pci_cleanup_aer_uncorrect_error_status(pdev);
+		pci_aer_clear_nonfatal_status(pdev);
 	}
 
 	/*
@@ -13276,7 +13300,7 @@ static pci_ers_result_t ixgbe_io_slot_reset(struct pci_dev *pdev)
 		result = PCI_ERS_RESULT_RECOVERED;
 	}
 
-	pci_cleanup_aer_uncorrect_error_status(pdev);
+	pci_aer_clear_nonfatal_status(pdev);
 
 	return result;
 }

@@ -50,11 +50,10 @@
 
 #include "ixgbe_common.h"
 
-#define PFX "ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
-	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
-	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
-		__func__ , ## args)))
+	((NETIF_MSG_##nlevel & adapter->msg_enable) ? \
+	(void)(netdev_printk(KERN_##klevel, adapter->netdev, \
+	"%s: " fmt, __func__, ## args)) : NULL)
 
 #ifdef HAVE_PTP_1588_CLOCK
 #ifdef HAVE_INCLUDE_LINUX_TIMECOUNTER_H

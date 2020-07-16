@@ -340,7 +340,7 @@ s32 ixgbe_init_eeprom_params_X540(struct ixgbe_hw *hw)
 		eeprom->word_size = 1 << (eeprom_size +
 					  IXGBE_EEPROM_WORD_SIZE_SHIFT);
 
-		DEBUGOUT2("Eeprom params: type = %d, size = %d\n",
+		hw_dbg(hw, "Eeprom params: type = %d, size = %d\n",
 			  eeprom->type, eeprom->word_size);
 	}
 
@@ -480,7 +480,7 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 	 */
 	for (i = 0; i < IXGBE_EEPROM_CHECKSUM; i++) {
 		if (ixgbe_read_eerd_generic(hw, i, &word)) {
-			DEBUGOUT("EEPROM read failed\n");
+			hw_dbg(hw, "EEPROM read failed\n");
 			return IXGBE_ERR_EEPROM;
 		}
 		checksum += word;
@@ -494,7 +494,7 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 			continue;
 
 		if (ixgbe_read_eerd_generic(hw, i, &pointer)) {
-			DEBUGOUT("EEPROM read failed\n");
+			hw_dbg(hw, "EEPROM read failed\n");
 			return IXGBE_ERR_EEPROM;
 		}
 
@@ -504,7 +504,7 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 			continue;
 
 		if (ixgbe_read_eerd_generic(hw, pointer, &length)) {
-			DEBUGOUT("EEPROM read failed\n");
+			hw_dbg(hw, "EEPROM read failed\n");
 			return IXGBE_ERR_EEPROM;
 		}
 
@@ -515,7 +515,7 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 
 		for (j = pointer + 1; j <= pointer + length; j++) {
 			if (ixgbe_read_eerd_generic(hw, j, &word)) {
-				DEBUGOUT("EEPROM read failed\n");
+				hw_dbg(hw, "EEPROM read failed\n");
 				return IXGBE_ERR_EEPROM;
 			}
 			checksum += word;
@@ -550,7 +550,7 @@ s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw,
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 	if (status) {
-		DEBUGOUT("EEPROM read failed\n");
+		hw_dbg(hw, "EEPROM read failed\n");
 		return status;
 	}
 
@@ -611,7 +611,7 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 	if (status) {
-		DEBUGOUT("EEPROM read failed\n");
+		hw_dbg(hw, "EEPROM read failed\n");
 		return status;
 	}
 
@@ -655,7 +655,7 @@ s32 ixgbe_update_flash_X540(struct ixgbe_hw *hw)
 
 	status = ixgbe_poll_flash_update_done_X540(hw);
 	if (status == IXGBE_ERR_EEPROM) {
-		DEBUGOUT("Flash update time out\n");
+		hw_dbg(hw, "Flash update time out\n");
 		goto out;
 	}
 
@@ -664,9 +664,9 @@ s32 ixgbe_update_flash_X540(struct ixgbe_hw *hw)
 
 	status = ixgbe_poll_flash_update_done_X540(hw);
 	if (status == IXGBE_SUCCESS)
-		DEBUGOUT("Flash update complete\n");
+		hw_dbg(hw, "Flash update complete\n");
 	else
-		DEBUGOUT("Flash update time out\n");
+		hw_dbg(hw, "Flash update time out\n");
 
 	if (hw->mac.type == ixgbe_mac_X540 && hw->revision_id == 0) {
 		flup = IXGBE_READ_REG(hw, IXGBE_EEC_BY_MAC(hw));
@@ -678,9 +678,9 @@ s32 ixgbe_update_flash_X540(struct ixgbe_hw *hw)
 
 		status = ixgbe_poll_flash_update_done_X540(hw);
 		if (status == IXGBE_SUCCESS)
-			DEBUGOUT("Flash update complete\n");
+			hw_dbg(hw, "Flash update complete\n");
 		else
-			DEBUGOUT("Flash update time out\n");
+			hw_dbg(hw, "Flash update time out\n");
 	}
 out:
 	return status;
@@ -754,7 +754,7 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 		 * SW_FW_SYNC bits (not just NVM)
 		 */
 		if (ixgbe_get_swfw_sync_semaphore(hw)) {
-			DEBUGOUT("Failed to get NVM access and register semaphore, returning IXGBE_ERR_SWFW_SYNC\n");
+			hw_dbg(hw, "Failed to get NVM access and register semaphore, returning IXGBE_ERR_SWFW_SYNC\n");
 			return IXGBE_ERR_SWFW_SYNC;
 		}
 
@@ -780,7 +780,7 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 	 * bits in the SW_FW_SYNC register.
 	 */
 	if (ixgbe_get_swfw_sync_semaphore(hw)) {
-		DEBUGOUT("Failed to get NVM sempahore and register semaphore while forcefully ignoring FW sempahore bit(s) and setting SW semaphore bit(s), returning IXGBE_ERR_SWFW_SYNC\n");
+		hw_dbg(hw, "Failed to get NVM sempahore and register semaphore while forcefully ignoring FW sempahore bit(s) and setting SW semaphore bit(s), returning IXGBE_ERR_SWFW_SYNC\n");
 		return IXGBE_ERR_SWFW_SYNC;
 	}
 	swfw_sync = IXGBE_READ_REG(hw, IXGBE_SWFW_SYNC_BY_MAC(hw));
@@ -805,11 +805,11 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u32 mask)
 			rmask |= IXGBE_GSSR_I2C_MASK;
 		ixgbe_release_swfw_sync_X540(hw, rmask);
 		ixgbe_release_swfw_sync_semaphore(hw);
-		DEBUGOUT("Resource not released by other SW, returning IXGBE_ERR_SWFW_SYNC\n");
+		hw_dbg(hw, "Resource not released by other SW, returning IXGBE_ERR_SWFW_SYNC\n");
 		return IXGBE_ERR_SWFW_SYNC;
 	}
 	ixgbe_release_swfw_sync_semaphore(hw);
-	DEBUGOUT("Returning error IXGBE_ERR_SWFW_SYNC\n");
+	hw_dbg(hw, "Returning error IXGBE_ERR_SWFW_SYNC\n");
 
 	return IXGBE_ERR_SWFW_SYNC;
 }

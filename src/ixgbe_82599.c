@@ -183,7 +183,7 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 			false);
 
 		if (ret_val) {
-			DEBUGOUT("sfp module setup not complete\n");
+			hw_dbg(hw, "sfp module setup not complete\n");
 			ret_val = IXGBE_ERR_SFP_SETUP_NOT_COMPLETE;
 			goto setup_sfp_out;
 		}
@@ -616,7 +616,7 @@ s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
 			}
 			if (!(links_reg & IXGBE_LINKS_KX_AN_COMP)) {
 				status = IXGBE_ERR_AUTONEG_NOT_COMPLETE;
-				DEBUGOUT("Autoneg did not complete.\n");
+				hw_dbg(hw, "Autoneg did not complete.\n");
 			}
 		}
 	}
@@ -718,7 +718,7 @@ void ixgbe_set_hard_rate_select_speed(struct ixgbe_hw *hw,
 		esdp_reg |= IXGBE_ESDP_SDP5_DIR;
 		break;
 	default:
-		DEBUGOUT("Invalid fixed module speed\n");
+		hw_dbg(hw, "Invalid fixed module speed\n");
 		return;
 	}
 
@@ -833,7 +833,7 @@ s32 ixgbe_setup_mac_link_smartspeed(struct ixgbe_hw *hw,
 
 out:
 	if (link_up && (link_speed == IXGBE_LINK_SPEED_1GB_FULL))
-		DEBUGOUT("Smartspeed has downgraded the link speed "
+		hw_dbg(hw, "Smartspeed has downgraded the link speed "
 		"from the maximum advertised\n");
 	return status;
 }
@@ -943,7 +943,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 				if (!(links_reg & IXGBE_LINKS_KX_AN_COMP)) {
 					status =
 						IXGBE_ERR_AUTONEG_NOT_COMPLETE;
-					DEBUGOUT("Autoneg did not complete.\n");
+					hw_dbg(hw, "Autoneg did not complete.\n");
 				}
 			}
 		}
@@ -1060,7 +1060,7 @@ mac_reset_top:
 
 	if (ctrl & IXGBE_CTRL_RST_MASK) {
 		status = IXGBE_ERR_RESET_FAILED;
-		DEBUGOUT("Reset polling failed to complete.\n");
+		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
 	msec_delay(50);
@@ -1202,7 +1202,7 @@ s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw)
 	 */
 	err = ixgbe_fdir_check_cmd_complete(hw, &fdircmd);
 	if (err) {
-		DEBUGOUT("Flow Director previous command did not complete, aborting table re-initialization.\n");
+		hw_dbg(hw, "Flow Director previous command did not complete, aborting table re-initialization.\n");
 		return err;
 	}
 
@@ -1241,7 +1241,7 @@ s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw)
 		msec_delay(1);
 	}
 	if (i >= IXGBE_FDIR_INIT_DONE_POLL) {
-		DEBUGOUT("Flow Director Signature poll time exceeded!\n");
+		hw_dbg(hw, "Flow Director Signature poll time exceeded!\n");
 		return IXGBE_ERR_FDIR_REINIT_FAILED;
 	}
 
@@ -1293,7 +1293,7 @@ STATIC void ixgbe_fdir_enable_82599(struct ixgbe_hw *hw, u32 fdirctrl)
 	}
 
 	if (i >= IXGBE_FDIR_INIT_DONE_POLL)
-		DEBUGOUT("Flow Director poll time exceeded!\n");
+		hw_dbg(hw, "Flow Director poll time exceeded!\n");
 }
 
 /**
@@ -1525,7 +1525,7 @@ void ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 	case IXGBE_ATR_FLOW_TYPE_SCTPV6:
 		break;
 	default:
-		DEBUGOUT(" Error on flow type input\n");
+		hw_dbg(hw, " Error on flow type input\n");
 		return;
 	}
 
@@ -1545,7 +1545,7 @@ void ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 	fdirhashcmd |= (u64)ixgbe_atr_compute_sig_hash_82599(input, common);
 	IXGBE_WRITE_REG64(hw, IXGBE_FDIRHASH, fdirhashcmd);
 
-	DEBUGOUT2("Tx Queue=%x hash=%x\n", queue, (u32)fdirhashcmd);
+	hw_dbg(hw, "Tx Queue=%x hash=%x\n", queue, (u32)fdirhashcmd);
 
 	return;
 }
@@ -1677,7 +1677,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 
 	/* verify bucket hash is cleared on hash generation */
 	if (input_mask->formatted.bkt_hash)
-		DEBUGOUT(" bucket hash should always be 0 in mask\n");
+		hw_dbg(hw, " bucket hash should always be 0 in mask\n");
 
 	/* Program FDIRM and verify partial masks */
 	switch (input_mask->formatted.vm_pool & 0x7F) {
@@ -1686,7 +1686,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	case 0x7F:
 		break;
 	default:
-		DEBUGOUT(" Error on vm pool mask\n");
+		hw_dbg(hw, " Error on vm pool mask\n");
 		return IXGBE_ERR_CONFIG;
 	}
 
@@ -1695,13 +1695,13 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		fdirm |= IXGBE_FDIRM_L4P;
 		if (input_mask->formatted.dst_port ||
 		    input_mask->formatted.src_port) {
-			DEBUGOUT(" Error on src/dst port mask\n");
+			hw_dbg(hw, " Error on src/dst port mask\n");
 			return IXGBE_ERR_CONFIG;
 		}
 	case IXGBE_ATR_L4TYPE_MASK:
 		break;
 	default:
-		DEBUGOUT(" Error on flow type mask\n");
+		hw_dbg(hw, " Error on flow type mask\n");
 		return IXGBE_ERR_CONFIG;
 	}
 
@@ -1722,7 +1722,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		/* no VLAN fields masked */
 		break;
 	default:
-		DEBUGOUT(" Error on VLAN mask\n");
+		hw_dbg(hw, " Error on VLAN mask\n");
 		return IXGBE_ERR_CONFIG;
 	}
 
@@ -1734,7 +1734,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	case 0xFFFF:
 		break;
 	default:
-		DEBUGOUT(" Error on flexible byte mask\n");
+		hw_dbg(hw, " Error on flexible byte mask\n");
 		return IXGBE_ERR_CONFIG;
 	}
 
@@ -1750,7 +1750,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		case 0xFF:
 			break;
 		default:
-			DEBUGOUT(" Error on inner_mac byte mask\n");
+			hw_dbg(hw, " Error on inner_mac byte mask\n");
 			return IXGBE_ERR_CONFIG;
 		}
 
@@ -1765,7 +1765,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		case 0xFFFFFFFF:
 			break;
 		default:
-			DEBUGOUT(" Error on TNI/VNI byte mask\n");
+			hw_dbg(hw, " Error on TNI/VNI byte mask\n");
 			return IXGBE_ERR_CONFIG;
 		}
 
@@ -1776,7 +1776,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		case 0xFFFF:
 			break;
 		default:
-			DEBUGOUT(" Error on tunnel type byte mask\n");
+			hw_dbg(hw, " Error on tunnel type byte mask\n");
 			return IXGBE_ERR_CONFIG;
 		}
 		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRIP6M, fdirip6m);
@@ -1827,6 +1827,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 				     ~input_mask->formatted.src_ip[0]);
 		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRDIP4M,
 				     ~input_mask->formatted.dst_ip[0]);
+		IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRIP6M, 0xFFFFFFFF);
 	}
 	return IXGBE_SUCCESS;
 }
@@ -1914,7 +1915,7 @@ s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRCMD, fdircmd);
 	err = ixgbe_fdir_check_cmd_complete(hw, &fdircmd);
 	if (err) {
-		DEBUGOUT("Flow Director command did not complete!\n");
+		hw_dbg(hw, "Flow Director command did not complete!\n");
 		return err;
 	}
 
@@ -1942,7 +1943,7 @@ s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
 
 	err = ixgbe_fdir_check_cmd_complete(hw, &fdircmd);
 	if (err) {
-		DEBUGOUT("Flow Director command did not complete!\n");
+		hw_dbg(hw, "Flow Director command did not complete!\n");
 		return err;
 	}
 
@@ -1988,14 +1989,14 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 	case IXGBE_ATR_FLOW_TYPE_TUNNELED_IPV4:
 		input_mask->formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK;
 		if (input->formatted.dst_port || input->formatted.src_port) {
-			DEBUGOUT(" Error on src/dst port\n");
+			hw_dbg(hw, " Error on src/dst port\n");
 			return IXGBE_ERR_CONFIG;
 		}
 		break;
 	case IXGBE_ATR_FLOW_TYPE_SCTPV4:
 	case IXGBE_ATR_FLOW_TYPE_TUNNELED_SCTPV4:
 		if (input->formatted.dst_port || input->formatted.src_port) {
-			DEBUGOUT(" Error on src/dst port\n");
+			hw_dbg(hw, " Error on src/dst port\n");
 			return IXGBE_ERR_CONFIG;
 		}
 		/* fall through */
@@ -2007,7 +2008,7 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 						  IXGBE_ATR_L4TYPE_MASK;
 		break;
 	default:
-		DEBUGOUT(" Error on flow type input\n");
+		hw_dbg(hw, " Error on flow type input\n");
 		return err;
 	}
 
@@ -2464,7 +2465,7 @@ s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
 	}
 
 	if (!(anlp1_reg & IXGBE_ANLP1_AN_STATE_MASK)) {
-		DEBUGOUT("auto negotiation not completed\n");
+		hw_dbg(hw, "auto negotiation not completed\n");
 		ret_val = IXGBE_ERR_RESET_FAILED;
 		goto reset_pipeline_out;
 	}
@@ -2515,7 +2516,7 @@ STATIC s32 ixgbe_read_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
 		}
 
 		if (!timeout) {
-			DEBUGOUT("Driver can't access resource,"
+			hw_dbg(hw, "Driver can't access resource,"
 				 " acquiring I2C bus timeout.\n");
 			status = IXGBE_ERR_I2C;
 			goto release_i2c_access;
@@ -2573,7 +2574,7 @@ STATIC s32 ixgbe_write_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
 		}
 
 		if (!timeout) {
-			DEBUGOUT("Driver can't access resource,"
+			hw_dbg(hw, "Driver can't access resource,"
 				 " acquiring I2C bus timeout.\n");
 			status = IXGBE_ERR_I2C;
 			goto release_i2c_access;

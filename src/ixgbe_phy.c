@@ -133,9 +133,9 @@ fail:
 		if (lock)
 			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 		if (retry < max_retry)
-			DEBUGOUT("I2C byte read combined error - Retrying.\n");
+			hw_dbg(hw, "I2C byte read combined error - Retrying.\n");
 		else
-			DEBUGOUT("I2C byte read combined error.\n");
+			hw_dbg(hw, "I2C byte read combined error.\n");
 		retry++;
 	} while (retry <= max_retry);
 
@@ -198,9 +198,9 @@ fail:
 		if (lock)
 			hw->mac.ops.release_swfw_sync(hw, swfw_mask);
 		if (retry < max_retry)
-			DEBUGOUT("I2C byte write combined error - Retrying.\n");
+			hw_dbg(hw, "I2C byte write combined error - Retrying.\n");
 		else
-			DEBUGOUT("I2C byte write combined error.\n");
+			hw_dbg(hw, "I2C byte write combined error.\n");
 		retry++;
 	} while (retry <= max_retry);
 
@@ -257,7 +257,7 @@ static bool ixgbe_probe_phy(struct ixgbe_hw *hw, u16 phy_addr)
 	u16 ext_ability = 0;
 
 	if (!ixgbe_validate_phy_addr(hw, phy_addr)) {
-		DEBUGOUT1("Unable to validate PHY address 0x%04X\n",
+		hw_dbg(hw, "Unable to validate PHY address 0x%04X\n",
 			phy_addr);
 		return false;
 	}
@@ -380,7 +380,7 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
 	if (phy_id != 0xFFFF && phy_id != 0x0)
 		valid = true;
 
-	DEBUGOUT1("PHY ID HIGH is 0x%04X\n", phy_id);
+	hw_dbg(hw, "PHY ID HIGH is 0x%04X\n", phy_id);
 
 	return valid;
 }
@@ -410,7 +410,7 @@ s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 		hw->phy.id |= (u32)(phy_id_low & IXGBE_PHY_REVISION_MASK);
 		hw->phy.revision = (u32)(phy_id_low & ~IXGBE_PHY_REVISION_MASK);
 	}
-	DEBUGOUT2("PHY_ID_HIGH 0x%04X, PHY_ID_LOW 0x%04X\n",
+	hw_dbg(hw, "PHY_ID_HIGH 0x%04X, PHY_ID_LOW 0x%04X\n",
 		  phy_id_high, phy_id_low);
 
 	return status;
@@ -593,7 +593,7 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 
 	if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
 		ERROR_REPORT1(IXGBE_ERROR_POLLING, "PHY address command did not complete.\n");
-		DEBUGOUT("PHY address command did not complete, returning IXGBE_ERR_PHY\n");
+		hw_dbg(hw, "PHY address command did not complete, returning IXGBE_ERR_PHY\n");
 		return IXGBE_ERR_PHY;
 	}
 
@@ -623,7 +623,7 @@ s32 ixgbe_read_phy_reg_mdi(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 
 	if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
 		ERROR_REPORT1(IXGBE_ERROR_POLLING, "PHY read command didn't complete\n");
-		DEBUGOUT("PHY read command didn't complete, returning IXGBE_ERR_PHY\n");
+		hw_dbg(hw, "PHY read command didn't complete, returning IXGBE_ERR_PHY\n");
 		return IXGBE_ERR_PHY;
 	}
 
@@ -914,10 +914,6 @@ static s32 ixgbe_get_copper_speeds_supported(struct ixgbe_hw *hw)
 		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_100_FULL;
 
 	switch (hw->mac.type) {
-	case ixgbe_mac_X550:
-		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_2_5GB_FULL;
-		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_5GB_FULL;
-		break;
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
 		hw->phy.speeds_supported &= ~IXGBE_LINK_SPEED_100_FULL;
@@ -1142,7 +1138,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	}
 
 	if ((phy_data & IXGBE_MDIO_PHY_XS_RESET) != 0) {
-		DEBUGOUT("PHY reset did not complete.\n");
+		hw_dbg(hw, "PHY reset did not complete.\n");
 		ret_val = IXGBE_ERR_PHY;
 		goto out;
 	}
@@ -1168,11 +1164,11 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 		switch (control) {
 		case IXGBE_DELAY_NL:
 			data_offset++;
-			DEBUGOUT1("DELAY: %d MS\n", edata);
+			hw_dbg(hw, "DELAY: %d MS\n", edata);
 			msec_delay(edata);
 			break;
 		case IXGBE_DATA_NL:
-			DEBUGOUT("DATA:\n");
+			hw_dbg(hw, "DATA:\n");
 			data_offset++;
 			ret_val = hw->eeprom.ops.read(hw, data_offset,
 						      &phy_offset);
@@ -1186,7 +1182,7 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 					goto err_eeprom;
 				hw->phy.ops.write_reg(hw, phy_offset,
 						      IXGBE_TWINAX_DEV, eword);
-				DEBUGOUT2("Wrote %4.4x to %4.4x\n", eword,
+				hw_dbg(hw, "Wrote %4.4x to %4.4x\n", eword,
 					  phy_offset);
 				data_offset++;
 				phy_offset++;
@@ -1194,20 +1190,20 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 			break;
 		case IXGBE_CONTROL_NL:
 			data_offset++;
-			DEBUGOUT("CONTROL:\n");
+			hw_dbg(hw, "CONTROL:\n");
 			if (edata == IXGBE_CONTROL_EOL_NL) {
-				DEBUGOUT("EOL\n");
+				hw_dbg(hw, "EOL\n");
 				end_data = true;
 			} else if (edata == IXGBE_CONTROL_SOL_NL) {
-				DEBUGOUT("SOL\n");
+				hw_dbg(hw, "SOL\n");
 			} else {
-				DEBUGOUT("Bad control value\n");
+				hw_dbg(hw, "Bad control value\n");
 				ret_val = IXGBE_ERR_PHY;
 				goto out;
 			}
 			break;
 		default:
-			DEBUGOUT("Bad control type\n");
+			hw_dbg(hw, "Bad control type\n");
 			ret_val = IXGBE_ERR_PHY;
 			goto out;
 		}
@@ -1510,7 +1506,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 					EWARN(hw, "WARNING: Intel (R) Network Connections are quality tested using Intel (R) Ethernet Optics. Using untested modules is not supported and may cause unstable operation or damage to the module or the adapter. Intel Corporation is not responsible for any harm caused by using untested modules.\n");
 					status = IXGBE_SUCCESS;
 				} else {
-					DEBUGOUT("SFP+ module not supported\n");
+					hw_dbg(hw, "SFP+ module not supported\n");
 					hw->phy.type =
 						ixgbe_phy_sfp_unsupported;
 					status = IXGBE_ERR_SFP_NOT_SUPPORTED;
@@ -1763,7 +1759,7 @@ s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw)
 					EWARN(hw, "WARNING: Intel (R) Network Connections are quality tested using Intel (R) Ethernet Optics. Using untested modules is not supported and may cause unstable operation or damage to the module or the adapter. Intel Corporation is not responsible for any harm caused by using untested modules.\n");
 					status = IXGBE_SUCCESS;
 				} else {
-					DEBUGOUT("QSFP module not supported\n");
+					hw_dbg(hw, "QSFP module not supported\n");
 					hw->phy.type =
 						ixgbe_phy_sfp_unsupported;
 					status = IXGBE_ERR_SFP_NOT_SUPPORTED;
@@ -1855,7 +1851,7 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 			if (hw->eeprom.ops.read(hw, *list_offset, data_offset))
 				goto err_phy;
 			if ((!*data_offset) || (*data_offset == 0xFFFF)) {
-				DEBUGOUT("SFP+ module not supported\n");
+				hw_dbg(hw, "SFP+ module not supported\n");
 				return IXGBE_ERR_SFP_NOT_SUPPORTED;
 			} else {
 				break;
@@ -1868,7 +1864,7 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 	}
 
 	if (sfp_id == IXGBE_PHY_INIT_END_NL) {
-		DEBUGOUT("No matching SFP+ module found\n");
+		hw_dbg(hw, "No matching SFP+ module found\n");
 		return IXGBE_ERR_SFP_NOT_SUPPORTED;
 	}
 
@@ -2027,9 +2023,9 @@ fail:
 			msec_delay(100);
 		}
 		if (retry < max_retry)
-			DEBUGOUT("I2C byte read error - Retrying.\n");
+			hw_dbg(hw, "I2C byte read error - Retrying.\n");
 		else
-			DEBUGOUT("I2C byte read error.\n");
+			hw_dbg(hw, "I2C byte read error.\n");
 		retry++;
 
 	} while (retry <= max_retry);
@@ -2131,9 +2127,9 @@ STATIC s32 ixgbe_write_i2c_byte_generic_int(struct ixgbe_hw *hw, u8 byte_offset,
 fail:
 		ixgbe_i2c_bus_clear(hw);
 		if (retry < max_retry)
-			DEBUGOUT("I2C byte write error - Retrying.\n");
+			hw_dbg(hw, "I2C byte write error - Retrying.\n");
 		else
-			DEBUGOUT("I2C byte write error.\n");
+			hw_dbg(hw, "I2C byte write error.\n");
 		retry++;
 	} while (retry <= max_retry);
 
@@ -2343,7 +2339,7 @@ STATIC s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
 	}
 
 	if (ack) {
-		DEBUGOUT("I2C ack was not received.\n");
+		hw_dbg(hw, "I2C ack was not received.\n");
 		status = IXGBE_ERR_I2C;
 	}
 

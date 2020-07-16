@@ -1616,9 +1616,6 @@ out:
 static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
-	u32 q_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
-	u32 queue, reg_val;
 	int err;
 
 	err = ixgbe_set_vf_vlan(adapter, false,
@@ -1629,20 +1626,8 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	ixgbe_set_vmolr(hw, vf, true);
 
 	/* disable hide VLAN on X550 */
-	if (hw->mac.type >= ixgbe_mac_X550) {
+	if (hw->mac.type >= ixgbe_mac_X550)
 		ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE);
-		IXGBE_WRITE_REG(hw, IXGBE_PVFCTRL(vf), IXGBE_CTRL_RST);
-		for (queue = 0; queue < q_per_pool; queue++) {
-			unsigned int reg_idx = (vf * q_per_pool) + queue;
-
-			reg_val = IXGBE_READ_REG(hw, IXGBE_TXDCTL(reg_idx));
-			if (reg_val) {
-				reg_val &= ~IXGBE_TXDCTL_ENABLE;
-				IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(reg_idx),
-						reg_val);
-			}
-		}
-	}
 
 	adapter->vfinfo[vf].pf_vlan = 0;
 	adapter->vfinfo[vf].pf_qos = 0;

@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-December 19, 2019
+June 18, 2020
 
 Contents
 --------
@@ -85,45 +85,40 @@ NOTES:
   set to the same Speed setting via ethtool. Results may vary if you mix
   speed settings.
 
-Supplier	Type					Part Numbers
---------	----					------------
+Supplier    Type                                        Part Numbers
+--------    ----                                        ------------
 SR Modules
-Intel		DUAL RATE 1G/10G SFP+ SR (bailed)	FTLX8571D3BCV-IT
-Intel		DUAL RATE 1G/10G SFP+ SR (bailed)	AFBR-703SDZ-IN2
-Intel		DUAL RATE 1G/10G SFP+ SR (bailed)	AFBR-703SDDZ-IN1
+Intel       DUAL RATE 1G/10G SFP+ SR (bailed)            FTLX8571D3BCV-IT
+Intel       DUAL RATE 1G/10G SFP+ SR (bailed)            AFBR-703SDZ-IN2
+Intel       DUAL RATE 1G/10G SFP+ SR (bailed)            AFBR-703SDDZ-IN1
 LR Modules
-Intel		DUAL RATE 1G/10G SFP+ LR (bailed)	FTLX1471D3BCV-IT
-Intel		DUAL RATE 1G/10G SFP+ LR (bailed)	AFCT-701SDZ-IN2
-Intel		DUAL RATE 1G/10G SFP+ LR (bailed)	AFCT-701SDDZ-IN1
+Intel       DUAL RATE 1G/10G SFP+ LR (bailed)            FTLX1471D3BCV-IT
+Intel       DUAL RATE 1G/10G SFP+ LR (bailed)            AFCT-701SDZ-IN2
+Intel       DUAL RATE 1G/10G SFP+ LR (bailed)            AFCT-701SDDZ-IN1
 
 The following is a list of 3rd party SFP+ modules that have received some
 testing. Not all modules are applicable to all devices.
 
-Supplier	Type					Part Numbers
---------	----					------------
-Finisar		SFP+ SR bailed, 10g single
-rate		FTLX8571D3BCL
-Avago		SFP+ SR bailed, 10g single rate		AFBR-700SDZ
-Finisar		SFP+ LR bailed, 10g single
-rate		FTLX1471D3BCL
-Finisar		DUAL RATE 1G/10G SFP+ SR (No
-Bail)	FTLX8571D3QCV-IT
-Avago		DUAL RATE 1G/10G SFP+ SR (No Bail)	AFBR-703SDZ-IN1
-Finisar		DUAL RATE 1G/10G SFP+ LR (No
-Bail)	FTLX1471D3QCV-IT
-Avago		DUAL RATE 1G/10G SFP+ LR (No Bail)	AFCT-701SDZ-IN1
+Supplier    Type                                        Part Numbers
+--------    ----                                        ------------
+Finisar     SFP+ SR bailed, 10g single rate             FTLX8571D3BCL
+Avago       SFP+ SR bailed, 10g single rate             AFBR-700SDZ
+Finisar     SFP+ LR bailed, 10g single rate             FTLX1471D3BCL
+Finisar     DUAL RATE 1G/10G SFP+ SR (No Bail)          FTLX8571D3QCV-IT
+Avago       DUAL RATE 1G/10G SFP+ SR (No Bail)          AFBR-703SDZ-IN1
+Finisar     DUAL RATE 1G/10G SFP+ LR (No Bail)          FTLX1471D3QCV-IT
+Avago       DUAL RATE 1G/10G SFP+ LR (No Bail)          AFCT-701SDZ-IN1
 
-Finisar		1000BASE-T
-SFP				FCLF8522P2BTL
-Avago		1000BASE-T				ABCU-5710RZ
-HP		1000BASE-SX SFP				453153-001
+Finisar     1000BASE-T SFP                              FCLF8522P2BTL
+Avago       1000BASE-T                                  ABCU-5710RZ
+HP          1000BASE-SX SFP                             453153-001
 
 82599-based adapters support all passive and active limiting direct attach
 cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
 
 
-Laser turns off for SFP+ when ifconfig <ethX> down
-------------------------------------------------
+Laser turns off for SFP+ when "ifconfig <ethX> down"
+----------------------------------------------------
 
 "ifconfig <ethX> down" turns off the laser for 82599-based SFP+ fiber adapters.
 "ifconfig <ethX> up" turns on the laser.
@@ -148,9 +143,9 @@ NOTES:
   optics and direct attach cables listed below.
 
 
-Supplier	Type				Part Numbers
---------	----				------------
-Intel	DUAL RATE 1G/10G QSFP+ SRL (bailed)	E10GQSFPSR
+Supplier    Type                                        Part Numbers
+--------    ----                                        ------------
+Intel       DUAL RATE 1G/10G QSFP+ SRL (bailed)         E10GQSFPSR
 
 82599-based QSFP+ adapters support all passive and active limiting QSFP+
 direct attach cables that comply with SFF-8436 v4.1 specifications.
@@ -172,13 +167,11 @@ NOTES:
   The following is a list of SFP+ modules and direct attach cables that have
   received some testing. Not all modules are applicable to all devices.
 
-Supplier	Type					Part Numbers
---------	----					------------
-Finisar		SFP+ SR bailed, 10g single
-rate		FTLX8571D3BCL
-Avago		SFP+ SR bailed, 10g single rate		AFBR-700SDZ
-Finisar		SFP+ LR bailed, 10g single
-rate		FTLX1471D3BCL
+Supplier    Type                                        Part Numbers
+--------    ----                                        ------------
+Finisar     SFP+ SR bailed, 10g single rate             FTLX8571D3BCL
+Avago       SFP+ SR bailed, 10g single rate             AFBR-700SDZ
+Finisar     SFP+ LR bailed, 10g single rate             FTLX1471D3BCL
 
 82598-based adapters support all passive direct attach cables that comply with
 SFF-8431 v4.1 and SFF-8472 v10.4 specifications. Active direct attach cables
@@ -707,7 +700,7 @@ and want to set the interrupt mode to MSI-X and MSI, respectively, add the
 following to modules.conf or /etc/modprobe.conf:
   alias eth0 ixgbe
   alias eth1 ixgbe
-  options ixgbe InterruptThrottleRate=3,1
+  options ixgbe IntMode=2,1
 
 
 Viewing Link Messages
@@ -742,8 +735,8 @@ permanent by adding 'MTU=9000' to the following file:
       or
   /etc/sysconfig/network/<config_file> for SLES
 
-NOTE: The maximum MTU setting for Jumbo Frames is 9710. This value coincides
-with the maximum Jumbo Frames size of 9728 bytes.
+NOTE: The maximum MTU setting for jumbo frames is 9710. This corresponds to the
+maximum jumbo frame size of 9728 bytes.
 
 NOTE: This driver will attempt to use multiple page sized buffers to receive
 each jumbo packet. This should help to avoid buffer starvation issues when
@@ -853,32 +846,31 @@ The Intel Ethernet Flow Director performs the following tasks:
 NOTE: An included script (set_irq_affinity) automates setting the IRQ to CPU
 affinity.
 
-NOTE: Intel Ethernet Flow Director masking works in the opposite manner from
-subnet masking. For instance, in the following command:
-
-# ethtool -N eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
-172.21.1.1 m 255.128.0.0 action 31
-
-The src-ip value that is written to the filter will be 0.4.1.2, not 172.0.0.0
-as might be expected. Similarly, the dst-ip value written to the filter will be
-0.21.1.1, not 172.0.0.0.
-
-To enable or disable the Intel Ethernet Flow Director:
-
-# ethtool -K <ethX> ntuple <on|off>
-
-When disabling ntuple filters, all the user programmed filters are flushed from
-the driver cache and hardware. All needed filters must be re-added when ntuple
-is re-enabled.
+NOTE: This driver supports the following flow types:
+- IPv4
+- TCPv4
+- UDPv4
+- SCTPv4
+- TCPv6
+- UDPv6
+Each flow type supports valid combinations of IP addresses (source or
+destination) and UDP/TCP ports (source and destination). You can supply only a
+source IP address, a source IP address and a destination port, or any
+combination of one or more of these four parameters. NOTE: This driver does not
+support IPv6 source or destination IP addresses.
 
 
 Sideband Perfect Filters
 ------------------------
 Sideband Perfect Filters are used to direct traffic that matches specified
 characteristics. They are enabled through ethtool's ntuple interface. To enable
-or disable these filters:
+or disable the Intel Ethernet Flow Director and these filters:
 
 # ethtool -K <ethX> ntuple <off|on>
+
+NOTE: When you disable ntuple filters, all the user programmed filters are
+flushed from the driver cache and hardware. All needed filters must be re-added
+when ntuple is re-enabled.
 
 To display all of the active filters:
 
@@ -886,14 +878,19 @@ To display all of the active filters:
 
 To add a new filter:
 
-# ethtool -U <ethX> flow-type <type> src-ip <ip> dst-ip <ip> src-port <port>
-dst-port <port> action <queue>
+# ethtool -U <ethX> flow-type <type> src-ip <ip> [m <ip_mask>] dst-ip <ip> [m
+<ip_mask>] src-port <port> [m <port_mask>] dst-port <port> [m <port_mask>]
+action <queue>
   Where:
     <ethX> - the Ethernet device to program
-    <type> - can be ip4, tcp4, udp4, or sctp4
-    <ip> - the ip address to match on
+    <type> - can be ip4, tcp4, udp4, sctp4, tcp6, udp6
+    <ip> - the IP address to match on
+    <ip_mask> - the IPv4 address to mask on
+            NOTE: These filters use inverted masks.
     <port> - the port number to match on
-    <queue> - the queue to direct traffic towards (-1 discards the
+    <port_mask> - the 16-bit integer for masking
+            NOTE: These filters use inverted masks.
+    <queue> - the queue to direct traffic toward (-1 discards the
               matched traffic)
 
 To delete a filter:
@@ -902,17 +899,37 @@ To delete a filter:
   Where <N> is the filter ID displayed when printing all the active filters,
   and may also have been specified using "loc <N>" when adding the filter.
 
+NOTE: Intel Ethernet Flow Director masking works in the opposite manner from
+subnet masking. For instance, in the following command:
+
+# ethtool -U eth11 flow-type ip4 src-ip 172.4.1.2 m 255.0.0.0 dst-ip \
+172.21.1.1 m 255.128.0.0 action 31
+
+The src-ip value that is written to the filter will be 0.4.1.2, not 172.0.0.0
+as might be expected. Similarly, the dst-ip value written to the filter will be
+0.21.1.1, not 172.0.0.0.
+
 EXAMPLES:
 To add a filter that directs packet to queue 2:
 
-# ethtool -N <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
 192.168.10.2 src-port 2000 dst-port 2001 action 2 [loc 1]
+
+To set a filter using only the source and destination IP address:
+
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 action 2 [loc 1]
 
 To match TCP traffic sent from 192.168.0.1, port 5300, directed to 192.168.0.5,
 port 80, and then send it to queue 7:
 
 # ethtool -U enp130s0 flow-type tcp4 src-ip 192.168.0.1 dst-ip 192.168.0.5
 src-port 5300 dst-port 80 action 7
+
+To add a TCPv4 filter with a partial mask for a source IP subnet:
+
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.0.0 m 0.255.255.255 dst-ip
+192.168.5.12 src-port 12600 dst-port 31 action 12
 
 NOTES:
 For each flow-type, the programmed filters must all have the same matching
@@ -931,7 +948,7 @@ The second command will fail with an error. You may program multiple filters
 with the same fields, using different values, but, on one device, you may not
 program two tcp4 filters with different matching fields.
 
-Matching on a subportion of a field is not supported by the ixgbe driver, thus
+The ixgbe driver does not support matching on a subportion of a field, thus
 partial mask fields are not supported.
 
 
@@ -981,7 +998,7 @@ parameter. Specify the action as a 64-bit value, where the lower 32 bits
 represent the queue number, while the next 8 bits represent the VF ID. Note
 that 0 is the PF, so the VF identifier is offset by 1. For example:
 
-# ethtool -N <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
 192.168.10.2 src-port 2000 dst-port 2001 action 0x800000002 [loc 1]
 
 The action field specifies to direct traffic to Virtual Function 7 (8 minus 1)
@@ -992,7 +1009,7 @@ parameters instead of the "action" parameter. Note that using the new ethtool
 "vf" parameter does not require the value to be offset by 1. This command is
 equivalent to the above example:
 
-# ethtool -N <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
 192.168.10.2 src-port 2000 dst-port 2001 vf 7 queue 2 [loc 1]
 
 Note that these filters will not break internal routing rules, and will not
@@ -1021,10 +1038,10 @@ Supported Ethtool Commands and Options:
   rx-flow-hash tcp4|udp4|ah4|esp4|sctp4|tcp6|udp6|ah6|esp6|sctp6
   m|v|t|s|d|f|n|r...
     Configures the hash options for the specified network traffic type.
-	udp4	UDP over IPv4
-	udp6	UDP over IPv6
-	f	Hash on bytes 0 and 1 of the Layer 4 header of the Rx packet.
-	n	Hash on bytes 2 and 3 of the Layer 4 header of the Rx packet.
+      udp4    UDP over IPv4
+      udp6    UDP over IPv6
+      f       Hash on bytes 0 and 1 of the Layer 4 header of the Rx packet.
+      n       Hash on bytes 2 and 3 of the Layer 4 header of the Rx packet.
 
 The following is an example using udp4 (UDP over IPv4):
   - To include UDP port numbers in RSS hashing run:
@@ -1061,7 +1078,7 @@ is loaded or the VM is booted. The VF is not aware of the VLAN tag being
 inserted on transmit and removed on received frames (sometimes called "port
 VLAN" mode).
 
-# ip link set dev <PF netdev id> vf <id> vlan <vlan id>
+# ip link set dev <ethX> vf <id> vlan <vlan id>
 
 For example, the following will configure PF eth0 and the first VF on VLAN 10:
 
@@ -1131,12 +1148,12 @@ the system log (displayed by the "dmesg" command):
 
 NOTE: This feature can be disabled for a specific VF:
 
-# ip link set <pf dev> vf <vf id> spoofchk {off|on}
+# ip link set <ethX> vf <vf id> spoofchk {off|on}
 
 
-Setting MAC Address, VLAN and Rate Limit Using IProute2 Tool
+Setting MAC Address, VLAN, and Rate Limit Using IProute2 Tool
 ------------------------------------------------------------
-You can set a MAC address of a Virtual Function (VF), a default VLAN and the
+You can set a MAC address of a Virtual Function (VF), a default VLAN, and the
 rate limit using the IProute2 tool. Download the latest version of the
 IProute2 tool from Sourceforge if your version does not have all the features
 you require.
@@ -1238,15 +1255,6 @@ For reduced latency:
 Known Issues/Troubleshooting
 ============================
 
-MAC address of Virtual Function changes unexpectedly
-----------------------------------------------------
-If a Virtual Function's MAC address is not assigned in the host, then the VF
-(virtual function) driver will use a random MAC address. This random MAC
-address may change each time the VF driver is reloaded. You can assign a static
-MAC address in the host machine. This static MAC address will survive
-a VF driver reload.
-
-
 Hardware Issues
 ---------------
 For known hardware and troubleshooting issues, either refer to the "Release
@@ -1267,13 +1275,26 @@ Intel(R) Active Management Technology 2.0, 2.1, 2.5 are not supported in
 conjunction with the linux driver.
 
 
-MSI-X Issues with Kernels Between 2.6.19 - 2.6.21 (inclusive)
--------------------------------------------------------------
+MAC address of Virtual Function changes unexpectedly
+----------------------------------------------------
+If a Virtual Function's MAC address is not assigned in the host, then the VF
+(virtual function) driver will use a random MAC address. This random MAC
+address may change each time the VF driver is reloaded. You can assign a static
+MAC address in the host machine. This static MAC address will survive a VF
+driver reload.
 
-Kernel panics and instability may be observed on any MSI-X hardware if you use
-irqbalance with kernels between 2.6.19 and 2.6.21. If such problems are
-encountered, you may disable the irqbalance daemon or upgrade to a newer
-kernel.
+
+SR-IOV virtual functions have identical MAC addresses
+-----------------------------------------------------
+When you create multiple SR-IOV virtual functions, the VFs may have identical
+MAC addresses. Only one VF will pass traffic, and all traffic on other VFs with
+identical MAC addresses will fail. This is related to the
+"MACAddressPolicy=persistent" setting in
+/usr/lib/systemd/network/99-default.link.
+
+To resolve this issue, edit the /usr/lib/systemd/network/99-default.link file
+and change the MACAddressPolicy line to "MACAddressPolicy=none". For more
+information, see the systemd.link man page.
 
 
 LRO and iSCSI Incompatibility
@@ -1414,26 +1435,6 @@ CFLAGS_EXTRA=-DDISABLE_PCI_MSI if the driver needs to be loaded/unloaded.
 Otherwise, the driver can be loaded once and will be safe, but unloading it
 will lead to the issue.
 
-Enabling SR-IOV in a 32-bit Microsoft* Windows* Server 2008 Guest OS Using
-Intel® 82576-based GbE or Intel® 82599-based 10GbE Controller Under KVM
-KVM Hypervisor/VMM supports direct assignment of a PCIe device to a VM. This
-includes traditional PCIe devices, as well as SR-IOV-capable devices using
-Intel 82576-based and 82599-based controllers.
-
-While direct assignment of a PCIe device or an SR-IOV Virtual Function (VF) to
-a Linux-based VM running 2.6.32 or newer kernel is functional, there is a
-known issue with Microsoft Windows Server 2008 VM that results in a "yellow
-bang" error. This problem is within the KVM VMM itself, not the Intel driver
-or the SR-IOV logic of the VMM. The KVM emulates an older CPU model for the
-guests, and this older CPU model does not support MSI-X interrupts, which is a
-requirement for Intel SR-IOV.
-
-If you wish to use the Intel 82576- or 82599-based controllers in SR-IOV mode
-with KVM and a Microsoft Windows Server 2008 guest, try the following
-workaround. Configure KVM to emulate a different model of CPU
-when using qemu to create the KVM guest:
-"-cpu qemu64,model=13"
-
 
 Unable to obtain DHCP lease on boot with RedHat
 -----------------------------------------------
@@ -1465,7 +1466,7 @@ no longer active. Do this by shutting down all VMs and unloading the VF driver.
 
 
 Out of memory issues on IA32 systems
--------------------------------------
+------------------------------------
 
 The driver may consume a lot of memory based on the number of CPUs and network
 interfaces. This leads to memory segmentation. Thus, the driver may not be
@@ -1516,7 +1517,7 @@ St - Fifth Floor, Boston, MA 02110-1301 USA.
 The full GNU General Public License is included in this distribution in the
 file called "COPYING".
 
-Copyright(c) 1999 - 2019 Intel Corporation.
+Copyright(c) 1999 - 2020 Intel Corporation.
 
 
 Trademarks

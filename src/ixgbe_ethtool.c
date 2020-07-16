@@ -3351,6 +3351,12 @@ static int ixgbe_get_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	case IXGBE_ATR_FLOW_TYPE_UDPV4:
 		fsp->flow_type = UDP_V4_FLOW;
 		break;
+	case IXGBE_ATR_FLOW_TYPE_TCPV6:
+		fsp->flow_type = TCP_V6_FLOW;
+		break;
+	case IXGBE_ATR_FLOW_TYPE_UDPV6:
+		fsp->flow_type = UDP_V6_FLOW;
+		break;
 	case IXGBE_ATR_FLOW_TYPE_SCTPV4:
 		fsp->flow_type = SCTP_V4_FLOW;
 		break;
@@ -3364,14 +3370,26 @@ static int ixgbe_get_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 		return -EINVAL;
 	}
 
-	fsp->h_u.tcp_ip4_spec.psrc = rule->filter.formatted.src_port;
-	fsp->m_u.tcp_ip4_spec.psrc = mask->formatted.src_port;
-	fsp->h_u.tcp_ip4_spec.pdst = rule->filter.formatted.dst_port;
-	fsp->m_u.tcp_ip4_spec.pdst = mask->formatted.dst_port;
-	fsp->h_u.tcp_ip4_spec.ip4src = rule->filter.formatted.src_ip[0];
-	fsp->m_u.tcp_ip4_spec.ip4src = mask->formatted.src_ip[0];
-	fsp->h_u.tcp_ip4_spec.ip4dst = rule->filter.formatted.dst_ip[0];
-	fsp->m_u.tcp_ip4_spec.ip4dst = mask->formatted.dst_ip[0];
+#ifdef HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
+	if (rule->filter.formatted.flow_type & IXGBE_ATR_L4TYPE_IPV6_MASK) {
+		fsp->h_u.tcp_ip6_spec.psrc = rule->filter.formatted.src_port;
+		fsp->m_u.tcp_ip6_spec.psrc = mask->formatted.src_port;
+		fsp->h_u.tcp_ip6_spec.pdst = rule->filter.formatted.dst_port;
+		fsp->m_u.tcp_ip6_spec.pdst = mask->formatted.dst_port;
+	} else {
+#endif
+		fsp->h_u.tcp_ip4_spec.psrc = rule->filter.formatted.src_port;
+		fsp->m_u.tcp_ip4_spec.psrc = mask->formatted.src_port;
+		fsp->h_u.tcp_ip4_spec.pdst = rule->filter.formatted.dst_port;
+		fsp->m_u.tcp_ip4_spec.pdst = mask->formatted.dst_port;
+		fsp->h_u.tcp_ip4_spec.ip4src = rule->filter.formatted.src_ip[0];
+		fsp->m_u.tcp_ip4_spec.ip4src = mask->formatted.src_ip[0];
+		fsp->h_u.tcp_ip4_spec.ip4dst = rule->filter.formatted.dst_ip[0];
+		fsp->m_u.tcp_ip4_spec.ip4dst = mask->formatted.dst_ip[0];
+#ifdef HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
+	}
+#endif
+
 	fsp->h_ext.vlan_tci = rule->filter.formatted.vlan_id;
 	fsp->m_ext.vlan_tci = mask->formatted.vlan_id;
 	fsp->h_ext.vlan_etype = rule->filter.formatted.flex_bytes;
@@ -3567,6 +3585,12 @@ static int ixgbe_flowspec_to_flow_type(struct ethtool_rx_flow_spec *fsp,
 	case UDP_V4_FLOW:
 		*flow_type = IXGBE_ATR_FLOW_TYPE_UDPV4;
 		break;
+	case TCP_V6_FLOW:
+		*flow_type = IXGBE_ATR_FLOW_TYPE_TCPV6;
+		break;
+	case UDP_V6_FLOW:
+		*flow_type = IXGBE_ATR_FLOW_TYPE_UDPV6;
+		break;
 	case SCTP_V4_FLOW:
 		*flow_type = IXGBE_ATR_FLOW_TYPE_SCTPV4;
 		break;
@@ -3596,6 +3620,24 @@ static int ixgbe_flowspec_to_flow_type(struct ethtool_rx_flow_spec *fsp,
 	}
 
 	return 1;
+}
+
+static bool ixgbe_match_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
+					   struct ixgbe_fdir_filter *input)
+{
+	struct hlist_node *node2;
+	struct ixgbe_fdir_filter *rule = NULL;
+
+	hlist_for_each_entry_safe(rule, node2,
+				  &adapter->fdir_filter_list, fdir_node) {
+		if (rule->filter.formatted.bkt_hash ==
+		    input->filter.formatted.bkt_hash &&
+		    rule->action == input->action) {
+			e_info(drv, "FDIR entry already exist\n");
+			return true;
+		}
+	}
+	return false;
 }
 
 static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
@@ -3664,15 +3706,46 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	if (input->filter.formatted.flow_type == IXGBE_ATR_FLOW_TYPE_IPV4)
 		mask.formatted.flow_type &= IXGBE_ATR_L4TYPE_IPV6_MASK;
 
-	/* Copy input into formatted structures */
-	input->filter.formatted.src_ip[0] = fsp->h_u.tcp_ip4_spec.ip4src;
-	mask.formatted.src_ip[0] = fsp->m_u.tcp_ip4_spec.ip4src;
-	input->filter.formatted.dst_ip[0] = fsp->h_u.tcp_ip4_spec.ip4dst;
-	mask.formatted.dst_ip[0] = fsp->m_u.tcp_ip4_spec.ip4dst;
-	input->filter.formatted.src_port = fsp->h_u.tcp_ip4_spec.psrc;
-	mask.formatted.src_port = fsp->m_u.tcp_ip4_spec.psrc;
-	input->filter.formatted.dst_port = fsp->h_u.tcp_ip4_spec.pdst;
-	mask.formatted.dst_port = fsp->m_u.tcp_ip4_spec.pdst;
+#ifdef HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
+	/* not support full IPV6 address filtering */
+	if (input->filter.formatted.flow_type & IXGBE_ATR_L4TYPE_IPV6_MASK) {
+		if (fsp->m_u.tcp_ip6_spec.ip6src[0] ||
+		    fsp->m_u.tcp_ip6_spec.ip6src[1] ||
+		    fsp->m_u.tcp_ip6_spec.ip6src[2] ||
+		    fsp->m_u.tcp_ip6_spec.ip6src[3] ||
+		    fsp->m_u.tcp_ip6_spec.ip6dst[0] ||
+		    fsp->m_u.tcp_ip6_spec.ip6dst[1] ||
+		    fsp->m_u.tcp_ip6_spec.ip6dst[2] ||
+		    fsp->m_u.tcp_ip6_spec.ip6dst[3]) {
+			e_err(drv, "Error not support IPv6 address fitlers\n");
+			goto err_out;
+		}
+		input->filter.formatted.src_port = fsp->h_u.tcp_ip6_spec.psrc;
+		mask.formatted.src_port = fsp->m_u.tcp_ip6_spec.psrc;
+		input->filter.formatted.dst_port = fsp->h_u.tcp_ip6_spec.pdst;
+		mask.formatted.dst_port = fsp->m_u.tcp_ip6_spec.pdst;
+	} else {
+#endif
+		/* Copy input into formatted structures */
+		input->filter.formatted.src_ip[0] =
+			fsp->h_u.tcp_ip4_spec.ip4src;
+		mask.formatted.src_ip[0] =
+			fsp->m_u.tcp_ip4_spec.ip4src;
+		input->filter.formatted.dst_ip[0] =
+			fsp->h_u.tcp_ip4_spec.ip4dst;
+		mask.formatted.dst_ip[0] =
+			fsp->m_u.tcp_ip4_spec.ip4dst;
+		input->filter.formatted.src_port =
+			fsp->h_u.tcp_ip4_spec.psrc;
+		mask.formatted.src_port =
+			fsp->m_u.tcp_ip4_spec.psrc;
+		input->filter.formatted.dst_port =
+			fsp->h_u.tcp_ip4_spec.pdst;
+		mask.formatted.dst_port =
+			fsp->m_u.tcp_ip4_spec.pdst;
+#ifdef HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
+	}
+#endif
 
 	if (fsp->flow_type & FLOW_EXT) {
 		input->filter.formatted.vm_pool =
@@ -3709,6 +3782,10 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 
 	/* apply mask and compute/store hash */
 	ixgbe_atr_compute_perfect_hash_82599(&input->filter, &mask);
+
+	/* check if new entry does not exist on filter list */
+	if (ixgbe_match_ethtool_fdir_entry(adapter, input))
+		goto err_out_w_lock;
 
 	/* only program filters to hardware if the net device is running, as
 	 * we store the filters in the Rx buffer which is not allocated when
@@ -4518,6 +4595,9 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif
 	.get_coalesce		= ixgbe_get_coalesce,
 	.set_coalesce		= ixgbe_set_coalesce,
+#ifdef ETHTOOL_COALESCE_USECS
+	.supported_coalesce_params = ETHTOOL_COALESCE_USECS,
+#endif
 #ifndef HAVE_NDO_SET_FEATURES
 	.get_rx_csum		= ixgbe_get_rx_csum,
 	.set_rx_csum		= ixgbe_set_rx_csum,
