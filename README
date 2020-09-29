@@ -26,6 +26,7 @@ Function (VF) driver for this driver is ixgbevf.
 Driver information can be obtained using ethtool, lspci, and ifconfig.
 Instructions on updating ethtool can be found in the section Additional
 Configurations later in this document.
+
 This driver is only supported as a loadable module at this time. Intel is not
 supplying patches against the kernel source to allow for static linking of the
 drivers.
@@ -37,7 +38,6 @@ with Linux.
 This driver supports XDP (Express Data Path) on kernel 4.14 and later. Note
 that XDP is blocked for frame sizes larger than 3KB. This driver supports
 AF_XDP zero-copy on kernel 4.18 and later.
-
 
 NOTE: Devices based on the Intel(R) Ethernet Connection X552 and Intel(R)
 Ethernet Connection X553 do not support the following features:
@@ -859,6 +859,33 @@ source IP address, a source IP address and a destination port, or any
 combination of one or more of these four parameters. NOTE: This driver does not
 support IPv6 source or destination IP addresses.
 
+The following table summarizes supported Intel Ethernet Flow Director features
+across Intel(R) Ethernet controllers.
+
+---------------------------------------------------------------------------
+Feature             500 Series      700 Series         800 Series
+===========================================================================
+VF FLOW DIRECTOR    Supported       Routing to VF      Not supported
+                                    not supported
+---------------------------------------------------------------------------
+IP ADDRESS RANGE    Supported       Not supported      Field masking
+FILTER
+---------------------------------------------------------------------------
+IPv6 SUPPORT        Supported       Supported          Supported
+---------------------------------------------------------------------------
+CONFIGURABLE        Configured      Configured         Configured
+INPUT SET           per port        globally           per port
+---------------------------------------------------------------------------
+ATR                 Supported       Supported          Not supported
+---------------------------------------------------------------------------
+FLEX BYTE FILTER    Starts at       Starts at          Starts at
+                    beginning       beginning of       beginning
+                    of packet       payload            of packet
+---------------------------------------------------------------------------
+TUNNELED PACKETS    Filter matches  Filter matches     Filter matches
+                    outer header    inner header       inner header
+---------------------------------------------------------------------------
+
 
 Sideband Perfect Filters
 ------------------------
@@ -886,10 +913,10 @@ action <queue>
     <type> - can be ip4, tcp4, udp4, sctp4, tcp6, udp6
     <ip> - the IP address to match on
     <ip_mask> - the IPv4 address to mask on
-            NOTE: These filters use inverted masks.
+              NOTE: These filters use inverted masks.
     <port> - the port number to match on
     <port_mask> - the 16-bit integer for masking
-            NOTE: These filters use inverted masks.
+              NOTE: These filters use inverted masks.
     <queue> - the queue to direct traffic toward (-1 discards the
               matched traffic)
 

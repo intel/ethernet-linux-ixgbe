@@ -941,10 +941,10 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	/* reply to reset with ack and vf mac address */
 	msgbuf[0] = IXGBE_VF_RESET;
 	if (!is_zero_ether_addr(vf_mac) && adapter->vfinfo[vf].pf_set_mac) {
-		msgbuf[0] |= IXGBE_VT_MSGTYPE_ACK;
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_SUCCESS;
 		memcpy(addr, vf_mac, ETH_ALEN);
 	} else {
-		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_FAILURE;
 	}
 
 	/*
@@ -1314,7 +1314,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 	}
 
 	/* this is a message we already processed, do nothing */
-	if (msgbuf[0] & (IXGBE_VT_MSGTYPE_ACK | IXGBE_VT_MSGTYPE_NACK))
+	if (msgbuf[0] & (IXGBE_VT_MSGTYPE_SUCCESS | IXGBE_VT_MSGTYPE_FAILURE))
 		return retval;
 
 	/* flush the ack before we write any messages back */
@@ -1329,7 +1329,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 	 */
 
 	if (!adapter->vfinfo[vf].clear_to_send) {
-		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_FAILURE;
 		ixgbe_write_mbx(hw, msgbuf, 1, vf);
 		return retval;
 	}
@@ -1379,9 +1379,9 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 
 	/* notify the VF of the results of what it sent us */
 	if (retval)
-		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_FAILURE;
 	else
-		msgbuf[0] |= IXGBE_VT_MSGTYPE_ACK;
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_SUCCESS;
 
 	msgbuf[0] |= IXGBE_VT_MSGTYPE_CTS;
 
@@ -1393,7 +1393,7 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 static void ixgbe_rcv_ack_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	u32 msg = IXGBE_VT_MSGTYPE_NACK;
+	u32 msg = IXGBE_VT_MSGTYPE_FAILURE;
 
 	/* if device isn't clear to send it shouldn't be reading either */
 	if (!adapter->vfinfo[vf].clear_to_send)

@@ -67,7 +67,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.8.1" \
+#define DRV_VERSION	"5.9.4" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -1213,7 +1213,16 @@ static bool ixgbe_alloc_mapped_skb(struct ixgbe_ring *rx_ring,
 #else /* !CONFIG_IXGBE_DISABLE_PACKET_SPLIT */
 static inline unsigned int ixgbe_rx_offset(struct ixgbe_ring *rx_ring)
 {
-	return ring_uses_build_skb(rx_ring) ? IXGBE_SKB_PAD : 0;
+	unsigned int res;
+
+	res = ring_uses_build_skb(rx_ring) ? IXGBE_SKB_PAD : 0;
+
+#ifdef HAVE_XDP_SUPPORT
+	if (rx_ring->xdp_prog && res < XDP_PACKET_HEADROOM)
+		res = XDP_PACKET_HEADROOM;
+#endif
+
+	return res;
 }
 
 static bool ixgbe_alloc_mapped_page(struct ixgbe_ring *rx_ring,
@@ -2115,7 +2124,7 @@ ixgbe_run_xdp(struct ixgbe_adapter __maybe_unused *adapter,
 		break;
 	case XDP_TX:
 #ifdef HAVE_XDP_FRAME_STRUCT
-		xdpf = convert_to_xdp_frame(xdp);
+		xdpf = xdp_convert_buff_to_frame(xdp);
 		if (unlikely(!xdpf)) {
 			result = IXGBE_XDP_CONSUMED;
 			break;
@@ -6363,9 +6372,13 @@ static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 		goto link_cfg_out;
 
 	speed = hw->phy.autoneg_advertised;
-	if ((!speed) && (hw->mac.ops.get_link_capabilities))
+	if (!speed && hw->mac.ops.get_link_capabilities) {
 		ret = hw->mac.ops.get_link_capabilities(hw, &speed,
 							&autoneg);
+		speed &= ~(IXGBE_LINK_SPEED_5GB_FULL |
+			   IXGBE_LINK_SPEED_2_5GB_FULL);
+	}
+
 	if (ret)
 		goto link_cfg_out;
 
@@ -7330,7 +7343,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	    hw->mac.type == ixgbe_mac_X550EM_x ||
 	    hw->mac.type == ixgbe_mac_X550EM_a ||
 	    hw->mac.type == ixgbe_mac_X540)
-		hw->mbx.ops.init_params(hw);
+		ixgbe_init_mbx_params_pf(hw);
 
 	/* default flow control settings */
 	hw->fc.requested_mode = ixgbe_fc_full;
@@ -11798,11 +11811,14 @@ static int ixgbe_xdp(struct net_device *dev, struct netdev_bpf *xdp)
 static int ixgbe_xdp(struct net_device *dev, struct netdev_xdp *xdp)
 #endif
 {
+#if defined(HAVE_XDP_QUERY_PROG) || defined(HAVE_AF_XDP_ZC_SUPPORT)
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
+#endif
 
 	switch (xdp->command) {
 	case XDP_SETUP_PROG:
 		return ixgbe_xdp_setup(dev, xdp->prog);
+#ifdef HAVE_XDP_QUERY_PROG
 	case XDP_QUERY_PROG:
 #ifndef NO_NETDEV_BPF_PROG_ATTACHED
 		xdp->prog_attached = !!(adapter->xdp_prog);
@@ -11810,6 +11826,7 @@ static int ixgbe_xdp(struct net_device *dev, struct netdev_xdp *xdp)
 		xdp->prog_id = adapter->xdp_prog ?
 			       adapter->xdp_prog->aux->id : 0;
 		return 0;
+#endif
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 	case XDP_SETUP_XSK_UMEM:
 		return ixgbe_xsk_umem_setup(adapter, xdp->xsk.umem,
