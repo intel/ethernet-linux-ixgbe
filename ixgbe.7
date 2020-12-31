@@ -5,7 +5,7 @@
 .\" * Other names and brands may be claimed as the property of others.
 .\"
 .
-.TH ixgbe 1 "October 15, 2019"
+.TH ixgbe 1 "October 20, 2020"
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver
 for the 10 Gigabit Family of Adapters.
@@ -216,11 +216,7 @@ disables its Tx/Rx queues until a VF driver reset occurs.
 .LP
 Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU) to a value larger than the default value of 1500.
 
-Use the ifconfig command to increase the MTU size. For example, enter the following where <ethX> is the interface number:
-
-# ifconfig <ethX> mtu 9000 up
-
-Alternatively, you can use the ip command as follows:
+Use the ip command to increase the MTU size. For example, enter the following where <ethX> is the interface number:
 
 # ip link set mtu 9000 dev <ethX>
 # ip link set up dev <ethX>

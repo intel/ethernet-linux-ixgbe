@@ -67,7 +67,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.9.4" \
+#define DRV_VERSION	"5.10.2" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -1213,16 +1213,7 @@ static bool ixgbe_alloc_mapped_skb(struct ixgbe_ring *rx_ring,
 #else /* !CONFIG_IXGBE_DISABLE_PACKET_SPLIT */
 static inline unsigned int ixgbe_rx_offset(struct ixgbe_ring *rx_ring)
 {
-	unsigned int res;
-
-	res = ring_uses_build_skb(rx_ring) ? IXGBE_SKB_PAD : 0;
-
-#ifdef HAVE_XDP_SUPPORT
-	if (rx_ring->xdp_prog && res < XDP_PACKET_HEADROOM)
-		res = XDP_PACKET_HEADROOM;
-#endif
-
-	return res;
+	return ring_uses_build_skb(rx_ring) ? IXGBE_SKB_PAD : 0;
 }
 
 static bool ixgbe_alloc_mapped_page(struct ixgbe_ring *rx_ring,
@@ -2159,19 +2150,33 @@ xdp_out:
 	return ERR_PTR(-result);
 }
 
+static unsigned int ixgbe_rx_frame_truesize(struct ixgbe_ring *rx_ring,
+					    unsigned int size)
+{
+	unsigned int truesize;
+
+#if (PAGE_SIZE < 8192)
+	truesize = ixgbe_rx_pg_size(rx_ring) / 2;
+#else
+	truesize = ring_uses_build_skb(rx_ring) ?
+		SKB_DATA_ALIGN(IXGBE_SKB_PAD + size)
+#ifdef HAVE_XDP_BUFF_FRAME_SZ
+		+ SKB_DATA_ALIGN(sizeof(struct skb_shared_info))
+#endif
+		: SKB_DATA_ALIGN(size);
+#endif
+	return truesize;
+}
+
 static void ixgbe_rx_buffer_flip(struct ixgbe_ring *rx_ring,
 				 struct ixgbe_rx_buffer *rx_buffer,
 				 unsigned int size)
 {
-#if (PAGE_SIZE < 8192)
-	unsigned int truesize = ixgbe_rx_pg_size(rx_ring) / 2;
+	unsigned int truesize = ixgbe_rx_frame_truesize(rx_ring, size);
 
+#if (PAGE_SIZE < 8192)
 	rx_buffer->page_offset ^= truesize;
 #else
-	unsigned int truesize = ring_uses_build_skb(rx_ring) ?
-				SKB_DATA_ALIGN(IXGBE_SKB_PAD + size) :
-				SKB_DATA_ALIGN(size);
-
 	rx_buffer->page_offset += truesize;
 #endif
 }
@@ -2207,6 +2212,13 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	xdp.data_end = NULL;
 #ifdef HAVE_XDP_BUFF_RXQ
 	xdp.rxq = &rx_ring->xdp_rxq;
+#endif
+
+#ifdef HAVE_XDP_BUFF_FRAME_SZ
+	/* Frame size depend on rx_ring setup when PAGE_SIZE=4K */
+#if (PAGE_SIZE < 8192)
+	xdp.frame_sz = ixgbe_rx_frame_truesize(rx_ring, 0);
+#endif
 #endif
 
 	while (likely(total_rx_packets < budget)) {
@@ -2245,6 +2257,12 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 					      ixgbe_rx_offset(rx_ring);
 			xdp.data_end = xdp.data + size;
 
+#ifdef HAVE_XDP_BUFF_FRAME_SZ
+#if (PAGE_SIZE > 4096)
+			/* At larger PAGE_SIZE, frame_sz depend on len size */
+			xdp.frame_sz = ixgbe_rx_frame_truesize(rx_ring, size);
+#endif
+#endif
 			skb = ixgbe_run_xdp(adapter, rx_ring, &xdp);
 		}
 
@@ -8435,12 +8453,20 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	hwstats->ptc1023 += IXGBE_READ_REG(hw, IXGBE_PTC1023);
 	hwstats->ptc1522 += IXGBE_READ_REG(hw, IXGBE_PTC1522);
 	hwstats->bptc += IXGBE_READ_REG(hw, IXGBE_BPTC);
+	hwstats->illerrc += IXGBE_READ_REG(hw, IXGBE_ILLERRC);
 	/* Fill out the OS statistics structure */
 	net_stats->multicast = hwstats->mprc;
 
 	/* Rx Errors */
 	net_stats->rx_errors = hwstats->crcerrs +
-				       hwstats->rlec;
+				hwstats->illerrc +
+				hwstats->rlec +
+				hwstats->rfc +
+				hwstats->rjc +
+				hwstats->roc +
+				hwstats->ruc +
+				hw_csum_rx_error;
+
 	net_stats->rx_dropped = 0;
 	net_stats->rx_length_errors = hwstats->rlec;
 	net_stats->rx_crc_errors = hwstats->crcerrs;

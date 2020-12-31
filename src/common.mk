@@ -135,7 +135,7 @@ ifeq (,$(wildcard ${CONFIG_FILE}))
 endif
 
 ifeq (,$(wildcard ${SYSTEM_MAP_FILE}))
-  $(warning Missing System.map file - depmod will not check for missing symbols)
+  $(warning Missing System.map file - depmod will not check for missing symbols during module installation)
 endif
 
 ifneq ($(words $(subst :, ,$(CURDIR))), 1)

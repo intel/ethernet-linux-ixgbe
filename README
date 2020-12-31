@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-June 18, 2020
+October 20, 2020
 
 Contents
 --------
@@ -20,12 +20,13 @@ Contents
 
 Overview
 ========
-This driver supports kernel versions 2.6.x and newer. The associated Virtual
-Function (VF) driver for this driver is ixgbevf.
+This driver supports kernel versions 2.6.x and newer. However, some features
+may require a newer kernel version. The associated Virtual Function (VF) driver
+for this driver is ixgbevf.
 
-Driver information can be obtained using ethtool, lspci, and ifconfig.
-Instructions on updating ethtool can be found in the section Additional
-Configurations later in this document.
+Driver information can be obtained using ethtool, lspci, and ip. Instructions
+on updating ethtool can be found in the section Additional Configurations later
+in this document.
 
 This driver is only supported as a loadable module at this time. Intel is not
 supplying patches against the kernel source to allow for static linking of the
@@ -35,9 +36,9 @@ For questions related to hardware requirements, refer to the documentation
 supplied with your Intel adapter. All hardware requirements listed apply to use
 with Linux.
 
-This driver supports XDP (Express Data Path) on kernel 4.14 and later. Note
-that XDP is blocked for frame sizes larger than 3KB. This driver supports
-AF_XDP zero-copy on kernel 4.18 and later.
+This driver supports XDP (Express Data Path) on kernel 4.14 and later and
+AF_XDP zero-copy on kernel 4.18 and later. Note that XDP is blocked for frame
+sizes larger than 3KB.
 
 NOTE: Devices based on the Intel(R) Ethernet Connection X552 and Intel(R)
 Ethernet Connection X553 do not support the following features:
@@ -117,12 +118,9 @@ HP          1000BASE-SX SFP                             453153-001
 cables that comply with SFF-8431 v4.1 and SFF-8472 v10.4 specifications.
 
 
-Laser turns off for SFP+ when "ifconfig <ethX> down"
-----------------------------------------------------
-
-"ifconfig <ethX> down" turns off the laser for 82599-based SFP+ fiber adapters.
-"ifconfig <ethX> up" turns on the laser.
-Alternatively, you can use "ip link set [down/up] dev <ethX>" to turn the
+Turning the laser off or on for SFP+
+------------------------------------
+Use "ip link set [down/up] dev <ethX>" to turn the
 laser off and on.
 
 
@@ -227,9 +225,7 @@ expected and can throttle traffic between the host and the virtual switch,
 reducing performance. To resolve this issue, and to ensure isolation from
 unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
 from the administrative interface on the PF. This configuration allows
-unexpected, and potentially malicious, frames to be dropped. See "Configuring
-VLAN Tagging on SR-IOV Enabled Adapter Ports" in this README for configuration
-instructions.
+unexpected, and potentially malicious, frames to be dropped.
 
 
 Building and Installation
@@ -315,13 +311,17 @@ To manually build the driver
    # ping <IP_address>
 
 Note: For certain distributions like (but not limited to) Red Hat Enterprise
-Linux 7 and Ubuntu, once the driver is installed, you may need to update the
-initrd/initramfs file to prevent the OS loading old versions of the ixgbe
-driver. Use the dracut utility on Red Hat distributions:
+Linux 7, Ubuntu, and SUSE Linux Enterprise Server (SLES) 11, once the driver is
+installed, you may need to update the initrd/initramfs file to prevent the OS
+loading old versions of the ixgbe driver.
+   For Red Hat distributions:
 	# dracut --force
 
    For Ubuntu:
 	# update-initramfs -u
+
+   For SLES:
+	# mkinitrd
 
 To build ixgbe driver with DCA
 ------------------------------
@@ -719,18 +719,15 @@ Jumbo Frames
 Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU)
 to a value larger than the default value of 1500.
 
-Use the ifconfig command to increase the MTU size. For example, enter the
-following where <ethX> is the interface number:
-
-# ifconfig <ethX> mtu 9000 up
-
-Alternatively, you can use the ip command as follows:
+Use the ip command to increase the MTU size. For example, enter the following
+where <ethX> is the interface number:
 
 # ip link set mtu 9000 dev <ethX>
 # ip link set up dev <ethX>
 
-This setting is not saved across reboots. The setting change can be made
-permanent by adding 'MTU=9000' to the following file:
+This setting is not saved across reboots.
+
+Add 'MTU=9000' to the following file to make the setting change permanent:
   /etc/sysconfig/network-scripts/ifcfg-<ethX> for RHEL
       or
   /etc/sysconfig/network/<config_file> for SLES
@@ -768,8 +765,7 @@ and higher cannot be forced. Use the autonegotiation advertising setting to
 manually set devices for 1 Gbps and higher.
 
 Speed, duplex, and autonegotiation advertising are configured through the
-ethtool* utility. ethtool is included with all versions of Red Hat after Red
-Hat 7.2. For the latest version, download and install ethtool from the
+ethtool utility. For the latest version, download and install ethtool from the
 following website:
 
    https://kernel.org/pub/software/network/ethtool/
@@ -1126,27 +1122,23 @@ priority flow control (802.1Qbb) which can limit or eliminate the number of
 dropped packets during network stress. Bandwidth can be allocated to each of
 these priorities, which is enforced at the hardware level (802.1Qaz).
 
-Adapter firmware implements LLDP and DCBX protocol agents as per 802.1AB and
-802.1Qaz respectively. There are potentially two DCBX modes on Linux, depending
-on the underlying PF device:
-- Intel Ethernet Controller 500 Series adapters only support software DCBX
-mode. They do not support firmware DCBX.
+DCB is normally configured on the network using the DCBX protocol (802.1Qaz), a
+specialization of LLDP (802.1AB). The ixgbe driver supports the following
+variants of DCBX support:
+- Software-based DCBX mode only
+NOTE: Intel Ethernet Controller 500 Series adapters do not support firmware
+DCBX.
 
-DCB parameters can be established via a firmware LLDP/DCBX agent. Only one
-LLDP/DCBX agent can be active on a single interface at a time. When the
-firmware DCBX agent is active, software agents will not be able to receive or
-transmit LLDP frames.
-
-When operating in firmware DCBX mode, the adapter is in an "always willing"
-state. DCB settings are applied on the adapter by transmitting a nonwilling
-configuration from the link partner. Typically this is a switch. For
-configuring DCBX parameters on a switch, please consult the switch
-manufacturer's documentation.
+In software-based mode, LLDP traffic is forwarded to the network stack and user
+space, where a software agent can handle it. In this mode, the adapter can
+operate in either "willing" or "nonwilling" DCBX mode and DCB configuration can
+be both queried and set locally.
 
 NOTE:
-- You can configure DCB parameters using software LLDP/DCBX agents that
-interface with the Linux kernel's DCB Netlink API. We recommend using OpenLLDP
-as the DCBX agent. For more information, see the OpenLLDP man pages and
+- In software-based DCBX mode, you can configure DCB parameters using software
+LLDP/DCBX agents that interface with the Linux kernel's DCB Netlink API. We
+recommend using OpenLLDP as the DCBX agent when running in software mode. For
+more information, see the OpenLLDP man pages and
 https://github.com/intel/openlldp.
 
 

@@ -3231,7 +3231,6 @@ s32 ixgbe_write_ee_hostif_data_X550(struct ixgbe_hw *hw, u16 offset,
 			  offset, status);
 		return status;
 	}
-
 	if (buffer.hdr.rsp.buf_lenh_status != FW_CEM_RESP_STATUS_SUCCESS) {
 		hw_dbg(hw, "for offset %04x host interface return status %02x\n",
 			  offset, buffer.hdr.rsp.buf_lenh_status);

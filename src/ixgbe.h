@@ -536,6 +536,11 @@ static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring __maybe_unused *r
 }
 #define ixgbe_rx_pg_size(_ring) (PAGE_SIZE << ixgbe_rx_pg_order(_ring))
 
+#else
+static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring *ring)
+{
+	return ring->rx_buf_len;
+}
 #endif
 #define IXGBE_ITR_ADAPTIVE_MIN_INC	2
 #define IXGBE_ITR_ADAPTIVE_MIN_USECS	10

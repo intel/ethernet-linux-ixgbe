@@ -4219,7 +4219,6 @@ struct ixgbe_hw {
 #define IXGBE_ERR_MBX				-41
 #define IXGBE_ERR_MBX_NOMSG			-42
 #define IXGBE_ERR_TIMEOUT			-43
-
 #define IXGBE_NOT_IMPLEMENTED			0x7FFFFFFF
 
 #define IXGBE_FUSES0_GROUP(_i)		(0x11158 + ((_i) * 4))
