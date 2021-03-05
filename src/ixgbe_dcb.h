@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2020 Intel Corporation. */
+/* Copyright(c) 1999 - 2021 Intel Corporation. */
 
 #ifndef _IXGBE_DCB_H_
 #define _IXGBE_DCB_H_
@@ -9,9 +9,9 @@
 /* DCB defines */
 /* DCB credit calculation defines */
 #define IXGBE_DCB_CREDIT_QUANTUM	64
-#define IXGBE_DCB_MAX_CREDIT_REFILL	200   /* 200 * 64B = 12800B */
+#define IXGBE_DCB_MAX_CREDIT_REFILL	511   /* 0x1FF * 64B = 32704B */
 #define IXGBE_DCB_MAX_TSO_SIZE		(32 * 1024) /* Max TSO pkt size in DCB*/
-#define IXGBE_DCB_MAX_CREDIT		(2 * IXGBE_DCB_MAX_CREDIT_REFILL)
+#define IXGBE_DCB_MAX_CREDIT		4095 /* Maximum credit supported: 256KB * 1024 / 64B */
 
 /* 513 for 32KB TSO packet */
 #define IXGBE_DCB_MIN_TSO_CREDIT	\

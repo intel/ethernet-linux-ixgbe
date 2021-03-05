@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2020 Intel Corporation. */
+/* Copyright(c) 1999 - 2021 Intel Corporation. */
 
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
@@ -312,19 +312,30 @@ struct ixgbe_tx_buffer {
 };
 
 struct ixgbe_rx_buffer {
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 	struct sk_buff *skb;
 	dma_addr_t dma;
+#endif
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	union {
 		struct {
+#ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
+			struct sk_buff *skb;
+			dma_addr_t dma;
+#endif
 			struct page *page;
 			__u32 page_offset;
 			__u16 pagecnt_bias;
 		};
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 		struct {
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 			void *addr;
 			u64 handle;
+#else
+			bool discard;
+			struct xdp_buff *xdp;
+#endif
 		};
 #endif
 	};
@@ -460,8 +471,14 @@ struct ixgbe_ring {
 #ifdef HAVE_XDP_BUFF_RXQ
 	struct xdp_rxq_info xdp_rxq;
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	struct xdp_umem *xsk_umem;
+#ifdef HAVE_NETDEV_BPF_XSK_POOL
+	struct xsk_buff_pool *xsk_pool;
+#else
+	struct xdp_umem *xsk_pool;
+#endif
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 	struct zero_copy_allocator zca; /* ZC allocator anchor */
+#endif
 	u16 ring_idx;           /* {rx,tx,xdp}_ring back reference idx */
 	u16 rx_buf_len;
 #endif
@@ -898,6 +915,7 @@ struct ixgbe_adapter {
 	/* XDP */
 	int num_xdp_queues;
 	struct ixgbe_ring *xdp_ring[MAX_XDP_QUEUES];
+	unsigned long *af_xdp_zc_qps; /* tracks AF_XDP ZC enabled rings */
 
 	/* TX */
 	struct ixgbe_ring *tx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
@@ -1080,9 +1098,13 @@ struct ixgbe_adapter {
 #endif
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 	/* AF_XDP zero-copy */
-	struct xdp_umem **xsk_umems;
-	u16 num_xsk_umems_used;
-	u16 num_xsk_umems;
+#ifdef HAVE_NETDEV_BPF_XSK_POOL
+	struct xsk_buff_pool **xsk_pools;
+#else
+	struct xdp_umem **xsk_pools;
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
+	u16 num_xsk_pools_used;
+	u16 num_xsk_pools;
 #endif
 };
 

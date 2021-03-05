@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-October 20, 2020
+February 3, 2021
 
 Contents
 --------
@@ -660,17 +660,6 @@ Valid Range: 0-1
 This parameter is only relevant for devices operating in SR-IOV mode.
 When this parameter is set, the driver detects malicious VF driver and
 disables its Tx/Rx queues until a VF driver reset occurs.
-
-
-AQRate
-------
-Devices that support AQRate (X550 and later) will include 2.5 Gbps and 5 Gbps
-in the speeds that the driver advertises during auto-negotiation, even though
-ethtool will not display 2.5 Gbps or 5 Gbps as "Supported link modes" or
-"Advertised link modes." These speeds are only available through unmodified
-auto-negotiation. You cannot use ethtool -s advertise to force auto-negotiation
-to advertise 2.5 Gbps or 5 Gbps. If a 2.5 Gbps or 5 Gbps link is created,
-ethtool will report the correct link speed.
 
 
 Additional Features and Configurations
@@ -1536,7 +1525,7 @@ St - Fifth Floor, Boston, MA 02110-1301 USA.
 The full GNU General Public License is included in this distribution in the
 file called "COPYING".
 
-Copyright(c) 1999 - 2020 Intel Corporation.
+Copyright(c) 1999 - 2021 Intel Corporation.
 
 
 Trademarks

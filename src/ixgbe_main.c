@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2020 Intel Corporation. */
+/* Copyright(c) 1999 - 2021 Intel Corporation. */
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -35,8 +35,12 @@
 #include <linux/atomic.h>
 #endif
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 #include <net/xdp_sock.h>
+#else
+#include <net/xdp_sock_drv.h>
 #endif
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
 #ifdef HAVE_UDP_ENC_RX_OFFLOAD
 #include <net/vxlan.h>
 #include <net/udp_tunnel.h>
@@ -67,7 +71,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.10.2" \
+#define DRV_VERSION	"5.11.3" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -78,7 +82,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2020 Intel Corporation.";
+static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2021 Intel Corporation.";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -3268,7 +3272,7 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 
 	ixgbe_for_each_ring(ring, q_vector->tx) {
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-		bool wd = ring->xsk_umem ?
+		bool wd = ring->xsk_pool ?
 			  ixgbe_clean_xdp_tx_irq(q_vector, ring, budget) :
 			  ixgbe_clean_tx_irq(q_vector, ring, budget);
 		if (!wd)
@@ -3300,7 +3304,7 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 
 	ixgbe_for_each_ring(ring, q_vector->rx) {
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-		int cleaned = ring->xsk_umem ?
+		int cleaned = ring->xsk_pool ?
 			      ixgbe_clean_rx_irq_zc(q_vector, ring,
 						    per_ring_budget) :
 			      ixgbe_clean_rx_irq(q_vector, ring,
@@ -3615,9 +3619,9 @@ void ixgbe_configure_tx_ring(struct ixgbe_adapter *adapter,
 	u8 reg_idx = ring->reg_idx;
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	ring->xsk_umem = NULL;
+	ring->xsk_pool = NULL;
 	if (ring_is_xdp(ring))
-		ring->xsk_umem = ixgbe_xsk_umem(adapter, ring);
+		ring->xsk_pool = ixgbe_xsk_umem(adapter, ring);
 #endif
 	/* disable queue to avoid issues while updating state */
 	IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(reg_idx), IXGBE_TXDCTL_SWFLSH);
@@ -3882,9 +3886,13 @@ static void ixgbe_configure_srrctl(struct ixgbe_adapter *adapter,
 		  IXGBE_SRRCTL_BSIZEPKT_SHIFT;
 #else
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	if (rx_ring->xsk_umem) {
-		u32 xsk_buf_len = rx_ring->xsk_umem->chunk_size_nohr -
+	if (rx_ring->xsk_pool) {
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
+		u32 xsk_buf_len = rx_ring->xsk_pool->chunk_size_nohr -
 				  XDP_PACKET_HEADROOM;
+#else
+		u32 xsk_buf_len = xsk_pool_get_rx_frame_size(rx_ring->xsk_pool);
+#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 
 		/* If the MAC support setting RXDCTL.RLPML, the
 		 * SRRCTL[n].BSIZEPKT is set to PAGE_SIZE and
@@ -4256,12 +4264,20 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 	xdp_rxq_info_unreg_mem_model(&ring->xdp_rxq);
-	ring->xsk_umem = ixgbe_xsk_umem(adapter, ring);
-	if (ring->xsk_umem) {
+	ring->xsk_pool = ixgbe_xsk_umem(adapter, ring);
+	if (ring->xsk_pool) {
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 		ring->zca.free = ixgbe_zca_free;
+#endif
 		WARN_ON(xdp_rxq_info_reg_mem_model(&ring->xdp_rxq,
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 						   MEM_TYPE_ZERO_COPY,
 						   &ring->zca));
+#else
+						   MEM_TYPE_XSK_BUFF_POOL,
+						   NULL));
+		xsk_pool_set_rxq_info(ring->xsk_pool, &ring->xdp_rxq);
+#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 
 	} else {
 		WARN_ON(xdp_rxq_info_reg_mem_model(&ring->xdp_rxq,
@@ -4339,9 +4355,13 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 	}
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	if (ring->xsk_umem && hw->mac.type != ixgbe_mac_82599EB) {
-		u32 xsk_buf_len = ring->xsk_umem->chunk_size_nohr -
+	if (ring->xsk_pool && hw->mac.type != ixgbe_mac_82599EB) {
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
+		u32 xsk_buf_len = ring->xsk_pool->chunk_size_nohr -
 				  XDP_PACKET_HEADROOM;
+#else
+		u32 xsk_buf_len = xsk_pool_get_rx_frame_size(ring->xsk_pool);
+#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 
 		rxdctl &= ~(IXGBE_RXDCTL_RLPMLMASK |
 			    IXGBE_RXDCTL_RLPML_EN);
@@ -4365,7 +4385,7 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 
 	ixgbe_rx_desc_queue_enable(adapter, ring);
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	if (ring->xsk_umem)
+	if (ring->xsk_pool)
 		ixgbe_alloc_rx_buffers_zc(ring, ixgbe_desc_unused(ring));
 	else
 		ixgbe_alloc_rx_buffers(ring, ixgbe_desc_unused(ring));
@@ -6181,7 +6201,7 @@ static void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring)
 #endif
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	if (rx_ring->xsk_umem) {
+	if (rx_ring->xsk_pool) {
 		ixgbe_xsk_clean_rx_ring(rx_ring);
 		goto skip_free;
 	}
@@ -6916,7 +6936,7 @@ static void ixgbe_clean_tx_ring(struct ixgbe_ring *tx_ring)
 	struct ixgbe_tx_buffer *tx_buffer = &tx_ring->tx_buffer_info[i];
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	if (tx_ring->xsk_umem) {
+	if (tx_ring->xsk_pool) {
 		ixgbe_xsk_clean_tx_ring(tx_ring);
 		goto out;
 	}
@@ -7233,6 +7253,10 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		goto out;
 	}
 
+	adapter->af_xdp_zc_qps = bitmap_zalloc(MAX_XDP_QUEUES, GFP_KERNEL);
+	if (!adapter->af_xdp_zc_qps)
+		return -ENOMEM;
+
 	/* Set common capability flags and settings */
 #if IS_ENABLED(CONFIG_DCA)
 	adapter->flags |= IXGBE_FLAG_DCA_CAPABLE;
@@ -7528,7 +7552,7 @@ int ixgbe_setup_rx_resources(struct ixgbe_adapter *adapter,
 #ifdef HAVE_XDP_BUFF_RXQ
 	/* XDP RX-queue info */
 	if (xdp_rxq_info_reg(&rx_ring->xdp_rxq, adapter->netdev,
-			     rx_ring->queue_index) < 0)
+			     rx_ring->queue_index, rx_ring->q_vector->napi.napi_id) < 0)
 		goto err;
 
 #ifndef HAVE_AF_XDP_ZC_SUPPORT
@@ -8761,8 +8785,7 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	ixgbe_check_vf_rate_limit(adapter);
 #endif /* IFLA_VF_MAX */
 	/* Turn on malicious driver detection */
-	if ((adapter->num_vfs) && (hw->mac.ops.enable_mdd) &&
-		(adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+	if (hw->mac.ops.enable_mdd && (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
 		hw->mac.ops.enable_mdd(hw);
 
 	netif_tx_wake_all_queues(netdev);
@@ -11819,7 +11842,7 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 	 */
 	if (need_reset && prog)
 		for (i = 0; i < adapter->num_rx_queues; i++)
-			if (adapter->xdp_ring[i]->xsk_umem)
+			if (adapter->xdp_ring[i]->xsk_pool)
 #ifdef HAVE_NDO_XSK_WAKEUP
 				(void)ixgbe_xsk_wakeup(adapter->netdev, i,
 						       XDP_WAKEUP_RX);
@@ -11854,10 +11877,15 @@ static int ixgbe_xdp(struct net_device *dev, struct netdev_xdp *xdp)
 		return 0;
 #endif
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	case XDP_SETUP_XSK_UMEM:
+	case XDP_SETUP_XSK_POOL:
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 		return ixgbe_xsk_umem_setup(adapter, xdp->xsk.umem,
 					    xdp->xsk.queue_id);
-#endif
+#else
+		return ixgbe_xsk_umem_setup(adapter, xdp->xsk.pool,
+					    xdp->xsk.queue_id);
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
 	default:
 		return -EINVAL;
 	}
@@ -12998,6 +13026,7 @@ err_sw_init:
 #endif
 	kfree(adapter->mac_table);
 	kfree(adapter->rss_key);
+	bitmap_free(adapter->af_xdp_zc_qps);
 	iounmap(adapter->io_addr);
 err_ioremap:
 	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
@@ -13102,6 +13131,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 #endif /* HAVE_TC_SETUP_CLSU32 */
 	kfree(adapter->mac_table);
 	kfree(adapter->rss_key);
+	bitmap_free(adapter->af_xdp_zc_qps);
 	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
 	free_netdev(netdev);
 

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2020 Intel Corporation. */
+/* Copyright(c) 1999 - 2021 Intel Corporation. */
 
 #ifndef _IXGBE_TXRX_COMMON_H_
 #define _IXGBE_TXRX_COMMON_H_
@@ -25,14 +25,25 @@ void ixgbe_xdp_ring_update_tail(struct ixgbe_ring *ring);
 void ixgbe_txrx_ring_disable(struct ixgbe_adapter *adapter, int ring);
 void ixgbe_txrx_ring_enable(struct ixgbe_adapter *adapter, int ring);
 
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 struct xdp_umem *ixgbe_xsk_umem(struct ixgbe_adapter *adapter,
 				struct ixgbe_ring *ring);
 int ixgbe_xsk_umem_setup(struct ixgbe_adapter *adapter, struct xdp_umem *umem,
 			 u16 qid);
+#else
+struct xsk_buff_pool *ixgbe_xsk_umem(struct ixgbe_adapter *adapter,
+				     struct ixgbe_ring *ring);
+int ixgbe_xsk_umem_setup(struct ixgbe_adapter *adapter, struct xsk_buff_pool *umem,
+			 u16 qid);
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 
 void ixgbe_zca_free(struct zero_copy_allocator *alloc, unsigned long handle);
 
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 void ixgbe_alloc_rx_buffers_zc(struct ixgbe_ring *rx_ring, u16 cleaned_count);
+#else
+bool ixgbe_alloc_rx_buffers_zc(struct ixgbe_ring *rx_ring, u16 cleaned_count);
+#endif
 int ixgbe_clean_rx_irq_zc(struct ixgbe_q_vector *q_vector,
 			  struct ixgbe_ring *rx_ring,
 			  const int budget);

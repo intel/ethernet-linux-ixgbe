@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2020 Intel Corporation. */
+/* Copyright(c) 1999 - 2021 Intel Corporation. */
 
 /* ethtool support for ixgbe */
 
@@ -1823,21 +1823,28 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 				    struct ethtool_stats __always_unused *stats, u64 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+#ifdef HAVE_NDO_GET_STATS64
+	const struct rtnl_link_stats64 *net_stats;
+	struct rtnl_link_stats64 temp;
+	unsigned int start;
+#else
 #ifdef HAVE_NETDEV_STATS_IN_NETDEV
 	struct net_device_stats *net_stats = &netdev->stats;
 #else
 	struct net_device_stats *net_stats = &adapter->net_stats;
 #endif
+#endif
 	u64 *queue_stat;
 	int stat_count, k;
-#ifdef HAVE_NDO_GET_STATS64
-	unsigned int start;
-#endif
 	struct ixgbe_ring *ring;
 	int i, j;
 	char *p;
 
 	ixgbe_update_stats(adapter);
+#ifdef HAVE_NDO_GET_STATS64
+	net_stats = dev_get_stats(netdev, &temp);
+#endif
 
 	for (i = 0; i < IXGBE_NETDEV_STATS_LEN; i++) {
 		p = (char *)net_stats + ixgbe_gstrings_net_stats[i].stat_offset;

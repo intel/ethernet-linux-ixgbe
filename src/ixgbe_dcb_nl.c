@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2020 Intel Corporation. */
+/* Copyright(c) 1999 - 2021 Intel Corporation. */
 
 #include "ixgbe.h"
 
@@ -379,13 +379,13 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 			hw->mac.ops.fc_enable(hw);
 		}
 		/* This is known driver so disable MDD before updating SRRCTL */
-		if ((adapter->num_vfs) && (hw->mac.ops.disable_mdd) &&
+		if (hw->mac.ops.disable_mdd &&
 		    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
 			hw->mac.ops.disable_mdd(hw);
 
 		ixgbe_set_rx_drop_en(adapter);
 
-		if ((adapter->num_vfs) && (hw->mac.ops.enable_mdd) &&
+		if (hw->mac.ops.enable_mdd &&
 		    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
 			hw->mac.ops.enable_mdd(hw);
 
@@ -739,13 +739,13 @@ static int ixgbe_dcbnl_ieee_setpfc(struct net_device *dev,
 		err = hw->mac.ops.fc_enable(hw);
 
 	/* This is known driver so disable MDD before updating SRRCTL */
-	if ((adapter->num_vfs) && (hw->mac.ops.disable_mdd) &&
+	if (hw->mac.ops.disable_mdd &&
 	    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
 		hw->mac.ops.disable_mdd(hw);
 
 	ixgbe_set_rx_drop_en(adapter);
 
-	if ((adapter->num_vfs) && (hw->mac.ops.enable_mdd) &&
+	if (hw->mac.ops.enable_mdd &&
 	    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
 		hw->mac.ops.enable_mdd(hw);
 
