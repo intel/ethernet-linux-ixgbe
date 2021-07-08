@@ -3,6 +3,7 @@
 
 #include "ixgbe.h"
 
+
 #if IS_ENABLED(CONFIG_FCOE)
 #if IS_ENABLED(CONFIG_DCB)
 #include "ixgbe_dcb_82599.h"

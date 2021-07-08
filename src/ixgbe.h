@@ -76,6 +76,7 @@
 
 #define IXGBE_ETH_P_LLDP		0x88CC
 
+
 /* flow control */
 #define IXGBE_MIN_FCRTL			0x40
 #define IXGBE_MAX_FCRTL			0x7FF80
@@ -451,13 +452,22 @@ struct ixgbe_ring {
 #ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 		u16 rx_buf_len;
 #else
-		u16 next_to_alloc;
+		union {
+			u16 next_to_alloc;
+			u16 next_rs_idx;
+		};
 #endif
 		struct {
 			u8 atr_sample_rate;
 			u8 atr_count;
 		};
 	};
+
+#ifdef HAVE_XDP_SUPPORT
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	u16 xdp_tx_active;
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
+#endif /* HAVE_XDP_SUPPORT */
 
 	u8 dcb_tc;
 	struct ixgbe_queue_stats stats;
@@ -795,6 +805,7 @@ struct ixgbe_therm_proc_data {
  */
 #define MAX_MSIX_Q_VECTORS	IXGBE_MAX_MSIX_Q_VECTORS_82599
 #define MAX_MSIX_COUNT		IXGBE_MAX_MSIX_VECTORS_82599
+
 
 #define MIN_MSIX_Q_VECTORS	1
 #define MIN_MSIX_COUNT		(MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
@@ -1167,8 +1178,6 @@ struct ixgbe_cb {
 #endif
 };
 #define IXGBE_CB(skb) ((struct ixgbe_cb *)(skb)->cb)
-
-/* ESX ixgbe CIM IOCTL definition */
 
 #ifdef IXGBE_SYSFS
 void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter);

@@ -11,6 +11,7 @@
 #include <linux/vmalloc.h>
 #include <linux/highmem.h>
 
+
 #ifdef SIOCETHTOOL
 #include <asm/uaccess.h>
 
@@ -189,6 +190,7 @@ static const char ixgbe_priv_flags_strings[][ETH_GSTRING_LEN] = {
 #define ADVERTISED_MASK_10G (SUPPORTED_10000baseT_Full | SUPPORTED_10000baseKX4_Full | SUPPORTED_10000baseKR_Full)
 
 #define ixgbe_isbackplane(type)  ((type == ixgbe_media_type_backplane)? true : false)
+
 
 #ifdef ETHTOOL_GLINKSETTINGS
 static void ixgbe_set_supported_10gtypes(struct ixgbe_hw *hw,
@@ -956,6 +958,7 @@ static int ixgbe_get_regs_len(struct net_device __always_unused *netdev)
 }
 
 #define IXGBE_GET_STAT(_A_, _R_)	(_A_->stats._R_)
+
 
 static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 			   void *p)

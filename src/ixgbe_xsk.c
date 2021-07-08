@@ -781,9 +781,10 @@ void ixgbe_xsk_clean_rx_ring(struct ixgbe_ring *rx_ring)
 
 static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 {
+	unsigned int sent_frames = 0, total_bytes = 0;
 	union ixgbe_adv_tx_desc *tx_desc = NULL;
+	u16 ntu = xdp_ring->next_to_use;
 	struct ixgbe_tx_buffer *tx_bi;
-	bool work_done = true;
 #ifdef XSK_UMEM_RETURNS_XDP_DESC
 	struct xdp_desc desc;
 #endif
@@ -794,11 +795,8 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 #endif
 
 	while (budget-- > 0) {
-		if (unlikely(!ixgbe_desc_unused(xdp_ring)) ||
-		    !netif_carrier_ok(xdp_ring->netdev)) {
-			work_done = false;
+		if (unlikely(!netif_carrier_ok(xdp_ring->netdev)))
 			break;
-		}
 
 #ifdef XSK_UMEM_RETURNS_XDP_DESC
 		if (!xsk_tx_peek_desc(xdp_ring->xsk_pool, &desc))
@@ -815,7 +813,7 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 						 desc.len);
 #endif
 
-		tx_bi = &xdp_ring->tx_buffer_info[xdp_ring->next_to_use];
+		tx_bi = &xdp_ring->tx_buffer_info[ntu];
 		tx_bi->bytecount = desc.len;
 		tx_bi->xdpf = NULL;
 #else
@@ -825,12 +823,12 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 		dma_sync_single_for_device(xdp_ring->dev, dma, len,
 					   DMA_BIDIRECTIONAL);
 
-		tx_bi = &xdp_ring->tx_buffer_info[xdp_ring->next_to_use];
+		tx_bi = &xdp_ring->tx_buffer_info[ntu];
 		tx_bi->bytecount = len;
 		tx_bi->xdpf = NULL;
 #endif
 
-		tx_desc = IXGBE_TX_DESC(xdp_ring, xdp_ring->next_to_use);
+		tx_desc = IXGBE_TX_DESC(xdp_ring, ntu);
 		tx_desc->read.buffer_addr = cpu_to_le64(dma);
 
 		/* put descriptor type bits */
@@ -838,34 +836,51 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 			   IXGBE_ADVTXD_DCMD_DEXT |
 			   IXGBE_ADVTXD_DCMD_IFCS;
 #ifdef XSK_UMEM_RETURNS_XDP_DESC
-		cmd_type |= desc.len | IXGBE_TXD_CMD;
+		cmd_type |= desc.len | IXGBE_TXD_CMD_EOP;
 		tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
 		tx_desc->read.olinfo_status =
 			cpu_to_le32(desc.len << IXGBE_ADVTXD_PAYLEN_SHIFT);
 #else
-		cmd_type |= len | IXGBE_TXD_CMD;
+		cmd_type |= len | IXGBE_TXD_CMD_EOP;
 		tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
 		tx_desc->read.olinfo_status =
 			cpu_to_le32(len << IXGBE_ADVTXD_PAYLEN_SHIFT);
 #endif
 
-		xdp_ring->next_to_use++;
-		if (xdp_ring->next_to_use == xdp_ring->count)
-			xdp_ring->next_to_use = 0;
+		xdp_ring->next_rs_idx = ntu;
+		ntu++;
+		if (ntu == xdp_ring->count)
+			ntu = 0;
+		sent_frames++;
+		total_bytes += tx_bi->bytecount;
 	}
 
 	if (tx_desc) {
+		xdp_ring->next_to_use = ntu;
+		/* set RS bit for the last frame and bump tail ptr */
+		cmd_type |= IXGBE_TXD_CMD_RS;
+		tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
+
 		ixgbe_xdp_ring_update_tail(xdp_ring);
 		xsk_tx_release(xdp_ring->xsk_pool);
+
+		u64_stats_update_begin(&xdp_ring->syncp);
+		xdp_ring->stats.bytes += total_bytes;
+		xdp_ring->stats.packets += sent_frames;
+		u64_stats_update_end(&xdp_ring->syncp);
+		xdp_ring->q_vector->tx.total_bytes += total_bytes;
+		xdp_ring->q_vector->tx.total_packets += sent_frames;
+
 	}
 
-	return !!budget && work_done;
+	return budget > 0;
 }
 
 static void ixgbe_clean_xdp_tx_buffer(struct ixgbe_ring *tx_ring,
 				      struct ixgbe_tx_buffer *tx_bi)
 {
 	xdp_return_frame(tx_bi->xdpf);
+	tx_ring->xdp_tx_active--;
 	dma_unmap_single(tx_ring->dev,
 			 dma_unmap_addr(tx_bi, dma),
 			 dma_unmap_len(tx_bi, len), DMA_TO_DEVICE);
@@ -873,65 +888,56 @@ static void ixgbe_clean_xdp_tx_buffer(struct ixgbe_ring *tx_ring,
 }
 
 bool ixgbe_clean_xdp_tx_irq(struct ixgbe_q_vector *q_vector,
-			    struct ixgbe_ring *tx_ring, int napi_budget)
+			    struct ixgbe_ring *tx_ring)
 {
-	unsigned int total_packets = 0, total_bytes = 0;
-	u32 i = tx_ring->next_to_clean, xsk_frames = 0;
-	unsigned int budget = q_vector->tx.work_limit;
-	union ixgbe_adv_tx_desc *tx_desc;
+	u32 next_rs_idx = tx_ring->next_rs_idx;
+	union ixgbe_adv_tx_desc *next_rs_desc;
+	u32 ntc = tx_ring->next_to_clean;
 	struct ixgbe_tx_buffer *tx_bi;
-	bool xmit_done;
+	u16 frames_ready = 0;
+	u32 xsk_frames = 0;
+	u16 i;
 
-	tx_bi = &tx_ring->tx_buffer_info[i];
-	tx_desc = IXGBE_TX_DESC(tx_ring, i);
-	i -= tx_ring->count;
-
-	do {
-		if (!(tx_desc->wb.status & cpu_to_le32(IXGBE_TXD_STAT_DD)))
-			break;
-
-		total_bytes += tx_bi->bytecount;
-		total_packets += tx_bi->gso_segs;
-
-		if (tx_bi->xdpf)
-			ixgbe_clean_xdp_tx_buffer(tx_ring, tx_bi);
+	next_rs_desc = IXGBE_TX_DESC(tx_ring, next_rs_idx);
+	if (next_rs_desc->wb.status &
+	    cpu_to_le32(IXGBE_TXD_STAT_DD)) {
+		if (next_rs_idx >= ntc)
+			frames_ready = next_rs_idx - ntc;
 		else
-			xsk_frames++;
+			frames_ready = next_rs_idx + tx_ring->count - ntc;
+	}
 
-		tx_bi->xdpf = NULL;
-		total_bytes += tx_bi->bytecount;
+	if (!frames_ready)
+		goto out_xmit;
 
-		tx_bi++;
-		tx_desc++;
-		i++;
-		if (unlikely(!i)) {
-			i -= tx_ring->count;
-			tx_bi = tx_ring->tx_buffer_info;
-			tx_desc = IXGBE_TX_DESC(tx_ring, 0);
+	if (likely(!tx_ring->xdp_tx_active)) {
+		xsk_frames = frames_ready;
+	} else {
+		for (i = 0; i < frames_ready; i++) {
+			tx_bi = &tx_ring->tx_buffer_info[ntc];
+
+			if (tx_bi->xdpf)
+				ixgbe_clean_xdp_tx_buffer(tx_ring, tx_bi);
+			else
+				xsk_frames++;
+
+			tx_bi->xdpf = NULL;
+
+			++ntc;
+			if (ntc >= tx_ring->count)
+				ntc = 0;
 		}
+	}
 
-		/* issue prefetch for next Tx descriptor */
-		prefetch(tx_desc);
-
-		/* update budget accounting */
-		budget--;
-	} while (likely(budget));
-
-	i += tx_ring->count;
-	tx_ring->next_to_clean = i;
-
-	u64_stats_update_begin(&tx_ring->syncp);
-	tx_ring->stats.bytes += total_bytes;
-	tx_ring->stats.packets += total_packets;
-	u64_stats_update_end(&tx_ring->syncp);
-	q_vector->tx.total_bytes += total_bytes;
-	q_vector->tx.total_packets += total_packets;
+	tx_ring->next_to_clean += frames_ready;
+	if (unlikely(tx_ring->next_to_clean >= tx_ring->count))
+		tx_ring->next_to_clean -= tx_ring->count;
 
 	if (xsk_frames)
 		xsk_tx_completed(tx_ring->xsk_pool, xsk_frames);
 
-	xmit_done = ixgbe_xmit_zc(tx_ring, q_vector->tx.work_limit);
-	return budget > 0 && xmit_done;
+out_xmit:
+	return ixgbe_xmit_zc(tx_ring, q_vector->tx.work_limit);
 }
 
 #ifdef HAVE_NDO_XSK_WAKEUP

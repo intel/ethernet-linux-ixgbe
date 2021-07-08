@@ -5,7 +5,7 @@
 .\" * Other names and brands may be claimed as the property of others.
 .\"
 .
-.TH ixgbe 1 "October 20, 2020"
+.TH ixgbe 1 "April 16, 2021"
 .SH NAME
 ixgbe \-This file describes the Linux* Base Driver
 for the 10 Gigabit Family of Adapters.
@@ -41,7 +41,7 @@ X = Assign X queues, where X is less than or equal to the maximum number of
 queues (16 queues).
 .IP
 .IP
-RSS also effects the number of transmit queues allocated on 2.6.23 and
+RSS also affects the number of transmit queues allocated on 2.6.23 and
 newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
 CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26. Other options
 enable multiqueue in 2.6.27 and newer kernels.
@@ -189,11 +189,10 @@ the number of packets that have to be processed. LRO combines multiple
 Ethernet frames into a single receive in the stack, thereby potentially
 decreasing CPU utilization for receives.
 This technique is also referred to as Hardware Receive Side Coalescing
-(HW RSC). 82599 and X540, and X550-based adapters support HW RSC. The
+(HW RSC). 82599, X540, and X550-based adapters support HW RSC. The
 LRO parameter controls HW RSC enablement.
 .IP
-You can verify that the driver is using LRO by looking at these counters in
-ethtool:
+You can verify that the driver is using LRO by looking at these counters in ethtool:
 .LP
 - hw_rsc_aggregated - counts total packets that were combined
 .LP
@@ -212,7 +211,7 @@ NOTE: IPv6 and UDP are not supported by LRO.
 This parameter is only relevant for devices operating in SR-IOV mode.
 When this parameter is set, the driver detects malicious VF driver and
 disables its Tx/Rx queues until a VF driver reset occurs.
-.SH Jumbo Frames
+.B Jumbo Frames
 .LP
 Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU) to a value larger than the default value of 1500.
 

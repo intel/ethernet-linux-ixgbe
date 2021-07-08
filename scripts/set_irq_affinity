@@ -6,6 +6,7 @@
 #
 # typical usage is (as root):
 # set_irq_affinity -x local eth1 <eth2> <eth3>
+# set_irq_affinity -s eth1
 #
 # to get help:
 # set_irq_affinity
@@ -13,13 +14,17 @@
 usage()
 {
 	echo
+	echo "Usage: option -s <interface> to show current settings only"
 	echo "Usage: $0 [-x|-X] [all|local|remote [<node>]|one <core>|custom|<cores>] <interface> ..."
 	echo "	Options: "
+	echo "	  -s		Shows current affinity settings"
 	echo "	  -x		Configure XPS as well as smp_affinity"
 	echo "	  -X		Disable XPS but set smp_affinity"
 	echo "	  [all] is the default value"
 	echo "	  [remote [<node>]] can be followed by a specific node number"
 	echo "	Examples:"
+	echo "	  $0 -s eth1            # Show settings on eth1"
+
 	echo "	  $0 all eth1 eth2      # eth1 and eth2 to all cores"
 	echo "	  $0 one 2 eth1         # eth1 to core 2 only"
 	echo "	  $0 local eth1         # eth1 to local cores only"
@@ -41,6 +46,12 @@ if [ "$1" == "-x" ]; then
 	shift
 fi
 
+if [ "$1" == "-s" ]; then
+	SHOW=1
+	echo Show affinity settings
+	shift
+fi
+
 if [ "$1" == "-X" ]; then
 	if [ -n "$XPS_ENA" ]; then
 		usageX
@@ -59,6 +70,12 @@ fi
 
 if [ -z "$XPS_ENA" ]; then
 	XPS_ENA=$XPS_DIS
+fi
+
+SED=`which sed`
+if [[ ! -x $SED ]]; then
+	echo " $0: ERROR: sed not found in path, this script requires sed"
+	exit 1
 fi
 
 num='^[0-9]+$'
@@ -92,7 +109,7 @@ fi
 
 # support functions
 
-set_affinity()
+build_mask()
 {
 	VEC=$core
 	if [ $VEC -ge 32 ]
@@ -112,9 +129,61 @@ set_affinity()
 		MASK_TMP=$((1<<$VEC))
 		MASK=$(printf "%X" $MASK_TMP)
 	fi
+}
+
+show_affinity()
+{
+	# returns the MASK variable
+	build_mask
+
+	SMP_I=`sed -E 's/^0+,*0*//' /proc/irq/$IRQ/smp_affinity`
+	HINT=`sed -E 's/^0+,*0*//' /proc/irq/$IRQ/affinity_hint`
+	printf "ACTUAL	%s %d %s <- /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $SMP_I
+	printf "HINT 	%s %d %s <- /proc/irq/$IRQ/affinity_hint\n" $IFACE $core $HINT
+	IRQ_CHECK=`grep '[-,]' /proc/irq/$IRQ/smp_affinity_list`
+	if [ ! -z $IRQ_CHECK ]; then
+		printf " WARNING -- SMP_AFFINITY is assigned to multiple cores $IRQ_CHECK\n"
+	fi
+	if [ "$SMP_I" != "$HINT" ]; then
+		printf " WARNING -- SMP_AFFINITY VALUE does not match AFFINITY_HINT \n"
+	fi
+	printf "NODE 	%s %d %s <- /proc/irq/$IRQ/node\n" $IFACE $core `cat /proc/irq/$IRQ/node`
+	printf "LIST	%s %d [%s] <- /proc/irq/$IRQ/smp_affinity_list\n" $IFACE $core `cat /proc/irq/$IRQ/smp_affinity_list`
+	printf "XPS	%s %d %s <- /sys/class/net/%s/queues/tx-%d/xps_cpus\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/tx-$((n-1))/xps_cpus` $IFACE $((n-1))
+	if [ -z `ls /sys/class/net/$IFACE/queues/tx-$((n-1))/xps_rxqs` ]; then
+		echo "WARNING: xps rxqs not supported on $IFACE"
+	else
+		printf "XPSRXQs	%s %d %s <- /sys/class/net/%s/queues/tx-%d/xps_rxqs\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/tx-$((n-1))/xps_rxqs` $IFACE $((n-1))
+	fi
+	printf "TX_MAX	%s %d %s <- /sys/class/net/%s/queues/tx-%d/tx_maxrate\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/tx-$((n-1))/tx_maxrate` $IFACE $((n-1))
+	printf "BQLIMIT	%s %d %s <- /sys/class/net/%s/queues/tx-%d/byte_queue_limits/limit\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/tx-$((n-1))/byte_queue_limits/limit` $IFACE $((n-1))
+	printf "BQL_MAX	%s %d %s <- /sys/class/net/%s/queues/tx-%d/byte_queue_limits/limit_max\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/tx-$((n-1))/byte_queue_limits/limit_max` $IFACE $((n-1))
+	printf "BQL_MIN	%s %d %s <- /sys/class/net/%s/queues/tx-%d/byte_queue_limits/limit_min\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/tx-$((n-1))/byte_queue_limits/limit_min` $IFACE $((n-1))
+	if [ -z `ls /sys/class/net/$IFACE/queues/rx-$((n-1))/rps_flow_cnt` ]; then
+		echo "WARNING: aRFS is not supported on $IFACE"
+	else
+		printf "RPSFCNT	%s %d %s <- /sys/class/net/%s/queues/rx-%d/rps_flow_cnt\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/rx-$((n-1))/rps_flow_cnt` $IFACE $((n-1))
+	fi
+	if [ -z `ls /sys/class/net/$IFACE/queues/rx-$((n-1))/rps_cpus` ]; then
+		echo "WARNING: rps_cpus is not available on $IFACE"
+	else
+		printf "RPSCPU	%s %d %s <- /sys/class/net/%s/queues/rx-%d/rps_cpus\n" $IFACE $core `cat /sys/class/net/$IFACE/queues/rx-$((n-1))/rps_cpus` $IFACE $((n-1))
+	fi
+	echo
+}
+
+set_affinity()
+{
+	# returns the MASK variable
+	build_mask
 
 	printf "%s" $MASK > /proc/irq/$IRQ/smp_affinity
 	printf "%s %d %s -> /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $MASK
+	SMP_I=`sed -E 's/^0+,*0*//' /proc/irq/$IRQ/smp_affinity`
+	if [ "$SMP_I" != "$MASK" ]; then
+		printf " ACTUAL\t%s %d %s <- /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $SMP_I
+		printf " WARNING -- SMP_AFFINITY setting failed\n"
+	fi
 	case "$XPS_ENA" in
 	1)
 		printf "%s %d %s -> /sys/class/net/%s/queues/tx-%d/xps_cpus\n" $IFACE $core $MASK $IFACE $((n-1))
@@ -145,7 +214,7 @@ parse_range () {
 
 # Affinitize interrupts
 #
-setaff()
+doaff()
 {
 	CORES=$(parse_range $CORES)
 	ncores=$(echo $CORES | wc -w)
@@ -164,8 +233,14 @@ setaff()
 	                         done)
 	[ -z "$irqs" ] && echo "Error: Could not find interrupts for $IFACE"
 
-	echo "IFACE CORE MASK -> FILE"
-	echo "======================="
+	if [ "$SHOW" == "1" ] ; then
+		echo "TYPE IFACE CORE MASK -> FILE"
+		echo "============================"
+	else
+		echo "IFACE CORE MASK -> FILE"
+		echo "======================="
+	fi
+
 	for IRQ in $irqs; do
 		[ "$n" -gt "$ncores" ] && n=1
 		j=1
@@ -174,12 +249,14 @@ setaff()
 			[ $((j++)) -ge $n ] && break
 		done
 		core=$i
-		set_affinity
+		if [ "$SHOW" == "1" ] ; then
+			show_affinity
+		else
+			set_affinity
+		fi
 		((n++))
 	done
 }
-
-# now the actual useful bits of code
 
 # these next 2 lines would allow script to auto-determine interfaces
 #[ -z "$IFACES" ] && IFACES=$(ls /sys/class/net)
@@ -233,7 +310,7 @@ for IFACE in $IFACES; do
 	esac
 
 	# call the worker function
-	setaff
+	doaff
 done
 
 # check for irqbalance running
@@ -243,4 +320,5 @@ if [ "$IRQBALANCE_ON" == "0" ] ; then
 	echo "          likely override this script's affinitization."
 	echo "          Please stop the irqbalance service and/or execute"
 	echo "          'killall irqbalance'"
+	exit 2
 fi

@@ -111,6 +111,7 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 	adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
 				IXGBE_FLAG2_RSC_ENABLED);
 
+
 	for (i = 0; i < adapter->num_vfs; i++) {
 		/* enable spoof checking for all VFs */
 		adapter->vfinfo[i].spoofchk_enabled = true;
@@ -1546,7 +1547,6 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 
 		retval = ixgbe_set_vf_mac(adapter, vf, mac);
 		if (retval >= 0) {
-		/* pf_set_mac is used in ESX5.1 and base driver but not in ESX5.5 */
 			adapter->vfinfo[vf].pf_set_mac = true;
 
 			if (test_bit(__IXGBE_DOWN, &adapter->state)) {
@@ -1675,6 +1675,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
 	return err;
 }
+
 
 static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {

@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-February 3, 2021
+April 21, 2021
 
 Contents
 --------
@@ -196,18 +196,6 @@ SELECTION OF VENDOR BY CUSTOMERS.
 Important Notes
 ===============
 
-Disable LRO if enabling ip forwarding or bridging
--------------------------------------------------
-
-WARNING: The ixgbe driver supports the Large Receive Offload (LRO) feature.
-This option offers the lowest CPU utilization for receives but is completely
-incompatible with *routing/ip forwarding* and *bridging*. If enabling ip
-forwarding or bridging is a requirement, it is necessary to disable LRO using
-compile time options as noted in the LRO section later in this document. The
-result of not disabling LRO when combined with ip forwarding or bridging can be
-low throughput or even a kernel panic.
-
-
 Do not unload port driver if VF with active VM is bound to it
 -------------------------------------------------------------
 Do not unload a port's driver if a Virtual Function (VF) with an active Virtual
@@ -362,7 +350,7 @@ Valid Range: 0-16
 0 = Assign up to the lesser value of the number of CPUs or the number of queues
 X = Assign X queues, where X is less than or equal to the maximum number of
 queues (16 queues).
-RSS also effects the number of transmit queues allocated on 2.6.23 and
+RSS also affects the number of transmit queues allocated on 2.6.23 and
 newer kernels with CONFIG_NETDEVICES_MULTIQUEUE set in the kernel .config file.
 CONFIG_NETDEVICES_MULTIQUEUE only exists from 2.6.23 to 2.6.26. Other options
 enable multiqueue in 2.6.27 and newer kernels.
@@ -516,9 +504,7 @@ If the value is greater than 0 it will also force the VMDq parameter to be 1 or
 more.
 
 NOTE: This parameter is only used on kernel 3.7.x and below. On kernel 3.8.x
-and above, use sysfs to enable VFs. Also, for Red Hat distributions, this
-parameter is only used on version 6.6 and older. For version 6.7 and newer, use
-sysfs.
+and above, use sysfs to enable VFs. Use sysfs for Red Hat distributions.
 
 For example, you can create 4 VFs as follows:
 
@@ -600,7 +586,7 @@ the number of packets that have to be processed. LRO combines multiple
 Ethernet frames into a single receive in the stack, thereby potentially
 decreasing CPU utilization for receives.
 This technique is also referred to as Hardware Receive Side Coalescing
-(HW RSC). 82599 and X540, and X550-based adapters support HW RSC. The
+(HW RSC). 82599, X540, and X550-based adapters support HW RSC. The
 LRO parameter controls HW RSC enablement.
 You can verify that the driver is using LRO by looking at these counters in
 ethtool:
@@ -754,15 +740,29 @@ and higher cannot be forced. Use the autonegotiation advertising setting to
 manually set devices for 1 Gbps and higher.
 
 Speed, duplex, and autonegotiation advertising are configured through the
-ethtool utility. For the latest version, download and install ethtool from the
-following website:
-
-   https://kernel.org/pub/software/network/ethtool/
+ethtool utility.
 
 To see the speed configurations your device supports, run the following:
 
 # ethtool <ethX>
 
+By default, devices based on the Intel(R) Ethernet Controller x550 do not
+advertise 2.5 Gbps or 5 Gbps. To have your device advertise these speeds, use
+the following:
+
+# ethtool -s <ethX> advertise N
+
+Where N is a combination of the following.
+100baseTFull   0x008
+1000baseTFull   0x020
+2500baseTFull  0x800000000000
+5000baseTFull  0x1000000000000
+10000baseTFull 0x1000
+
+For example, to turn on all modes:
+# ethtool -s <ethX> advertise 0x1800000001028
+
+For more details please refer to the ethtool man page.
 Caution: Only experienced network administrators should force speed and duplex
 or change autonegotiation advertising manually. The settings at the switch must
 always match the adapter settings. Adapter performance may suffer or your
@@ -1115,8 +1115,7 @@ DCB is normally configured on the network using the DCBX protocol (802.1Qaz), a
 specialization of LLDP (802.1AB). The ixgbe driver supports the following
 variants of DCBX support:
 - Software-based DCBX mode only
-NOTE: Intel Ethernet Controller 500 Series adapters do not support firmware
-DCBX.
+NOTE: Intel Ethernet 500 Series adapters do not support firmware DCBX.
 
 In software-based mode, LLDP traffic is forwarded to the network stack and user
 space, where a software agent can handle it. In this mode, the adapter can
@@ -1174,9 +1173,8 @@ supports WoL, run the following command:
 
 # ethtool <ethX>
 
-WoL is configured through the ethtool utility. ethtool is included with all
-versions of Red Hat after Red Hat 7.2. For other Linux distributions, download
-and install ethtool from the following website:
+WoL is configured through the ethtool utility. If your Linux distribution does
+not include ethtool, download and install it from the following website:
 https://kernel.org/pub/software/network/ethtool/.
 
 For instructions on enabling WoL with ethtool, refer to the website listed
@@ -1305,16 +1303,6 @@ and change the MACAddressPolicy line to "MACAddressPolicy=none". For more
 information, see the systemd.link man page.
 
 
-LRO and iSCSI Incompatibility
------------------------------
-
-LRO is incompatible with iSCSI target or initiator traffic. A panic may occur
-when iSCSI traffic is received through the ixgbe driver with LRO enabled. To
-workaround this, the driver should be built and installed with the following:
-
-# make CFLAGS_EXTRA=-DIXGBE_NO_LRO install
-
-
 Multiple Interfaces on Same Ethernet Broadcast Network
 ------------------------------------------------------
 Due to the default ARP behavior on Linux, it is not possible to have one system
@@ -1404,27 +1392,6 @@ If this error occurs, moving your adapter to a true PCIe v3.0 x8 slot will
 resolve the issue.
 
 
-ethtool may incorrectly display SFP+ fiber module as direct attached cable
---------------------------------------------------------------------------
-Due to kernel limitations, port type can only be correctly displayed on kernel
-2.6.33 or greater.
-
-Under Redhat 5.4, system may crash when closing guest OS window after
-loading/unloading the Physical Function (PF) driver.
-
-Do not remove the ixgbe driver from Dom0 while Virtual Functions (VFs) are
-assigned to guests. VFs must first use the xm "pci-detach" command to hot-plug
-the VF device out of the VM it is assigned to or else shut down the VM.
-
-Unloading Physical Function (PF) driver may cause kernel panic or system reboot
-when VM is running and VF is loaded on the VM.
-
-On pre-3.2 Linux kernels, unloading the Physical Function (PF) driver causes
-system reboots when the VM is running and VF is loaded on the VM.
-
-Do not unload the PF driver (ixgbe) while VFs are assigned to guests.
-
-
 Running ethtool -t <ethX> command causes break between PF and test client
 -----------------------------------------------------------------------
 When there are active VFs, "ethtool -t" will only run the link test. The driver
@@ -1444,7 +1411,7 @@ Otherwise, the driver can be loaded once and will be safe, but unloading it
 will lead to the issue.
 
 
-Unable to obtain DHCP lease on boot with RedHat
+Unable to obtain DHCP lease on boot with Red Hat
 -----------------------------------------------
 In configurations where the auto-negotiation process takes more than 5 seconds,
 the boot script may fail with the following message:
@@ -1454,7 +1421,7 @@ This error may occur even though the presence of link can be confirmed using
 ethtool <ethX>. In this case, try setting "LINKDELAY=30" in
 /etc/sysconfig/network-scripts/ifdfg-<ethX>.
 
-The same issue can occur during a network boot (via PXE) on RedHat
+The same issue can occur during a network boot (via PXE) on Red Hat
 distributions that use the dracut script:
 "Warning: No carrier detected on interface <ethX>"
 

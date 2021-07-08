@@ -205,12 +205,15 @@ ifneq (${LINUX_VERSION_CODE},)
   EXTRA_CFLAGS += -DLINUX_VERSION_CODE=${LINUX_VERSION_CODE}
 endif
 
-# Determine SLE_LOCALVERSION_CODE for SuSE SLE >= 11 (needed by kcompat)
+# Determine SLE_KERNEL_REVISION for SuSE SLE >= 11 (needed by kcompat)
 # This assumes SuSE will continue setting CONFIG_LOCALVERSION to the string
 # appended to the stable kernel version on which their kernel is based with
 # additional versioning information (up to 3 numbers), a possible abbreviated
 # git SHA1 commit id and a kernel type, e.g. CONFIG_LOCALVERSION=-1.2.3-default
 # or CONFIG_LOCALVERSION=-999.gdeadbee-default
+#
+# SLE_LOCALVERSION_CODE is also exported to support legacy kcompat.h
+# definitions.
 ifeq (1,$(call get_config_value,CONFIG_SUSE_KERNEL))
 
 ifneq (10,$(call get_config_value,CONFIG_SLE_VERSION))
@@ -224,6 +227,7 @@ ifneq (10,$(call get_config_value,CONFIG_SLE_VERSION))
   SLE_LOCALVERSION_CODE := $(shell expr ${LOCALVER_A} \* 65536 + \
                                         0${LOCALVER_B} \* 256 + 0${LOCALVER_C})
   EXTRA_CFLAGS += -DSLE_LOCALVERSION_CODE=${SLE_LOCALVERSION_CODE}
+  EXTRA_CFLAGS += -DSLE_KERNEL_REVISION=${LOCALVER_A}
 endif
 endif
 

@@ -4171,6 +4171,7 @@ struct ixgbe_hw {
 	bool need_crosstalk_fix;
 	/* NVM Update features */
 	struct ixgbe_nvm_features nvmupd_features;
+	u32 fw_rst_cnt;
 };
 
 #define ixgbe_call_func(hw, func, params, error) \

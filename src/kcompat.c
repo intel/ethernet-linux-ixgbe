@@ -1779,7 +1779,6 @@ static const unsigned char __maybe_unused pcie_link_speed[] = {
 int __kc_pcie_get_minimum_link(struct pci_dev *dev, enum pci_bus_speed *speed,
 			       enum pcie_link_width *width)
 {
-	int ret;
 
 	*speed = PCI_SPEED_UNKNOWN;
 	*width = PCIE_LNK_WIDTH_UNKNOWN;
@@ -1788,8 +1787,8 @@ int __kc_pcie_get_minimum_link(struct pci_dev *dev, enum pci_bus_speed *speed,
 		u16 lnksta;
 		enum pci_bus_speed next_speed;
 		enum pcie_link_width next_width;
+		int ret = pcie_capability_read_word(dev, PCI_EXP_LNKSTA, &lnksta);
 
-		ret = pcie_capability_read_word(dev, PCI_EXP_LNKSTA, &lnksta);
 		if (ret)
 			return ret;
 
@@ -1901,7 +1900,6 @@ int __kc_ipv6_find_hdr(const struct sk_buff *skb, unsigned int *offset,
 {
 	unsigned int start = skb_network_offset(skb) + sizeof(struct ipv6hdr);
 	u8 nexthdr = ipv6_hdr(skb)->nexthdr;
-	unsigned int len;
 	bool found;
 
 #define __KC_IP6_FH_F_FRAG	BIT(0)
@@ -1922,7 +1920,6 @@ int __kc_ipv6_find_hdr(const struct sk_buff *skb, unsigned int *offset,
 		start = *offset + sizeof(struct ipv6hdr);
 		nexthdr = ip6->nexthdr;
 	}
-	len = skb->len - start;
 
 	do {
 		struct ipv6_opt_hdr _hdr, *hp;
@@ -1987,7 +1984,6 @@ int __kc_ipv6_find_hdr(const struct sk_buff *skb, unsigned int *offset,
 
 		if (!found) {
 			nexthdr = hp->nexthdr;
-			len -= hdrlen;
 			start += hdrlen;
 		}
 	} while (!found);
@@ -2843,10 +2839,7 @@ void _kc_pcie_print_link_status(struct pci_dev *dev) {
 #endif /* 4.17.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0))
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
-#define HAVE_NDO_FDB_ADD_EXTACK
-#else /* !RHEL || RHEL < 8.1 */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0)) || (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,1)))
 #ifdef HAVE_TC_SETUP_CLSFLOWER
 #define FLOW_DISSECTOR_MATCH(__rule, __type, __out)				\
 	const struct flow_match *__m = &(__rule)->match;			\
@@ -2931,8 +2924,7 @@ void flow_rule_match_ports(const struct flow_rule *rule,
 	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_PORTS, out);
 }
 #endif /* HAVE_TC_SETUP_CLSFLOWER */
-#endif /* !RHEL || RHEL < 8.1 */
-#endif /* 5.1.0 */
+#endif /* 5.1.0 || (RHEL && RHEL < 8.1) */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))

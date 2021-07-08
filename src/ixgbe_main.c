@@ -54,6 +54,7 @@
 #include <net/tc_act/tc_mirred.h>
 #endif /* NETIF_F_HW_TC */
 
+
 #include "ixgbe_dcb_82599.h"
 #include "ixgbe_sriov.h"
 #include "ixgbe_txrx_common.h"
@@ -71,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.11.3" \
+#define DRV_VERSION	"5.12.5" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -229,7 +230,7 @@ static s32 ixgbe_get_parent_bus_info(struct ixgbe_hw *hw)
 }
 
 /**
- * ixgbe_check_from_parent - determine whether to use parent for PCIe info
+ * ixgbe_pcie_from_parent - determine whether to use parent for PCIe info
  * @hw: hw specific details
  *
  * This function is used by probe to determine whether a device's PCIe info
@@ -2947,6 +2948,41 @@ static void ixgbe_check_overtemp_subtask(struct ixgbe_adapter *adapter)
 	adapter->interrupt_event = 0;
 }
 
+/**
+ * ixgbe_check_mng_event - check for mng event
+ * @adapter: pointer to adapter
+ * @eicr: interrupt cause
+ **/
+static void ixgbe_check_mng_event(struct ixgbe_adapter *adapter, u32 eicr)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 fw_reset_cnt;
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+		break;
+	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
+		if (eicr & IXGBE_EICR_MNG) {
+			/* Make sure that EICR.MNG event is the result of a
+			 * reset after firmware update
+			 */
+			fw_reset_cnt = IXGBE_READ_REG(hw, IXGBE_FWRESETCNT);
+			if (hw->fw_rst_cnt < fw_reset_cnt) {
+				hw->fw_rst_cnt = fw_reset_cnt;
+				set_bit(__IXGBE_RESET_REQUESTED,
+					&adapter->state);
+				ixgbe_service_event_schedule(adapter);
+			}
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static void ixgbe_check_fan_failure(struct ixgbe_adapter *adapter, u32 eicr)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -3073,6 +3109,7 @@ static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 	}
 	/* skip the flush */
 }
+
 
 /**
  * ixgbe_irq_enable - Enable default interrupt generation settings
@@ -3218,6 +3255,7 @@ static irqreturn_t ixgbe_msix_other(int __always_unused irq, void *data)
 #endif
 		ixgbe_check_sfp_event(adapter, eicr);
 		ixgbe_check_overtemp_event(adapter, eicr);
+		ixgbe_check_mng_event(adapter, eicr);
 		break;
 	default:
 		break;
@@ -3273,7 +3311,7 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 	ixgbe_for_each_ring(ring, q_vector->tx) {
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 		bool wd = ring->xsk_pool ?
-			  ixgbe_clean_xdp_tx_irq(q_vector, ring, budget) :
+			  ixgbe_clean_xdp_tx_irq(q_vector, ring) :
 			  ixgbe_clean_tx_irq(q_vector, ring, budget);
 		if (!wd)
 #else
@@ -3468,6 +3506,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 		}
 		ixgbe_check_sfp_event(adapter, eicr);
 		ixgbe_check_overtemp_event(adapter, eicr);
+		ixgbe_check_mng_event(adapter, eicr);
 		break;
 	default:
 		break;
@@ -4313,7 +4352,6 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 #endif
 
 	ixgbe_configure_srrctl(adapter, ring);
-        /* In ESX, RSCCTL configuration is done by on demand */
 	ixgbe_configure_rscctl(adapter, ring);
 
 	switch (hw->mac.type) {
@@ -5449,6 +5487,7 @@ static void ixgbe_flush_sw_mac_table(struct ixgbe_adapter *adapter)
 	ixgbe_sync_mac_table(adapter);
 }
 
+
 int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter,
 			 const u8 *addr, u16 pool)
 {
@@ -5517,7 +5556,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 fctrl, vmolr = IXGBE_VMOLR_BAM | IXGBE_VMOLR_AUPE;
-#if defined(HAVE_VLAN_RX_REGISTER) || defined(ESX55)
+#if defined(HAVE_VLAN_RX_REGISTER)
 	u32 vlnctrl;
 #endif
 #if defined(NETIF_F_HW_VLAN_CTAG_FILTER) || defined(NETIF_F_HW_VLAN_FILTER)
@@ -5527,7 +5566,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 
 	/* Check for Promiscuous and All Multicast modes */
 	fctrl = IXGBE_READ_REG(hw, IXGBE_FCTRL);
-#if defined(HAVE_VLAN_RX_REGISTER) || defined(ESX55)
+#if defined(HAVE_VLAN_RX_REGISTER)
 	vlnctrl = IXGBE_READ_REG(hw, IXGBE_VLNCTRL);
 #endif
 
@@ -5538,7 +5577,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 
 	/* clear the bits we are changing the status of */
 	fctrl &= ~(IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
-#if defined(HAVE_VLAN_RX_REGISTER) || defined(ESX55)
+#if defined(HAVE_VLAN_RX_REGISTER)
 	vlnctrl  &= ~(IXGBE_VLNCTRL_VFE | IXGBE_VLNCTRL_CFIEN);
 #endif
 	if (netdev->flags & IFF_PROMISC) {
@@ -5566,7 +5605,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 			vmolr |= IXGBE_VMOLR_MPE;
 		}
 		hw->addr_ctrl.user_set_promisc = false;
-#if defined(HAVE_VLAN_RX_REGISTER) || defined(ESX55)
+#if defined(HAVE_VLAN_RX_REGISTER)
 		/* enable hardware vlan filtering */
 		vlnctrl |= IXGBE_VLNCTRL_VFE;
 #endif
@@ -5627,7 +5666,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 		ixgbe_vlan_promisc_disable(adapter);
 	else
 		ixgbe_vlan_promisc_enable(adapter);
-#elif defined(HAVE_VLAN_RX_REGISTER) || defined(ESX55)
+#elif defined(HAVE_VLAN_RX_REGISTER)
 	IXGBE_WRITE_REG(hw, IXGBE_VLNCTRL, vlnctrl);
 #endif /* NETIF_F_HW_VLAN_CTAG_FILTER */
 }
@@ -7070,6 +7109,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	netif_carrier_off(netdev);
 	netif_tx_disable(netdev);
 
+
 	/* Disable Rx */
 	ixgbe_disable_rx_queue(adapter);
 
@@ -7119,7 +7159,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 }
 
 /**
- * ixgbe_eee_capable - helper function to determine EEE support on X550
+ * ixgbe_set_eee_capable - helper function to determine EEE support on X550
  * @adapter: board private structure to initialize
  **/
 static inline void ixgbe_set_eee_capable(struct ixgbe_adapter *adapter)
@@ -7474,6 +7514,7 @@ static int ixgbe_setup_all_tx_resources(struct ixgbe_adapter *adapter)
 
 	for (i = 0; i < adapter->num_tx_queues; i++) {
 
+
 		err = ixgbe_setup_tx_resources(adapter->tx_ring[i]);
 		if (!err)
 			continue;
@@ -7814,6 +7855,9 @@ int ixgbe_open(struct net_device *netdev)
 
 	ixgbe_up_complete(adapter);
 
+#if defined(HAVE_UDP_ENC_RX_OFFLOAD) && defined(HAVE_UDP_TUNNEL_NIC_INFO)
+	udp_tunnel_nic_reset_ntf(netdev);
+#else
 #if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 	ixgbe_clear_udp_tunnel_port(adapter, IXGBE_VXLANCTRL_ALL_UDPPORT_MASK);
 #endif
@@ -7822,6 +7866,7 @@ int ixgbe_open(struct net_device *netdev)
 #elif defined(HAVE_VXLAN_RX_OFFLOAD)
 	vxlan_get_rx_port(netdev);
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD */
+#endif /* HAVE_UDP_ENC_RX_OFFLOAD && HAVE_UDP_TUNNEL_NIC_INFO */
 	return IXGBE_SUCCESS;
 
 err_set_queues:
@@ -8486,7 +8531,6 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 				hwstats->illerrc +
 				hwstats->rlec +
 				hwstats->rfc +
-				hwstats->rjc +
 				hwstats->roc +
 				hwstats->ruc +
 				hw_csum_rx_error;
@@ -8643,8 +8687,19 @@ static void ixgbe_watchdog_update_link(struct ixgbe_adapter *adapter)
 
 #endif
 	if (link_up && !((adapter->flags & IXGBE_FLAG_DCB_ENABLED) && pfc_en)) {
+		ixgbe_setup_fc(hw);
 		hw->mac.ops.fc_enable(hw);
+
+		/* This is known driver so disable MDD before updating SRRCTL */
+		if (hw->mac.ops.disable_mdd &&
+		    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+			hw->mac.ops.disable_mdd(hw);
+
 		ixgbe_set_rx_drop_en(adapter);
+
+		if (hw->mac.ops.enable_mdd &&
+		    (adapter->flags & IXGBE_FLAG_MDD_ENABLED))
+			hw->mac.ops.enable_mdd(hw);
 	}
 
 	if (link_up ||
@@ -9229,6 +9284,7 @@ static void ixgbe_service_task(struct work_struct *work)
 		return;
 	}
 #if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
+#ifndef HAVE_UDP_TUNNEL_NIC_INFO
 	if (adapter->flags2 & IXGBE_FLAG2_UDP_TUN_REREG_NEEDED) {
 		rtnl_lock();
 		adapter->flags2 &= ~IXGBE_FLAG2_UDP_TUN_REREG_NEEDED;
@@ -9239,6 +9295,7 @@ static void ixgbe_service_task(struct work_struct *work)
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD */
 		rtnl_unlock();
 	}
+#endif /* HAVE_UDP_TUNNEL_NIC_INFO */
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
 	ixgbe_reset_subtask(adapter);
 	ixgbe_phy_interrupt_subtask(adapter);
@@ -9941,6 +9998,12 @@ int ixgbe_xmit_xdp_ring(struct ixgbe_adapter *adapter,
 
 	/* Avoid any potential race with xdp_xmit and cleanup */
 	smp_wmb();
+
+#ifdef HAVE_XDP_SUPPORT
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	ring->xdp_tx_active++;
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
+#endif /* HAVE_XDP_SUPPORT */
 
 	/* set next_to_watch value indicating a packet is present */
 	i++;
@@ -11539,6 +11602,45 @@ static void ixgbe_del_udp_tunnel_port(struct net_device *dev,
 	ixgbe_clear_udp_tunnel_port(adapter, port_mask);
 	adapter->flags2 |= IXGBE_FLAG2_UDP_TUN_REREG_NEEDED;
 }
+
+#ifdef HAVE_UDP_TUNNEL_NIC_INFO
+static int ixgbe_udp_tunnel_set(struct net_device *dev,
+				unsigned int table, unsigned int entry,
+				struct udp_tunnel_info *ti)
+{
+	const struct udp_tunnel_nic_info *tni = dev->udp_tunnel_nic_info;
+
+	if (tni->flags & UDP_TUNNEL_NIC_INFO_IPV4_ONLY)
+		ti->sa_family = AF_INET;
+
+	ixgbe_add_udp_tunnel_port(dev, ti);
+	return 0;
+}
+
+static int ixgbe_udp_tunnel_unset(struct net_device *dev,
+				  unsigned int table, unsigned int entry,
+				  struct udp_tunnel_info *ti)
+{
+	const struct udp_tunnel_nic_info *tni = dev->udp_tunnel_nic_info;
+
+	if (tni->flags & UDP_TUNNEL_NIC_INFO_IPV4_ONLY)
+		ti->sa_family = AF_INET;
+
+	ixgbe_del_udp_tunnel_port(dev, ti);
+
+	return 0;
+}
+
+static const struct udp_tunnel_nic_info ixgbe_udp_tunnels_x550 = {
+	.set_port       = ixgbe_udp_tunnel_set,
+	.unset_port     = ixgbe_udp_tunnel_unset,
+	.flags          = UDP_TUNNEL_NIC_INFO_IPV4_ONLY,
+	.tables         = {
+		{ .n_entries = 1, .tunnel_types = UDP_TUNNEL_TYPE_VXLAN,  },
+		{ .n_entries = 1, .tunnel_types = UDP_TUNNEL_TYPE_GENEVE, },
+	},
+};
+#endif
 #elif defined(HAVE_VXLAN_RX_OFFLOAD)
 /**
  * ixgbe_add_vxlan_port - Get notifications about VXLAN ports that come up
@@ -12103,8 +12205,10 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.extended.ndo_udp_tunnel_add = ixgbe_add_udp_tunnel_port,
 	.extended.ndo_udp_tunnel_del = ixgbe_del_udp_tunnel_port,
 #else
+#ifndef HAVE_UDP_TUNNEL_NIC_INFO
 	.ndo_udp_tunnel_add	= ixgbe_add_udp_tunnel_port,
 	.ndo_udp_tunnel_del	= ixgbe_del_udp_tunnel_port,
+#endif
 #endif
 #elif defined(HAVE_VXLAN_RX_OFFLOAD)
 	.ndo_add_vxlan_port	= ixgbe_add_vxlan_port,
@@ -12503,6 +12607,17 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	if (err)
 		goto err_sw_init;
 
+#if defined(HAVE_UDP_ENC_RX_OFFLOAD) && defined(HAVE_UDP_TUNNEL_NIC_INFO)
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_a:
+	case ixgbe_mac_X550EM_x:
+		netdev->udp_tunnel_nic_info = &ixgbe_udp_tunnels_x550;
+		break;
+	default:
+		break;
+	}
+#endif
 	/* Make sure the SWFW semaphore is in a valid state */
 	if (hw->mac.ops.init_swfw_sync)
 		hw->mac.ops.init_swfw_sync(hw);
@@ -12840,6 +12955,10 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	device_set_wakeup_enable(pci_dev_to_dev(adapter->pdev), adapter->wol);
 
 	ixgbe_set_fw_version(adapter);
+
+	/* gets the number of resets after firmware update */
+	if (adapter->hw.mac.type > ixgbe_mac_X550)
+		hw->fw_rst_cnt = IXGBE_READ_REG(hw, IXGBE_FWRESETCNT);
 
 	/* reset the hardware with the new settings */
 	err = hw->mac.ops.start_hw(hw);

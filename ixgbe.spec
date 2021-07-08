@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.11.3
+Version: 5.12.5
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation

@@ -49,7 +49,7 @@ int ixgbe_clean_rx_irq_zc(struct ixgbe_q_vector *q_vector,
 			  const int budget);
 void ixgbe_xsk_clean_rx_ring(struct ixgbe_ring *rx_ring);
 bool ixgbe_clean_xdp_tx_irq(struct ixgbe_q_vector *q_vector,
-			    struct ixgbe_ring *tx_ring, int napi_budget);
+			    struct ixgbe_ring *tx_ring);
 #ifdef HAVE_NDO_XSK_WAKEUP
 int ixgbe_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags);
 #else
