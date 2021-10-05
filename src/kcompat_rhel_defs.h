@@ -57,8 +57,16 @@
 #endif /* 7.5 */
 
 /*****************************************************************************/
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,1))
+#define NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
+#else /* >= 8.1 */
+#undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
+#endif /* 8.1 */
+
+/*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,2))
 #else /* >= 8.2 */
+#undef NEED_BUS_FIND_DEVICE_CONST_DATA
 #undef NEED_DEVLINK_FLASH_UPDATE_STATUS_NOTIFY
 #undef NEED_SKB_FRAG_OFF_ACCESSORS
 #undef NEED_FLOW_INDR_BLOCK_CB_REGISTER

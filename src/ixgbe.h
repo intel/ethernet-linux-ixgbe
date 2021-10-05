@@ -67,12 +67,11 @@
 /* TX/RX descriptor defines */
 #define IXGBE_DEFAULT_TXD		512
 #define IXGBE_DEFAULT_TX_WORK		256
-#define IXGBE_MAX_TXD			4096
-#define IXGBE_MIN_TXD			64
 
 #define IXGBE_DEFAULT_RXD		512
-#define IXGBE_MAX_RXD			4096
-#define IXGBE_MIN_RXD			64
+
+#define IXGBE_MAX_NUM_DESCRIPTORS	4096
+#define IXGBE_MIN_NUM_DESCRIPTORS	64
 
 #define IXGBE_ETH_P_LLDP		0x88CC
 
@@ -260,6 +259,10 @@ struct vf_data_storage {
 	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
 	u16 pf_qos;
 	u16 tx_rate;
+	int link_enable;
+#ifdef HAVE_NDO_SET_VF_LINK_STATE
+	int link_state;
+#endif
 	u8 spoofchk_enabled;
 #ifdef HAVE_NDO_SET_VF_RSS_QUERY_EN
 	bool rss_query_enabled;
@@ -267,6 +270,7 @@ struct vf_data_storage {
 	u8 trusted;
 	int xcast_mode;
 	unsigned int vf_api;
+	u8 master_abort_count;
 };
 
 struct vf_macvlans {
@@ -814,6 +818,8 @@ struct ixgbe_therm_proc_data {
 #define IXGBE_TRY_LINK_TIMEOUT	(4 * HZ)
 #define IXGBE_SFP_POLL_JIFFIES	(2 * HZ)	/* SFP poll every 2 seconds */
 
+#define IXGBE_MASTER_ABORT_LIMIT	5
+
 /* board specific private data structure */
 struct ixgbe_adapter {
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
@@ -906,6 +912,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
 #define IXGBE_FLAG2_VLAN_PROMISC		(u32)(1 << 18)
 #define IXGBE_FLAG2_RX_LEGACY			(u32)(1 << 19)
+#define IXGBE_FLAG2_AUTO_DISABLE_VF		BIT(20)
 
 	/* Tx fast path data */
 	int num_tx_queues;

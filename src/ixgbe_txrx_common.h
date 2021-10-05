@@ -56,7 +56,8 @@ int ixgbe_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags);
 int ixgbe_xsk_async_xmit(struct net_device *dev, u32 queue_id);
 #endif
 void ixgbe_xsk_clean_tx_ring(struct ixgbe_ring *tx_ring);
-#endif
+bool ixgbe_xsk_any_rx_ring_enabled(struct ixgbe_adapter *adapter);
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
 #endif /* HAVE_XDP_SUPPORT */
 
 bool ixgbe_cleanup_headers(struct ixgbe_ring __maybe_unused *rx_ring,

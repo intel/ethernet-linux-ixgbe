@@ -57,6 +57,27 @@ static int ixgbe_alloc_xsk_umems(struct ixgbe_adapter *adapter)
 	return 0;
 }
 
+/**
+ * ixgbe_xsk_any_rx_ring_enabled - Checks if Rx rings have AF_XDP UMEM attached
+ * @adapter: adapter
+ *
+ * Returns true if any of the Rx rings has an AF_XDP UMEM attached
+ **/
+bool ixgbe_xsk_any_rx_ring_enabled(struct ixgbe_adapter *adapter)
+{
+	int i;
+
+	if (!adapter->xsk_pools)
+		return false;
+
+	for (i = 0; i < adapter->num_xsk_pools; i++) {
+		if (adapter->xsk_pools[i])
+			return true;
+	}
+
+	return false;
+}
+
 #ifndef HAVE_NETDEV_BPF_XSK_POOL
 static int ixgbe_add_xsk_umem(struct ixgbe_adapter *adapter,
 			      struct xdp_umem *pool,

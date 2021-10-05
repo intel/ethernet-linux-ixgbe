@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.12.5
+Version: 5.13.4
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -18,6 +18,10 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 %define pciids    %find %{_pciids}
 %define pcitable  %find %{_pcitable}
 Requires: kernel, findutils, gawk, bash
+%define need_aux %(echo 0)
+%if (%need_aux == 2)
+Requires: auxiliary
+%endif
 
 # Check for existence of %kernel_module_package_buildreqs ...
 %if 0%{?!kernel_module_package_buildreqs:1}
@@ -42,8 +46,14 @@ make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install mand
 # Remove modules files that we do not want to include
 find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
 cd %{buildroot}
-find lib -name "ixgbe.ko" \
-	-fprintf %{_builddir}/%{name}-%{version}/file.list "/%p\n"
+find lib -name "ixgbe.ko" -printf "/%p\n" \
+	>%{_builddir}/%{name}-%{version}/file.list
+find lib -name "auxiliary.ko" -printf "/%p\n" \
+	>%{_builddir}/%{name}-%{version}/aux.list
+find lib -path "*auxiliary/Module.symvers" -printf "/%p\n" \
+	>>%{_builddir}/%{name}-%{version}/aux.list
+find * -name "auxiliary_bus.h" -printf "/%p\n" \
+	>>%{_builddir}/%{name}-%{version}/aux.list
 
 
 %clean
@@ -391,3 +401,15 @@ else
 	exit -1
 fi
 
+%package -n auxiliary
+Summary: Auxiliary bus driver (backport)
+Version: 1.0.0
+
+%description -n auxiliary
+The Auxiliary bus driver (auxiliary.ko), backported from upstream, for use by kernels that don't have auxiliary bus.
+
+# %if to hide this whole section, causes RPM to not build the subproject at all
+%if (%need_aux == 2)
+%files -n auxiliary -f aux.list
+%doc aux.list
+%endif

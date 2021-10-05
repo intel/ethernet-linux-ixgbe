@@ -79,6 +79,9 @@ if [[ ! -x $SED ]]; then
 fi
 
 num='^[0-9]+$'
+
+# search helpers
+NOZEROCOMMA="s/^[0,]*//"
 # Vars
 AFF=$1
 shift
@@ -104,8 +107,19 @@ done
 # for now the user must specify interfaces
 if [ -z "$IFACES" ]; then
 	usage
-	exit 1
+	exit 2
 fi
+
+notfound()
+{
+	echo $MYIFACE: not found
+	exit 15
+}
+
+# check the interfaces exist
+for MYIFACE in $IFACES; do
+	grep -q $MYIFACE /proc/net/dev || notfound
+done
 
 # support functions
 
@@ -136,8 +150,8 @@ show_affinity()
 	# returns the MASK variable
 	build_mask
 
-	SMP_I=`sed -E 's/^0+,*0*//' /proc/irq/$IRQ/smp_affinity`
-	HINT=`sed -E 's/^0+,*0*//' /proc/irq/$IRQ/affinity_hint`
+	SMP_I=`sed -E "${NOZEROCOMMA}" /proc/irq/$IRQ/smp_affinity`
+	HINT=`sed -E "${NOZEROCOMMA}" /proc/irq/$IRQ/affinity_hint`
 	printf "ACTUAL	%s %d %s <- /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $SMP_I
 	printf "HINT 	%s %d %s <- /proc/irq/$IRQ/affinity_hint\n" $IFACE $core $HINT
 	IRQ_CHECK=`grep '[-,]' /proc/irq/$IRQ/smp_affinity_list`
@@ -179,7 +193,7 @@ set_affinity()
 
 	printf "%s" $MASK > /proc/irq/$IRQ/smp_affinity
 	printf "%s %d %s -> /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $MASK
-	SMP_I=`sed -E 's/^0+,*0*//' /proc/irq/$IRQ/smp_affinity`
+	SMP_I=`sed -E "${NOZEROCOMMA}" /proc/irq/$IRQ/smp_affinity`
 	if [ "$SMP_I" != "$MASK" ]; then
 		printf " ACTUAL\t%s %d %s <- /proc/irq/$IRQ/smp_affinity\n" $IFACE $core $SMP_I
 		printf " WARNING -- SMP_AFFINITY setting failed\n"
@@ -228,9 +242,7 @@ doaff()
 
 	irqs=$(grep "$queues" /proc/interrupts | cut -f1 -d:)
 	[ -z "$irqs" ] && irqs=$(grep $IFACE /proc/interrupts | cut -f1 -d:)
-	[ -z "$irqs" ] && irqs=$(for i in `ls -Ux /sys/class/net/$IFACE/device/msi_irqs` ;\
-	                         do grep "$i:.*TxRx" /proc/interrupts | grep -v fdir | cut -f 1 -d : ;\
-	                         done)
+	[ -z "$irqs" ] && irqs=$(for i in `ls -1 /sys/class/net/${IFACE}/device/msi_irqs | sort -n` ;do grep -w $i: /proc/interrupts | egrep -v 'fdir|async|misc|ctrl' | cut -f 1 -d :; done)
 	[ -z "$irqs" ] && echo "Error: Could not find interrupts for $IFACE"
 
 	if [ "$SHOW" == "1" ] ; then

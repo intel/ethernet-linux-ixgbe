@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-April 21, 2021
+August 13, 2021
 
 Contents
 --------
@@ -219,37 +219,6 @@ unexpected, and potentially malicious, frames to be dropped.
 Building and Installation
 =========================
 
-To build a binary RPM package of this driver
---------------------------------------------
-Note: RPM functionality has only been tested in Red Hat distributions.
-
-1. Run the following command, where <x.x.x> is the version number for the
-   driver tar file.
-
-   # rpmbuild -tb ixgbe-<x.x.x>.tar.gz
-
-   NOTE: For the build to work properly, the currently running kernel MUST
-   match the version and configuration of the installed kernel sources. If
-   you have just recompiled the kernel, reboot the system before building.
-
-2. After building the RPM, the last few lines of the tool output contain the
-   location of the RPM file that was built. Install the RPM with one of the
-   following commands, where <RPM> is the location of the RPM file:
-
-   # rpm -Uvh <RPM>
-       or
-   # dnf/yum localinstall <RPM>
-
-NOTES:
-- To compile the driver on some kernel/arch combinations, you may need to
-install a package with the development version of libelf (e.g. libelf-dev,
-libelf-devel, elfutilsl-libelf-devel).
-- When compiling an out-of-tree driver, details will vary by distribution.
-However, you will usually need a kernel-devel RPM or some RPM that provides the
-kernel headers at a minimum. The RPM kernel-devel will usually fill in the link
-at /lib/modules/'uname -r'/build.
-
-
 To manually build the driver
 ----------------------------
 1. Move the base driver tar file to the directory of your choice.
@@ -299,17 +268,46 @@ To manually build the driver
    # ping <IP_address>
 
 Note: For certain distributions like (but not limited to) Red Hat Enterprise
-Linux 7, Ubuntu, and SUSE Linux Enterprise Server (SLES) 11, once the driver is
-installed, you may need to update the initrd/initramfs file to prevent the OS
-loading old versions of the ixgbe driver.
+Linux 7 and Ubuntu, once the driver is installed, you may need to update the
+initrd/initramfs file to prevent the OS loading old versions of the ixgbe
+driver.
    For Red Hat distributions:
 	# dracut --force
 
    For Ubuntu:
 	# update-initramfs -u
 
-   For SLES:
-	# mkinitrd
+ 
+To build a binary RPM package of this driver
+--------------------------------------------
+Note: RPM functionality has only been tested in Red Hat distributions.
+
+1. Run the following command, where <x.x.x> is the version number for the
+   driver tar file.
+
+   # rpmbuild -tb ixgbe-<x.x.x>.tar.gz
+
+   NOTE: For the build to work properly, the currently running kernel MUST
+   match the version and configuration of the installed kernel sources. If
+   you have just recompiled the kernel, reboot the system before building.
+
+2. After building the RPM, the last few lines of the tool output contain the
+   location of the RPM file that was built. Install the RPM with one of the
+   following commands, where <RPM> is the location of the RPM file:
+
+   # rpm -Uvh <RPM>
+       or
+   # dnf/yum localinstall <RPM>
+
+NOTES:
+- To compile the driver on some kernel/arch combinations, you may need to
+install a package with the development version of libelf (e.g. libelf-dev,
+libelf-devel, elfutilsl-libelf-devel).
+- When compiling an out-of-tree driver, details will vary by distribution.
+However, you will usually need a kernel-devel RPM or some RPM that provides the
+kernel headers at a minimum. The RPM kernel-devel will usually fill in the link
+at /lib/modules/'uname -r'/build.
+
 
 To build ixgbe driver with DCA
 ------------------------------
@@ -634,7 +632,7 @@ Coalescing must be enabled across all active ports in order to save platform
 power.
 InterruptThrottleRate (ITR) should be set to dynamic. When ITR=0, DMA
 Coalescing is automatically disabled.
-A whitepaper containing information on how to best configure your platform is
+A guide containing information on how to best configure your platform is
 available on the Intel website.
 
 
@@ -777,8 +775,8 @@ NOTE: For the Intel(R) Ethernet Connection X552 10 GbE SFP+ you must specify
 the desired speed.
 
 
-Flow Control
-------------
+Link-Level Flow Control (LFC)
+-----------------------------
 Ethernet Flow Control (IEEE 802.3x) can be configured with ethtool to enable
 receiving and transmitting pause frames for ixgbe. When transmit is enabled,
 pause frames are generated when the receive packet buffer crosses a predefined
@@ -1082,25 +1080,9 @@ The results if UDP hashing is disabled are shown below.
 Parameters FdirPballoc and AtrSampleRate impact Flow Director.
 
 
-Configuring VLAN Tagging on SR-IOV Enabled Adapter Ports
---------------------------------------------------------
-To configure VLAN tagging for the ports on an SR-IOV enabled adapter, use the
-following command. The VLAN configuration should be done before the VF driver
-is loaded or the VM is booted. The VF is not aware of the VLAN tag being
-inserted on transmit and removed on received frames (sometimes called "port
-VLAN" mode).
-
-# ip link set dev <ethX> vf <id> vlan <vlan id>
-
-For example, the following will configure PF eth0 and the first VF on VLAN 10:
-
-# ip link set dev eth0 vf 0 vlan 10
-
-
 Data Center Bridging (DCB)
 --------------------------
-NOTE:
-The kernel assumes that TC0 is available, and will disable Priority Flow
+NOTE: The kernel assumes that TC0 is available, and will disable Priority Flow
 Control (PFC) on the device if TC0 is not available. To fix this, ensure TC0 is
 enabled when setting up DCB on your switch.
 
@@ -1130,6 +1112,49 @@ more information, see the OpenLLDP man pages and
 https://github.com/intel/openlldp.
 
 
+Configuring VLAN Tagging on SR-IOV Enabled Adapter Ports
+--------------------------------------------------------
+To configure VLAN tagging for the ports on an SR-IOV enabled adapter, use the
+following command. The VLAN configuration should be done before the VF driver
+is loaded or the VM is booted. The VF is not aware of the VLAN tag being
+inserted on transmit and removed on received frames (sometimes called "port
+VLAN" mode).
+
+# ip link set dev <ethX> vf <id> vlan <vlan id>
+
+For example, the following will configure PF eth0 and the first VF on VLAN 10:
+
+# ip link set dev eth0 vf 0 vlan 10
+
+
+Controlling the VF link state
+-----------------------------
+The ixgbe PF driver allows a root user to disable the VF link state using
+iproute2.
+
+To control the VF link state, use the following:
+
+# ip link set <ethX> vf <number> state auto|disable
+  Where:
+  auto - automatically reflects the link state from the PF to the VF (default)
+  disable - tells the hardware to drop any packets sent by the VF
+
+NOTE: The ixgbe driver does not support the 'enable' option.
+If the command does not work, it may not be supported by your system.
+
+
+Virtual Function (VF) Tx Rate Limit
+-----------------------------------
+Use the ip command to configure the Tx rate limit for a VF from the PF
+interface.
+
+For example, to set a Tx rate limit of 1000Mbps for VF 0:
+
+# ip link set eth0 vf 0 rate 1000
+
+Note that the limit is set per queue and not for the entire VF interface.
+
+
 Malicious Driver Detection (MDD) for VFs
 ----------------------------------------
 Some Intel Ethernet devices use Malicious Driver Detection (MDD) to detect
@@ -1140,6 +1165,15 @@ system log using the dmesg command.
 - If the PF driver logs MDD events from the VF, confirm that the correct VF
 driver is installed.
 - To restore functionality, you can manually reload the VF or VM.
+
+On devices based on the Intel Ethernet Controller X520, the ixgbe driver will
+detect certain types of misbehavior from the VF and automatically disable the
+VF by default. To change this behavior, use the following command:
+
+# ethtool --set-priv-flags <ethX> mdd-disable-vf on|off
+  Where:
+  on - disables the VF if the PF detects VF misbehavior
+  off - resets but does not disable the VF if the PF detects VF misbehavior
 
 
 MAC and VLAN Anti-Spoofing Feature for VFs
@@ -1210,18 +1244,6 @@ To view the current state of all offloads:
 # ethtool -k <ethX>
 
 
-Virtual Function (VF) Tx Rate Limit
------------------------------------
-Use the ip command to configure the Tx rate limit for a VF from the PF
-interface.
-
-For example, to set a Tx rate limit of 1000Mbps for VF 0:
-
-# ip link set eth0 vf 0 rate 1000
-
-Note that the limit is set per queue and not for the entire VF interface.
-
-
 Interrupt Rate Limiting
 -----------------------
 This driver supports an adaptive interrupt throttle rate (ITR) mechanism that
@@ -1279,6 +1301,12 @@ is not working, verify that you have installed the correct driver.
 
 Intel(R) Active Management Technology 2.0, 2.1, 2.5 are not supported in
 conjunction with the linux driver.
+
+
+Receive Error counts may be higher than the actual packet error count
+---------------------------------------------------------------------
+When a packet is received with more than one error, two bad packets may be
+reported. This affects all devices based on 10G, or faster, controllers.
 
 
 MAC address of Virtual Function changes unexpectedly
@@ -1397,18 +1425,6 @@ Running ethtool -t <ethX> command causes break between PF and test client
 When there are active VFs, "ethtool -t" will only run the link test. The driver
 will also log in syslog that VFs should be shut down to run a full diagnostic
 test.
-
-
-SLES10 SP3 Random System Panic when Reloading Driver
-----------------------------------------------------
-
-This is a known SLES-10 SP3 issue. After requesting interrupts for MSI-X
-vectors, system may panic.
-
-Currently, the only known workaround is to build the driver with
-CFLAGS_EXTRA=-DDISABLE_PCI_MSI if the driver needs to be loaded/unloaded.
-Otherwise, the driver can be loaded once and will be safe, but unloading it
-will lead to the issue.
 
 
 Unable to obtain DHCP lease on boot with Red Hat

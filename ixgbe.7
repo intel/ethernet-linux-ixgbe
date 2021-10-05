@@ -211,13 +211,17 @@ NOTE: IPv6 and UDP are not supported by LRO.
 This parameter is only relevant for devices operating in SR-IOV mode.
 When this parameter is set, the driver detects malicious VF driver and
 disables its Tx/Rx queues until a VF driver reset occurs.
-.B Jumbo Frames
 .LP
+.B Jumbo Frames
+.IP
 Jumbo Frames support is enabled by changing the Maximum Transmission Unit (MTU) to a value larger than the default value of 1500.
 
+.IP
 Use the ip command to increase the MTU size. For example, enter the following where <ethX> is the interface number:
 
+.IP
 # ip link set mtu 9000 dev <ethX>
+.IP
 # ip link set up dev <ethX>
 
 .LP
