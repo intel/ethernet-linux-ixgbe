@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.13.4" \
+#define DRV_VERSION	"5.14.6" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -166,6 +166,9 @@ MODULE_AUTHOR("Intel Corporation, <linux.nics@intel.com>");
 MODULE_DESCRIPTION(DRV_SUMMARY);
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
+
+DEFINE_STATIC_KEY_FALSE(ixgbe_xdp_locking_key);
+EXPORT_SYMBOL(ixgbe_xdp_locking_key);
 
 #define DEFAULT_DEBUG_LEVEL_SHIFT 3
 
@@ -1023,6 +1026,7 @@ static int __ixgbe_notify_dca(struct device *dev, void *data)
 			break;
 		}
 		/* fall through - DCA is disabled */
+		fallthrough;
 	case DCA_PROVIDER_REMOVE:
 		if (adapter->flags & IXGBE_FLAG_DCA_ENABLED) {
 			dca_remove_requester(dev);
@@ -2098,6 +2102,7 @@ ixgbe_run_xdp(struct ixgbe_adapter __maybe_unused *adapter,
 	int result = IXGBE_XDP_PASS;
 #ifdef HAVE_XDP_SUPPORT
 	struct bpf_prog *xdp_prog;
+	struct ixgbe_ring *ring;
 #ifdef HAVE_XDP_FRAME_STRUCT
 	struct xdp_frame *xdpf;
 #endif
@@ -2125,10 +2130,19 @@ ixgbe_run_xdp(struct ixgbe_adapter __maybe_unused *adapter,
 			result = IXGBE_XDP_CONSUMED;
 			break;
 		}
-		result = ixgbe_xmit_xdp_ring(adapter, xdpf);
+#endif
+
+		ring = ixgbe_determine_xdp_ring(adapter);
+		if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+			spin_lock(&ring->tx_lock);
+#ifdef HAVE_XDP_FRAME_STRUCT
+		result = ixgbe_xmit_xdp_ring(ring, xdpf);
 #else
-		result = ixgbe_xmit_xdp_ring(adapter, xdp);
-#endif /* !HAVE_XDP_FRAME_STRUCT */
+		result = ixgbe_xmit_xdp_ring(ring, xdp);
+#endif
+		if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+			spin_unlock(&ring->tx_lock);
+
 		break;
 	case XDP_REDIRECT:
 		err = xdp_do_redirect(adapter->netdev, xdp, xdp_prog);
@@ -2140,10 +2154,11 @@ ixgbe_run_xdp(struct ixgbe_adapter __maybe_unused *adapter,
 		break;
 	default:
 		bpf_warn_invalid_xdp_action(act);
-		/* fallthrough */
+		fallthrough;
 	case XDP_ABORTED:
 		trace_xdp_exception(rx_ring->netdev, xdp_prog, act);
 		/* fallthrough -- handle aborts by dropping packet */
+		fallthrough;
 	case XDP_DROP:
 		result = IXGBE_XDP_CONSUMED;
 		break;
@@ -2357,13 +2372,9 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		xdp_do_flush_map();
 
 	if (xdp_xmit & IXGBE_XDP_TX) {
-		struct ixgbe_ring *ring = adapter->xdp_ring[smp_processor_id()];
+		struct ixgbe_ring *ring = ixgbe_determine_xdp_ring(adapter);
 
-		/* Force memory writes to complete before letting h/w
-		 * know there are new descriptors to fetch.
-		 */
-		wmb();
-		writel(ring->next_to_use, ring->tail);
+		ixgbe_xdp_ring_update_tail_locked(ring);
 	}
 
 	u64_stats_update_begin(&rx_ring->syncp);
@@ -3145,7 +3156,7 @@ static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter, bool queues,
 	case ixgbe_mac_82599EB:
 		mask |= IXGBE_EIMS_GPI_SDP1;
 		mask |= IXGBE_EIMS_GPI_SDP2;
-		/* fall through */
+		fallthrough;
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
@@ -4743,7 +4754,7 @@ static void ixgbe_setup_rdrxctl(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550EM_a:
 		if (adapter->num_vfs)
 			rdrxctl |= IXGBE_RDRXCTL_PSP;
-		/* fall through */
+		fallthrough;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 		/* Disable RSC for ACK packets */
@@ -6917,8 +6928,8 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 	case IXGBE_ERR_SFP_NOT_PRESENT:
 	case IXGBE_ERR_SFP_NOT_SUPPORTED:
 		break;
-	case IXGBE_ERR_MASTER_REQUESTS_PENDING:
-		e_dev_err("master disable timed out\n");
+	case IXGBE_ERR_PRIMARY_REQUESTS_PENDING:
+		e_dev_err("primary disable timed out\n");
 		break;
 	case IXGBE_ERR_EEPROM_VERSION:
 		/* We are running on a pre-production device, log a warning */
@@ -7293,7 +7304,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		goto out;
 	}
 
-	adapter->af_xdp_zc_qps = bitmap_zalloc(MAX_XDP_QUEUES, GFP_KERNEL);
+	adapter->af_xdp_zc_qps = bitmap_zalloc(IXGBE_MAX_XDP_QS, GFP_KERNEL);
 	if (!adapter->af_xdp_zc_qps)
 		return -ENOMEM;
 
@@ -7364,7 +7375,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		default:
 			break;
 		}
-		/* fall through */
+		fallthrough;
 	case ixgbe_mac_X550EM_x:
 #if IS_ENABLED(CONFIG_DCB)
 		adapter->flags &= ~IXGBE_FLAG_DCB_CAPABLE;
@@ -7376,7 +7387,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		adapter->fcoe.up_set = 0;
 #endif /* CONFIG_DCB */
 #endif /* CONFIG_FCOE */
-	/* fall through */
+	fallthrough;
 	case ixgbe_mac_X550:
 		if (hw->mac.type == ixgbe_mac_X550)
 			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_CAPABLE;
@@ -8450,7 +8461,7 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 		hwstats->o2bspc += IXGBE_READ_REG(hw, IXGBE_O2BSPC);
 		hwstats->b2ospc += IXGBE_READ_REG(hw, IXGBE_B2OSPC);
 		hwstats->b2ogprc += IXGBE_READ_REG(hw, IXGBE_B2OGPRC);
-		/* fall through */
+		fallthrough;
 	case ixgbe_mac_82599EB:
 		for (i = 0; i < 16; i++)
 			adapter->hw_rx_no_dma_resources +=
@@ -9001,12 +9012,12 @@ static void ixgbe_bad_vf_abort(struct ixgbe_adapter *adapter, u32 vf)
 
 	if (adapter->hw.mac.type == ixgbe_mac_82599EB &&
 	    adapter->flags2 & IXGBE_FLAG2_AUTO_DISABLE_VF) {
-		adapter->vfinfo[vf].master_abort_count++;
-		if (adapter->vfinfo[vf].master_abort_count ==
-		    IXGBE_MASTER_ABORT_LIMIT) {
+		adapter->vfinfo[vf].primary_abort_count++;
+		if (adapter->vfinfo[vf].primary_abort_count ==
+		    IXGBE_PRIMARY_ABORT_LIMIT) {
 			ixgbe_set_vf_link_state(adapter, vf,
 						IFLA_VF_LINK_STATE_DISABLE);
-			adapter->vfinfo[vf].master_abort_count = 0;
+			adapter->vfinfo[vf].primary_abort_count = 0;
 
 			e_info(drv,
 			       "Malicious Driver Detection event detected on PF %d VF %d MAC: %pM mdd-disable-vf=on",
@@ -9484,7 +9495,7 @@ csum_failed:
 			type_tucmd = IXGBE_ADVTXD_TUCMD_L4T_SCTP;
 			break;
 		}
-		/* fall through */
+		fallthrough;
 	default:
 		skb_checksum_help(skb);
 		goto csum_failed;
@@ -9945,7 +9956,7 @@ static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb)
 
 		if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
 			break;
-		/* fall through */
+		fallthrough;
 	default:
 #if defined(HAVE_NDO_SELECT_QUEUE_FALLBACK_REMOVED)
 		return netdev_pick_tx(dev, skb, sb_dev);
@@ -9973,14 +9984,11 @@ static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb)
 
 #ifdef HAVE_XDP_SUPPORT
 #ifdef HAVE_XDP_FRAME_STRUCT
-int ixgbe_xmit_xdp_ring(struct ixgbe_adapter *adapter,
-			struct xdp_frame *xdpf)
+int ixgbe_xmit_xdp_ring(struct ixgbe_ring *ring, struct xdp_frame *xdpf)
 #else
-int ixgbe_xmit_xdp_ring(struct ixgbe_adapter *adapter,
-			struct xdp_buff *xdp)
+int ixgbe_xmit_xdp_ring(struct ixgbe_ring *ring, struct xdp_buff *xdp)
 #endif
 {
-	struct ixgbe_ring *ring = adapter->xdp_ring[smp_processor_id()];
 	struct ixgbe_tx_buffer *tx_buffer;
 	union ixgbe_adv_tx_desc *tx_desc;
 	u32 len, cmd_type;
@@ -11927,6 +11935,24 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 #endif /* NETIF_F_GSO_PARTIAL */
 #endif /* HAVE_NDO_FEATURES_CHECK */
 
+void ixgbe_xdp_ring_update_tail(struct ixgbe_ring *ring)
+{
+	/* Force memory writes to complete before letting h/w know there
+	 * are new descriptors to fetch.
+	 */
+	wmb();
+	writel(ring->next_to_use, ring->tail);
+}
+
+void ixgbe_xdp_ring_update_tail_locked(struct ixgbe_ring *ring)
+{
+	if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+		spin_lock(&ring->tx_lock);
+	ixgbe_xdp_ring_update_tail(ring);
+	if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+		spin_unlock(&ring->tx_lock);
+}
+
 #ifdef HAVE_XDP_SUPPORT
 static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 {
@@ -11952,8 +11978,13 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 			return -EINVAL;
 	}
 
-	if (nr_cpu_ids > MAX_XDP_QUEUES)
+	/* if the number of cpus is much larger than the maximum of queues,
+	 * we should stop it and then return with NOMEM like before.
+	 */
+	if (nr_cpu_ids > IXGBE_MAX_XDP_QS * 2)
 		return -ENOMEM;
+	else if (nr_cpu_ids > IXGBE_MAX_XDP_QS)
+		static_branch_inc(&ixgbe_xdp_locking_key);
 
 	old_prog = xchg(&adapter->xdp_prog, prog);
 	need_reset = (!!prog != !!old_prog);
@@ -12029,15 +12060,6 @@ static int ixgbe_xdp(struct net_device *dev, struct netdev_xdp *xdp)
 	}
 }
 
-void ixgbe_xdp_ring_update_tail(struct ixgbe_ring *ring)
-{
-	/* Force memory writes to complete before letting h/w know there
-	 * are new descriptors to fetch.
-	 */
-	wmb();
-	writel(ring->next_to_use, ring->tail);
-}
-
 #ifdef HAVE_NDO_XDP_XMIT_BULK_AND_FLAGS
 static int ixgbe_xdp_xmit(struct net_device *dev, int n,
 			  struct xdp_frame **frames, u32 flags)
@@ -12065,7 +12087,7 @@ static int ixgbe_xdp_xmit(struct net_device *dev, struct xdp_buff *xdp)
 	/* During program transitions its possible adapter->xdp_prog is assigned
 	 * but ring has not been configured yet. In this case simply abort xmit.
 	 */
-	ring = adapter->xdp_prog ? adapter->xdp_ring[smp_processor_id()] : NULL;
+	ring = adapter->xdp_prog ? ixgbe_determine_xdp_ring(adapter) : NULL;
 	if (unlikely(!ring))
 		return -ENXIO;
 
@@ -12075,11 +12097,14 @@ static int ixgbe_xdp_xmit(struct net_device *dev, struct xdp_buff *xdp)
 #endif
 
 #ifdef HAVE_NDO_XDP_XMIT_BULK_AND_FLAGS
+	if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+		spin_lock(&ring->tx_lock);
+
 	for (i = 0; i < n; i++) {
 		struct xdp_frame *xdpf = frames[i];
 		int err;
 
-		err = ixgbe_xmit_xdp_ring(adapter, xdpf);
+		err = ixgbe_xmit_xdp_ring(ring, xdpf);
 		if (err != IXGBE_XDP_TX) {
 			xdp_return_frame_rx_napi(xdpf);
 			drops++;
@@ -12089,14 +12114,22 @@ static int ixgbe_xdp_xmit(struct net_device *dev, struct xdp_buff *xdp)
 	if (unlikely(flags & XDP_XMIT_FLUSH))
 		ixgbe_xdp_ring_update_tail(ring);
 
+	if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+		spin_unlock(&ring->tx_lock);
+
 	return n - drops;
-#else
-	err = ixgbe_xmit_xdp_ring(adapter, xdp);
+#else /* HAVE_NDO_XDP_XMIT_BULK_AND_FLAGS */
+	if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+		spin_lock(&ring->tx_lock);
+	err = ixgbe_xmit_xdp_ring(ring, xdp);
+	if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+		spin_unlock(&ring->tx_lock);
+
 	if (err != IXGBE_XDP_TX)
 		return -ENOSPC;
 
 	return 0;
-#endif
+#endif /* HAVE_NDO_XDP_XMIT_BULK_AND_FLAGS */
 }
 
 #ifndef NO_NDO_XDP_FLUSH
@@ -12380,7 +12413,7 @@ bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			/* only support first port */
 			if (hw->bus.func != 0)
 				break;
-			/* fall through */
+			fallthrough;
 		case IXGBE_SUBDEV_ID_82599_SP_560FLR:
 		case IXGBE_SUBDEV_ID_82599_SFP:
 		case IXGBE_SUBDEV_ID_82599_RNDC:

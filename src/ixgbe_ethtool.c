@@ -3082,7 +3082,13 @@ static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 #endif /* HAVE_ETHTOOL_SET_PHYS_ID */
 
 static int ixgbe_get_coalesce(struct net_device *netdev,
+#ifdef HAVE_ETHTOOL_COALESCE_EXTACK
+			      struct ethtool_coalesce *ec,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
+#else
 			      struct ethtool_coalesce *ec)
+#endif
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
@@ -3138,7 +3144,13 @@ static bool ixgbe_update_rsc(struct ixgbe_adapter *adapter)
 }
 
 static int ixgbe_set_coalesce(struct net_device *netdev,
+#ifdef HAVE_ETHTOOL_COALESCE_EXTACK
+			      struct ethtool_coalesce *ec,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
+#else
 			      struct ethtool_coalesce *ec)
+#endif
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	int i;
@@ -3600,11 +3612,11 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 	switch (cmd->flow_type) {
 	case TCP_V4_FLOW:
 		cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-		/* fall through */
+		fallthrough;
 	case UDP_V4_FLOW:
 		if (adapter->flags2 & IXGBE_FLAG2_RSS_FIELD_IPV4_UDP)
 			cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-		/* fall through */
+		fallthrough;
 	case SCTP_V4_FLOW:
 	case AH_ESP_V4_FLOW:
 	case AH_V4_FLOW:
@@ -3614,11 +3626,11 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 		break;
 	case TCP_V6_FLOW:
 		cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-		/* fall through */
+		fallthrough;
 	case UDP_V6_FLOW:
 		if (adapter->flags2 & IXGBE_FLAG2_RSS_FIELD_IPV6_UDP)
 			cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-		/* fall through */
+		fallthrough;
 	case SCTP_V6_FLOW:
 	case AH_ESP_V6_FLOW:
 	case AH_V6_FLOW:
@@ -3770,7 +3782,7 @@ static int ixgbe_flowspec_to_flow_type(struct ethtool_rx_flow_spec *fsp,
 				*flow_type = IXGBE_ATR_FLOW_TYPE_IPV4;
 				break;
 			}
-			/* fall through */
+			fallthrough;
 		default:
 			return 0;
 		}
@@ -4321,8 +4333,14 @@ static unsigned int ixgbe_max_channels(struct ixgbe_adapter *adapter)
 			max_combined = 16;
 		}
 	} else if (adapter->atr_sample_rate) {
-		/* support up to 64 queues with ATR */
-		max_combined = IXGBE_MAX_FDIR_INDICES;
+		/* support up to MAX FDIR or num proc queues with ATR */
+		u8 numcpus = num_possible_cpus();
+
+		if (numcpus > IXGBE_MAX_FDIR_INDICES) {
+			max_combined = IXGBE_MAX_FDIR_INDICES;
+		} else {
+			max_combined = numcpus;
+		}
 	} else {
 		/* support up to max allowed queues with RSS */
 		max_combined = ixgbe_max_rss_indices(adapter);
@@ -4689,9 +4707,9 @@ static int ixgbe_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 	flags2 &= ~IXGBE_FLAG2_AUTO_DISABLE_VF;
 	if (priv_flags & IXGBE_PRIV_FLAGS_AUTO_DISABLE_VF) {
 		if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
-			/* Reset master abort counter */
+			/* Reset primary abort counter */
 			for (i = 0; i < adapter->num_vfs; i++)
-				adapter->vfinfo[i].master_abort_count = 0;
+				adapter->vfinfo[i].primary_abort_count = 0;
 
 			flags2 |= IXGBE_FLAG2_AUTO_DISABLE_VF;
 		} else {

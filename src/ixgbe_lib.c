@@ -315,7 +315,9 @@ static void ixgbe_cache_ring_register(struct ixgbe_adapter *adapter)
 static int ixgbe_xdp_queues(struct ixgbe_adapter *adapter)
 {
 #ifdef HAVE_XDP_SUPPORT
-	return adapter->xdp_prog ? nr_cpu_ids : 0;
+	int queues = min_t(int, IXGBE_MAX_XDP_QS, nr_cpu_ids);
+
+	return adapter->xdp_prog ? queues : 0;
 #else
 	return 0;
 #endif
@@ -1035,6 +1037,8 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		ring->queue_index = xdp_idx;
 		set_ring_xdp(ring);
 
+		spin_lock_init(&ring->tx_lock);
+
 		/* assign ring to adapter */
 		adapter->xdp_ring[xdp_idx] = ring;
 
@@ -1113,6 +1117,9 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 		else
 			adapter->tx_ring[ring->queue_index] = NULL;
 	}
+
+	if (static_key_enabled((struct static_key *)&ixgbe_xdp_locking_key))
+		static_branch_dec(&ixgbe_xdp_locking_key);
 
 	ixgbe_for_each_ring(ring, q_vector->rx)
 		adapter->rx_ring[ring->queue_index] = NULL;

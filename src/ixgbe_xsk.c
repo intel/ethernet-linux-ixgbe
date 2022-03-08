@@ -270,6 +270,7 @@ static int ixgbe_run_xdp_zc(struct ixgbe_adapter *adapter,
 {
 	int err, result = IXGBE_XDP_PASS;
 	struct bpf_prog *xdp_prog;
+	struct ixgbe_ring *ring;
 	struct xdp_frame *xdpf;
 	u32 act;
 
@@ -288,7 +289,16 @@ static int ixgbe_run_xdp_zc(struct ixgbe_adapter *adapter,
 			result = IXGBE_XDP_CONSUMED;
 			break;
 		}
-		result = ixgbe_xmit_xdp_ring(adapter, xdpf);
+		ring = ixgbe_determine_xdp_ring(adapter);
+		if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+			spin_lock(&ring->tx_lock);
+#ifdef HAVE_XDP_FRAME_STRUCT
+		result = ixgbe_xmit_xdp_ring(ring, xdpf);
+#else
+		result = ixgbe_xmit_xdp_ring(ring, xdp);
+#endif /* HAVE_XDP_FRAME_STRUCT */
+		if (static_branch_unlikely(&ixgbe_xdp_locking_key))
+			spin_unlock(&ring->tx_lock);
 		break;
 	case XDP_REDIRECT:
 		err = xdp_do_redirect(rx_ring->netdev, xdp, xdp_prog);
@@ -296,10 +306,11 @@ static int ixgbe_run_xdp_zc(struct ixgbe_adapter *adapter,
 		break;
 	default:
 		bpf_warn_invalid_xdp_action(act);
-		/* fallthrough */
+		fallthrough;
 	case XDP_ABORTED:
 		trace_xdp_exception(rx_ring->netdev, xdp_prog, act);
 		/* fallthrough -- handle aborts by dropping packet */
+		fallthrough;
 	case XDP_DROP:
 		result = IXGBE_XDP_CONSUMED;
 		break;
@@ -747,13 +758,9 @@ int ixgbe_clean_rx_irq_zc(struct ixgbe_q_vector *q_vector,
 		xdp_do_flush_map();
 
 	if (xdp_xmit & IXGBE_XDP_TX) {
-		struct ixgbe_ring *ring = adapter->xdp_ring[smp_processor_id()];
+		struct ixgbe_ring *ring = ixgbe_determine_xdp_ring(adapter);
 
-		/* Force memory writes to complete before letting h/w
-		 * know there are new descriptors to fetch.
-		 */
-		wmb();
-		writel(ring->next_to_use, ring->tail);
+		ixgbe_xdp_ring_update_tail_locked(ring);
 	}
 
 	u64_stats_update_begin(&rx_ring->syncp);
@@ -806,6 +813,7 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 	union ixgbe_adv_tx_desc *tx_desc = NULL;
 	u16 ntu = xdp_ring->next_to_use;
 	struct ixgbe_tx_buffer *tx_bi;
+	bool work_done = true;
 #ifdef XSK_UMEM_RETURNS_XDP_DESC
 	struct xdp_desc desc;
 #endif
@@ -816,8 +824,11 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 #endif
 
 	while (budget-- > 0) {
-		if (unlikely(!netif_carrier_ok(xdp_ring->netdev)))
+		if (unlikely(!ixgbe_desc_unused(xdp_ring) ||
+			     !netif_carrier_ok(xdp_ring->netdev))) {
+			work_done = false;
 			break;
+		}
 
 #ifdef XSK_UMEM_RETURNS_XDP_DESC
 		if (!xsk_tx_peek_desc(xdp_ring->xsk_pool, &desc))
@@ -872,12 +883,13 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 		ntu++;
 		if (ntu == xdp_ring->count)
 			ntu = 0;
+		xdp_ring->next_to_use = ntu;
+
 		sent_frames++;
 		total_bytes += tx_bi->bytecount;
 	}
 
 	if (tx_desc) {
-		xdp_ring->next_to_use = ntu;
 		/* set RS bit for the last frame and bump tail ptr */
 		cmd_type |= IXGBE_TXD_CMD_RS;
 		tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
@@ -894,7 +906,7 @@ static bool ixgbe_xmit_zc(struct ixgbe_ring *xdp_ring, unsigned int budget)
 
 	}
 
-	return budget > 0;
+	return (budget > 0) && work_done;
 }
 
 static void ixgbe_clean_xdp_tx_buffer(struct ixgbe_ring *tx_ring,

@@ -550,7 +550,7 @@ static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf
 			 */
 			if (pf_max_frame > ETH_FRAME_LEN)
 				break;
-			/* fall through */
+			fallthrough;
 		default:
 			/* If the PF or VF are running w/ jumbo frames enabled
 			 * we need to shut down the VF Rx path as we cannot
@@ -1860,7 +1860,21 @@ static void ixgbe_set_vf_rx_tx(struct ixgbe_adapter *adapter, int vf)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 reg_cur_tx, reg_cur_rx, reg_req_tx, reg_req_rx;
 	u32 reg_offset, vf_shift;
-	bool permanent_disabled = false;
+
+	vf_shift = vf % 32;
+	reg_offset = vf / 32;
+
+	reg_cur_tx = IXGBE_READ_REG(hw, IXGBE_VFTE(reg_offset));
+	reg_cur_rx = IXGBE_READ_REG(hw, IXGBE_VFRE(reg_offset));
+
+	if (adapter->vfinfo[vf].link_enable) {
+		reg_req_tx = reg_cur_tx | 1 << vf_shift;
+		reg_req_rx = reg_cur_rx | 1 << vf_shift;
+
+	} else {
+		reg_req_tx = reg_cur_tx & ~(1 << vf_shift);
+		reg_req_rx = reg_cur_rx & ~(1 << vf_shift);
+	}
 
 	/*
 	 * The 82599 cannot support a mix of jumbo and non-jumbo PF/VFs.
@@ -1877,22 +1891,7 @@ static void ixgbe_set_vf_rx_tx(struct ixgbe_adapter *adapter, int vf)
 #endif /* CONFIG_FCOE */
 
 		if (pf_max_frame > ETH_FRAME_LEN)
-			permanent_disabled = true;
-	}
-
-	vf_shift = vf % 32;
-	reg_offset = vf / 32;
-
-	reg_cur_tx = IXGBE_READ_REG(hw, IXGBE_VFTE(reg_offset));
-	reg_cur_rx = IXGBE_READ_REG(hw, IXGBE_VFRE(reg_offset));
-
-	if (adapter->vfinfo[vf].link_enable && !permanent_disabled) {
-		reg_req_tx = reg_cur_tx | 1 << vf_shift;
-		reg_req_rx = reg_cur_rx | 1 << vf_shift;
-
-	} else {
-		reg_req_tx = reg_cur_tx & ~(1 << vf_shift);
-		reg_req_rx = reg_cur_rx & ~(1 << vf_shift);
+			reg_req_rx = reg_cur_rx & ~(1 << vf_shift);
 	}
 
 	/* Enable/Disable particular VF */

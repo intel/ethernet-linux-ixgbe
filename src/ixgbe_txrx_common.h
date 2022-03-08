@@ -12,15 +12,15 @@
 #define IXGBE_XDP_TX		BIT(1)
 #define IXGBE_XDP_REDIR		BIT(2)
 
+void ixgbe_xdp_ring_update_tail(struct ixgbe_ring *ring);
+void ixgbe_xdp_ring_update_tail_locked(struct ixgbe_ring *ring);
+
 #ifdef HAVE_XDP_SUPPORT
 #ifdef HAVE_XDP_FRAME_STRUCT
-int ixgbe_xmit_xdp_ring(struct ixgbe_adapter *adapter,
-			struct xdp_frame *xdpf);
+int ixgbe_xmit_xdp_ring(struct ixgbe_ring *ring, struct xdp_frame *xdpf);
 #else
-int ixgbe_xmit_xdp_ring(struct ixgbe_adapter *adapter,
-			struct xdp_buff *xdp);
+int ixgbe_xmit_xdp_ring(struct ixgbe_ring *ring, struct xdp_buff *xdp);
 #endif
-void ixgbe_xdp_ring_update_tail(struct ixgbe_ring *ring);
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 void ixgbe_txrx_ring_disable(struct ixgbe_adapter *adapter, int ring);
 void ixgbe_txrx_ring_enable(struct ixgbe_adapter *adapter, int ring);

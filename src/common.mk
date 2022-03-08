@@ -104,6 +104,7 @@ CSP :=  ${KOBJ}/include/generated/autoconf.h \
 
 # System.map Search Path (for depmod)
 MSP := ${KSRC}/System.map \
+       /usr/lib/debug/boot/System.map-${BUILD_KERNEL} \
        /boot/System.map-${BUILD_KERNEL}
 
 # prune the lists down to only files that exist
@@ -261,6 +262,53 @@ endif
 endef
 minimum_kver_check = $(eval $(call _minimum_kver_check,${1},${2},${3}))
 
+#############################
+# kcompat definitions setup #
+#############################
+
+# In most cases, kcompat flags can be checked within the driver source files
+# using simple CPP checks. However, it may be necessary to check for a flag
+# value within the Makefile for some specific edge cases. For example, if an
+# entire feature ought to be excluded on some kernels due to missing
+# functionality.
+#
+# To support this, kcompat_defs.h is compiled and converted into a word list
+# that can be checked to determine whether a given kcompat feature flag will
+# be defined for this kernel.
+#
+# KCOMPAT_DEFINITIONS holds the set of all macros which are defined. Note
+# this does include a large number of standard/builtin definitions.
+#
+# Use is_kcompat_defined as a $(call) function to check whether a given flag
+# is defined or undefined. For example:
+#
+#   ifeq ($(call is_kcompat_defined,HAVE_FEATURE_FLAG),1)
+#
+#   ifneq ($(call is_kcompat_defined,HAVE_FEATURE_FLAG),1)
+#
+# The is_kcompat_defined function returns 1 if the macro name is defined,
+# and the empty string otherwise.
+#
+# There is no mechanism to extract the value of the kcompat definition.
+# Supporting this would be non-trivial as Make does not have a map variable
+# type.
+#
+# Note that only the new layout is supported. Legacy definitions in
+# kcompat.h are not supported. If you need to check one of these, please
+# refactor it into the new layout.
+
+ifneq ($(wildcard ./kcompat_defs.h),)
+KCOMPAT_DEFINITIONS := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM \
+                                     -I${KOBJ}/include \
+                                     -I${KOBJ}/include/generated/uapi \
+                                     kcompat_defs.h | awk '{ print $$2 }')
+
+is_kcompat_defined = $(if $(filter ${1},${KCOMPAT_DEFINITIONS}),1,)
+else
+KCOMPAT_DEFINITIONS :=
+is_kcompat_defined =
+endif
+
 ################
 # Manual Pages #
 ################
@@ -337,7 +385,8 @@ export INSTALL_AUX_DIR ?= updates/drivers/net/ethernet/intel/auxiliary
 # necessary to ensure the relevant files get put in place.
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_install
-	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/Module.symvers
+	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/auxiliary.symvers
+	install -d ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}
 	mv -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/auxiliary.ko \
 	      ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/auxiliary.ko
 	install -D -m 644 linux/auxiliary_bus.h ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
@@ -348,7 +397,7 @@ endif
 
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_uninstall
-	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/Module.symvers
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/auxiliary.symvers
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/auxiliary.ko
 	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
 endef

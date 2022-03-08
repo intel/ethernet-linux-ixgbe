@@ -1711,7 +1711,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	case 0x0000:
 		/* mask VLAN ID */
 		fdirm |= IXGBE_FDIRM_VLANID;
-		/* fall through */
+		fallthrough;
 	case 0x0FFF:
 		/* mask VLAN priority */
 		fdirm |= IXGBE_FDIRM_VLANP;
@@ -1719,7 +1719,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	case 0xE000:
 		/* mask VLAN ID only */
 		fdirm |= IXGBE_FDIRM_VLANID;
-		/* fall through */
+		fallthrough;
 	case 0xEFFF:
 		/* no VLAN fields masked */
 		break;
@@ -1732,7 +1732,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	case 0x0000:
 		/* Mask Flex Bytes */
 		fdirm |= IXGBE_FDIRM_FLEX;
-		/* fall through */
+		fallthrough;
 	case 0xFFFF:
 		break;
 	default:
@@ -2001,7 +2001,7 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 			hw_dbg(hw, " Error on src/dst port\n");
 			return IXGBE_ERR_CONFIG;
 		}
-		/* fall through */
+		fallthrough;
 	case IXGBE_ATR_FLOW_TYPE_TCPV4:
 	case IXGBE_ATR_FLOW_TYPE_TUNNELED_TCPV4:
 	case IXGBE_ATR_FLOW_TYPE_UDPV4:

@@ -2,7 +2,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ==================================================================
 
-August 13, 2021
+November 15, 2021
 
 Contents
 --------
@@ -319,9 +319,8 @@ Note: DCA is not supported on X550-based adapters.
 
 Command Line Parameters
 =======================
-If the driver is built as a module, the following optional parameters are used
-by entering them on the command line with the modprobe command using this
-syntax:
+If the driver is built as a module, enter optional parameters on the command
+line with the following syntax:
 
 # modprobe ixgbe [<option>=<VAL1>,<VAL2>,...]
 
@@ -332,14 +331,9 @@ For example:
 # modprobe ixgbe InterruptThrottleRate=16000,16000
 
 In this case, there are two network ports supported by ixgbe in the system.
-The default value for each parameter is generally the recommended setting,
+
+- The default value for each parameter is generally the recommended setting,
 unless otherwise noted.
-
-NOTE: For more information about the command line parameters, see the
-application note at: http://www.intel.com/design/network/applnots/ap450.htm.
-
-NOTE: A descriptor describes a data buffer and attributes related to the data
-buffer. This information is accessed by the hardware.
 
 
 RSS
@@ -752,7 +746,7 @@ the following:
 
 Where N is a combination of the following.
 100baseTFull   0x008
-1000baseTFull   0x020
+1000baseTFull  0x020
 2500baseTFull  0x800000000000
 5000baseTFull  0x1000000000000
 10000baseTFull 0x1000
@@ -761,6 +755,14 @@ For example, to turn on all modes:
 # ethtool -s <ethX> advertise 0x1800000001028
 
 For more details please refer to the ethtool man page.
+
+NOTE: On Linux systems with INTERFACES(5), this can be specified as a pre-up
+command in /etc/network/interfaces so that the interface is always brought up
+with NBASE-T support. For example:
+
+# iface <ethX> inet dhcp
+    pre-up ethtool -s <ethX> advertise 0x1800000001028 || true
+
 Caution: Only experienced network administrators should force speed and duplex
 or change autonegotiation advertising manually. The settings at the switch must
 always match the adapter settings. Adapter performance may suffer or your

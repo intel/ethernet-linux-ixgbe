@@ -270,7 +270,7 @@ struct vf_data_storage {
 	u8 trusted;
 	int xcast_mode;
 	unsigned int vf_api;
-	u8 master_abort_count;
+	u8 primary_abort_count;
 };
 
 struct vf_macvlans {
@@ -482,6 +482,7 @@ struct ixgbe_ring {
 		struct ixgbe_tx_queue_stats tx_stats;
 		struct ixgbe_rx_queue_stats rx_stats;
 	};
+	spinlock_t tx_lock;		/* used in XDP mode */
 #ifdef HAVE_XDP_BUFF_RXQ
 	struct xdp_rxq_info xdp_rxq;
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
@@ -523,7 +524,9 @@ enum ixgbe_ring_f_enum {
 #define MAX_RX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #define MAX_TX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #endif /* CONFIG_FCOE */
-#define MAX_XDP_QUEUES  (IXGBE_MAX_FDIR_INDICES + 1)
+#define IXGBE_MAX_XDP_QS  (IXGBE_MAX_FDIR_INDICES + 1)
+
+DECLARE_STATIC_KEY_FALSE(ixgbe_xdp_locking_key);
 
 struct ixgbe_ring_feature {
 	u16 limit;	/* upper limit on feature indices */
@@ -818,7 +821,7 @@ struct ixgbe_therm_proc_data {
 #define IXGBE_TRY_LINK_TIMEOUT	(4 * HZ)
 #define IXGBE_SFP_POLL_JIFFIES	(2 * HZ)	/* SFP poll every 2 seconds */
 
-#define IXGBE_MASTER_ABORT_LIMIT	5
+#define IXGBE_PRIMARY_ABORT_LIMIT	5
 
 /* board specific private data structure */
 struct ixgbe_adapter {
@@ -932,7 +935,7 @@ struct ixgbe_adapter {
 
 	/* XDP */
 	int num_xdp_queues;
-	struct ixgbe_ring *xdp_ring[MAX_XDP_QUEUES];
+	struct ixgbe_ring *xdp_ring[IXGBE_MAX_XDP_QS];
 	unsigned long *af_xdp_zc_qps; /* tracks AF_XDP ZC enabled rings */
 
 	/* TX */
@@ -1125,6 +1128,22 @@ struct ixgbe_adapter {
 	u16 num_xsk_pools;
 #endif
 };
+
+static inline unsigned int ixgbe_determine_xdp_q_idx(unsigned int cpu)
+{
+	if (static_key_enabled((struct static_key *)&ixgbe_xdp_locking_key))
+		return cpu % IXGBE_MAX_XDP_QS;
+	else
+		return cpu;
+}
+
+static inline
+struct ixgbe_ring *ixgbe_determine_xdp_ring(struct ixgbe_adapter *adapter)
+{
+	unsigned int index = ixgbe_determine_xdp_q_idx(smp_processor_id());
+
+	return adapter->xdp_ring[index];
+}
 
 static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 {

@@ -1093,7 +1093,7 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 			adapter->flags |= IXGBE_FLAG_RX_HWTSTAMP_ENABLED;
 			break;
 		}
-		/* fall through */
+		fallthrough;
 	default:
 		/* register RXMTRL must be set in order to do V1 packets,
 		 * therefore it is not possible to time stamp both V1 Sync and
@@ -1283,7 +1283,7 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 			cc.mult = 3;
 			cc.shift = 2;
 		}
-		/* fallthrough */
+		fallthrough;
 	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X550:
 		cc.read = ixgbe_ptp_read_X550;

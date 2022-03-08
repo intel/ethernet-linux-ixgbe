@@ -1087,7 +1087,7 @@ int _kc_generic_mii_ioctl(struct mii_if_info *mii_if,
 	case SIOCDEVPRIVATE:	/* binary compat, remove in 2.5 */
 	case SIOCGMIIPHY:
 		mii_data->phy_id = mii_if->phy_id;
-		/* fall through */
+		fallthrough;
 
 	case SIOCDEVPRIVATE + 1:/* binary compat, remove in 2.5 */
 	case SIOCGMIIREG:
