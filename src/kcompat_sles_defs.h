@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2021 Intel Corporation. */
+/* Copyright(c) 1999 - 2022 Intel Corporation. */
 
 #ifndef _KCOMPAT_SLES_DEFS_H_
 #define _KCOMPAT_SLES_DEFS_H_
@@ -172,5 +172,12 @@
 #else /* >= 5.3.18-38 */
 #undef NEED_DEVLINK_FLASH_UPDATE_TIMEOUT_NOTIFY
 #endif /* 5.3.18-38 */
+
+/*****************************************************************************/
+#if (SLE_KERNEL_CODE < SLE_KERNEL_VERSION(5,14,21,9))
+#else /* >= 5.14.21-150400.9 */
+#undef NEED_DEVLINK_ALLOC_SETS_DEV
+#define HAVE_ETHTOOL_COALESCE_EXTACK
+#endif /* 5.14.21-150400.9 */
 
 #endif /* _KCOMPAT_SLES_DEFS_H_ */

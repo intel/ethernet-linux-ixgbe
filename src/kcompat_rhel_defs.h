@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2021 Intel Corporation. */
+/* Copyright(c) 1999 - 2022 Intel Corporation. */
 
 #ifndef _KCOMPAT_RHEL_DEFS_H_
 #define _KCOMPAT_RHEL_DEFS_H_
@@ -68,6 +68,7 @@
 #define HAVE_TCF_EXTS_FOR_EACH_ACTION
 /* 7.7 undefs it due to a backport in 7.7+, but 8.0 needs it still */
 #define NEED_NETDEV_TX_SENT_QUEUE
+#define HAVE_DEVLINK_REGIONS
 #endif /* 8.0 */
 
 /*****************************************************************************/
@@ -78,7 +79,6 @@
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
 #define HAVE_DEVLINK_PARAMS_PUBLISH
 #undef NEED_NETDEV_TX_SENT_QUEUE
-#define HAVE_DEVLINK_HEALTH
 #endif /* 8.1 */
 
 /*****************************************************************************/
@@ -91,6 +91,7 @@
 #undef NEED_FLOW_INDR_BLOCK_CB_REGISTER
 #define HAVE_FLOW_INDR_BLOCK_LOCK
 #define HAVE_DEVLINK_PORT_ATTRS_SET_SWITCH_ID
+#define HAVE_DEVLINK_HEALTH
 #endif /* 8.2 */
 
 /*****************************************************************************/
@@ -99,6 +100,8 @@
 #undef NEED_CPU_LATENCY_QOS_RENAME
 #define HAVE_DEVLINK_HEALTH_OPS_EXTACK
 #define HAVE_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER
+#define HAVE_DEVLINK_REGION_OPS_SNAPSHOT
+#undef NEED_DEVLINK_REGION_CREATE_OPS
 #endif /* 8.3 */
 
 /*****************************************************************************/
@@ -116,9 +119,23 @@
 #else /* >= 8.5 */
 #define HAVE_DEVLINK_FLASH_UPDATE_PARAMS
 #define HAVE_DEVLINK_FLASH_UPDATE_PARAMS_FW
+#define HAVE_DEVLINK_REGION_OPS_SNAPSHOT_OPS
 #undef HAVE_DEVLINK_FLASH_UPDATE_BEGIN_END_NOTIFY
 #undef HAVE_XDP_BUFF_RXQ
 #undef HAVE_NAPI_BUSY_LOOP
 #endif /* 8.5 */
+
+/*****************************************************************************/
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,6))
+#else /* >= 8.6 */
+#define HAVE_ETHTOOL_COALESCE_EXTACK
+#endif /* 8.6 */
+
+/*****************************************************************************/
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))
+#else /* >= 9.0 */
+#define HAVE_XDP_BUFF_RXQ
+#undef HAVE_ETHTOOL_COALESCE_EXTACK
+#endif /* 9.0 */
 
 #endif /* _KCOMPAT_RHEL_DEFS_H_ */

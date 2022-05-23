@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2021 Intel Corporation. */
+/* Copyright(c) 1999 - 2022 Intel Corporation. */
 
 #ifndef _KCOMPAT_STD_DEFS_H_
 #define _KCOMPAT_STD_DEFS_H_
@@ -109,6 +109,8 @@
 #else /* >= 4,19,0 */
 #undef HAVE_TCF_EXTS_TO_LIST
 #define HAVE_TCF_EXTS_FOR_EACH_ACTION
+#define HAVE_DEVLINK_REGIONS
+#define HAVE_TC_ETF_QOPT_OFFLOAD
 #endif /* 4,19,0 */
 
 /*****************************************************************************/
@@ -170,6 +172,7 @@
 #define NEED_CPU_LATENCY_QOS_RENAME
 #else /* >= 5.7.0 */
 #define HAVE_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER
+#define HAVE_DEVLINK_REGION_OPS_SNAPSHOT
 #endif /* 5.7.0 */
 
 /*****************************************************************************/
@@ -231,13 +234,24 @@
 #else /* >= 5.15.0 */
 #define HAVE_ETHTOOL_COALESCE_EXTACK
 #define HAVE_NDO_ETH_IOCTL
+#define HAVE_DEVICE_IN_MDEV_PARENT_OPS
 #endif /* 5.15.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,16,0))
 #else /* >= 5.16.0 */
+#undef HAVE_PASID_SUPPORT
 #define HAVE_DEVLINK_SET_FEATURES
 #define HAVE_DEVLINK_NOTIFY_REGISTER
 #endif /* 5.16.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,17,0))
+#define NEED_NO_NETDEV_PROG_XDP_WARN_ACTION
+#define NEED_ETH_HW_ADDR_SET
+#else /* >=5.17.0*/
+#define HAVE_XDP_DO_FLUSH
+#define HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+#endif /* 5.17.0 */
 
 #endif /* _KCOMPAT_STD_DEFS_H_ */

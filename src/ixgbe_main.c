@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2021 Intel Corporation. */
+/* Copyright(c) 1999 - 2022 Intel Corporation. */
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.14.6" \
+#define DRV_VERSION	"5.15.2" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -83,7 +83,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2021 Intel Corporation.";
+static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2022 Intel Corporation.";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -2153,7 +2153,7 @@ ixgbe_run_xdp(struct ixgbe_adapter __maybe_unused *adapter,
 		}
 		break;
 	default:
-		bpf_warn_invalid_xdp_action(act);
+		bpf_warn_invalid_xdp_action(rx_ring->netdev, xdp_prog, act);
 		fallthrough;
 	case XDP_ABORTED:
 		trace_xdp_exception(rx_ring->netdev, xdp_prog, act);
@@ -8708,8 +8708,7 @@ static void ixgbe_watchdog_update_link(struct ixgbe_adapter *adapter)
 
 #endif
 	if (link_up && !((adapter->flags & IXGBE_FLAG_DCB_ENABLED) && pfc_en)) {
-		if (hw->phy.media_type == ixgbe_media_type_copper &&
-		    (ixgbe_device_supports_autoneg_fc(hw)))
+		if (hw->mac.type == ixgbe_mac_X550)
 			ixgbe_setup_fc(hw);
 		hw->mac.ops.fc_enable(hw);
 
@@ -13600,6 +13599,36 @@ static void ixgbe_io_resume(struct pci_dev *pdev)
 	rtnl_unlock();
 }
 
+#ifdef CONFIG_PM
+#ifdef HAVE_PCI_ERROR_HANDLER_RESET_NOTIFY
+static void ixgbe_io_reset_notify(struct pci_dev *pdev, bool prepare)
+{
+	struct device *dev = pci_dev_to_dev(pdev);
+
+	if (prepare)
+		ixgbe_suspend(dev);
+	else
+		ixgbe_resume(dev);
+}
+#endif
+
+#ifdef HAVE_PCI_ERROR_HANDLER_RESET_PREPARE
+static void pci_io_reset_prepare(struct pci_dev *pdev)
+{
+	struct device *dev = pci_dev_to_dev(pdev);
+
+	ixgbe_suspend(dev);
+}
+
+static void pci_io_reset_done(struct pci_dev *pdev)
+{
+	struct device *dev = pci_dev_to_dev(pdev);
+
+	ixgbe_resume(dev);
+}
+#endif
+#endif
+
 #ifdef HAVE_CONST_STRUCT_PCI_ERROR_HANDLERS
 static const struct pci_error_handlers ixgbe_err_handler = {
 #else
@@ -13607,6 +13636,15 @@ static struct pci_error_handlers ixgbe_err_handler = {
 #endif
 	.error_detected = ixgbe_io_error_detected,
 	.slot_reset = ixgbe_io_slot_reset,
+#ifdef CONFIG_PM
+#ifdef HAVE_PCI_ERROR_HANDLER_RESET_NOTIFY
+	.reset_notify = ixgbe_io_reset_notify,
+#endif
+#ifdef HAVE_PCI_ERROR_HANDLER_RESET_PREPARE
+	.reset_prepare = pci_io_reset_prepare,
+	.reset_done = pci_io_reset_done,
+#endif
+#endif
 	.resume = ixgbe_io_resume,
 };
 #endif /* HAVE_PCI_ERS */

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2021 Intel Corporation. */
+/* Copyright(c) 1999 - 2022 Intel Corporation. */
 
 #ifndef _KCOMPAT_IMPL_H_
 #define _KCOMPAT_IMPL_H_
@@ -822,5 +822,28 @@ cpu_latency_qos_remove_request(struct pm_qos_request *req)
 #ifdef NEED_NETDEV_XDP_STRUCT
 #define netdev_bpf netdev_xdp
 #endif /* NEED_NETDEV_XDP_STRUCT */
+
+#ifdef NEED_NO_NETDEV_PROG_XDP_WARN_ACTION
+#ifdef HAVE_XDP_SUPPORT
+#include <linux/filter.h>
+static inline void
+_kc_bpf_warn_invalid_xdp_action(__maybe_unused struct net_device *dev,
+				__maybe_unused struct bpf_prog *prog, u32 act)
+{
+	bpf_warn_invalid_xdp_action(act);
+}
+
+#define bpf_warn_invalid_xdp_action(dev, prog, act) \
+	_kc_bpf_warn_invalid_xdp_action(dev, prog, act)
+#endif /* HAVE_XDP_SUPPORT */
+#endif /* HAVE_NETDEV_PROG_XDP_WARN_ACTION */
+
+#ifdef NEED_ETH_HW_ADDR_SET
+void _kc_eth_hw_addr_set(struct net_device *dev, const void *addr);
+#ifndef eth_hw_addr_set
+#define eth_hw_addr_set(dev, addr) \
+	_kc_eth_hw_addr_set(dev, addr)
+#endif /* eth_hw_addr_set */
+#endif /* NEED_ETH_HW_ADDR_SET */
 
 #endif /* _KCOMPAT_IMPL_H_ */

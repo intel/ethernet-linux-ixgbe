@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.14.6
+Version: 5.15.2
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -18,6 +18,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 %define pciids    %find %{_pciids}
 %define pcitable  %find %{_pcitable}
 Requires: kernel, findutils, gawk, bash
+%define _unpackaged_files_terminate_build 0
 %define need_aux %(echo 0)
 %if (%need_aux == 2)
 Requires: auxiliary

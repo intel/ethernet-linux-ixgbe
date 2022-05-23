@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2021 Intel Corporation. */
+/* Copyright(c) 1999 - 2022 Intel Corporation. */
 
 #include "ixgbe.h"
 #include "kcompat.h"
@@ -1066,7 +1066,7 @@ out:
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29) )
-static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
+static void __kc_pci_set_main(struct pci_dev *pdev, bool enable)
 {
 	u16 old_cmd, cmd;
 
@@ -1076,7 +1076,7 @@ static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
 	else
 		cmd = old_cmd & ~PCI_COMMAND_MASTER;
 	if (cmd != old_cmd) {
-		dev_dbg(pci_dev_to_dev(pdev), "%s bus mastering\n",
+		dev_dbg(pci_dev_to_dev(pdev), "%s bus DMA control\n",
 			enable ? "enabling" : "disabling");
 		pci_write_config_word(pdev, PCI_COMMAND, cmd);
 	}
@@ -1085,9 +1085,9 @@ static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
 #endif
 }
 
-void _kc_pci_clear_master(struct pci_dev *dev)
+void _kc_pci_clear_main(struct pci_dev *dev)
 {
-	__kc_pci_set_master(dev, false);
+	__kc_pci_set_main(dev, false);
 }
 #endif /* < 2.6.29 */
 
@@ -3031,3 +3031,11 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev)
 	return dsn;
 }
 #endif /* 5.7.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,17,0))
+void _kc_eth_hw_addr_set(struct net_device *dev, const void *addr)
+{
+	ether_addr_copy(dev->dev_addr, addr);
+}
+#endif /* 5.17.0 */
