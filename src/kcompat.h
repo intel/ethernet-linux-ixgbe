@@ -6203,11 +6203,6 @@ pci_release_mem_regions(struct pci_dev *pdev)
 #define HAVE_ETHTOOL_NEW_1G_BITS
 #define HAVE_ETHTOOL_NEW_10G_BITS
 #endif /* RHEL7.4+ */
-#if (!(SLE_VERSION_CODE) && !(RHEL_RELEASE_CODE)) || \
-     SLE_VERSION_CODE && (SLE_VERSION_CODE <= SLE_VERSION(12,3,0)) || \
-     RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(7,5))
-#define time_is_before_jiffies64(a)	time_after64(get_jiffies_64(), a)
-#endif /* !SLE_VERSION_CODE && !RHEL_RELEASE_CODE || (SLES <= 12.3.0) || (RHEL <= 7.5) */
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))
 static inline void bitmap_from_u64(unsigned long *dst, u64 mask)
 {
@@ -6816,7 +6811,6 @@ static inline void __kc_metadata_dst_free(void *md_dst)
 #define HAVE_NETDEV_SB_DEV
 #define HAVE_TCF_VLAN_TPID
 #define HAVE_RHASHTABLE_TYPES
-#define HAVE_DEVLINK_PARAMS
 #endif /* 4.19.0 */
 
 /*****************************************************************************/
@@ -6897,7 +6891,6 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 #if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))
 #define HAVE_TC_INDIR_BLOCK
 #endif /* RHEL 8.2 */
-#define INDIRECT_CALLABLE_DECLARE(x) x
 #else /* >= 5.0.0 */
 #define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
 #define HAVE_PTP_CLOCK_INFO_GETTIMEX64
@@ -6905,7 +6898,6 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
 #define HAVE_GENEVE_TYPE
 #define HAVE_TC_INDIR_BLOCK
-#define HAVE_INDIRECT_CALL_WRAPPER_HEADER
 #endif /* 5.0.0 */
 
 /*****************************************************************************/
@@ -7199,8 +7191,12 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0))
 #if !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4))) && \
     !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(15,3,0))
+/* (RHEL < 8.4) || (SLE < 15.3) */
 #define xdp_convert_buff_to_frame convert_to_xdp_frame
-#endif /* (RHEL < 8.4) || (SLE < 15.3) */
+#elif (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4)))
+/* RHEL >= 8.4 */
+#define HAVE_XDP_BUFF_FRAME_SZ
+#endif
 #define flex_array_size(p, member, count) \
 	array_size(count, sizeof(*(p)->member) + __must_be_array((p)->member))
 #if (!(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(15,3,0)))
@@ -7285,9 +7281,12 @@ _kc_xsk_buff_dma_sync_for_cpu(struct xdp_buff *xdp,
 
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0))
-#ifdef HAVE_XDP_BUFF_RXQ
+#ifdef HAVE_XDP_RXQ_INFO_REG_3_PARAMS
+#ifdef HAVE_XDP_BUFF_IN_XDP_H
 #include <net/xdp.h>
+#else
+#include <linux/filter.h>
+#endif /* HAVE_XDP_BUFF_IN_XDP_H */
 static inline int
 _kc_xdp_rxq_info_reg(struct xdp_rxq_info *xdp_rxq, struct net_device *dev,
 		     u32 queue_index, unsigned int __always_unused napi_id)
@@ -7297,7 +7296,8 @@ _kc_xdp_rxq_info_reg(struct xdp_rxq_info *xdp_rxq, struct net_device *dev,
 
 #define xdp_rxq_info_reg(xdp_rxq, dev, queue_index, napi_id) \
 	_kc_xdp_rxq_info_reg(xdp_rxq, dev, queue_index, napi_id)
-#endif /* HAVE_XDP_BUFF_RXQ */
+#endif /* HAVE_XDP_RXQ_INFO_REG_3_PARAMS */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0))
 #ifdef HAVE_NAPI_BUSY_LOOP
 #ifdef CONFIG_NET_RX_BUSY_POLL
 #include <net/busy_poll.h>

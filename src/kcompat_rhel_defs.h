@@ -45,7 +45,10 @@
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6))
+#undef HAVE_XDP_BUFF_RXQ
+#undef HAVE_XDP_RXQ_INFO_REG_3_PARAMS
 #else /* >= 7.6 */
+#undef NEED_JIFFIES_64_TIME_IS_MACROS
 #undef NEED_TC_CLS_CAN_OFFLOAD_AND_CHAIN0
 #undef NEED_TC_SETUP_QDISC_MQPRIO
 #endif /* 7.6 */
@@ -69,6 +72,7 @@
 /* 7.7 undefs it due to a backport in 7.7+, but 8.0 needs it still */
 #define NEED_NETDEV_TX_SENT_QUEUE
 #define HAVE_DEVLINK_REGIONS
+#define HAVE_DEVLINK_PARAMS
 #endif /* 8.0 */
 
 /*****************************************************************************/
@@ -79,6 +83,8 @@
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
 #define HAVE_DEVLINK_PARAMS_PUBLISH
 #undef NEED_NETDEV_TX_SENT_QUEUE
+#undef NEED_INDIRECT_CALL_WRAPPER_MACROS
+#define HAVE_INDIRECT_CALL_WRAPPER_HEADER
 #endif /* 8.1 */
 
 /*****************************************************************************/
@@ -92,6 +98,7 @@
 #define HAVE_FLOW_INDR_BLOCK_LOCK
 #define HAVE_DEVLINK_PORT_ATTRS_SET_SWITCH_ID
 #define HAVE_DEVLINK_HEALTH
+#define HAVE_NETDEV_SB_DEV
 #endif /* 8.2 */
 
 /*****************************************************************************/
@@ -121,21 +128,27 @@
 #define HAVE_DEVLINK_FLASH_UPDATE_PARAMS_FW
 #define HAVE_DEVLINK_REGION_OPS_SNAPSHOT_OPS
 #undef HAVE_DEVLINK_FLASH_UPDATE_BEGIN_END_NOTIFY
-#undef HAVE_XDP_BUFF_RXQ
 #undef HAVE_NAPI_BUSY_LOOP
+#undef HAVE_XDP_RXQ_INFO_REG_3_PARAMS
 #endif /* 8.5 */
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,6))
 #else /* >= 8.6 */
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))
 #define HAVE_ETHTOOL_COALESCE_EXTACK
+#endif /* < 9.0 */
+#undef NEED_ETH_HW_ADDR_SET
 #endif /* 8.6 */
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))
 #else /* >= 9.0 */
 #define HAVE_XDP_BUFF_RXQ
-#undef HAVE_ETHTOOL_COALESCE_EXTACK
+#undef NEED_DEVLINK_ALLOC_SETS_DEV
+#undef HAVE_DEVLINK_PARAMS_PUBLISH
+#undef HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT
+#undef HAVE_DEVLINK_REGISTER_SETS_DEV
 #endif /* 9.0 */
 
 #endif /* _KCOMPAT_RHEL_DEFS_H_ */

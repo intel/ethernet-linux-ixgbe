@@ -838,12 +838,107 @@ _kc_bpf_warn_invalid_xdp_action(__maybe_unused struct net_device *dev,
 #endif /* HAVE_XDP_SUPPORT */
 #endif /* HAVE_NETDEV_PROG_XDP_WARN_ACTION */
 
+/* NEED_ETH_HW_ADDR_SET
+ *
+ * eth_hw_addr_set was added by upstream commit
+ * 48eab831ae8b ("net: create netdev->dev_addr assignment helpers")
+ *
+ * Using eth_hw_addr_set became required in 5.17, when the dev_addr field in
+ * the netdev struct was constified. See 48eab831ae8b ("net: create
+ * netdev->dev_addr assignment helpers")
+ */
 #ifdef NEED_ETH_HW_ADDR_SET
-void _kc_eth_hw_addr_set(struct net_device *dev, const void *addr);
-#ifndef eth_hw_addr_set
-#define eth_hw_addr_set(dev, addr) \
-	_kc_eth_hw_addr_set(dev, addr)
-#endif /* eth_hw_addr_set */
+static inline void eth_hw_addr_set(struct net_device *dev, const u8 *addr)
+{
+	ether_addr_copy(dev->dev_addr, addr);
+}
 #endif /* NEED_ETH_HW_ADDR_SET */
+
+#ifdef NEED_JIFFIES_64_TIME_IS_MACROS
+/* NEED_JIFFIES_64_TIME_IS_MACROS
+ *
+ * The jiffies64 time_is_* macros were introduced upstream by 3740dcdf8a77
+ * ("jiffies: add time comparison functions for 64 bit jiffies") in Linux 4.9.
+ *
+ * Support for 64-bit jiffies has been available since the initial import of
+ * Linux into git in 2005, so its safe to just implement the macros as-is
+ * here.
+ */
+#define time_is_before_jiffies64(a) time_after64(get_jiffies_64(), a)
+#define time_is_after_jiffies64(a) time_before64(get_jiffies_64(), a)
+#define time_is_before_eq_jiffies64(a) time_after_eq64(get_jiffies_64(), a)
+#define time_is_after_eq_jiffies64(a) time_before_eq64(get_jiffies_64(), a)
+#endif /* NEED_JIFFIES_64_TIME_IS_MACROS */
+
+#ifdef NEED_INDIRECT_CALL_WRAPPER_MACROS
+/* NEED_INDIRECT_CALL_WRAPPER_MACROS
+ *
+ * The INDIRECT_CALL_* macros were introduced upstream as upstream commit
+ * 283c16a2dfd3 ("indirect call wrappers: helpers to speed-up indirect calls
+ * of builtin") which landed in Linux 5.0
+ *
+ * These are easy to implement directly.
+ */
+#ifdef CONFIG_RETPOLINE
+#define INDIRECT_CALL_1(f, f1, ...)					\
+	({								\
+		likely(f == f1) ? f1(__VA_ARGS__) : f(__VA_ARGS__);	\
+	})
+#define INDIRECT_CALL_2(f, f2, f1, ...)					\
+	({								\
+		likely(f == f2) ? f2(__VA_ARGS__) :			\
+				  INDIRECT_CALL_1(f, f1, __VA_ARGS__);	\
+	})
+
+#define INDIRECT_CALLABLE_DECLARE(f)	f
+#define INDIRECT_CALLABLE_SCOPE
+#else /* !CONFIG_RETPOLINE */
+#define INDIRECT_CALL_1(f, f1, ...) f(__VA_ARGS__)
+#define INDIRECT_CALL_2(f, f2, f1, ...) f(__VA_ARGS__)
+#define INDIRECT_CALLABLE_DECLARE(f)
+#define INDIRECT_CALLABLE_SCOPE		static
+#endif /* CONFIG_RETPOLINE */
+#endif /* NEED_INDIRECT_CALL_WRAPPER_MACROS */
+
+#ifdef NEED_INDIRECT_CALL_3_AND_4
+/* NEED_INDIRECT_CALL_3_AND_4
+ * Support for the 3 and 4 call variants was added in upstream commit
+ * e678e9ddea96 ("indirect_call_wrapper: extend indirect wrapper to support up
+ * to 4 calls")
+ *
+ * These are easy to implement directly.
+ */
+
+#ifdef CONFIG_RETPOLINE
+#define INDIRECT_CALL_3(f, f3, f2, f1, ...)					\
+	({									\
+		likely(f == f3) ? f3(__VA_ARGS__) :				\
+				  INDIRECT_CALL_2(f, f2, f1, __VA_ARGS__);	\
+	})
+#define INDIRECT_CALL_4(f, f4, f3, f2, f1, ...)					\
+	({									\
+		likely(f == f4) ? f4(__VA_ARGS__) :				\
+				  INDIRECT_CALL_3(f, f3, f2, f1, __VA_ARGS__);	\
+	})
+#else /* !CONFIG_RETPOLINE */
+#define INDIRECT_CALL_3(f, f3, f2, f1, ...) f(__VA_ARGS__)
+#define INDIRECT_CALL_4(f, f4, f3, f2, f1, ...) f(__VA_ARGS__)
+#endif /* CONFIG_RETPOLINE */
+#endif /* NEED_INDIRECT_CALL_3_AND_4 */
+
+#ifdef NEED_EXPORT_INDIRECT_CALLABLE
+/* NEED_EXPORT_INDIRECT_CALLABLE
+ *
+ * Support for EXPORT_INDIRECT_CALLABLE was added in upstream commit
+ * 0053859496ba ("net: add EXPORT_INDIRECT_CALLABLE wrapper")
+ *
+ * These are easy to implement directly.
+ */
+#ifdef CONFIG_RETPOLINE
+#define EXPORT_INDIRECT_CALLABLE(f)	EXPORT_SYMBOL(f)
+#else
+#define EXPORT_INDIRECT_CALLABLE(f)
+#endif /* CONFIG_RETPOLINE */
+#endif /* NEED_EXPORT_INDIRECT_CALLABLE */
 
 #endif /* _KCOMPAT_IMPL_H_ */

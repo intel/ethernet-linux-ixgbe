@@ -1637,8 +1637,16 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 #endif
 }
 
+#ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+static void
+ixgbe_get_ringparam(struct net_device *netdev,
+		    struct ethtool_ringparam *ring,
+		    struct kernel_ethtool_ringparam __always_unused *ker,
+		    struct netlink_ext_ack __always_unused *extack)
+#else
 static void ixgbe_get_ringparam(struct net_device *netdev,
 				struct ethtool_ringparam *ring)
+#endif /* HAVE_ETHTOOL_EXTENDED_RINGPARAMS */
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
@@ -1652,8 +1660,16 @@ static void ixgbe_get_ringparam(struct net_device *netdev,
 	ring->rx_jumbo_pending = 0;
 }
 
+#ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+static int
+ixgbe_set_ringparam(struct net_device *netdev,
+		    struct ethtool_ringparam *ring,
+		    struct kernel_ethtool_ringparam __always_unused *ker,
+		    struct netlink_ext_ack __always_unused *extack)
+#else
 static int ixgbe_set_ringparam(struct net_device *netdev,
 			       struct ethtool_ringparam *ring)
+#endif /* HAVE_ETHTOOL_EXTENDED_RINGPARAMS */
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_ring *temp_ring;

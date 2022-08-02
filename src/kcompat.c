@@ -3031,11 +3031,3 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev)
 	return dsn;
 }
 #endif /* 5.7.0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,17,0))
-void _kc_eth_hw_addr_set(struct net_device *dev, const void *addr)
-{
-	ether_addr_copy(dev->dev_addr, addr);
-}
-#endif /* 5.17.0 */

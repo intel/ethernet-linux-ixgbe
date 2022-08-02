@@ -37,10 +37,9 @@ int ixgbe_xsk_umem_setup(struct ixgbe_adapter *adapter, struct xsk_buff_pool *um
 			 u16 qid);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 
-void ixgbe_zca_free(struct zero_copy_allocator *alloc, unsigned long handle);
-
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 void ixgbe_alloc_rx_buffers_zc(struct ixgbe_ring *rx_ring, u16 cleaned_count);
+void ixgbe_zca_free(struct zero_copy_allocator *alloc, unsigned long handle);
 #else
 bool ixgbe_alloc_rx_buffers_zc(struct ixgbe_ring *rx_ring, u16 cleaned_count);
 #endif

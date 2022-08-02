@@ -364,6 +364,7 @@ static void ixgbe_reuse_rx_buffer_zc(struct ixgbe_ring *rx_ring,
 	obi->skb = NULL;
 }
 
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 void ixgbe_zca_free(struct zero_copy_allocator *alloc, unsigned long handle)
 {
 	struct ixgbe_rx_buffer *bi;
@@ -391,6 +392,7 @@ void ixgbe_zca_free(struct zero_copy_allocator *alloc, unsigned long handle)
 
 	bi->handle = (u64)handle + rx_ring->xsk_pool->headroom;
 }
+#endif
 
 static bool ixgbe_alloc_buffer_zc(struct ixgbe_ring *rx_ring,
 				  struct ixgbe_rx_buffer *bi)

@@ -206,14 +206,16 @@ Once the VM shuts down, or otherwise releases the VF, the command will complete.
 Configuring SR-IOV for improved network security
 ------------------------------------------------
 In a virtualized environment, on Intel(R) Ethernet Network Adapters that
-support SR-IOV, the virtual function (VF) may be subject to malicious behavior.
+support SR-IOV or Intel(R) Scalable I/O Virtualization (Intel(R) Scalable IOV),
+the virtual function (VF) may be subject to malicious behavior.
 Software-generated layer two frames, like IEEE 802.3x (link flow control), IEEE
 802.1Qbb (priority based flow-control), and others of this type, are not
 expected and can throttle traffic between the host and the virtual switch,
 reducing performance. To resolve this issue, and to ensure isolation from
-unintended traffic streams, configure all SR-IOV enabled ports for VLAN tagging
-from the administrative interface on the PF. This configuration allows
-unexpected, and potentially malicious, frames to be dropped.
+unintended traffic streams, configure all SR-IOV or Intel Scalable IOV enabled
+ports for VLAN tagging from the administrative interface on the PF. This
+configuration allows unexpected, and potentially malicious, frames to be
+dropped.
 
 
 Building and Installation
@@ -472,7 +474,7 @@ Note: LLI is not supported on X550-based adapters.
 FdirPballoc
 -----------
 Valid Range: 1-3
-Specifies the Flow Director allocated packet buffer size.
+Specifies the Intel(R) Ethernet Flow Director allocated packet buffer size.
 1 = 64k
 2 = 128k
 3 = 256k
@@ -481,10 +483,10 @@ Specifies the Flow Director allocated packet buffer size.
 AtrSampleRate
 -------------
 Valid Range: 0-255
-This parameter is used with the Flow Director and is the software ATR transmit
-packet sample rate. For example, when AtrSampleRate is set to 20, every 20th
-packet looks to see if the packet will create a new flow. A value of 0
-indicates that ATR should be disabled and no samples will be taken.
+This parameter is used with the Intel Ethernet Flow Director and is the
+software ATR transmit packet sample rate. For example, when AtrSampleRate is
+set to 20, every 20th packet looks to see if the packet will create a new flow.
+A value of 0 indicates that ATR should be disabled and no samples will be taken.
 
 
 max_vfs
@@ -817,10 +819,8 @@ lead to transmit hangs.
 
 Intel(R) Ethernet Flow Director
 -------------------------------
-NOTE: Intel Ethernet Flow Director parameters are only supported on kernel
-versions 2.6.30 or newer.
-
-The Intel Ethernet Flow Director performs the following tasks:
+The Intel(R) Ethernet Flow Director (Intel(R) Ethernet FD) performs the
+following tasks:
 
 - Directs receive packets according to their flows to different queues
 - Enables tight control on routing a flow in the platform
@@ -964,8 +964,34 @@ The ixgbe driver does not support matching on a subportion of a field, thus
 partial mask fields are not supported.
 
 
-Flex Byte Flow Director Filters
--------------------------------
+Filters to Direct Traffic to a Specific VF
+------------------------------------------
+It is possible to create filters that direct traffic to a specific Virtual
+Function. For older versions of ethtool, this depends on the "action"
+parameter. Specify the action as a 64-bit value, where the lower 32 bits
+represent the queue number, while the next 8 bits represent the VF ID. Note
+that 0 is the PF, so the VF identifier is offset by 1. For example:
+
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 action 0x800000002 [loc 1]
+
+The action field specifies to direct traffic to Virtual Function 7 (8 minus 1)
+into queue 2 of that VF.
+
+Newer versions of ethtool (version 4.11 and later) use "vf" and "queue"
+parameters instead of the "action" parameter. Note that using the new ethtool
+"vf" parameter does not require the value to be offset by 1. This command is
+equivalent to the above example:
+
+# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
+192.168.10.2 src-port 2000 dst-port 2001 vf 7 queue 2 [loc 1]
+
+Note that these filters will not break internal routing rules, and will not
+route traffic that otherwise would not have been sent to the specified VF.
+
+
+Flex Byte Intel Ethernet Flow Director Filters
+----------------------------------------------
 The driver also supports matching user-defined data within the packet payload.
 This flexible data is specified using the "user-def" field of the ethtool
 command in the following way:
@@ -1000,32 +1026,6 @@ The user-defined flexible offset is also considered part of the input set and
 cannot be programmed separately for multiple filters of the same type. However,
 the flexible data is not part of the input set and multiple filters may use the
 same offset but match against different data.
-
-
-Filters to Direct Traffic to a Specific VF
-------------------------------------------
-It is possible to create filters that direct traffic to a specific Virtual
-Function. For older versions of ethtool, this depends on the "action"
-parameter. Specify the action as a 64-bit value, where the lower 32 bits
-represent the queue number, while the next 8 bits represent the VF ID. Note
-that 0 is the PF, so the VF identifier is offset by 1. For example:
-
-# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
-192.168.10.2 src-port 2000 dst-port 2001 action 0x800000002 [loc 1]
-
-The action field specifies to direct traffic to Virtual Function 7 (8 minus 1)
-into queue 2 of that VF.
-
-Newer versions of ethtool (version 4.11 and later) use "vf" and "queue"
-parameters instead of the "action" parameter. Note that using the new ethtool
-"vf" parameter does not require the value to be offset by 1. This command is
-equivalent to the above example:
-
-# ethtool -U <ethX> flow-type tcp4 src-ip 192.168.10.1 dst-ip \
-192.168.10.2 src-port 2000 dst-port 2001 vf 7 queue 2 [loc 1]
-
-Note that these filters will not break internal routing rules, and will not
-route traffic that otherwise would not have been sent to the specified VF.
 
 
 Support for UDP RSS
@@ -1079,7 +1079,7 @@ The results if UDP hashing is disabled are shown below.
     IP SA
     IP DA
 
-Parameters FdirPballoc and AtrSampleRate impact Flow Director.
+Parameters FdirPballoc and AtrSampleRate impact Intel Ethernet Flow Director.
 
 
 Data Center Bridging (DCB)
