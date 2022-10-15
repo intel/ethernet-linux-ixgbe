@@ -29,18 +29,22 @@
 #define NEED_NETDEV_TXQ_BQL_PREFETCH
 #else /* >= 7.3 */
 #undef NEED_DEV_PRINTK_ONCE
+#undef NEED_DEVM_KASPRINTF
 #endif /* 7.3 */
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))
+#define NEED_BUILD_BUG_ON
 #else /* >= 7.4 */
 #define HAVE_RHEL7_EXTENDED_OFFLOAD_STATS
+#define HAVE_INCLUDE_BITFIELD
 #endif /* 7.4 */
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,5))
 #else /* >= 7.5 */
 #define HAVE_TCF_EXTS_TO_LIST
+#define HAVE_FLOW_DISSECTOR_KEY_IP
 #endif /* 7.5 */
 
 /*****************************************************************************/
@@ -59,7 +63,25 @@
 #define HAVE_DEVLINK_PORT_ATTRS_SET_PORT_FLAVOUR
 #define HAVE_ETHTOOL_NEW_100G_BITS
 #undef NEED_NETDEV_TX_SENT_QUEUE
+#undef NEED_IN_TASK
+#define HAVE_FLOW_DISSECTOR_KEY_ENC_IP
 #endif /* 7.7 */
+
+/*****************************************************************************/
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,8))
+#else /* >= 7.8 */
+#endif /* 7.8 */
+
+/*****************************************************************************/
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,9))
+#else /* >= 7.9 */
+/* mul_u64_u64_div_u64 was backported into RHEL 7.9 but not into the early
+ * 8.x releases
+ */
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,0))
+#undef NEED_MUL_U64_U64_DIV_U64
+#endif /* < 8.0 */
+#endif /* 7.9 */
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,0))
@@ -78,13 +100,17 @@
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,1))
 #define NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
+#define NEED_FLOW_MATCH
 #else /* >= 8.1 */
 #define HAVE_ETHTOOL_NEW_100G_BITS
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
+#undef NEED_FLOW_MATCH
 #define HAVE_DEVLINK_PARAMS_PUBLISH
 #undef NEED_NETDEV_TX_SENT_QUEUE
 #undef NEED_INDIRECT_CALL_WRAPPER_MACROS
 #define HAVE_INDIRECT_CALL_WRAPPER_HEADER
+#define HAVE_GRETAP_TYPE
+#define HAVE_LINKMODE
 #endif /* 8.1 */
 
 /*****************************************************************************/
@@ -108,7 +134,9 @@
 #define HAVE_DEVLINK_HEALTH_OPS_EXTACK
 #define HAVE_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER
 #define HAVE_DEVLINK_REGION_OPS_SNAPSHOT
+#define HAVE_DEVLINK_RELOAD_ENABLE_DISABLE
 #undef NEED_DEVLINK_REGION_CREATE_OPS
+#undef NEED_MUL_U64_U64_DIV_U64
 #endif /* 8.3 */
 
 /*****************************************************************************/
@@ -118,6 +146,11 @@
 #undef NEED_NET_PREFETCH
 #undef NEED_DEVLINK_FLASH_UPDATE_TIMEOUT_NOTIFY
 #undef HAVE_XDP_QUERY_PROG
+#define HAVE_AF_XDP_ZC_SUPPORT
+#define HAVE_MEM_TYPE_XSK_BUFF_POOL
+#define HAVE_NDO_XSK_WAKEUP
+#define XSK_UMEM_RETURNS_XDP_DESC
+#undef NEED_XSK_UMEM_GET_RX_FRAME_SIZE
 #define HAVE_ETHTOOL_COALESCE_PARAMS_SUPPORT
 #endif /* 8.4 */
 
@@ -127,9 +160,15 @@
 #define HAVE_DEVLINK_FLASH_UPDATE_PARAMS
 #define HAVE_DEVLINK_FLASH_UPDATE_PARAMS_FW
 #define HAVE_DEVLINK_REGION_OPS_SNAPSHOT_OPS
+#define HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT
 #undef HAVE_DEVLINK_FLASH_UPDATE_BEGIN_END_NOTIFY
 #undef HAVE_NAPI_BUSY_LOOP
 #undef HAVE_XDP_RXQ_INFO_REG_3_PARAMS
+#undef NEED_XSK_BUFF_DMA_SYNC_FOR_CPU
+#define NO_XDP_QUERY_XSK_UMEM
+#undef NEED_XSK_BUFF_POOL_RENAME
+#define HAVE_NETDEV_BPF_XSK_POOL
+#define HAVE_AF_XDP_NETDEV_UMEM
 #endif /* 8.5 */
 
 /*****************************************************************************/
@@ -145,10 +184,13 @@
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))
 #else /* >= 9.0 */
 #define HAVE_XDP_BUFF_RXQ
+#define HAVE_NDO_ETH_IOCTL
 #undef NEED_DEVLINK_ALLOC_SETS_DEV
 #undef HAVE_DEVLINK_PARAMS_PUBLISH
-#undef HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT
+#undef HAVE_DEVLINK_RELOAD_ENABLE_DISABLE
 #undef HAVE_DEVLINK_REGISTER_SETS_DEV
+#define HAVE_DEVLINK_NOTIFY_REGISTER
+#define HAVE_DEVLINK_SET_FEATURES
 #endif /* 9.0 */
 
 #endif /* _KCOMPAT_RHEL_DEFS_H_ */

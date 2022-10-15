@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.16.5" \
+#define DRV_VERSION	"5.17.1" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -1220,7 +1220,7 @@ static bool ixgbe_alloc_mapped_skb(struct ixgbe_ring *rx_ring,
 }
 
 #else /* !CONFIG_IXGBE_DISABLE_PACKET_SPLIT */
-static inline unsigned int ixgbe_rx_offset(struct ixgbe_ring *rx_ring)
+static unsigned int ixgbe_rx_offset(struct ixgbe_ring *rx_ring)
 {
 	return ring_uses_build_skb(rx_ring) ? IXGBE_SKB_PAD : 0;
 }
@@ -1465,7 +1465,7 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 static void ixgbe_set_rsc_gso_size(struct ixgbe_ring __maybe_unused *ring,
 				   struct sk_buff *skb)
 {
-	u16 hdr_len = eth_get_headlen(skb->dev, skb->data, skb_headlen(skb));
+	u16 hdr_len = skb_headlen(skb);
 
 	/* set gso_size to avoid messing up TCP MSS */
 	skb_shinfo(skb)->gso_size = DIV_ROUND_UP((skb->len - hdr_len),
@@ -1889,8 +1889,8 @@ static void ixgbe_add_rx_frag(struct ixgbe_ring *rx_ring,
 #if (PAGE_SIZE < 8192)
 	unsigned int truesize = ixgbe_rx_pg_size(rx_ring) / 2;
 #else
-	unsigned int truesize = ring_uses_build_skb(rx_ring) ?
-				SKB_DATA_ALIGN(IXGBE_SKB_PAD + size) :
+	unsigned int truesize = rx_ring->rx_offset ?
+				SKB_DATA_ALIGN(rx_ring->rx_offset + size) :
 				SKB_DATA_ALIGN(size);
 #endif
 
@@ -2178,8 +2178,8 @@ static unsigned int ixgbe_rx_frame_truesize(struct ixgbe_ring *rx_ring,
 #if (PAGE_SIZE < 8192)
 	truesize = ixgbe_rx_pg_size(rx_ring) / 2;
 #else
-	truesize = ring_uses_build_skb(rx_ring) ?
-		SKB_DATA_ALIGN(IXGBE_SKB_PAD + size)
+	truesize = rx_ring->rx_offset ?
+		SKB_DATA_ALIGN(rx_ring->rx_offset + size)
 #ifdef HAVE_XDP_BUFF_FRAME_SZ
 		+ SKB_DATA_ALIGN(sizeof(struct skb_shared_info))
 #endif
@@ -2225,6 +2225,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	unsigned int mss = 0;
 #endif /* CONFIG_FCOE */
 	u16 cleaned_count = ixgbe_desc_unused(rx_ring);
+	unsigned int offset = rx_ring->rx_offset;
 	unsigned int xdp_xmit = 0;
 	struct xdp_buff xdp;
 
@@ -2273,8 +2274,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 #ifdef HAVE_XDP_BUFF_DATA_META
 			xdp.data_meta = xdp.data;
 #endif
-			xdp.data_hard_start = xdp.data -
-					      ixgbe_rx_offset(rx_ring);
+			xdp.data_hard_start = xdp.data - offset;
 			xdp.data_end = xdp.data + size;
 
 #ifdef HAVE_XDP_BUFF_FRAME_SZ
@@ -4403,6 +4403,7 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 		break;
 	}
 
+	ring->rx_offset = ixgbe_rx_offset(ring);
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 	if (ring->xsk_pool && hw->mac.type != ixgbe_mac_82599EB) {
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
@@ -8289,7 +8290,7 @@ ixgbe_get_stats64(struct net_device *netdev, struct rtnl_link_stats64 *stats)
 	return stats;
 #endif
 }
-#else
+#else /* !HAVE_NDO_GET_STATS64 */
 /**
  * ixgbe_get_stats - Get System Network Statistics
  * @netdev: network interface device structure
@@ -8312,7 +8313,27 @@ static struct net_device_stats *ixgbe_get_stats(struct net_device *netdev)
 	return &adapter->net_stats;
 #endif /* HAVE_NETDEV_STATS_IN_NETDEV */
 }
-#endif
+#endif /* HAVE_NDO_GET_STATS64 */
+
+#ifdef HAVE_VF_STATS
+static int ixgbe_ndo_get_vf_stats(struct net_device *netdev, int vf,
+				  struct ifla_vf_stats *vf_stats)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+	if (vf < 0 || vf >= adapter->num_vfs)
+		return -EINVAL;
+
+	vf_stats->rx_packets = adapter->vfinfo[vf].vfstats.gprc;
+	vf_stats->rx_bytes   = adapter->vfinfo[vf].vfstats.gorc;
+	vf_stats->tx_packets = adapter->vfinfo[vf].vfstats.gptc;
+	vf_stats->tx_bytes   = adapter->vfinfo[vf].vfstats.gotc;
+	vf_stats->multicast  = adapter->vfinfo[vf].vfstats.mprc;
+
+	return 0;
+}
+#endif /* HAVE_VF_STATS */
+
 /**
  * ixgbe_update_stats - Update the board statistics counters.
  * @adapter: board private structure
@@ -8561,8 +8582,7 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	net_stats->rx_crc_errors = hwstats->crcerrs;
 	net_stats->rx_missed_errors = total_mpc;
 
-	/*
-	 * VF Stats Collection - skip while resetting because these
+	/* VF Stats Collection - skip while resetting because these
 	 * are not clear on read and otherwise you'll sometimes get
 	 * crazy values.
 	 */
@@ -12219,6 +12239,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #endif /* HAVE_NDO_SET_VF_TRUST */
 	.ndo_get_vf_config	= ixgbe_ndo_get_vf_config,
 #endif /* IFLA_VF_MAX */
+#ifdef HAVE_VF_STATS
+	.ndo_get_vf_stats	= ixgbe_ndo_get_vf_stats,
+#endif /* HAVE_VF_STATS */
 #ifdef HAVE_NDO_GET_STATS64
 	.ndo_get_stats64	= ixgbe_get_stats64,
 #else

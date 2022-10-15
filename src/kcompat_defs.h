@@ -32,6 +32,8 @@
 #include "kcompat_ubuntu_defs.h"
 #elif RHEL_RELEASE_CODE
 #include "kcompat_rhel_defs.h"
+#elif defined(UEK_RELEASE_NUMBER)
+#include "kcompat_oracle_defs.h"
 #endif
 
 #endif /* _KCOMPAT_DEFS_H_ */

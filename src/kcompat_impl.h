@@ -941,4 +941,440 @@ static inline void eth_hw_addr_set(struct net_device *dev, const u8 *addr)
 #endif /* CONFIG_RETPOLINE */
 #endif /* NEED_EXPORT_INDIRECT_CALLABLE */
 
+#ifdef NEED_DEVM_KASPRINTF
+/* NEED_DEVM_KASPRINTF
+ *
+ * devm_kvasprintf and devm_kasprintf were added by commit
+ * 75f2a4ead5d5 ("devres: Add devm_kasprintf and devm_kvasprintf API")
+ * in Linux 3.17.
+ */
+__printf(3, 0) char *devm_kvasprintf(struct device *dev, gfp_t gfp,
+				     const char *fmt, va_list ap);
+__printf(3, 4) char *devm_kasprintf(struct device *dev, gfp_t gfp,
+				    const char *fmt, ...);
+#endif /* NEED_DEVM_KASPRINTF */
+
+#ifdef NEED_XSK_UMEM_GET_RX_FRAME_SIZE
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+#ifndef xsk_umem_get_rx_frame_size
+static inline u32 _xsk_umem_get_rx_frame_size(struct xdp_umem *umem)
+{
+	return umem->chunk_size_nohr - XDP_PACKET_HEADROOM;
+}
+
+#define xsk_umem_get_rx_frame_size _xsk_umem_get_rx_frame_size
+#endif /* xsk_umem_get_rx_frame_size */
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
+#endif
+
+#ifdef NEED_XSK_BUFF_DMA_SYNC_FOR_CPU
+#ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
+#include <net/xdp_sock_drv.h>
+static inline void
+_kc_xsk_buff_dma_sync_for_cpu(struct xdp_buff *xdp,
+			      void __always_unused *pool)
+{
+	xsk_buff_dma_sync_for_cpu(xdp);
+}
+
+#define xsk_buff_dma_sync_for_cpu(xdp, pool) \
+	_kc_xsk_buff_dma_sync_for_cpu(xdp, pool)
+#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
+#endif /* NEED_XSK_BUFF_DMA_SYNC_FOR_CPU */
+
+#ifdef NEED_XSK_BUFF_POOL_RENAME
+#define XDP_SETUP_XSK_POOL XDP_SETUP_XSK_UMEM
+#define xsk_get_pool_from_qid xdp_get_umem_from_qid
+#define xsk_pool_get_rx_frame_size xsk_umem_get_rx_frame_size
+#define xsk_pool_set_rxq_info xsk_buff_set_rxq_info
+#define xsk_pool_dma_unmap xsk_buff_dma_unmap
+#define xsk_pool_dma_map xsk_buff_dma_map
+#define xsk_tx_peek_desc xsk_umem_consume_tx
+#define xsk_tx_release xsk_umem_consume_tx_done
+#define xsk_tx_completed xsk_umem_complete_tx
+#define xsk_uses_need_wakeup xsk_umem_uses_need_wakeup
+#endif /* NEED_XSK_BUFF_POOL_RENAME */
+
+#ifdef NEED_PCI_IOV_VF_ID
+/* NEED_PCI_IOV_VF_ID
+ *
+ * pci_iov_vf_id were added by commit 21ca9fb62d468 ("PCI/IOV:
+ * Add pci_iov_vf_id() to get VF index") in Linux 5.18
+ */
+int _kc_pci_iov_vf_id(struct pci_dev *dev);
+#define pci_iov_vf_id _kc_pci_iov_vf_id
+#endif /* NEED_PCI_IOV_VF_ID */
+
+/* NEED_MUL_U64_U64_DIV_U64
+ *
+ * mul_u64_u64_div_u64 was introduced in Linux 5.9 as part of commit
+ * 3dc167ba5729 ("sched/cputime: Improve cputime_adjust()")
+ */
+#ifdef NEED_MUL_U64_U64_DIV_U64
+u64 mul_u64_u64_div_u64(u64 a, u64 mul, u64 div);
+#endif /* NEED_MUL_U64_U64_DIV_U64 */
+
+#ifndef HAVE_LINKMODE
+static inline void linkmode_set_bit(int nr, volatile unsigned long *addr)
+{
+	__set_bit(nr, addr);
+}
+
+static inline void linkmode_zero(unsigned long *dst)
+{
+	bitmap_zero(dst, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+#endif /* !HAVE_LINKMODE */
+
+#ifndef ETHTOOL_GLINKSETTINGS
+/* Link mode bit indices */
+enum ethtool_link_mode_bit_indices {
+	ETHTOOL_LINK_MODE_10baseT_Half_BIT      = 0,
+	ETHTOOL_LINK_MODE_10baseT_Full_BIT      = 1,
+	ETHTOOL_LINK_MODE_100baseT_Half_BIT     = 2,
+	ETHTOOL_LINK_MODE_100baseT_Full_BIT     = 3,
+	ETHTOOL_LINK_MODE_1000baseT_Half_BIT    = 4,
+	ETHTOOL_LINK_MODE_1000baseT_Full_BIT    = 5,
+	ETHTOOL_LINK_MODE_Autoneg_BIT           = 6,
+	ETHTOOL_LINK_MODE_TP_BIT                = 7,
+	ETHTOOL_LINK_MODE_AUI_BIT               = 8,
+	ETHTOOL_LINK_MODE_MII_BIT               = 9,
+	ETHTOOL_LINK_MODE_FIBRE_BIT             = 10,
+	ETHTOOL_LINK_MODE_BNC_BIT               = 11,
+	ETHTOOL_LINK_MODE_10000baseT_Full_BIT   = 12,
+	ETHTOOL_LINK_MODE_Pause_BIT             = 13,
+	ETHTOOL_LINK_MODE_Asym_Pause_BIT        = 14,
+	ETHTOOL_LINK_MODE_2500baseX_Full_BIT    = 15,
+	ETHTOOL_LINK_MODE_Backplane_BIT         = 16,
+	ETHTOOL_LINK_MODE_1000baseKX_Full_BIT   = 17,
+	ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT = 18,
+	ETHTOOL_LINK_MODE_10000baseKR_Full_BIT  = 19,
+	ETHTOOL_LINK_MODE_10000baseR_FEC_BIT    = 20,
+	ETHTOOL_LINK_MODE_20000baseMLD2_Full_BIT = 21,
+	ETHTOOL_LINK_MODE_20000baseKR2_Full_BIT = 22,
+	ETHTOOL_LINK_MODE_40000baseKR4_Full_BIT = 23,
+	ETHTOOL_LINK_MODE_40000baseCR4_Full_BIT = 24,
+	ETHTOOL_LINK_MODE_40000baseSR4_Full_BIT = 25,
+	ETHTOOL_LINK_MODE_40000baseLR4_Full_BIT = 26,
+	ETHTOOL_LINK_MODE_56000baseKR4_Full_BIT = 27,
+	ETHTOOL_LINK_MODE_56000baseCR4_Full_BIT = 28,
+	ETHTOOL_LINK_MODE_56000baseSR4_Full_BIT = 29,
+	ETHTOOL_LINK_MODE_56000baseLR4_Full_BIT = 30,
+
+	/* Last allowed bit for __ETHTOOL_LINK_MODE_LEGACY_MASK is bit
+	 * 31. Please do NOT define any SUPPORTED_* or ADVERTISED_*
+	 * macro for bits > 31. The only way to use indices > 31 is to
+	 * use the new ETHTOOL_GLINKSETTINGS/ETHTOOL_SLINKSETTINGS API.
+	 */
+
+	__ETHTOOL_LINK_MODE_LAST
+	  = ETHTOOL_LINK_MODE_56000baseLR4_Full_BIT,
+};
+#endif /* !ETHTOOL_GLINKSETTINGS */
+
+#if defined(NEED_FLOW_MATCH) && defined(HAVE_TC_SETUP_CLSFLOWER)
+/* NEED_FLOW_MATCH
+ *
+ * flow_match*, FLOW_DISSECTOR_MATCH, flow_rule*, flow_rule_match_key, and
+ * tc_cls_flower_offload_flow_rule were added by commit
+ * 8f2566225ae2 ("flow_offload: add flow_rule and flow_match structures and use
+ * them") in Linux 5.1.
+ */
+
+#include <net/pkt_cls.h>
+
+struct flow_match {
+	struct flow_dissector	*dissector;
+	void			*mask;
+	void			*key;
+};
+
+struct flow_match_basic {
+	struct flow_dissector_key_basic *key, *mask;
+};
+
+struct flow_match_control {
+	struct flow_dissector_key_control *key, *mask;
+};
+
+struct flow_match_eth_addrs {
+	struct flow_dissector_key_eth_addrs *key, *mask;
+};
+
+#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
+struct flow_match_vlan {
+	struct flow_dissector_key_vlan *key, *mask;
+};
+#endif /* HAVE_TC_FLOWER_VLAN_IN_TAGS */
+
+struct flow_match_ipv4_addrs {
+	struct flow_dissector_key_ipv4_addrs *key, *mask;
+};
+
+struct flow_match_ipv6_addrs {
+	struct flow_dissector_key_ipv6_addrs *key, *mask;
+};
+
+#ifdef HAVE_FLOW_DISSECTOR_KEY_IP
+struct flow_match_ip {
+	struct flow_dissector_key_ip *key, *mask;
+};
+#endif /* HAVE_FLOW_DISSECTOR_KEY_IP */
+
+struct flow_match_ports {
+	struct flow_dissector_key_ports *key, *mask;
+};
+
+#ifdef HAVE_TC_FLOWER_ENC
+struct flow_match_enc_keyid {
+	struct flow_dissector_key_keyid *key, *mask;
+};
+#endif /* HAVE_TC_FLOWER_ENC */
+
+struct flow_rule {
+	struct flow_match	match;
+#if 0
+	/* In 5.1+ kernels, action is a member of struct flow_rule but is
+	 * not compatible with how we kcompat tc_cls_flower_offload_flow_rule
+	 * below. By not declaring it here, any driver that attempts to use
+	 * action as an element of struct flow_rule will fail to compile
+	 * instead of silently trying to access memory that shouldn't be.
+	 */
+	struct flow_action	action;
+#endif
+};
+
+static inline struct flow_rule *
+tc_cls_flower_offload_flow_rule(struct tc_cls_flower_offload *tc_flow_cmd)
+{
+	return (struct flow_rule *)&tc_flow_cmd->dissector;
+}
+
+static inline bool flow_rule_match_key(const struct flow_rule *rule,
+				       enum flow_dissector_key_id key)
+{
+	return dissector_uses_key(rule->match.dissector, key);
+}
+
+#define FLOW_DISSECTOR_MATCH(__rule, __type, __out)				\
+	const struct flow_match *__m = &(__rule)->match;			\
+	struct flow_dissector *__d = (__m)->dissector;				\
+										\
+	(__out)->key = skb_flow_dissector_target(__d, __type, (__m)->key);	\
+	(__out)->mask = skb_flow_dissector_target(__d, __type, (__m)->mask);	\
+
+static inline void
+flow_rule_match_basic(const struct flow_rule *rule,
+		      struct flow_match_basic *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_BASIC, out);
+}
+
+static inline void
+flow_rule_match_control(const struct flow_rule *rule,
+			struct flow_match_control *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_CONTROL, out);
+}
+
+static inline void
+flow_rule_match_eth_addrs(const struct flow_rule *rule,
+			  struct flow_match_eth_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ETH_ADDRS, out);
+}
+
+#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
+static inline void
+flow_rule_match_vlan(const struct flow_rule *rule, struct flow_match_vlan *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_VLAN, out);
+}
+#endif /* HAVE_TC_FLOWER_VLAN_IN_TAGS */
+
+static inline void
+flow_rule_match_ipv4_addrs(const struct flow_rule *rule,
+			   struct flow_match_ipv4_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS, out);
+}
+
+static inline void
+flow_rule_match_ipv6_addrs(const struct flow_rule *rule,
+			   struct flow_match_ipv6_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS, out);
+}
+
+#ifdef HAVE_FLOW_DISSECTOR_KEY_IP
+static inline void
+flow_rule_match_ip(const struct flow_rule *rule, struct flow_match_ip *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IP, out);
+}
+#endif /* HAVE_FLOW_DISSECTOR_KEY_IP */
+
+static inline void
+flow_rule_match_ports(const struct flow_rule *rule,
+		      struct flow_match_ports *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_PORTS, out);
+}
+
+#ifdef HAVE_TC_FLOWER_ENC
+static inline void
+flow_rule_match_enc_control(const struct flow_rule *rule,
+			    struct flow_match_control *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_CONTROL, out);
+}
+
+static inline void
+flow_rule_match_enc_ipv4_addrs(const struct flow_rule *rule,
+			       struct flow_match_ipv4_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS, out);
+}
+
+static inline void
+flow_rule_match_enc_ipv6_addrs(const struct flow_rule *rule,
+			       struct flow_match_ipv6_addrs *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS, out);
+}
+
+#ifdef HAVE_FLOW_DISSECTOR_KEY_IP
+#ifdef HAVE_FLOW_DISSECTOR_KEY_ENC_IP
+static inline void
+flow_rule_match_enc_ip(const struct flow_rule *rule, struct flow_match_ip *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IP, out);
+}
+#endif /* HAVE_FLOW_DISSECTOR_KEY_ENC_IP */
+#endif /* HAVE_FLOW_DISSECTOR_KEY_IP */
+
+static inline void
+flow_rule_match_enc_ports(const struct flow_rule *rule,
+			  struct flow_match_ports *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_PORTS, out);
+}
+
+static inline void
+flow_rule_match_enc_keyid(const struct flow_rule *rule,
+			  struct flow_match_enc_keyid *out)
+{
+	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_KEYID, out);
+}
+#endif /* HAVE_TC_FLOWER_ENC */
+#endif /* NEED_FLOW_MATCH && HAVE_TC_SETUP_CLSFLOWER */
+
+#ifndef HAVE_INCLUDE_BITFIELD
+/* linux/bitfield.h has been added in Linux 4.9 in upstream commit
+ * 3e9b3112ec74 ("add basic register-field manipulation macros")
+ */
+#define __bf_shf(x) (__builtin_ffsll(x) - 1)
+
+#define __BF_FIELD_CHECK(_mask, _reg, _val, _pfx)			\
+	({								\
+		BUILD_BUG_ON_MSG(!__builtin_constant_p(_mask),		\
+				 _pfx "mask is not constant");		\
+		BUILD_BUG_ON_MSG(!(_mask), _pfx "mask is zero");	\
+		BUILD_BUG_ON_MSG(__builtin_constant_p(_val) ?		\
+				 ~((_mask) >> __bf_shf(_mask)) & (_val) : 0, \
+				 _pfx "value too large for the field"); \
+		BUILD_BUG_ON_MSG((_mask) > (typeof(_reg))~0ull,		\
+				 _pfx "type of reg too small for mask"); \
+		__BUILD_BUG_ON_NOT_POWER_OF_2((_mask) +			\
+					      (1ULL << __bf_shf(_mask))); \
+	})
+
+/**
+ * FIELD_MAX() - produce the maximum value representable by a field
+ * @_mask: shifted mask defining the field's length and position
+ *
+ * FIELD_MAX() returns the maximum value that can be held in the field
+ * specified by @_mask.
+ */
+#define FIELD_MAX(_mask)						\
+	({								\
+		__BF_FIELD_CHECK(_mask, 0ULL, 0ULL, "FIELD_MAX: ");	\
+		(typeof(_mask))((_mask) >> __bf_shf(_mask));		\
+	})
+
+/**
+ * FIELD_FIT() - check if value fits in the field
+ * @_mask: shifted mask defining the field's length and position
+ * @_val:  value to test against the field
+ *
+ * Return: true if @_val can fit inside @_mask, false if @_val is too big.
+ */
+#define FIELD_FIT(_mask, _val)						\
+	({								\
+		__BF_FIELD_CHECK(_mask, 0ULL, 0ULL, "FIELD_FIT: ");	\
+		!((((typeof(_mask))_val) << __bf_shf(_mask)) & ~(_mask)); \
+	})
+
+/**
+ * FIELD_PREP() - prepare a bitfield element
+ * @_mask: shifted mask defining the field's length and position
+ * @_val:  value to put in the field
+ *
+ * FIELD_PREP() masks and shifts up the value.  The result should
+ * be combined with other fields of the bitfield using logical OR.
+ */
+#define FIELD_PREP(_mask, _val)						\
+	({								\
+		__BF_FIELD_CHECK(_mask, 0ULL, _val, "FIELD_PREP: ");	\
+		((typeof(_mask))(_val) << __bf_shf(_mask)) & (_mask);	\
+	})
+
+/**
+ * FIELD_GET() - extract a bitfield element
+ * @_mask: shifted mask defining the field's length and position
+ * @_reg:  value of entire bitfield
+ *
+ * FIELD_GET() extracts the field specified by @_mask from the
+ * bitfield passed in as @_reg by masking and shifting it down.
+ */
+#define FIELD_GET(_mask, _reg)						\
+	({								\
+		__BF_FIELD_CHECK(_mask, _reg, 0U, "FIELD_GET: ");	\
+		(typeof(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));	\
+	})
+#endif /* HAVE_INCLUDE_BITFIELD */
+
+#ifdef NEED_BUILD_BUG_ON
+/* Force a compilation error if a constant expression is not a power of 2 */
+#define __BUILD_BUG_ON_NOT_POWER_OF_2(n)	\
+	BUILD_BUG_ON(((n) & ((n) - 1)) != 0)
+
+/**
+ * BUILD_BUG_ON_MSG - break compile if a condition is true & emit supplied
+ *		      error message.
+ * @condition: the condition which the compiler should know is false.
+ *
+ * See BUILD_BUG_ON for description.
+ */
+#define BUILD_BUG_ON_MSG(cond, msg) compiletime_assert(!(cond), msg)
+
+/**
+ * BUILD_BUG_ON - break compile if a condition is true.
+ * @condition: the condition which the compiler should know is false.
+ *
+ * If you have some code which relies on certain constants being equal, or
+ * some other compile-time-evaluated condition, you should use BUILD_BUG_ON to
+ * detect if someone changes it.
+ */
+#define BUILD_BUG_ON(condition) \
+	BUILD_BUG_ON_MSG(condition, "BUILD_BUG_ON failed: " #condition)
+#endif /* NEED_BUILD_BUG_ON */
+
+#ifdef NEED_IN_TASK
+#define in_hardirq()		(hardirq_count())
+#define in_serving_softirq()	(softirq_count() & SOFTIRQ_OFFSET)
+#define in_task()		(!(in_nmi() | in_hardirq() | \
+				 in_serving_softirq()))
+#endif /* NEED_IN_TASK */
+
 #endif /* _KCOMPAT_IMPL_H_ */

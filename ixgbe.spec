@@ -1,10 +1,10 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.16.5
+Version: 5.17.1
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
-License: GPL-2.0
+License: @
 ExclusiveOS: linux
 Group: System Environment/Kernel
 Provides: %{name}
@@ -18,9 +18,26 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 %define pciids    %find %{_pciids}
 %define pcitable  %find %{_pcitable}
 Requires: kernel, findutils, gawk, bash
-%define need_aux_rpm %(rpm -q --whatprovides /lib/modules/`uname -r`/build/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2)
+
+%if 0%{?BUILD_KERNEL:1}
+%define kernel_ver %{BUILD_KERNEL}
+%define check_aux_args_kernel -b %{BUILD_KERNEL} 
+%else
+%define kernel_ver %(uname -r)
+%endif
+
+%if 0%{?KSRC:1}
+%define check_aux_args_ksrc -k %{KSRC}
+%endif
+
+%define check_aux_args %check_aux_args_kernel %check_aux_args_ksrc
+
+%define need_aux_rpm %( [ -L /lib/modules/%kernel_ver/source ] && \
+                  (rpm -q --whatprovides /lib/modules/%kernel_ver/source/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2) || \
+                  (rpm -q --whatprovides /lib/modules/%kernel_ver/build/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2) )
+
 %if (%need_aux_rpm == 2)
-Requires: auxiliary
+Requires: intel_auxiliary
 %endif
 
 # Check for existence of %kernel_module_package_buildreqs ...
@@ -55,13 +72,13 @@ find lib -name "ixgbe.ko" -printf "/%p\n" \
 %if (%need_aux_rpm == 2)
 make -C %{_builddir}/%{name}-%{version}/src INSTALL_MOD_PATH=%{buildroot} auxiliary_install
 
-find lib -path "*extern-symvers/auxiliary.symvers" -printf "/%p\n" \
+find lib -path "*extern-symvers/intel_auxiliary.symvers" -printf "/%p\n" \
 	>%{_builddir}/%{name}-%{version}/aux.list
 find * -name "auxiliary_bus.h" -printf "/%p\n" \
 	>>%{_builddir}/%{name}-%{version}/aux.list
 %endif
-if [ "$(%{_builddir}/%{name}-%{version}/scripts/./check_aux_bus; echo $?)" == "2" ] ; then
-find lib -name "auxiliary.ko" -printf "/%p\n" \
+if [ "$(%{_builddir}/%{name}-%{version}/scripts/./check_aux_bus %check_aux_args; echo $?)" == "2" ] ; then
+	find lib -name "intel_auxiliary.ko" -printf "/%p\n" \
 	>>%{_builddir}/%{name}-%{version}/file.list
 fi
 
@@ -423,16 +440,16 @@ else
 fi
 
 %if (%need_aux_rpm == 2) && (%req_aux == 0)
-%package -n auxiliary
+%package -n intel_auxiliary
 Summary: Auxiliary bus driver (backport)
 Version: 1.0.0
 
-%description -n auxiliary
-The Auxiliary bus driver (auxiliary.ko), backported from upstream, for use by kernels that don't have auxiliary bus.
+%description -n intel_auxiliary
+The Auxiliary bus driver (intel_auxiliary.ko), backported from upstream, for use by kernels that don't have auxiliary bus.
 
 # The if is used to hide this whole section. This causes RPM to skip the build
 # of the auxiliary subproject entirely.
-%files -n auxiliary -f aux.list
+%files -n intel_auxiliary -f aux.list
 %doc aux.list
 %endif
 

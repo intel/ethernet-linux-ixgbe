@@ -304,7 +304,7 @@ Note: RPM functionality has only been tested in Red Hat distributions.
 NOTES:
 - To compile the driver on some kernel/arch combinations, you may need to
 install a package with the development version of libelf (e.g. libelf-dev,
-libelf-devel, elfutilsl-libelf-devel).
+libelf-devel, elfutils-libelf-devel).
 - When compiling an out-of-tree driver, details will vary by distribution.
 However, you will usually need a kernel-devel RPM or some RPM that provides the
 kernel headers at a minimum. The RPM kernel-devel will usually fill in the link

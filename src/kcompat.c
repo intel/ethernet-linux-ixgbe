@@ -2884,94 +2884,6 @@ void _kc_pcie_print_link_status(struct pci_dev *dev) {
 #endif /* 4.17.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0)) || (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,1)))
-#ifdef HAVE_TC_SETUP_CLSFLOWER
-#define FLOW_DISSECTOR_MATCH(__rule, __type, __out)				\
-	const struct flow_match *__m = &(__rule)->match;			\
-	struct flow_dissector *__d = (__m)->dissector;				\
-										\
-	(__out)->key = skb_flow_dissector_target(__d, __type, (__m)->key);	\
-	(__out)->mask = skb_flow_dissector_target(__d, __type, (__m)->mask);	\
-
-void flow_rule_match_basic(const struct flow_rule *rule,
-			   struct flow_match_basic *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_BASIC, out);
-}
-
-void flow_rule_match_control(const struct flow_rule *rule,
-			     struct flow_match_control *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_CONTROL, out);
-}
-
-void flow_rule_match_eth_addrs(const struct flow_rule *rule,
-			       struct flow_match_eth_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ETH_ADDRS, out);
-}
-
-#ifdef HAVE_TC_FLOWER_ENC
-void flow_rule_match_enc_keyid(const struct flow_rule *rule,
-			       struct flow_match_enc_keyid *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_KEYID, out);
-}
-
-void flow_rule_match_enc_ports(const struct flow_rule *rule,
-			       struct flow_match_ports *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_PORTS, out);
-}
-
-void flow_rule_match_enc_control(const struct flow_rule *rule,
-				 struct flow_match_control *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_CONTROL, out);
-}
-
-void flow_rule_match_enc_ipv4_addrs(const struct flow_rule *rule,
-				    struct flow_match_ipv4_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS, out);
-}
-
-void flow_rule_match_enc_ipv6_addrs(const struct flow_rule *rule,
-				    struct flow_match_ipv6_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS, out);
-}
-#endif
-
-#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
-void flow_rule_match_vlan(const struct flow_rule *rule,
-			  struct flow_match_vlan *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_VLAN, out);
-}
-#endif
-
-void flow_rule_match_ipv4_addrs(const struct flow_rule *rule,
-				struct flow_match_ipv4_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS, out);
-}
-
-void flow_rule_match_ipv6_addrs(const struct flow_rule *rule,
-				struct flow_match_ipv6_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS, out);
-}
-
-void flow_rule_match_ports(const struct flow_rule *rule,
-			   struct flow_match_ports *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_PORTS, out);
-}
-#endif /* HAVE_TC_SETUP_CLSFLOWER */
-#endif /* 5.1.0 || (RHEL && RHEL < 8.1) */
-
-/*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
 #if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))))
 #ifdef HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
@@ -3031,3 +2943,131 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev)
 	return dsn;
 }
 #endif /* 5.7.0 */
+
+#ifdef NEED_DEVM_KASPRINTF
+char *devm_kvasprintf(struct device *dev, gfp_t gfp, const char *fmt,
+		      va_list ap)
+{
+	unsigned int len;
+	char *p;
+	va_list aq;
+
+	va_copy(aq, ap);
+	len = vsnprintf(NULL, 0, fmt, aq);
+	va_end(aq);
+
+	p = devm_kmalloc(dev, len + 1, gfp);
+	if (!p)
+		return NULL;
+
+	vsnprintf(p, len + 1, fmt, ap);
+
+	return p;
+}
+
+char *devm_kasprintf(struct device *dev, gfp_t gfp, const char *fmt, ...)
+{
+	va_list ap;
+	char *p;
+
+	va_start(ap, fmt);
+	p = devm_kvasprintf(dev, gfp, fmt, ap);
+	va_end(ap);
+
+	return p;
+}
+#endif /* NEED_DEVM_KASPRINTF */
+
+#ifdef NEED_PCI_IOV_VF_ID
+/*
+ * Below function needs to access pci_sriov offset and stride. Since
+ * pci_sriov structure is defined in drivers/pci/pci.h which can not
+ * be included as linux kernel header file, the structure definition
+ * is not globally visible.
+ * As a result, one copy of structure definition is added. Since the
+ * definition is a copy, you need to make sure the kernel you want
+ * to backport must have exactly the same pci_sriov definition as the
+ * copy, otherwise you'll access wrong field offset and value.
+ */
+
+/* Single Root I/O Virtualization */
+struct pci_sriov {
+	int             pos;            /* Capability position */
+	int             nres;           /* Number of resources */
+	u32             cap;            /* SR-IOV Capabilities */
+	u16             ctrl;           /* SR-IOV Control */
+	u16             total_VFs;      /* Total VFs associated with the PF */
+	u16             initial_VFs;    /* Initial VFs associated with the PF */
+	u16             num_VFs;        /* Number of VFs available */
+	u16             offset;         /* First VF Routing ID offset */
+	u16             stride;         /* Following VF stride */
+	u16             vf_device;      /* VF device ID */
+	u32             pgsz;           /* Page size for BAR alignment */
+	u8              link;           /* Function Dependency Link */
+	u8              max_VF_buses;   /* Max buses consumed by VFs */
+	u16             driver_max_VFs; /* Max num VFs driver supports */
+	struct pci_dev  *dev;           /* Lowest numbered PF */
+	struct pci_dev  *self;          /* This PF */
+	u32             cfg_size;       /* VF config space size */
+	u32             class;          /* VF device */
+	u8              hdr_type;       /* VF header type */
+	u16             subsystem_vendor; /* VF subsystem vendor */
+	u16             subsystem_device; /* VF subsystem device */
+	resource_size_t barsz[PCI_SRIOV_NUM_BARS];      /* VF BAR size */
+	bool            drivers_autoprobe; /* Auto probing of VFs by driver */
+};
+
+int _kc_pci_iov_vf_id(struct pci_dev *dev)
+{
+	struct pci_dev *pf;
+
+	if (!dev->is_virtfn)
+		return -EINVAL;
+
+	pf = pci_physfn(dev);
+	return (((dev->bus->number << 8) + dev->devfn) -
+		((pf->bus->number << 8) + pf->devfn + pf->sriov->offset)) /
+	       pf->sriov->stride;
+}
+#endif /* NEED_PCI_IOV_VF_ID */
+
+#ifdef NEED_MUL_U64_U64_DIV_U64
+u64 mul_u64_u64_div_u64(u64 a, u64 b, u64 c)
+{
+	u64 res = 0, div, rem;
+	int shift;
+
+	/* can a * b overflow ? */
+	if (ilog2(a) + ilog2(b) > 62) {
+		/*
+		 * (b * a) / c is equal to
+		 *
+		 *      (b / c) * a +
+		 *      (b % c) * a / c
+		 *
+		 * if nothing overflows. Can the 1st multiplication
+		 * overflow? Yes, but we do not care: this can only
+		 * happen if the end result can't fit in u64 anyway.
+		 *
+		 * So the code below does
+		 *
+		 *      res = (b / c) * a;
+		 *      b = b % c;
+		 */
+		div = div64_u64_rem(b, c, &rem);
+		res = div * a;
+		b = rem;
+
+		shift = ilog2(a) + ilog2(b) - 62;
+		if (shift > 0) {
+			/* drop precision */
+			b >>= shift;
+			c >>= shift;
+			if (!c)
+				return res;
+		}
+	}
+
+	return res + div64_u64(a * b, c);
+}
+#endif /* NEED_MUL_U64_U64_DIV_U64 */

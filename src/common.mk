@@ -106,7 +106,7 @@ ifneq ($(and $(SIGN_FILE_EXISTS),$(PRIV_KEY_EXISTS),$(PUB_KEY_EXISTS)),)
     echo "*** Is public key present: ${PUB_KEY_EXISTS}" ;
   info_signed_modules += echo "*** All files are present, signing driver." ;
   sign_driver = $(shell ${SCRIPT_PATH}/sign-file sha256 intel-linux-key.key \
-                        intel-linux-key.crt i40e.ko)
+                        intel-linux-key.crt ${DRIVER}.ko)
 else
   info_signed_modules += echo "*** Files are missing, cannot sign driver." ;
   sign_driver =
@@ -199,6 +199,7 @@ warn_signed_modules += \
     echo "*** disabled for this build." ;
 endif # CONFIG_MODULE_SIG_ALL=y
 ifeq (${CONFIG_MODULE_SIG_FORCE},1)
+  warn_signed_modules += \
     echo "warning: The target kernel has CONFIG_MODULE_SIG_FORCE enabled," ; \
     echo "warning: but the signing key cannot be found. The module must" ; \
     echo "warning: be signed manually using 'scripts/sign-file'." ;
@@ -267,6 +268,13 @@ else
   EXTRA_CFLAGS += -DSLE_KERNEL_REVISION=${LOCALVER_A}
 endif
 endif
+endif
+
+# Check if it is Oracle Linux UEK kernel and take release patch number from it
+ifneq (,$(findstring uek,${BUILD_KERNEL}))
+  EXTRAVERSION := $(shell BK=${BUILD_KERNEL}; echo $${BK\#*-})
+  UEK_RELEASE_NUMBER := $(shell EV=${EXTRAVERSION}; echo $${EV%%\.*})
+  EXTRA_CFLAGS += -DUEK_RELEASE_NUMBER=${UEK_RELEASE_NUMBER}
 endif
 
 EXTRA_CFLAGS += ${CFLAGS_EXTRA}
@@ -424,10 +432,10 @@ export INSTALL_AUX_DIR ?= updates/drivers/net/ethernet/intel/auxiliary
 AUX_BUS_HEADER ?= linux/auxiliary_bus.h
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_install
-	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/auxiliary.symvers
+	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
 	install -d ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}
-	mv -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/auxiliary.ko \
-	      ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/auxiliary.ko
+	mv -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/intel_auxiliary.ko \
+	      ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/intel_auxiliary.ko
 	install -D -m 644 ${AUX_BUS_HEADER} ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
 endef
 else
@@ -436,14 +444,17 @@ endif
 
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_uninstall
-	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/auxiliary.symvers
-	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/auxiliary.ko
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/intel_auxiliary.ko
 	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
 endef
 else
 auxiliary_post_uninstall =
 endif
 
+ifeq (${NEED_AUX_BUS},2)
+EXTRA_CFLAGS += -DUSE_INTEL_AUX_BUS
+endif
 ######################
 # Kernel Build Macro #
 ######################
