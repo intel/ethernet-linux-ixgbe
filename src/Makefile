@@ -163,7 +163,7 @@ modules_uninstall:
 # After uninstalling all the files, perform necessary work to restore the
 # system back to using the default kernel modules. This includes running
 # depmod to update module dependencies and updating the initramfs image.
-uninstall:
+uninstall: modules_uninstall mandocs_uninstall
 	$(call cmd_depmod)
 	$(call cmd_initramfs)
 

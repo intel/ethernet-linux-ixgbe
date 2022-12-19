@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.17.1" \
+#define DRV_VERSION	"5.18.6" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -7774,8 +7774,7 @@ static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 #endif
 
 	if (adapter->xdp_prog) {
-		int new_frame_size = new_mtu + ETH_HLEN + ETH_FCS_LEN +
-				     VLAN_HLEN;
+		int new_frame_size = new_mtu + IXGBE_PKT_HDR_PAD;
 		int i;
 
 		for (i = 0; i < adapter->num_rx_queues; i++) {
@@ -11975,7 +11974,7 @@ void ixgbe_xdp_ring_update_tail_locked(struct ixgbe_ring *ring)
 #ifdef HAVE_XDP_SUPPORT
 static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 {
-	int i, frame_size = dev->mtu + ETH_HLEN + ETH_FCS_LEN + VLAN_HLEN;
+	int i, frame_size = dev->mtu + IXGBE_PKT_HDR_PAD;
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	struct bpf_prog *old_prog;
 	bool need_reset;
@@ -12200,7 +12199,11 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_vlan_rx_add_vid	= ixgbe_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= ixgbe_vlan_rx_kill_vid,
 #endif
+#ifdef HAVE_NDO_ETH_IOCTL
+	.ndo_eth_ioctl		= ixgbe_ioctl,
+#else
 	.ndo_do_ioctl		= ixgbe_ioctl,
+#endif /* HAVE_NDO_ETH_IOCTL */
 #ifdef HAVE_RHEL7_NET_DEVICE_OPS_EXT
 /* RHEL7 requires this to be defined to enable extended ops.  RHEL7 uses the
  * function get_ndo_ext to retrieve offsets for extended fields from with the
@@ -12512,9 +12515,21 @@ static void ixgbe_set_fw_version(struct ixgbe_adapter *adapter)
 	 * Save off EEPROM version number and Option Rom version which
 	 * together make a unique identify for the eeprom
 	 */
-	hw->eeprom.ops.read(hw, 0x2e, &eeprom_verh);
-	hw->eeprom.ops.read(hw, 0x2d, &eeprom_verl);
-	etrack_id = (eeprom_verh << 16) | eeprom_verl;
+	if (hw->eeprom.ops.read(hw, 0x2e, &eeprom_verh))
+		eeprom_verh = NVM_VER_INVALID;
+	if (hw->eeprom.ops.read(hw, 0x2d, &eeprom_verl))
+		eeprom_verl = NVM_VER_INVALID;
+
+	/* The word order for the version format is determined by high order
+	 * word bit 15.
+	 */
+	if ((eeprom_verh & NVM_ETK_VALID) == 0) {
+		etrack_id = eeprom_verh;
+		etrack_id |= (eeprom_verl << NVM_ETK_SHIFT);
+	} else {
+		etrack_id = eeprom_verl;
+		etrack_id |= (eeprom_verh << NVM_ETK_SHIFT);
+	}
 
 	/* Check for SCSI block version format */
 	hw->eeprom.ops.read(hw, 0x17, &offset);

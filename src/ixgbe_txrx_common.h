@@ -12,6 +12,8 @@
 #define IXGBE_XDP_TX		BIT(1)
 #define IXGBE_XDP_REDIR		BIT(2)
 
+#define IXGBE_PKT_HDR_PAD	(ETH_HLEN + ETH_FCS_LEN + (VLAN_HLEN * 2))
+
 void ixgbe_xdp_ring_update_tail(struct ixgbe_ring *ring);
 void ixgbe_xdp_ring_update_tail_locked(struct ixgbe_ring *ring);
 

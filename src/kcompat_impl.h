@@ -1377,4 +1377,30 @@ flow_rule_match_enc_keyid(const struct flow_rule *rule,
 				 in_serving_softirq()))
 #endif /* NEED_IN_TASK */
 
+/*
+ * NEED_NETIF_NAPI_ADD_NO_WEIGHT
+ *
+ * Upstream commit b48b89f9c189 ("net: drop the weight argument from
+ * netif_napi_add") removes weight argument from function call.
+ *
+ * Our drivers always used default weight, which is 64.
+ *
+ * Define NEED_NETIF_NAPI_ADD_NO_WEIGHT on kernels 3.10+ to use old
+ * implementation. Undef for 6.1+ where new function was introduced.
+ */
+#ifdef NEED_NETIF_NAPI_ADD_NO_WEIGHT
+static inline void
+_kc_netif_napi_add(struct net_device *dev, struct napi_struct *napi,
+		   int (*poll)(struct napi_struct *, int))
+{
+	return netif_napi_add(dev, napi, poll, NAPI_POLL_WEIGHT);
+}
+
+/* RHEL7 complains about redefines. Undef first, then define compat wrapper */
+#ifdef netif_napi_add
+#undef netif_napi_add
+#endif
+#define netif_napi_add _kc_netif_napi_add
+#endif /* NEED_NETIF_NAPI_ADD_NO_WEIGHT */
+
 #endif /* _KCOMPAT_IMPL_H_ */

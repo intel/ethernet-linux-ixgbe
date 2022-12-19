@@ -950,8 +950,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	q_vector->cpu = -1;
 
 	/* initialize NAPI */
-	netif_napi_add(adapter->netdev, &q_vector->napi,
-		       ixgbe_poll, 64);
+	netif_napi_add(adapter->netdev, &q_vector->napi, ixgbe_poll);
 #ifndef HAVE_NETIF_NAPI_ADD_CALLS_NAPI_HASH_ADD
 #ifdef HAVE_NDO_BUSY_POLL
 	napi_hash_add(&q_vector->napi);
