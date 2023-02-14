@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.18.6
+Version: 5.18.11
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -19,6 +19,8 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 %define pcitable  %find %{_pcitable}
 Requires: kernel, findutils, gawk, bash
 
+%global __strip /bin/true
+
 %if 0%{?BUILD_KERNEL:1}
 %define kernel_ver %{BUILD_KERNEL}
 %define check_aux_args_kernel -b %{BUILD_KERNEL} 
@@ -31,14 +33,6 @@ Requires: kernel, findutils, gawk, bash
 %endif
 
 %define check_aux_args %check_aux_args_kernel %check_aux_args_ksrc
-
-%define need_aux_rpm %( [ -L /lib/modules/%kernel_ver/source ] && \
-                  (rpm -q --whatprovides /lib/modules/%kernel_ver/source/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2) || \
-                  (rpm -q --whatprovides /lib/modules/%kernel_ver/build/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2) )
-
-%if (%need_aux_rpm == 2)
-Requires: intel_auxiliary
-%endif
 
 # Check for existence of variable kernel_module_package_buildreqs ...
 %if 0%{?!kernel_module_package_buildreqs:1}
@@ -62,49 +56,25 @@ make -C src clean
 make -C src
 
 %install
-%define req_aux %( [[ "%name" =~ ^(ice|ice_sw|ice_swx|iavf|i40e)$ ]] && echo 0 || echo 1 )
-
-# install drivers that have auxiliary driver dependency
-%if (%req_aux == 0)
-make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install_no_aux mandocs_install
+make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install mandocs_install
 # Remove modules files that we do not want to include
 find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
 cd %{buildroot}
 find lib -name "ixgbe.ko" -printf "/%p\n" \
 	>%{_builddir}/%{name}-%{version}/file.list
-%if (%need_aux_rpm == 2)
-make -C %{_builddir}/%{name}-%{version}/src INSTALL_MOD_PATH=%{buildroot} auxiliary_install
 
-find lib -path "*extern-symvers/intel_auxiliary.symvers" -printf "/%p\n" \
-	>%{_builddir}/%{name}-%{version}/aux.list
-find * -name "auxiliary_bus.h" -printf "/%p\n" \
-	>>%{_builddir}/%{name}-%{version}/aux.list
-%endif
-if [ "$(%{_builddir}/%{name}-%{version}/scripts/./check_aux_bus %check_aux_args; echo $?)" == "2" ] ; then
-	find lib -name "intel_auxiliary.ko" -printf "/%p\n" \
-	>>%{_builddir}/%{name}-%{version}/file.list
-fi
-
-# install drivers that do not have auxiliary driver dependency
-%else
-make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install mandocs_install
-# Remove modules files that we do not want to include
-find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
+export _ksrc=%{_usrsrc}/kernels/%{kernel_ver}
 cd %{buildroot}
-find lib -name "ixgbe.ko" \
-	-fprintf %{_builddir}/%{name}-%{version}/file.list "/%p\n"
-%endif
-
 # Sign the modules(s)
 %if %{?_with_modsign:1}%{!?_with_modsign:0}
 %define __strip /bin/true
 %{!?privkey: %define privkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.priv}
 %{!?pubkey: %define pubkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.der}
-%{!?_signfile: %define _signfile %{_usrsrc}/kernels/%{kernel_ver}/scripts/sign-file}
+%{!?_signfile: %define _signfile ${_ksrc}/scripts/sign-file}
 for module in `find . -type f -name *.ko`;
 do
 strip --strip-debug ${module}
-$(KSRC=%{_usrsrc}/kernels/%{kernel_ver} %{_signfile} sha512 %{privkey} %{pubkey} ${module} > /dev/null 2>&1)
+$(KSRC=${_ksrc} %{_signfile} sha512 %{privkey} %{pubkey} ${module} > /dev/null 2>&1)
 done
 %endif
 
@@ -468,18 +438,4 @@ else
 	echo "You must update your initrd manually for changes to take place."
 	exit -1
 fi
-
-%if (%need_aux_rpm == 2) && (%req_aux == 0)
-%package -n intel_auxiliary
-Summary: Auxiliary bus driver (backport)
-Version: 1.0.0
-
-%description -n intel_auxiliary
-The Auxiliary bus driver (intel_auxiliary.ko), backported from upstream, for use by kernels that don't have auxiliary bus.
-
-# The if is used to hide this whole section. This causes RPM to skip the build
-# of the auxiliary subproject entirely.
-%files -n intel_auxiliary -f aux.list
-%doc aux.list
-%endif
 

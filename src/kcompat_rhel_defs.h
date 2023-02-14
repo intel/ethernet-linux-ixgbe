@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 #ifndef _KCOMPAT_RHEL_DEFS_H_
 #define _KCOMPAT_RHEL_DEFS_H_
@@ -112,6 +112,7 @@
 #undef NEED_INDIRECT_CALL_WRAPPER_MACROS
 #define HAVE_INDIRECT_CALL_WRAPPER_HEADER
 #define HAVE_GRETAP_TYPE
+#define HAVE_GENEVE_TYPE
 #define HAVE_VXLAN_TYPE
 #define HAVE_LINKMODE
 #define HAVE_FLOW_DISSECTOR_KEY_CVLAN
@@ -175,6 +176,7 @@
 #define HAVE_NETDEV_BPF_XSK_POOL
 #define HAVE_AF_XDP_NETDEV_UMEM
 #define HAVE_DEVLINK_OPS_CREATE_DEL
+#undef NEED_ETHTOOL_SPRINTF
 #endif /* 8.5 */
 
 /*****************************************************************************/
@@ -182,6 +184,7 @@
 #else /* >= 8.6 */
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,0))
 #define HAVE_ETHTOOL_COALESCE_EXTACK
+#define HAVE_DEVL_PORT_REGISTER
 #endif /* < 9.0 */
 #undef NEED_ETH_HW_ADDR_SET
 #endif /* 8.6 */
@@ -198,6 +201,7 @@
 #define HAVE_DEVLINK_NOTIFY_REGISTER
 #define HAVE_DEVLINK_SET_FEATURES
 #define HAVE_DEVLINK_PORT_SPLIT_PORT_STRUCT
+#define HAVE_DEVLINK_SET_STATE_3_PARAM
 #endif /* 8.7 */
 
 /*****************************************************************************/
@@ -219,5 +223,11 @@
 #define HAVE_ETHTOOL_COALESCE_EXTACK
 #define HAVE_XDP_DO_FLUSH
 #endif /* 9.1 */
+
+/*****************************************************************************/
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(9,2))
+#else /* >= 9.2 */
+#undef NEED_NETIF_NAPI_ADD_NO_WEIGHT
+#endif /* 9.2 */
 
 #endif /* _KCOMPAT_RHEL_DEFS_H_ */

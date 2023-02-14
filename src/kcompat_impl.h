@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 #ifndef _KCOMPAT_IMPL_H_
 #define _KCOMPAT_IMPL_H_
@@ -1387,6 +1387,7 @@ flow_rule_match_enc_keyid(const struct flow_rule *rule,
  *
  * Define NEED_NETIF_NAPI_ADD_NO_WEIGHT on kernels 3.10+ to use old
  * implementation. Undef for 6.1+ where new function was introduced.
+ * RedHat 9.2 required using no weight parameter option.
  */
 #ifdef NEED_NETIF_NAPI_ADD_NO_WEIGHT
 static inline void
@@ -1402,5 +1403,19 @@ _kc_netif_napi_add(struct net_device *dev, struct napi_struct *napi,
 #endif
 #define netif_napi_add _kc_netif_napi_add
 #endif /* NEED_NETIF_NAPI_ADD_NO_WEIGHT */
+
+#ifdef NEED_ETHTOOL_SPRINTF
+static inline
+__printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vsnprintf(*data, ETH_GSTRING_LEN, fmt, args);
+	va_end(args);
+
+	*data += ETH_GSTRING_LEN;
+}
+#endif /* NEED_ETHTOOL_SPRINTF */
 
 #endif /* _KCOMPAT_IMPL_H_ */

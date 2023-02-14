@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 #ifndef _KCOMPAT_STD_DEFS_H_
 #define _KCOMPAT_STD_DEFS_H_
@@ -35,6 +35,7 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
 #else /* >= 3,10,0 */
 #define NEED_NETIF_NAPI_ADD_NO_WEIGHT
+#define NEED_ETHTOOL_SPRINTF
 #endif /* 3,10,0 */
 
 /*****************************************************************************/
@@ -163,6 +164,7 @@
 #define NEED_INDIRECT_CALL_WRAPPER_MACROS
 #else /* >= 5.0.0 */
 #define HAVE_GRETAP_TYPE
+#define HAVE_GENEVE_TYPE
 #define HAVE_INDIRECT_CALL_WRAPPER_HEADER
 #endif /* 5.0.0 */
 
@@ -291,6 +293,7 @@
 #define HAVE_DEV_IN_MDEV_API
 #else /* >= 5.13.0 */
 #define HAVE_XPS_MAP_TYPE
+#undef NEED_ETHTOOL_SPRINTF
 #endif /* 5.13.0 */
 
 /*****************************************************************************/
@@ -310,6 +313,7 @@
 #define HAVE_DEVICE_IN_MDEV_PARENT_OPS
 #define HAVE_LMV1_SUPPORT
 #define NEED_PCI_IOV_VF_ID
+#define HAVE_DEVLINK_SET_STATE_3_PARAM
 #endif /* 5.15.0 */
 
 /*****************************************************************************/
@@ -320,6 +324,7 @@
 #define HAVE_DEVLINK_NOTIFY_REGISTER
 #undef HAVE_DEVLINK_RELOAD_ENABLE_DISABLE
 #undef HAVE_DEVLINK_PARAMS_PUBLISH
+#define HAVE_XSK_BATCHED_RX_ALLOC
 #endif /* 5.16.0 */
 
 /*****************************************************************************/
@@ -338,12 +343,14 @@
 #define HAVE_GTP_SUPPORT
 #undef HAVE_XSK_TX_PEEK_RELEASE_DESC_BATCH_3_PARAMS
 #define HAVE_DEVLINK_PORT_SPLIT_PORT_STRUCT
+#define HAVE_DEVL_PORT_REGISTER
 #endif /* 5.18.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 #else /* >=5.19.0 */
 #define HAVE_NDO_FDB_DEL_EXTACK
+#define HAVE_NETIF_SET_TSO_MAX
 #endif /* 5.19.0 */
 
 /*****************************************************************************/
@@ -357,6 +364,13 @@
 #else /* >=6.1.0 */
 #define HAVE_FLOW_DISSECTOR_KEY_L2TPV3
 #undef NEED_NETIF_NAPI_ADD_NO_WEIGHT
+#define HAVE_TTY_TERMIOS_CONST_STRUCT
 #endif /* 6.1.0 */
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,2,0))
+#else /* >=6.2.0 */
+#define HAVE_SET_NETDEV_DEVLINK_PORT
+#undef HAVE_NDO_GET_DEVLINK_PORT
+#endif /* 6.2.0 */
 
 #endif /* _KCOMPAT_STD_DEFS_H_ */

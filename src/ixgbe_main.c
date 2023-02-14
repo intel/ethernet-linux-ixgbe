@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+// SPDX-License-Identifier: GPL-2.0-only
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.18.6" \
+#define DRV_VERSION	"5.18.11" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -83,7 +83,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright(c) 1999 - 2022 Intel Corporation.";
+static const char ixgbe_copyright[] = "Copyright (C) 1999 - 2023 Intel Corporation";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -5826,6 +5826,9 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 	 */
 	if (!(adapter->flags & IXGBE_FLAG_DCB_ENABLED)) {
 		if (hw->mac.type == ixgbe_mac_82598EB) {
+#ifdef HAVE_NETIF_SET_TSO_MAX
+			netif_set_tso_max_size(netdev, 65536);
+#else
 #ifdef NETDEV_CAN_SET_GSO_MAX_SIZE
 			netif_set_gso_max_size(netdev, 65536);
 #else
@@ -5837,11 +5840,15 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 						     IXGBE_GSO_PARTIAL_FEATURES;
 #endif
 #endif /* NETDEV_CAN_SET_GSO_MAX_SIZE */
+#endif /* HAVE_NETIF_SET_TSO_MAX */
 		}
 		return;
 	}
 
 	if (hw->mac.type == ixgbe_mac_82598EB) {
+#ifdef HAVE_NETIF_SET_TSO_MAX
+		netif_set_tso_max_size(netdev, 32768);
+#else
 #ifdef NETDEV_CAN_SET_GSO_MAX_SIZE
 		netif_set_gso_max_size(netdev, 32768);
 #else
@@ -5852,6 +5859,7 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 		netdev->gso_partial_features = 0;
 #endif
 #endif /* NETDEV_CAN_SET_GSO_MAX_SIZE */
+#endif /* HAVE_NETIF_SET_TSO_MAX */
 	}
 
 #if IS_ENABLED(CONFIG_FCOE)

@@ -1,10 +1,10 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 #ifndef _IXGBE_MBX_H_
 #define _IXGBE_MBX_H_
 
-#include "ixgbe_type.h"
+struct ixgbe_hw;
 
 struct ixgbe_mbx_operations {
 	void (*init_params)(struct ixgbe_hw *hw);

@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 #ifndef _KCOMPAT_SLES_DEFS_H_
 #define _KCOMPAT_SLES_DEFS_H_
@@ -220,6 +220,7 @@
 	#undef HAVE_DEVLINK_PARAMS_PUBLISH
 	#undef HAVE_DEVLINK_REGISTER_SETS_DEV
 	#define HAVE_DEVLINK_SET_FEATURES
+	#undef NEED_ETHTOOL_SPRINTF
 #endif /* 5.14.17-150400.1 */
 
 /*****************************************************************************/
@@ -229,6 +230,7 @@
 #undef HAVE_DEVLINK_RELOAD_ENABLE_DISABLE
 #define HAVE_ETHTOOL_COALESCE_EXTACK
 #define HAVE_DEVLINK_OPS_CREATE_DEL
+#define HAVE_DEVLINK_SET_STATE_3_PARAM
 #endif /* 5.14.21-150400.9 */
 
 #endif /* _KCOMPAT_SLES_DEFS_H_ */

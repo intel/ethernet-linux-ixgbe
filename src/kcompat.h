@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 1999 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 1999 - 2023 Intel Corporation */
 
 #ifndef _KCOMPAT_H_
 #define _KCOMPAT_H_
@@ -6894,7 +6894,6 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 #define HAVE_PTP_CLOCK_INFO_GETTIMEX64
 #define HAVE_NDO_BRIDGE_SETLINK_EXTACK
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
-#define HAVE_GENEVE_TYPE
 #define HAVE_TC_INDIR_BLOCK
 #endif /* 5.0.0 */
 
@@ -6952,7 +6951,9 @@ __kc_eth_get_headlen(const struct net_device __always_unused *dev, void *data,
 #else /* >= 5.2.0 */
 #define HAVE_NDO_SELECT_QUEUE_FALLBACK_REMOVED
 #define SPIN_UNLOCK_IMPLIES_MMIOWB
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,2,0))
 #define HAVE_NDO_GET_DEVLINK_PORT
+#endif /* < 6.2.0 */
 #endif /* 5.2.0 */
 
 /*****************************************************************************/
