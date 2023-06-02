@@ -13,9 +13,7 @@
  * should be migrated to the new format over time.
  */
 
-/*
- * generic network stack functions
- */
+/* generic network stack functions */
 
 /* NEED_NETDEV_TXQ_BQL_PREFETCH
  *
@@ -197,9 +195,7 @@ static inline bool macvlan_supports_dest_filter(struct net_device *dev)
 
 #endif /* NETIF_F_HW_L2FW_DOFFLOAD */
 
-/*
- * tc functions
- */
+/* tc functions */
 
 /* NEED_FLOW_INDR_BLOCK_CB_REGISTER
  *
@@ -215,9 +211,7 @@ static inline bool macvlan_supports_dest_filter(struct net_device *dev)
 #define __flow_indr_block_cb_unregister __tc_indr_block_cb_unregister
 #endif
 
-/*
- * devlink support
- */
+/* devlink support */
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 
 #include <net/devlink.h>
@@ -475,9 +469,7 @@ static inline void ida_free(struct ida *ida, unsigned int id)
 }
 #endif /* NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE */
 
-/*
- * dev_printk implementations
- */
+/* dev_printk implementations */
 
 /* NEED_DEV_PRINTK_ONCE
  *
@@ -563,9 +555,7 @@ tc_cls_can_offload_and_chain0(const struct net_device *dev,
 #define TC_SETUP_QDISC_MQPRIO TC_SETUP_MQPRIO
 #endif /* NEED_TC_SETUP_QDISC_MQPRIO */
 
-/*
- * ART/TSC functions
- */
+/* ART/TSC functions */
 #ifdef HAVE_PTP_CROSSTIMESTAMP
 /* NEED_CONVERT_ART_NS_TO_TSC
  *
@@ -610,9 +600,7 @@ static inline struct system_counterval_t convert_art_ns_to_tsc(u64 art_ns)
 #endif /* NEED_CONVERT_ART_NS_TO_TSC */
 #endif /* HAVE_PTP_CROSSTIMESTAMP */
 
-/*
- * PTP functions and definitions
- */
+/* PTP functions and definitions */
 #if IS_ENABLED(CONFIG_PTP_1588_CLOCK)
 #include <linux/ptp_clock_kernel.h>
 #include <linux/ptp_clock.h>
@@ -666,6 +654,28 @@ static inline struct system_counterval_t convert_art_ns_to_tsc(u64 art_ns)
 #endif
 
 #endif /* CONFIG_PTP_1588_CLOCK */
+
+/*
+ * NEED_PTP_SYSTEM_TIMESTAMP
+ *
+ * Upstream commit 361800876f80 ("ptp: add PTP_SYS_OFFSET_EXTENDED
+ * ioctl") introduces new ioctl, driver and helper functions.
+ *
+ * Required for PhotonOS 3.0 to correctly support backport of
+ * PTP patches introduced in Linux Kernel version 5.0 on 4.x kernels
+ */
+#ifdef NEED_PTP_SYSTEM_TIMESTAMP
+struct ptp_system_timestamp {
+	struct timespec64 pre_ts;
+	struct timespec64 post_ts;
+};
+
+static inline void
+ptp_read_system_prets(struct ptp_system_timestamp *sts) { }
+
+static inline void
+ptp_read_system_postts(struct ptp_system_timestamp *sts) { }
+#endif /* !NEED_PTP_SYSTEM_TIMESTAMP */
 
 #ifdef NEED_BUS_FIND_DEVICE_CONST_DATA
 /* NEED_BUS_FIND_DEVICE_CONST_DATA
@@ -770,6 +780,72 @@ cpu_latency_qos_remove_request(struct pm_qos_request *req)
 }
 #endif /* NEED_CPU_LATENCY_QOS_RENAME */
 
+#if GCC_VERSION < 50000
+/* Workaround for gcc bug - not accepting "(type)" before "{ ... }" as part of
+ * static struct initializers [when used with -std=gnu11 switch]
+ * https://bugzilla.redhat.com/show_bug.cgi?id=1672652
+ *
+ * fix was backported to gcc 4.8.5-39 by RedHat, contained in RHEL 7.7
+ * workaround here is to just drop that redundant (commented out below) part and
+ * redefine kernel macros used by us.
+ */
+#undef __SPIN_LOCK_UNLOCKED
+#define __SPIN_LOCK_UNLOCKED(lockname) \
+	/* (spinlock_t) */ __SPIN_LOCK_INITIALIZER(lockname)
+
+#undef __RAW_SPIN_LOCK_UNLOCKED
+#define __RAW_SPIN_LOCK_UNLOCKED(lockname) \
+	/* (raw_spinlock_t) */ __RAW_SPIN_LOCK_INITIALIZER(lockname)
+
+#ifndef CONFIG_DEBUG_SPINLOCK
+/* raw_spin_lock_init needs __RAW_SPIN_LOCK_UNLOCKED with typecast, so keep the
+ * original impl,
+ * but enhance it with typecast dropped from __RAW_SPIN_LOCK_UNLOCKED() */
+#undef raw_spin_lock_init
+#define raw_spin_lock_init(lock)					\
+	do { *(lock) = (raw_spinlock_t) __RAW_SPIN_LOCK_UNLOCKED(lock);	\
+	} while (0)
+#endif /* !CONFIG_DEBUG_SPINLOCK */
+
+#undef STATIC_KEY_INIT_TRUE
+#define STATIC_KEY_INIT_TRUE					\
+	{ .enabled = { 1 },					\
+	  { .type = 1UL } }
+
+#undef STATIC_KEY_INIT_FALSE
+#define STATIC_KEY_INIT_FALSE	\
+	{ .enabled = { 0 } }
+
+#undef STATIC_KEY_TRUE_INIT
+#define STATIC_KEY_TRUE_INIT \
+	/* (struct static_key_true) */ { .key = STATIC_KEY_INIT_TRUE }
+
+#undef STATIC_KEY_FALSE_INIT
+#define STATIC_KEY_FALSE_INIT \
+	/* (struct static_key_false) */ { .key = STATIC_KEY_INIT_FALSE }
+
+#ifdef HAVE_JUMP_LABEL
+/* dd_key_init() is used (indirectly) with arg like "(STATIC_KEY_INIT_FALSE)"
+ * from DEFINE_DYNAMIC_DEBUG_METADATA(), which, depending on config has many
+ * different definitions (including helper macros).
+ * To reduce compat code, just consume parens from the arg instead copy-pasting
+ * all definitions and slightly changing them. */
+#define _KC_SLURP_PARENS(...) __VA_ARGS__
+#undef dd_key_init
+#define dd_key_init(key, init) key = _KC_SLURP_PARENS init
+#endif /* HAVE_JUMP_LABEL */
+
+#undef UUID_INIT
+#define UUID_INIT(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)		\
+	{{ ((a) >> 24) & 0xff, ((a) >> 16) & 0xff,			\
+	   ((a) >> 8) & 0xff, (a) & 0xff,				\
+	   ((b) >> 8) & 0xff, (b) & 0xff,				\
+	   ((c) >> 8) & 0xff, (c) & 0xff,				\
+	   (d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7)		\
+	}}
+
+#endif /* GCC_VERSION < 5.0 */
+
 #ifdef NEED_DECLARE_STATIC_KEY_FALSE
 /* NEED_DECLARE_STATIC_KEY_FALSE
  *
@@ -818,6 +894,17 @@ cpu_latency_qos_remove_request(struct pm_qos_request *req)
 #define static_branch_dec(x)		static_key_slow_dec(x)
 
 #endif /* NEED_STATIC_BRANCH */
+
+/* PCI related stuff */
+
+/* NEED_PCI_AER_CLEAR_NONFATAL_STATUS
+ *
+ * 894020fdd88c ("PCI/AER: Rationalize error status register clearing") has
+ * renamed pci_cleanup_aer_uncorrect_error_status to more sane name.
+ */
+#ifdef NEED_PCI_AER_CLEAR_NONFATAL_STATUS
+#define pci_aer_clear_nonfatal_status	pci_cleanup_aer_uncorrect_error_status
+#endif /* NEED_PCI_AER_CLEAR_NONFATAL_STATUS */
 
 #ifdef NEED_NETDEV_XDP_STRUCT
 #define netdev_bpf netdev_xdp
@@ -1269,6 +1356,104 @@ flow_rule_match_enc_keyid(const struct flow_rule *rule,
 #endif /* HAVE_TC_FLOWER_ENC */
 #endif /* NEED_FLOW_MATCH && HAVE_TC_SETUP_CLSFLOWER */
 
+/* bitfield / bitmap */
+
+/* NEED_BITMAP_COPY_CLEAR_TAIL
+ *
+ * backport
+ * c724f193619c ("bitmap: new bitmap_copy_safe and bitmap_{from,to}_arr32")
+ */
+#ifdef NEED_BITMAP_COPY_CLEAR_TAIL
+/* Copy bitmap and clear tail bits in last word */
+static inline void
+bitmap_copy_clear_tail(unsigned long *dst, const unsigned long *src, unsigned int nbits)
+{
+	bitmap_copy(dst, src, nbits);
+	if (nbits % BITS_PER_LONG)
+		dst[nbits / BITS_PER_LONG] &= BITMAP_LAST_WORD_MASK(nbits);
+}
+#endif /* NEED_BITMAP_COPY_CLEAR_TAIL */
+
+/* NEED_BITMAP_FROM_ARR32
+ *
+ * backport
+ * c724f193619c ("bitmap: new bitmap_copy_safe and bitmap_{from,to}_arr32")
+ */
+#ifdef NEED_BITMAP_FROM_ARR32
+#if BITS_PER_LONG == 64
+/**
+ * bitmap_from_arr32 - copy the contents of u32 array of bits to bitmap
+ * @bitmap: array of unsigned longs, the destination bitmap
+ * @buf: array of u32 (in host byte order), the source bitmap
+ * @nbits: number of bits in @bitmap
+ */
+static inline void bitmap_from_arr32(unsigned long *bitmap, const u32 *buf,
+				     unsigned int nbits)
+{
+	unsigned int i, halfwords;
+
+	halfwords = DIV_ROUND_UP(nbits, 32);
+	for (i = 0; i < halfwords; i++) {
+		bitmap[i/2] = (unsigned long) buf[i];
+		if (++i < halfwords)
+			bitmap[i/2] |= ((unsigned long) buf[i]) << 32;
+	}
+
+	/* Clear tail bits in last word beyond nbits. */
+	if (nbits % BITS_PER_LONG)
+		bitmap[(halfwords - 1) / 2] &= BITMAP_LAST_WORD_MASK(nbits);
+}
+#else /* BITS_PER_LONG == 64 */
+/*
+ * On 32-bit systems bitmaps are represented as u32 arrays internally, and
+ * therefore conversion is not needed when copying data from/to arrays of u32.
+ */
+#define bitmap_from_arr32(bitmap, buf, nbits)			\
+	bitmap_copy_clear_tail((unsigned long *) (bitmap),	\
+			       (const unsigned long *) (buf), (nbits))
+#endif /* BITS_PER_LONG == 64 */
+#endif /* NEED_BITMAP_FROM_ARR32 */
+
+/* NEED_BITMAP_TO_ARR32
+ *
+ * backport
+ * c724f193619c ("bitmap: new bitmap_copy_safe and bitmap_{from,to}_arr32")
+ */
+#ifdef NEED_BITMAP_TO_ARR32
+#if BITS_PER_LONG == 64
+/**
+ * bitmap_to_arr32 - copy the contents of bitmap to a u32 array of bits
+ *  @buf: array of u32 (in host byte order), the dest bitmap
+ *  @bitmap: array of unsigned longs, the source bitmap
+ *  @nbits: number of bits in @bitmap
+ */
+static inline void bitmap_to_arr32(u32 *buf, const unsigned long *bitmap,
+				   unsigned int nbits)
+{
+	unsigned int i, halfwords;
+
+	halfwords = DIV_ROUND_UP(nbits, 32);
+	for (i = 0; i < halfwords; i++) {
+		buf[i] = (u32) (bitmap[i/2] & UINT_MAX);
+		if (++i < halfwords)
+			buf[i] = (u32) (bitmap[i/2] >> 32);
+	}
+
+	/* Clear tail bits in last element of array beyond nbits. */
+	if (nbits % BITS_PER_LONG)
+		buf[halfwords - 1] &= (u32) (UINT_MAX >> ((-nbits) & 31));
+}
+#else
+/*
+ * On 32-bit systems bitmaps are represented as u32 arrays internally, and
+ * therefore conversion is not needed when copying data from/to arrays of u32.
+ */
+#define bitmap_to_arr32(buf, bitmap, nbits)			\
+	bitmap_copy_clear_tail((unsigned long *) (buf),		\
+			       (const unsigned long *) (bitmap), (nbits))
+#endif /* BITS_PER_LONG == 64 */
+#endif /* NEED_BITMAP_TO_ARR32 */
+
 #ifndef HAVE_INCLUDE_BITFIELD
 /* linux/bitfield.h has been added in Linux 4.9 in upstream commit
  * 3e9b3112ec74 ("add basic register-field manipulation macros")
@@ -1417,5 +1602,114 @@ __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
 	*data += ETH_GSTRING_LEN;
 }
 #endif /* NEED_ETHTOOL_SPRINTF */
+
+/*
+ * HAVE_U64_STATS_FETCH_BEGIN_IRQ
+ * HAVE_U64_STATS_FETCH_RETRY_IRQ
+ *
+ * Upstream commit 44b0c2957adc ("u64_stats: Streamline the implementation")
+ * marks u64_stats_fetch_begin_irq() and u64_stats_fetch_retry_irq()
+ * as obsolete. Their functionality is combined with: u64_stats_fetch_begin()
+ * and u64_stats_fetch_retry().
+ *
+ * Upstream commit dec5efcffad4 ("u64_stat: Remove the obsolete fetch_irq()
+ * variants.") removes u64_stats_fetch_begin_irq() and
+ * u64_stats_fetch_retry_irq().
+ *
+ * Map u64_stats_fetch_begin() and u64_stats_fetch_retry() to the _irq()
+ * variants on the older kernels to allow the same driver code working on
+ * both old and new kernels.
+ */
+#ifdef HAVE_U64_STATS_FETCH_BEGIN_IRQ
+#define u64_stats_fetch_begin _kc_u64_stats_fetch_begin
+
+static inline unsigned int
+_kc_u64_stats_fetch_begin(const struct u64_stats_sync *syncp)
+{
+	return u64_stats_fetch_begin_irq(syncp);
+}
+#endif /* HAVE_U64_STATS_FETCH_BEGIN_IRQ */
+
+#ifdef HAVE_U64_STATS_FETCH_RETRY_IRQ
+#define u64_stats_fetch_retry _kc_u64_stats_fetch_retry
+
+static inline bool
+_kc_u64_stats_fetch_retry(const struct u64_stats_sync *syncp,
+			  unsigned int start)
+{
+	return u64_stats_fetch_retry_irq(syncp, start);
+}
+#endif /* HAVE_U64_STATS_FETCH_RETRY_IRQ */
+
+/* NEED_DIFF_BY_SCALED_PPM
+ *
+ * diff_by_scaled_ppm and adjust_by_scaled_ppm were introduced in
+ * kernel 6.1 by upstream commit 1060707e3809 ("ptp: introduce helpers
+ * to adjust by scaled parts per million").
+ */
+#ifdef NEED_DIFF_BY_SCALED_PPM
+static inline bool
+diff_by_scaled_ppm(u64 base, long scaled_ppm, u64 *diff)
+{
+	bool negative = false;
+
+	if (scaled_ppm < 0) {
+		negative = true;
+		scaled_ppm = -scaled_ppm;
+	}
+
+	*diff = mul_u64_u64_div_u64(base, (u64)scaled_ppm,
+				    1000000ULL << 16);
+
+	return negative;
+}
+
+static inline u64
+adjust_by_scaled_ppm(u64 base, long scaled_ppm)
+{
+	u64 diff;
+
+	if (diff_by_scaled_ppm(base, scaled_ppm, &diff))
+		return base - diff;
+
+	return base + diff;
+}
+#endif /* NEED_DIFF_BY_SCALED_PPM */
+
+#ifndef HAVE_PCI_MSIX_CAN_ALLOC_DYN
+static inline bool pci_msix_can_alloc_dyn(struct pci_dev __always_unused *dev)
+{
+	return false;
+}
+#endif /* !HAVE_PCI_MSIX_CAN_ALLOC_DYN */
+
+#if !defined(HAVE_PCI_MSIX_ALLOC_IRQ_AT) && !defined(HAVE_PCI_MSIX_FREE_IRQ)
+struct msi_map {
+	int	index;
+	int	virq;
+};
+#endif /* !HAVE_PCI_MSIX_ALLOC_IRQ_AT && !HAVE_PCI_MSIX_FREE_IRQ */
+
+#ifndef HAVE_PCI_MSIX_ALLOC_IRQ_AT
+#define MSI_ANY_INDEX		UINT_MAX
+struct irq_affinity_desc;
+
+static inline struct msi_map
+pci_msix_alloc_irq_at(struct pci_dev __always_unused *dev,
+		      unsigned int __always_unused index,
+		      const struct irq_affinity_desc __always_unused *affdesc)
+{
+	struct msi_map map = { .index = -ENOTSUPP  };
+	return map;
+}
+#endif /* !HAVE_PCI_MSIX_ALLOC_IRQ_AT */
+
+#ifndef HAVE_PCI_MSIX_FREE_IRQ
+static inline void
+pci_msix_free_irq(struct pci_dev __always_unused *dev,
+		  struct msi_map __always_unused map)
+{
+}
+#endif /* !HAVE_PCI_MSIX_FREE_IRQ */
 
 #endif /* _KCOMPAT_IMPL_H_ */

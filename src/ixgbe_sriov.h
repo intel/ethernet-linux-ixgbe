@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2023 Intel Corporation */
 
-
 #ifndef _IXGBE_SRIOV_H_
 #define _IXGBE_SRIOV_H_
 

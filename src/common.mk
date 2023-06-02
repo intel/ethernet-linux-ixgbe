@@ -270,15 +270,6 @@ endif
 endif
 endif
 
-# Check if it is Oracle Linux UEK kernel and take release patch number from it
-ifneq (,$(findstring uek,${BUILD_KERNEL}))
-  EXTRAVERSION := $(shell echo ${BUILD_KERNEL} | cut -s -d '-' -f2-)
-  UEK_RELEASE_NUMBER := $(shell echo ${EXTRAVERSION} | cut -s -d '.' -f1)
-  UEK_MINOR_RELEASE_NUMBER := $(shell echo ${EXTRAVERSION} | cut -s -d '.' -f2)
-  EXTRA_CFLAGS += -DUEK_RELEASE_NUMBER=${UEK_RELEASE_NUMBER}
-  EXTRA_CFLAGS += -DUEK_MINOR_RELEASE_NUMBER=${UEK_MINOR_RELEASE_NUMBER}
-endif
-
 EXTRA_CFLAGS += ${CFLAGS_EXTRA}
 
 # get the kernel version - we use this to find the correct install path
@@ -345,6 +336,14 @@ minimum_kver_check = $(eval $(call _minimum_kver_check,${1},${2},${3}))
 # refactor it into the new layout.
 
 ifneq ($(wildcard ./kcompat_defs.h),)
+# call script that populates defines automatically
+#
+# since is_kcompat_defined() is a macro, it's "computed" before any target
+# recipe, kcompat_generated_defs.h is needed prior to that, so needs to be
+# generated also via $(shell) call, which makes error handling ugly
+$(if $(shell KSRC=${KSRC} OUT=kcompat_generated_defs.h CONFFILE=${CONFIG_FILE} \
+    bash kcompat-generator.sh && echo ok), , $(error kcompat-generator.sh failed))
+
 KCOMPAT_DEFINITIONS := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM \
                                      -I${KOBJ}/include \
                                      -I${KOBJ}/include/generated/uapi \
@@ -447,7 +446,7 @@ endif
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_uninstall
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
-	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/intel_auxiliary.ko
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/intel_auxiliary.ko*
 	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
 endef
 else

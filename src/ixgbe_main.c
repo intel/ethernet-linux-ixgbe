@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2023 Intel Corporation */
 
 /******************************************************************************
@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.18.11" \
+#define DRV_VERSION	"5.18.13" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"

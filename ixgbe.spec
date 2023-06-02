@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 5.18.11
+Version: 5.18.13
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -118,7 +118,7 @@ bash -s %{pciids} \
 	%{name} \
 <<"END"
 #! /bin/bash
-# Copyright (C) 2017 Intel Corporation
+# Copyright (C) 2017 - 2023 Intel Corporation
 # For licensing information, see the file 'LICENSE' in the root folder
 # $1 = system pci.ids file to update
 # $2 = system pcitable file to update
