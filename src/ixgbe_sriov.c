@@ -1402,15 +1402,16 @@ static void ixgbe_rcv_ack_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 }
 
 #define Q_BITMAP_DEPTH 2
-static void ixgbe_check_mdd_event(struct ixgbe_adapter *adapter)
+int ixgbe_check_mdd_event(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 vf_bitmap[Q_BITMAP_DEPTH] = { 0 };
+	int retval = false;
 	u32 j, i;
 	u32 ping;
 
 	if (!hw->mac.ops.mdd_event)
-		return;
+		return retval;
 
 	/* Did we have a malicious event */
 	hw->mac.ops.mdd_event(hw, vf_bitmap);
@@ -1441,8 +1442,12 @@ static void ixgbe_check_mdd_event(struct ixgbe_adapter *adapter)
 				       IXGBE_VT_MSGTYPE_CTS;
 				ixgbe_write_mbx(hw, &ping, 1, vf);
 			}
+
+			retval = true;
 		}
 	}
+
+	return retval;
 }
 
 void ixgbe_msg_task(struct ixgbe_adapter *adapter)

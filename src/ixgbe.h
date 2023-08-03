@@ -1129,6 +1129,7 @@ struct ixgbe_adapter {
 	u16 num_xsk_pools_used;
 	u16 num_xsk_pools;
 #endif
+
 };
 
 static inline unsigned int ixgbe_determine_xdp_q_idx(unsigned int cpu)
@@ -1358,7 +1359,6 @@ void ixgbe_vlan_mode(struct net_device *, u32);
 int ixgbe_find_vlvf_entry(struct ixgbe_hw *hw, u32 vlan);
 #endif
 #endif
-
 #ifdef HAVE_PTP_1588_CLOCK
 void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);

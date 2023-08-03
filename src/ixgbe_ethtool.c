@@ -888,6 +888,9 @@ static void ixgbe_get_pauseparam(struct net_device *netdev,
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
+	pause->rx_pause = 0;
+	pause->tx_pause = 0;
+
 	if (ixgbe_device_supports_autoneg_fc(hw) &&
 	    !hw->fc.disable_fc_autoneg)
 		pause->autoneg = 1;
@@ -1631,8 +1634,8 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 		sizeof(drvinfo->fw_version));
 	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev),
 		sizeof(drvinfo->bus_info));
-#ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 
+#ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 	drvinfo->n_priv_flags = IXGBE_PRIV_FLAGS_STR_LEN;
 #endif
 }
@@ -1914,12 +1917,12 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 
 #ifdef HAVE_NDO_GET_STATS64
 		do {
-			start = u64_stats_fetch_begin_irq(&ring->syncp);
+			start = u64_stats_fetch_begin(&ring->syncp);
 #endif
 			data[i]   = ring->stats.packets;
 			data[i+1] = ring->stats.bytes;
 #ifdef HAVE_NDO_GET_STATS64
-		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
+		} while (u64_stats_fetch_retry(&ring->syncp, start));
 #endif
 		i += 2;
 #ifdef BP_EXTENDED_STATS
@@ -1944,12 +1947,12 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 
 #ifdef HAVE_NDO_GET_STATS64
 		do {
-			start = u64_stats_fetch_begin_irq(&ring->syncp);
+			start = u64_stats_fetch_begin(&ring->syncp);
 #endif
 			data[i]   = ring->stats.packets;
 			data[i+1] = ring->stats.bytes;
 #ifdef HAVE_NDO_GET_STATS64
-		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
+		} while (u64_stats_fetch_retry(&ring->syncp, start));
 #endif
 		i += 2;
 #ifdef BP_EXTENDED_STATS
@@ -4590,8 +4593,9 @@ static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
 	if (!(adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE))
 		return -EOPNOTSUPP;
 
-	if (hw->phy.eee_speeds_supported && hw->phy.type == ixgbe_phy_fw)
+	if (hw->phy.eee_speeds_supported && hw->phy.type == ixgbe_phy_fw) {
 		return ixgbe_get_eee_fw(adapter, edata);
+	}
 
 	return -EOPNOTSUPP;
 }
@@ -4602,7 +4606,7 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct ethtool_eee eee_data;
+	struct ethtool_eee eee_data; /* structure storing current eee settings */
 	s32 ret_val;
 
 	if (!(hw->mac.ops.setup_eee &&
@@ -4630,23 +4634,23 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 		return -EINVAL;
 	}
 
-	if (eee_data.eee_enabled != edata->eee_enabled) {
+	if (eee_data.eee_enabled == edata->eee_enabled)
+		return 0;
 
-		if (edata->eee_enabled) {
-			adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
-			hw->phy.eee_speeds_advertised =
-						   hw->phy.eee_speeds_supported;
-		} else {
-			adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
-			hw->phy.eee_speeds_advertised = 0;
-		}
-
-		/* reset link */
-		if (netif_running(netdev))
-			ixgbe_reinit_locked(adapter);
-		else
-			ixgbe_reset(adapter);
+	if (edata->eee_enabled) {
+		adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
+		hw->phy.eee_speeds_advertised =
+					   hw->phy.eee_speeds_supported;
+	} else {
+		adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
+		hw->phy.eee_speeds_advertised = 0;
 	}
+
+	/* reset link */
+	if (netif_running(netdev))
+		ixgbe_reinit_locked(adapter);
+	else
+		ixgbe_reset(adapter);
 
 	return 0;
 }

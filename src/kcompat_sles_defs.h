@@ -71,12 +71,6 @@
  */
 
 /*****************************************************************************/
-#if (SLE_KERNEL_CODE < SLE_KERNEL_VERSION(4,4,0,73))
-#else /* >= 4.4.0-73 */
-#define HAVE_DEVLINK_PORT_SPLIT
-#endif /* 4.4.0-73 */
-
-/*****************************************************************************/
 #if (SLE_KERNEL_CODE > SLE_KERNEL_VERSION(4,12,14,23) && \
      SLE_KERNEL_CODE < SLE_KERNEL_VERSION(4,12,14,94))
 /*
@@ -121,7 +115,6 @@
 #undef NEED_MACVLAN_RELEASE_L2FW_OFFLOAD
 #undef NEED_MACVLAN_SUPPORTS_DEST_FILTER
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
-#define HAVE_DEVLINK_PORT_SPLIT_EXTACK
 #endif /* 4.12.14-111 */
 
 /*****************************************************************************/
@@ -149,7 +142,6 @@
 /*****************************************************************************/
 #if (SLE_KERNEL_CODE < SLE_KERNEL_VERSION(5,3,8,2))
 #else /* >= 5.3.8-2 */
-#undef NEED_BUS_FIND_DEVICE_CONST_DATA
 #undef NEED_FLOW_INDR_BLOCK_CB_REGISTER
 #undef NEED_SKB_FRAG_OFF
 #undef NEED_SKB_FRAG_OFF_ADD
@@ -185,12 +177,6 @@
 #undef NEED_XSK_BUFF_DMA_SYNC_FOR_CPU
 #define HAVE_MEM_TYPE_XSK_BUFF_POOL
 #endif /* 5.3.18-41 */
-
-/*****************************************************************************/
-#if (SLE_KERNEL_CODE < SLE_KERNEL_VERSION(5, 14, 17, 1))
-#else /* >= 5.14.17-150400.1 */
-	#undef NEED_ETHTOOL_SPRINTF
-#endif /* 5.14.17-150400.1 */
 
 /*****************************************************************************/
 #if (SLE_KERNEL_CODE < SLE_KERNEL_VERSION(5,14,21,9))

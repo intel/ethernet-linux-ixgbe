@@ -112,8 +112,10 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str);
 #define IXGBE_NTOHS(_i) ntohs(_i)
 #define IXGBE_CPU_TO_LE32(_i) cpu_to_le32(_i)
 #define IXGBE_CPU_TO_LE16(_i) cpu_to_le16(_i)
+#define IXGBE_LE16_TO_CPU(_i) le16_to_cpu(_i)
 #define IXGBE_LE32_TO_CPU(_i) le32_to_cpu(_i)
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
+#define IXGBE_LE64_TO_CPU(_i) le64_to_cpu(_i)
 #define EWARN(H, W) ewarn(H, W)
 
 enum {

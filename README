@@ -938,7 +938,7 @@ port 80, and then send it to queue 7:
 # ethtool -U enp130s0 flow-type tcp4 src-ip 192.168.0.1 dst-ip 192.168.0.5
 src-port 5300 dst-port 80 action 7
 
-To add a TCPv4 filter with a partial mask for a source IP subnet:
+To add a TCPv4 filter with a partial mask for a source IP :
 
 # ethtool -U <ethX> flow-type tcp4 src-ip 192.168.0.0 m 0.255.255.255 dst-ip
 192.168.5.12 src-port 12600 dst-port 31 action 12

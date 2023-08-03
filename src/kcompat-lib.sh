@@ -67,7 +67,7 @@ WB='[ \t\n]'
 # We take advantage of current/common linux codebase formatting here.
 #
 # Functions in this section require input file/s passed as args
-# (usualy one, but more could be supplied in case of renames in kernel),
+# (usually one, but more could be supplied in case of renames in kernel),
 # '-' could be used as an (only) file argument to read from stdin/pipe.
 
 # wrapper over find-something-decl() functions below, to avoid repetition
@@ -124,8 +124,20 @@ function find-struct-decl() {
 function find-macro-decl() {
 	test $# -ge 2
 	local what end
-	what="/^#define $1/" # only unindented defines
+	# only unindented defines, only whole-word match
+	what="/^#define $1"'([ \t\(]|$)/'
 	end=1 # only first line (bumping to bigger number does not bring more ;)
+	shift
+	find-decl "$what" "$end" "$@"
+}
+
+# yield first line of $1 typedef definition (simple typedefs only)
+# this probably won't handle typedef struct { \n int foo;\n};
+function find-typedef-decl() {
+	test $# -ge 2
+	local what end
+	what="/^typedef .* $1"';$/'
+	end=1
 	shift
 	find-decl "$what" "$end" "$@"
 }
@@ -142,7 +154,7 @@ function find-macro-decl() {
 #   NAME is the name for what we are looking for;
 #
 #   KIND specifies what kind of declaration/definition we are looking for,
-#      could be: fun, enum, struct, method, macro
+#      could be: fun, enum, struct, method, macro, typedef
 #   for KIND=method, we are looking for function ptr named METHOD in struct
 #     named NAME (two optional args are then necessary (METHOD & of));
 #
@@ -175,7 +187,7 @@ function gen() {
 	shift 3
 	[ "$if_kw" != if ] && die 21 "$src_line: 'if' keyword expected, '$if_kw' given"
 	case "$kind" in
-	fun|enum|struct|macro)
+	fun|enum|struct|macro|typedef)
 		name="$1"
 		shift
 	;;

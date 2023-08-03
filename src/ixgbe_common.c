@@ -576,7 +576,8 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 		}
 	}
 
-	if (hw->mac.type == ixgbe_mac_X550 || hw->mac.type == ixgbe_mac_X540) {
+	if (hw->mac.type == ixgbe_mac_X540 ||
+	    hw->mac.type == ixgbe_mac_X550) {
 		if (hw->phy.id == 0)
 			ixgbe_identify_phy(hw);
 		hw->phy.ops.read_reg(hw, IXGBE_PCRC8ECL,
@@ -674,7 +675,7 @@ s32 ixgbe_read_pba_string_generic(struct ixgbe_hw *hw, u8 *pba_num,
 		return ret_val;
 	}
 
-	if (length == 0xFFFF || length == 0) {
+	if (length == 0xFFFF || length == 0 || length > hw->eeprom.word_size) {
 		hw_dbg(hw, "NVM PBA number section invalid length\n");
 		return IXGBE_ERR_PBA_SECTION;
 	}

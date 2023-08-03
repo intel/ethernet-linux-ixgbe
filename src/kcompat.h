@@ -4,12 +4,14 @@
 #ifndef _KCOMPAT_H_
 #define _KCOMPAT_H_
 
-#include "kcompat_gcc.h"
 #ifndef LINUX_VERSION_CODE
 #include <linux/version.h>
 #else
 #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
 #endif
+
+#include "kcompat_gcc.h"
+
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
@@ -36,30 +38,13 @@
 #include <linux/udp.h>
 #include <linux/vmalloc.h>
 
-#ifndef GCC_VERSION
-#define GCC_VERSION (__GNUC__ * 10000		\
-		     + __GNUC_MINOR__ * 100	\
-		     + __GNUC_PATCHLEVEL__)
-#endif /* GCC_VERSION */
+
 
 #ifndef IEEE_8021QAZ_APP_SEL_DSCP
 #define IEEE_8021QAZ_APP_SEL_DSCP	5
 #endif
 
-/* Backport macros for controlling GCC diagnostics */
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0) )
 
-/* Compilers before gcc-4.6 do not understand "#pragma GCC diagnostic push" */
-#if GCC_VERSION >= 40600
-#define __diag_str1(s)		#s
-#define __diag_str(s)		__diag_str1(s)
-#define __diag(s)		_Pragma(__diag_str(GCC diagnostic s))
-#else
-#define __diag(s)
-#endif /* GCC_VERSION >= 4.6 */
-#define __diag_push()	__diag(push)
-#define __diag_pop()	__diag(pop)
-#endif /* LINUX_VERSION < 4.18.0 */
 
 #ifndef NSEC_PER_MSEC
 #define NSEC_PER_MSEC 1000000L
@@ -2468,8 +2453,6 @@ static inline __wsum csum_unfold(__sum16 n)
 struct pci_dev *_kc_netdev_to_pdev(struct net_device *netdev);
 #define netdev_to_dev(netdev)	\
 	pci_dev_to_dev(_kc_netdev_to_pdev(netdev))
-#define devm_kzalloc(dev, size, flags) kzalloc(size, flags)
-#define devm_kfree(dev, p) kfree(p)
 #else /* 2.6.21 */
 static inline struct device *netdev_to_dev(struct net_device *netdev)
 {
@@ -6444,12 +6427,15 @@ static inline void _kc_dev_consume_skb_any(struct sk_buff *skb)
 typedef struct {
 	__u8 b[UUID_SIZE];
 } uuid_t;
+
+#ifndef UUID_INIT
 #define UUID_INIT(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)		\
 ((uuid_t)								\
 {{ ((a) >> 24) & 0xff, ((a) >> 16) & 0xff, ((a) >> 8) & 0xff, (a) & 0xff, \
    ((b) >> 8) & 0xff, (b) & 0xff,					\
    ((c) >> 8) & 0xff, (c) & 0xff,					\
    (d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7) }})
+#endif
 
 static inline bool uuid_equal(const uuid_t *u1, const uuid_t *u2)
 {

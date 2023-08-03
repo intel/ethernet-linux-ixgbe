@@ -433,35 +433,25 @@ static void ixgbe_ptp_convert_to_hwtstamp(struct ixgbe_adapter *adapter,
 }
 
 /**
- * ixgbe_ptp_adjfreq_82599
+ * ixgbe_ptp_adjfine_82599
  * @ptp: the ptp clock structure
- * @ppb: parts per billion adjustment from base
+ * @scaled_ppm: scaled parts per million adjustment from base
  *
- * adjust the frequency of the ptp cycle counter by the
- * indicated ppb from the base frequency.
+ * Adjust the frequency of the SYSTIME registers by the indicated scaled_ppm
+ * from base frequency.
+ *
+ * Scaled parts per million is ppm with a 16-bit binary fractional field.
  */
-static int ixgbe_ptp_adjfreq_82599(struct ptp_clock_info *ptp, s32 ppb)
+static int ixgbe_ptp_adjfine_82599(struct ptp_clock_info *ptp, long scaled_ppm)
 {
 	struct ixgbe_adapter *adapter =
 		container_of(ptp, struct ixgbe_adapter, ptp_caps);
 	struct ixgbe_hw *hw = &adapter->hw;
-	u64 freq, incval;
-	u32 diff;
-	int neg_adj = 0;
-
-	if (ppb < 0) {
-		neg_adj = 1;
-		ppb = -ppb;
-	}
+	u64 incval;
 
 	smp_mb();
 	incval = READ_ONCE(adapter->base_incval);
-
-	freq = incval;
-	freq *= ppb;
-	diff = div_u64(freq, 1000000000ULL);
-
-	incval = neg_adj ? (incval - diff) : (incval + diff);
+	incval = adjust_by_scaled_ppm(incval, scaled_ppm);
 
 	switch (hw->mac.type) {
 	case ixgbe_mac_X540:
@@ -483,29 +473,53 @@ static int ixgbe_ptp_adjfreq_82599(struct ptp_clock_info *ptp, s32 ppb)
 	return 0;
 }
 
+#ifndef HAVE_PTP_CLOCK_INFO_ADJFINE
 /**
- * ixgbe_ptp_adjfreq_X550
- * @ptp: the ptp clock structure
- * @ppb: parts per billion adjustment from base
+ * ixgbe_ptp_adjfreq_82599 - Adjust the frequency of the clock
+ * @info: the driver's PTP info structure
+ * @ppb: Parts per billion adjustment from the base
  *
- * adjust the frequency of the SYSTIME registers by the indicated ppb from base
- * frequency
+ * Adjust the frequency of the clock by the indicated parts per billion from the
+ * base frequency.
  */
-static int ixgbe_ptp_adjfreq_X550(struct ptp_clock_info *ptp, s32 ppb)
+static int ixgbe_ptp_adjfreq_82599(struct ptp_clock_info *info, s32 ppb)
+{
+	long scaled_ppm;
+
+	/*
+	 * We want to calculate
+	 *
+	 *    scaled_ppm = ppb * 2^16 / 1000
+	 *
+	 * which simplifies to
+	 *
+	 *    scaled_ppm = ppb * 2^13 / 125
+	 */
+	scaled_ppm = ((long)ppb << 13) / 125;
+	return ixgbe_ptp_adjfine_82599(info, scaled_ppm);
+}
+#endif
+
+/**
+ * ixgbe_ptp_adjfine_X550
+ * @ptp: the ptp clock structure
+ * @scaled_ppm: scaled parts per million adjustment from base
+ *
+ * Adjust the frequency of the ptp cycle counter by the
+ * indicated scaled_ppm from the base frequency.
+ *
+ * Scaled parts per million is ppm with a 16-bit binary fractional field.
+ */
+static int ixgbe_ptp_adjfine_X550(struct ptp_clock_info *ptp, long scaled_ppm)
 {
 	struct ixgbe_adapter *adapter =
 		container_of(ptp, struct ixgbe_adapter, ptp_caps);
 	struct ixgbe_hw *hw = &adapter->hw;
-	int neg_adj = 0;
-	u64 rate = IXGBE_X550_BASE_PERIOD;
+	bool neg_adj;
+	u64 rate;
 	u32 inca;
 
-	if (ppb < 0) {
-		neg_adj = 1;
-		ppb = -ppb;
-	}
-	rate *= ppb;
-	rate = div_u64(rate, 1000000000ULL);
+	neg_adj = diff_by_scaled_ppm(IXGBE_X550_BASE_PERIOD, scaled_ppm, &rate);
 
 	/* warn if rate is too large */
 	if (rate >= INCVALUE_MASK)
@@ -519,6 +533,33 @@ static int ixgbe_ptp_adjfreq_X550(struct ptp_clock_info *ptp, s32 ppb)
 
 	return 0;
 }
+
+#ifndef HAVE_PTP_CLOCK_INFO_ADJFINE
+/**
+ * ixgbe_ptp_adjfreq_X550 - Adjust the frequency of the clock
+ * @info: the driver's PTP info structure
+ * @ppb: Parts per billion adjustment from the base
+ *
+ * Adjust the frequency of the clock by the indicated parts per billion from the
+ * base frequency.
+ */
+static int ixgbe_ptp_adjfreq_X550(struct ptp_clock_info *info, s32 ppb)
+{
+	long scaled_ppm;
+
+	/*
+	 * We want to calculate
+	 *
+	 *    scaled_ppm = ppb * 2^16 / 1000
+	 *
+	 * which simplifies to
+	 *
+	 *    scaled_ppm = ppb * 2^13 / 125
+	 */
+	scaled_ppm = ((long)ppb << 13) / 125;
+	return ixgbe_ptp_adjfine_X550(info, scaled_ppm);
+}
+#endif
 
 /**
  * ixgbe_ptp_adjtime
@@ -1400,7 +1441,11 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		adapter->ptp_caps.n_ext_ts = 0;
 		adapter->ptp_caps.n_per_out = 0;
 		adapter->ptp_caps.pps = 1;
+#ifdef HAVE_PTP_CLOCK_INFO_ADJFINE
+		adapter->ptp_caps.adjfine = ixgbe_ptp_adjfine_82599;
+#else
 		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_82599;
+#endif
 		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime;
 #ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
 #ifdef HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
@@ -1426,7 +1471,11 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		adapter->ptp_caps.n_ext_ts = 0;
 		adapter->ptp_caps.n_per_out = 0;
 		adapter->ptp_caps.pps = 0;
+#ifdef HAVE_PTP_CLOCK_INFO_ADJFINE
+		adapter->ptp_caps.adjfine = ixgbe_ptp_adjfine_82599;
+#else
 		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_82599;
+#endif
 		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime;
 #ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
 #ifdef HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
@@ -1451,7 +1500,11 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		adapter->ptp_caps.n_ext_ts = 0;
 		adapter->ptp_caps.n_per_out = 0;
 		adapter->ptp_caps.pps = 1;
+#ifdef HAVE_PTP_CLOCK_INFO_ADJFINE
+		adapter->ptp_caps.adjfine = ixgbe_ptp_adjfine_X550;
+#else
 		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_X550;
+#endif
 		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime;
 #ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
 #ifdef HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL

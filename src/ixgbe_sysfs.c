@@ -282,6 +282,7 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 #endif /* HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS */
 no_thermal:
 #endif /* IXGBE_HWMON */
+
 	goto exit;
 
 err:

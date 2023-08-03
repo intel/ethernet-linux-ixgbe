@@ -32,44 +32,6 @@
 #endif
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
-#else /* >= 3,10,0 */
-#define NEED_ETHTOOL_SPRINTF
-#endif /* 3,10,0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0))
-#define NEED_DEVM_KASPRINTF
-#else /* >= 3,17,0 */
-#endif /* 3,17,0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0))
-#define NEED_DEV_PM_DOMAIN_ATTACH_DETACH
-#else /* >= 3,18,0 */
-#endif /* 3,18,0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0))
-#define NEED_DEV_PRINTK_ONCE
-#else /* >= 3,19,0 */
-#endif /* 3,19,0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,3,0))
-#define NEED_DEFINE_STATIC_KEY_FALSE
-#define NEED_STATIC_BRANCH
-#else /* >= 4,3,0 */
-#define NEED_DECLARE_STATIC_KEY_FALSE
-#endif /* 4,3,0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0))
-#else /* >= 4,6,0 */
-#define HAVE_DEVLINK_PORT_SPLIT
-#endif /* 4,6,0 */
-
-/*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,8,0))
 #else /* >= 4,8,0 */
 #define HAVE_TCF_EXTS_TO_LIST
@@ -82,7 +44,6 @@
 #else /* >= 4,9,0 */
 #define HAVE_KTHREAD_DELAYED_API
 #define HAVE_NDO_OFFLOAD_STATS
-#undef NEED_DECLARE_STATIC_KEY_FALSE
 #define HAVE_INCLUDE_BITFIELD
 #endif /* 4,9,0 */
 
@@ -134,7 +95,6 @@
 #define NEED_MACVLAN_SUPPORTS_DEST_FILTER
 #else /* >= 4,18,0 */
 #define HAVE_DEVLINK_PORT_ATTRS_SET_PORT_FLAVOUR
-#define HAVE_DEVLINK_PORT_SPLIT_EXTACK
 #endif /* 4,18,0 */
 
 /*****************************************************************************/
@@ -181,7 +141,6 @@
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
 #define NEED_DEVLINK_FLASH_UPDATE_STATUS_NOTIFY
-#define NEED_BUS_FIND_DEVICE_CONST_DATA
 #else /* >= 5.3.0 */
 #endif /* 5.3.0 */
 
@@ -267,7 +226,6 @@
 #define HAVE_DEV_IN_MDEV_API
 #else /* >= 5.13.0 */
 #define HAVE_XPS_MAP_TYPE
-#undef NEED_ETHTOOL_SPRINTF
 #endif /* 5.13.0 */
 
 /*****************************************************************************/
@@ -283,7 +241,6 @@
 #define HAVE_ETHTOOL_COALESCE_EXTACK
 #define HAVE_NDO_ETH_IOCTL
 #define HAVE_DEVICE_IN_MDEV_PARENT_OPS
-#define HAVE_LMV1_SUPPORT
 #define NEED_PCI_IOV_VF_ID
 #define HAVE_DEVLINK_SET_STATE_3_PARAM
 #endif /* 5.15.0 */
@@ -298,7 +255,6 @@
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0))
 #else /* >=5.18.0*/
-#undef HAVE_LMV1_SUPPORT
 #undef NEED_PCI_IOV_VF_ID
 #define HAVE_GTP_SUPPORT
 #undef HAVE_XSK_TX_PEEK_RELEASE_DESC_BATCH_3_PARAMS

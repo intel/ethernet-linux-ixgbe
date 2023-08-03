@@ -471,15 +471,18 @@ static inline void ida_free(struct ida *ida, unsigned int id)
 
 /* dev_printk implementations */
 
-/* NEED_DEV_PRINTK_ONCE
+/* NEED_DEV_LEVEL_ONCE
  *
  * The dev_*_once family of printk functions was introduced by commit
  * e135303bd5be ("device: Add dev_<level>_once variants")
  *
  * The implementation is very straight forward so we will just implement them
  * as-is here.
+ *
+ * Note that this assumes all dev_*_once macros exist if dev_level_once was
+ * found.
  */
-#ifdef NEED_DEV_PRINTK_ONCE
+#ifdef NEED_DEV_LEVEL_ONCE
 #ifdef CONFIG_PRINTK
 #define dev_level_once(dev_level, dev, fmt, ...)			\
 do {									\
@@ -514,7 +517,7 @@ do {									\
 	dev_level_once(dev_info, dev, fmt, ##__VA_ARGS__)
 #define dev_dbg_once(dev, fmt, ...)					\
 	dev_level_once(dev_dbg, dev, fmt, ##__VA_ARGS__)
-#endif /* NEED_DEV_PRINTK_ONCE */
+#endif /* NEED_DEV_LEVEL_ONCE */
 
 #ifdef HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
 
@@ -677,6 +680,75 @@ static inline void
 ptp_read_system_postts(struct ptp_system_timestamp *sts) { }
 #endif /* !NEED_PTP_SYSTEM_TIMESTAMP */
 
+#ifdef NEED_PTP_PARSE_HEADER
+/* NEED_PTP_PARSE_HEADER
+ *
+ * The ptp_parse_header() function was introduced upstream in commit
+ * bdfbb63c314a ("ptp: Add generic ptp v2 header parsing function").
+ *
+ * Since it is straight forward to implement, do so.
+ */
+#include <linux/ptp_classify.h>
+
+struct clock_identity {
+	u8 id[8];
+};
+
+struct port_identity {
+	struct clock_identity	clock_identity;
+	__be16			port_number;
+};
+
+struct ptp_header {
+	u8			tsmt;  /* transportSpecific | messageType */
+	u8			ver;   /* reserved          | versionPTP  */
+	__be16			message_length;
+	u8			domain_number;
+	u8			reserved1;
+	u8			flag_field[2];
+	__be64			correction;
+	__be32			reserved2;
+	struct port_identity	source_port_identity;
+	__be16			sequence_id;
+	u8			control;
+	u8			log_message_interval;
+} __packed;
+
+static inline struct ptp_header *ptp_parse_header(struct sk_buff *skb,
+						  unsigned int type)
+{
+#if defined(CONFIG_NET_PTP_CLASSIFY)
+	u8 *ptr = skb_mac_header(skb);
+
+	if (type & PTP_CLASS_VLAN)
+		ptr += VLAN_HLEN;
+
+	switch (type & PTP_CLASS_PMASK) {
+	case PTP_CLASS_IPV4:
+		ptr += IPV4_HLEN(ptr) + UDP_HLEN;
+		break;
+	case PTP_CLASS_IPV6:
+		ptr += IP6_HLEN + UDP_HLEN;
+		break;
+	case PTP_CLASS_L2:
+		break;
+	default:
+		return NULL;
+	}
+
+	ptr += ETH_HLEN;
+
+	/* Ensure that the entire header is present in this packet. */
+	if (ptr + sizeof(struct ptp_header) > skb->data + skb->len)
+		return NULL;
+
+	return (struct ptp_header *)ptr;
+#else
+	return NULL;
+#endif
+}
+#endif /* NEED_PTP_PARSE_HEADER */
+
 #ifdef NEED_BUS_FIND_DEVICE_CONST_DATA
 /* NEED_BUS_FIND_DEVICE_CONST_DATA
  *
@@ -722,9 +794,9 @@ _kc_bus_find_device(struct bus_type *type, struct device *start,
 	_kc_bus_find_device(type, start, data, match)
 #endif /* NEED_BUS_FIND_DEVICE_CONST_DATA */
 
-#ifdef NEED_DEV_PM_DOMAIN_ATTACH_DETACH
+#if defined(NEED_DEV_PM_DOMAIN_ATTACH) && defined(NEED_DEV_PM_DOMAIN_DETACH)
 #include <linux/acpi.h>
-/* NEED_DEV_PM_DOMAIN_ATTACH_DETACH
+/* NEED_DEV_PM_DOMAIN_ATTACH and NEED_DEV_PM_DOMAIN_DETACH
  *
  * dev_pm_domain_attach() and dev_pm_domain_detach() were added in upstream
  * commit 46420dd73b80 ("PM / Domains: Add APIs to attach/detach a PM domain for
@@ -748,7 +820,18 @@ static inline void dev_pm_domain_detach(struct device *dev, bool power_off)
 	if (ACPI_HANDLE(dev))
 		acpi_dev_pm_detach(dev, true);
 }
-#endif /* NEED_DEV_PM_DOMAIN_ATTACH_DETACH */
+#else /* NEED_DEV_PM_DOMAIN_ATTACH && NEED_DEV_PM_DOMAIN_DETACH */
+/* it doesn't make sense to compat only one of these functions, and it is
+ * likely either a failure in kcompat-generator.sh or a failed distribution
+ * backport if this occurs. Don't try to support it.
+ */
+#ifdef NEED_DEV_PM_DOMAIN_ATTACH
+#error "NEED_DEV_PM_DOMAIN_ATTACH defined but NEED_DEV_PM_DOMAIN_DETACH not defined???"
+#endif /* NEED_DEV_PM_DOMAIN_ATTACH */
+#ifdef NEED_DEV_PM_DOMAIN_DETACH
+#error "NEED_DEV_PM_DOMAIN_DETACH defined but NEED_DEV_PM_DOMAIN_ATTACH not defined???"
+#endif /* NEED_DEV_PM_DOMAIN_DETACH */
+#endif /* NEED_DEV_PM_DOMAIN_ATTACH && NEED_DEV_PM_DOMAIN_DETACH */
 
 #ifdef NEED_CPU_LATENCY_QOS_RENAME
 /* NEED_CPU_LATENCY_QOS_RENAME
@@ -780,112 +863,48 @@ cpu_latency_qos_remove_request(struct pm_qos_request *req)
 }
 #endif /* NEED_CPU_LATENCY_QOS_RENAME */
 
-#if GCC_VERSION < 50000
-/* Workaround for gcc bug - not accepting "(type)" before "{ ... }" as part of
- * static struct initializers [when used with -std=gnu11 switch]
- * https://bugzilla.redhat.com/show_bug.cgi?id=1672652
- *
- * fix was backported to gcc 4.8.5-39 by RedHat, contained in RHEL 7.7
- * workaround here is to just drop that redundant (commented out below) part and
- * redefine kernel macros used by us.
- */
-#undef __SPIN_LOCK_UNLOCKED
-#define __SPIN_LOCK_UNLOCKED(lockname) \
-	/* (spinlock_t) */ __SPIN_LOCK_INITIALIZER(lockname)
-
-#undef __RAW_SPIN_LOCK_UNLOCKED
-#define __RAW_SPIN_LOCK_UNLOCKED(lockname) \
-	/* (raw_spinlock_t) */ __RAW_SPIN_LOCK_INITIALIZER(lockname)
-
-#ifndef CONFIG_DEBUG_SPINLOCK
-/* raw_spin_lock_init needs __RAW_SPIN_LOCK_UNLOCKED with typecast, so keep the
- * original impl,
- * but enhance it with typecast dropped from __RAW_SPIN_LOCK_UNLOCKED() */
-#undef raw_spin_lock_init
-#define raw_spin_lock_init(lock)					\
-	do { *(lock) = (raw_spinlock_t) __RAW_SPIN_LOCK_UNLOCKED(lock);	\
-	} while (0)
-#endif /* !CONFIG_DEBUG_SPINLOCK */
-
-#undef STATIC_KEY_INIT_TRUE
-#define STATIC_KEY_INIT_TRUE					\
-	{ .enabled = { 1 },					\
-	  { .type = 1UL } }
-
-#undef STATIC_KEY_INIT_FALSE
-#define STATIC_KEY_INIT_FALSE	\
-	{ .enabled = { 0 } }
-
-#undef STATIC_KEY_TRUE_INIT
-#define STATIC_KEY_TRUE_INIT \
-	/* (struct static_key_true) */ { .key = STATIC_KEY_INIT_TRUE }
-
-#undef STATIC_KEY_FALSE_INIT
-#define STATIC_KEY_FALSE_INIT \
-	/* (struct static_key_false) */ { .key = STATIC_KEY_INIT_FALSE }
-
-#ifdef HAVE_JUMP_LABEL
-/* dd_key_init() is used (indirectly) with arg like "(STATIC_KEY_INIT_FALSE)"
- * from DEFINE_DYNAMIC_DEBUG_METADATA(), which, depending on config has many
- * different definitions (including helper macros).
- * To reduce compat code, just consume parens from the arg instead copy-pasting
- * all definitions and slightly changing them. */
-#define _KC_SLURP_PARENS(...) __VA_ARGS__
-#undef dd_key_init
-#define dd_key_init(key, init) key = _KC_SLURP_PARENS init
-#endif /* HAVE_JUMP_LABEL */
-
-#undef UUID_INIT
-#define UUID_INIT(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)		\
-	{{ ((a) >> 24) & 0xff, ((a) >> 16) & 0xff,			\
-	   ((a) >> 8) & 0xff, (a) & 0xff,				\
-	   ((b) >> 8) & 0xff, (b) & 0xff,				\
-	   ((c) >> 8) & 0xff, (c) & 0xff,				\
-	   (d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7)		\
-	}}
-
-#endif /* GCC_VERSION < 5.0 */
-
 #ifdef NEED_DECLARE_STATIC_KEY_FALSE
 /* NEED_DECLARE_STATIC_KEY_FALSE
  *
- * DECLARE_STATIC_KEY_FALSE was added by upstream commit
- * 525e0ac4d2b2 ("locking/static_keys: Provide DECLARE and
- * well as DEFINE macros")
+ * DECLARE_STATIC_KEY_FALSE was added by upstream commit b8fb03785d4d
+ * ("locking/static_keys: Provide DECLARE and well as DEFINE macros")
  *
- * The definition is now necessary to handle
- * the xdpdrv work with more than 64 cpus
+ * The definition is now necessary to handle the xdpdrv work with more than 64
+ * cpus
  */
-#define DECLARE_STATIC_KEY_FALSE(name)	\
-	extern struct static_key_false name
+#ifdef HAVE_STRUCT_STATIC_KEY_FALSE
+#define DECLARE_STATIC_KEY_FALSE(name) extern struct static_key_false name
+#else
+#define DECLARE_STATIC_KEY_FALSE(name) extern struct static_key name
+#endif /* HAVE_STRUCT_STATIC_KEY_FALSE */
 #endif /* NEED_DECLARE_STATIC_KEY_FALSE */
 
 #ifdef NEED_DEFINE_STATIC_KEY_FALSE
 /* NEED_DEFINE_STATIC_KEY_FALSE
  *
- * DEFINE_STATIC_KEY_FALSE was added by upstream commit
- * 11276d5306b8 ("locking/static_keys: Add a new
- * static_key interface")
+ * DEFINE_STATIC_KEY_FALSE was added by upstream commit 11276d5306b8
+ * ("locking/static_keys: Add a new static_key interface")
  *
- * The definition is now necessary to handle
- * the xdpdrv work with more than 64 cpus
+ * The definition is now necessary to handle the xdpdrv work with more than 64
+ * cpus
  */
-#define DECLARE_STATIC_KEY_FALSE(name) extern struct static_key name
-
 #define DEFINE_STATIC_KEY_FALSE(name) \
 	struct static_key name = STATIC_KEY_INIT_FALSE
 #endif /* NEED_DEFINE_STATIC_KEY_FALSE */
 
-#ifdef NEED_STATIC_BRANCH
-/* NEED_STATIC_BRANCH
+#ifdef NEED_STATIC_BRANCH_LIKELY
+/* NEED_STATIC_BRANCH_LIKELY
  *
  * static_branch_likely, static_branch_unlikely,
  * static_branch_inc, static_branch_dec was added by upstream commit
  * 11276d5306b8 ("locking/static_keys: Add a new
  * static_key interface")
  *
- * The definition is now necessary to handle
- * the xdpdrv work with more than 64 cpus
+ * The definition is now necessary to handle the xdpdrv work with more than 64
+ * cpus
+ *
+ * Note that we include all four definitions if static_branch_likely cannot be
+ * found in <linux/jump_label.h>.
  */
 #define static_branch_likely(x)		likely(static_key_enabled(x))
 #define static_branch_unlikely(x)	unlikely(static_key_enabled(x))
@@ -893,7 +912,7 @@ cpu_latency_qos_remove_request(struct pm_qos_request *req)
 #define static_branch_inc(x)		static_key_slow_inc(x)
 #define static_branch_dec(x)		static_key_slow_dec(x)
 
-#endif /* NEED_STATIC_BRANCH */
+#endif /* NEED_STATIC_BRANCH_LIKELY */
 
 /* PCI related stuff */
 
@@ -1028,15 +1047,18 @@ static inline void eth_hw_addr_set(struct net_device *dev, const u8 *addr)
 #endif /* CONFIG_RETPOLINE */
 #endif /* NEED_EXPORT_INDIRECT_CALLABLE */
 
-#ifdef NEED_DEVM_KASPRINTF
-/* NEED_DEVM_KASPRINTF
+/* NEED_DEVM_KASPRINTF and NEED_DEVM_KVASPRINTF
  *
  * devm_kvasprintf and devm_kasprintf were added by commit
  * 75f2a4ead5d5 ("devres: Add devm_kasprintf and devm_kvasprintf API")
  * in Linux 3.17.
  */
+#ifdef NEED_DEVM_KVASPRINTF
 __printf(3, 0) char *devm_kvasprintf(struct device *dev, gfp_t gfp,
 				     const char *fmt, va_list ap);
+#endif /* NEED_DEVM_KVASPRINTF */
+
+#ifdef NEED_DEVM_KASPRINTF
 __printf(3, 4) char *devm_kasprintf(struct device *dev, gfp_t gfp,
 				    const char *fmt, ...);
 #endif /* NEED_DEVM_KASPRINTF */
@@ -1589,6 +1611,14 @@ _kc_netif_napi_add(struct net_device *dev, struct napi_struct *napi,
 #define netif_napi_add _kc_netif_napi_add
 #endif /* NEED_NETIF_NAPI_ADD_NO_WEIGHT */
 
+/*
+ * NEED_ETHTOOL_SPRINTF
+ *
+ * Upstream commit 7888fe53b706 ("ethtool: Add common function for filling out
+ * strings") introduced ethtool_sprintf, which landed in Linux v5.13
+ *
+ * The function is easy to directly implement.
+ */
 #ifdef NEED_ETHTOOL_SPRINTF
 static inline
 __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
@@ -1602,6 +1632,31 @@ __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
 	*data += ETH_GSTRING_LEN;
 }
 #endif /* NEED_ETHTOOL_SPRINTF */
+
+/*
+ * NEED_SYSFS_EMIT
+ *
+ * Upstream introduced following function in
+ * commit 2efc459d06f1 ("sysfs: Add sysfs_emit and sysfs_emit_at to format sysfs output")
+ */
+#ifdef NEED_SYSFS_EMIT
+static inline __printf(2, 3)
+int sysfs_emit(char *buf, const char *fmt, ...)
+{
+	va_list args;
+	int len;
+
+	if (WARN(!buf || offset_in_page(buf),
+		 "invalid sysfs_emit: buf:%p\n", buf))
+		return 0;
+
+	va_start(args, fmt);
+	len = vscnprintf(buf, PAGE_SIZE, fmt, args);
+	va_end(args);
+
+	return len;
+}
+#endif /* NEED_SYSFS_EMIT */
 
 /*
  * HAVE_U64_STATS_FETCH_BEGIN_IRQ
@@ -1640,6 +1695,34 @@ _kc_u64_stats_fetch_retry(const struct u64_stats_sync *syncp,
 	return u64_stats_fetch_retry_irq(syncp, start);
 }
 #endif /* HAVE_U64_STATS_FETCH_RETRY_IRQ */
+
+/*
+ * NEED_DEVM_KFREE
+ * NEED_DEVM_KZALLOC
+ *
+ * Upstream commit 9ac7849e35f7 ("devres: device resource management")
+ * Implement device resource management to allocate and free the resource
+ * for driver
+ */
+#ifdef NEED_DEVM_KFREE
+#define devm_kfree(dev, p) kfree(p)
+#else
+static inline void _kc_devm_kfree(struct device *dev, void *p)
+{
+	/* Upstream devm_kfree() has this NULL check since
+	 * commit cad064f1bd52 ("devres: handle zero size in devm_kmalloc()"),
+	 * but it's done in devres.c (not header), so we could NOT use
+	 * kcompat generator to check for it's presence.
+	 */
+	if (p)
+		devm_kfree(dev, p);
+}
+#define devm_kfree _kc_devm_kfree
+#endif /* NEED_DEVM_KFREE */
+
+#ifdef NEED_DEVM_KZALLOC
+#define devm_kzalloc(dev, size, flags) kzalloc(size, flags)
+#endif /* NEED_DEVM_KZALLOC */
 
 /* NEED_DIFF_BY_SCALED_PPM
  *
@@ -1711,5 +1794,41 @@ pci_msix_free_irq(struct pci_dev __always_unused *dev,
 {
 }
 #endif /* !HAVE_PCI_MSIX_FREE_IRQ */
+
+#ifdef NEED_PCIE_PTM_ENABLED
+/* NEED_PCIE_PTM_ENABLED
+ *
+ * pcie_ptm_enabled was added by upstream commit 014408cd624e
+ * ("PCI: Add pcie_ptm_enabled()").
+ *
+ * It is easy to implement directly.
+ */
+static inline bool pcie_ptm_enabled(struct pci_dev *dev)
+{
+#if defined(HAVE_STRUCT_PCI_DEV_PTM_ENABLED) && defined(CONFIG_PCIE_PTM)
+	if (!dev)
+		return false;
+
+	return dev->ptm_enabled;
+#else /* !HAVE_STRUCT_PCI_DEV_PTM_ENABLED || !CONFIG_PCIE_PTM */
+	return false;
+#endif /* HAVE_STRUCT_PCI_DEV_PTM_ENBED && CONFIG_PCIE_PTM */
+}
+#endif /* NEED_PCIE_PTM_ENABLED */
+
+/* NEED_PCI_ENABLE_PTM
+ *
+ * commit ac6c26da29c1 made this function private
+ * commit 1d71eb53e451 made this function public again
+ * This declares/defines the function for kernels missing it in linux/pci.h
+ */
+#ifdef NEED_PCI_ENABLE_PTM
+#ifdef CONFIG_PCIE_PTM
+int pci_enable_ptm(struct pci_dev *dev, u8 *granularity);
+#else
+static inline int pci_enable_ptm(struct pci_dev *dev, u8 *granularity)
+{ return -EINVAL; }
+#endif /* CONFIG_PCIE_PTM */
+#endif /* NEED_PCI_ENABLE_PTM */
 
 #endif /* _KCOMPAT_IMPL_H_ */

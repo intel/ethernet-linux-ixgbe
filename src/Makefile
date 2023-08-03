@@ -41,6 +41,7 @@ ixgbe-$(CONFIG_PTP_1588_CLOCK:m=y) += ixgbe_ptp.o
 
 ixgbe-${CONFIG_SYSFS} += ixgbe_sysfs.o
 
+
 ixgbe-y += kcompat.o
 
 else	# ifneq($(KERNELRELEASE),)

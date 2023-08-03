@@ -1648,3 +1648,4 @@ void ixgbe_set_rate_select_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed)
 	if (hw->mac.ops.set_rate_select_speed)
 		hw->mac.ops.set_rate_select_speed(hw, speed);
 }
+

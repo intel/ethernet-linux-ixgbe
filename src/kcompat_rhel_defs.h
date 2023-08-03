@@ -28,9 +28,6 @@
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,3))
 #define NEED_NETDEV_TXQ_BQL_PREFETCH
 #else /* >= 7.3 */
-#undef NEED_DEV_PRINTK_ONCE
-#undef NEED_DEVM_KASPRINTF
-#define HAVE_DEVLINK_PORT_SPLIT
 #endif /* 7.3 */
 
 /*****************************************************************************/
@@ -78,7 +75,6 @@
 #define HAVE_TCF_EXTS_FOR_EACH_ACTION
 /* 7.7 undefs it due to a backport in 7.7+, but 8.0 needs it still */
 #define NEED_NETDEV_TX_SENT_QUEUE
-#define HAVE_DEVLINK_PORT_SPLIT_EXTACK
 #endif /* 8.0 */
 
 /*****************************************************************************/
@@ -101,7 +97,6 @@
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,2))
 #else /* >= 8.2 */
-#undef NEED_BUS_FIND_DEVICE_CONST_DATA
 #undef NEED_DEVLINK_FLASH_UPDATE_STATUS_NOTIFY
 #undef NEED_SKB_FRAG_OFF
 #undef NEED_SKB_FRAG_OFF_ADD
@@ -144,7 +139,6 @@
 #define HAVE_NETDEV_BPF_XSK_POOL
 #define HAVE_AF_XDP_NETDEV_UMEM
 #define HAVE_DEVLINK_OPS_CREATE_DEL
-#undef NEED_ETHTOOL_SPRINTF
 #endif /* 8.5 */
 
 /*****************************************************************************/
