@@ -35,6 +35,7 @@
 #define __diag_pop()	__diag(pop)
 #endif /* LINUX_VERSION < 4.18.0 */
 
+#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #if GCC_VERSION < 50000
 /* Workaround for gcc bug - not accepting "(type)" before "{ ... }" as part of
  * static struct initializers [when used with -std=gnu11 switch]
@@ -51,15 +52,20 @@
  */
 #include <linux/compiler.h>
 #include <linux/dynamic_debug.h>
+#include <linux/pci.h>
 #include <linux/spinlock.h>
 
+#ifdef __SPIN_LOCK_INITIALIZER
 #undef __SPIN_LOCK_UNLOCKED
 #define __SPIN_LOCK_UNLOCKED(lockname) \
 	/* (spinlock_t) */ __SPIN_LOCK_INITIALIZER(lockname)
+#endif /* __SPIN_LOCK_INITIALIZER */
 
+#ifdef __RAW_SPIN_LOCK_INITIALIZER
 #undef __RAW_SPIN_LOCK_UNLOCKED
 #define __RAW_SPIN_LOCK_UNLOCKED(lockname) \
 	/* (raw_spinlock_t) */ __RAW_SPIN_LOCK_INITIALIZER(lockname)
+#endif /* __RAW_SPIN_LOCK_INITIALIZER */
 
 #ifndef CONFIG_DEBUG_SPINLOCK
 /* raw_spin_lock_init needs __RAW_SPIN_LOCK_UNLOCKED with typecast, so keep the
@@ -109,5 +115,6 @@
 	}}
 
 #endif /* GCC_VERSION < 5.0 */
+#endif /* C11 */
 
 #endif /* _KCOMPAT_GCC_H_ */

@@ -72,7 +72,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.19.6" \
+#define DRV_VERSION	"5.19.9" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -6475,9 +6475,9 @@ static void ixgbe_sfp_link_config(struct ixgbe_adapter *adapter)
  **/
 static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 {
-	u32 speed;
-	bool autoneg, link_up = false;
 	u32 ret = IXGBE_ERR_LINK_SETUP;
+	bool autoneg, link_up = false;
+	u32 speed;
 
 	if (hw->mac.ops.check_link)
 		ret = hw->mac.ops.check_link(hw, &speed, &link_up, false);
@@ -6496,8 +6496,9 @@ static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 	if (ret)
 		goto link_cfg_out;
 
-	if (hw->mac.ops.setup_link)
+	if (hw->mac.ops.setup_link) {
 		ret = hw->mac.ops.setup_link(hw, speed, link_up);
+	}
 link_cfg_out:
 	return ret;
 }
@@ -7194,6 +7195,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 
 	ixgbe_clean_all_tx_rings(adapter);
 	ixgbe_clean_all_rx_rings(adapter);
+
 }
 
 /**
@@ -7915,7 +7917,6 @@ int ixgbe_open(struct net_device *netdev)
 	vxlan_get_rx_port(netdev);
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD */
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD && HAVE_UDP_TUNNEL_NIC_INFO */
-
 	return IXGBE_SUCCESS;
 
 err_set_queues:
@@ -9867,10 +9868,15 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 	    first->protocol == htons(ETH_P_IP) &&
 	    hdr.ipv4->protocol == IPPROTO_UDP) {
 		struct ixgbe_adapter *adapter = q_vector->adapter;
-
+#ifndef VXLAN_HEADROOM
+		if (unlikely(skb_tail_pointer(skb) < hdr.network +
+			     vxlan_headroom(0)))
+			return;
+#else
 		if (unlikely(skb_tail_pointer(skb) < hdr.network +
 			     VXLAN_HEADROOM))
 			return;
+#endif /*VXLAN_HEADROOM*/
 
 		/* verify the port is recognized as VXLAN or GENEVE*/
 		if (adapter->vxlan_port &&
@@ -10617,25 +10623,21 @@ static int ixgbe_mdio_write(struct net_device *netdev, int prtad, int devad,
 static int ixgbe_mii_ioctl(struct net_device *netdev, struct ifreq *ifr,
 			   int cmd)
 {
-	struct mii_ioctl_data mii = { 0 };
+	struct mii_ioctl_data *mii = (struct mii_ioctl_data *) &ifr->ifr_data;
 	int prtad, devad, ret;
 
-	if (copy_from_user(&mii, ifr->ifr_data, sizeof(mii)))
-		return -EFAULT;
-
-	prtad = (mii.phy_id & MDIO_PHY_ID_PRTAD) >> 5;
-	devad = (mii.phy_id & MDIO_PHY_ID_DEVAD);
+	prtad = (mii->phy_id & MDIO_PHY_ID_PRTAD) >> 5;
+	devad = (mii->phy_id & MDIO_PHY_ID_DEVAD);
 
 	if (cmd == SIOCGMIIREG) {
-		ret = ixgbe_mdio_read(netdev, prtad, devad, mii.reg_num);
+		ret = ixgbe_mdio_read(netdev, prtad, devad, mii->reg_num);
 		if (ret < 0)
 			return ret;
-		mii.val_out = ret;
-		return copy_to_user(ifr->ifr_data, &mii, sizeof(mii)) ?
-		       -EFAULT : 0;
+		mii->val_out = ret;
+		return 0;
 	} else {
-		return ixgbe_mdio_write(netdev, prtad, devad, mii.reg_num,
-					mii.val_in);
+		return ixgbe_mdio_write(netdev, prtad, devad, mii->reg_num,
+					mii->val_in);
 	}
 }
 
@@ -12602,7 +12604,6 @@ static void ixgbe_set_fw_version(struct ixgbe_adapter *adapter)
 	snprintf(adapter->eeprom_id, sizeof(adapter->eeprom_id),
 		 "0x%08x", etrack_id);
 }
-
 
 /**
  * ixgbe_probe - Device Initialization Routine

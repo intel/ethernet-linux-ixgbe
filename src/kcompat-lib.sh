@@ -104,7 +104,7 @@ function find-fun-decl() {
 function find-enum-decl() {
 	test $# -ge 2
 	local what end
-	what="/^$WB*enum $1"' \{$/'
+	what="/^$WB*enum$WB+$1"' \{$/'
 	end='/\};$/'
 	shift
 	find-decl "$what" "$end" "$@"
@@ -114,7 +114,7 @@ function find-enum-decl() {
 function find-struct-decl() {
 	test $# -ge 2
 	local what end
-	what="/^$WB*struct $1"' \{$/'
+	what="/^$WB*struct$WB+$1"' \{$/'
 	end='/^\};$/' # that's (^) different from enum-decl
 	shift
 	find-decl "$what" "$end" "$@"
@@ -125,8 +125,21 @@ function find-macro-decl() {
 	test $# -ge 2
 	local what end
 	# only unindented defines, only whole-word match
-	what="/^#define $1"'([ \t\(]|$)/'
-	end=1 # only first line (bumping to bigger number does not bring more ;)
+	what="/^#define$WB+$1"'([ \t\(]|$)/'
+	end=1 # only first line; use find-macro-implementation-decl for full body
+	shift
+	find-decl "$what" "$end" "$@"
+}
+
+# yield full macro implementation
+function find-macro-implementation-decl() {
+	test $# -ge 2
+	local what end
+	# only unindented defines, only whole-word match
+	what="/^#define$WB+$1"'([ \t\(]|$)/'
+	# full implementation, until a line not ending in a backslash.
+	# Does not handle macros with comments embedded within the definition.
+	end='/[^\\]$/'
 	shift
 	find-decl "$what" "$end" "$@"
 }
@@ -154,9 +167,14 @@ function find-typedef-decl() {
 #   NAME is the name for what we are looking for;
 #
 #   KIND specifies what kind of declaration/definition we are looking for,
-#      could be: fun, enum, struct, method, macro, typedef
+#      could be: fun, enum, struct, method, macro, typedef,
+#      'implementation of macro'
 #   for KIND=method, we are looking for function ptr named METHOD in struct
 #     named NAME (two optional args are then necessary (METHOD & of));
+#
+#   for KIND='implementation of macro' we are looking for the full
+#     implementation of the macro, not just its first line. This is usually
+#     combined with "matches" or "lacks".
 #
 #   next [optional] args could be used:
 #     matches PATTERN - use to grep for the PATTERN within definition
@@ -198,6 +216,16 @@ function gen() {
 		name="$3"
 		shift 3
 		[ "$of_kw" != of ] && die 23 "$src_line: 'of' keyword expected, '$of_kw' given"
+	;;
+	implementation)
+		test $# -ge 5 || die 28 "$src_line: too few arguments, $orig_args_cnt given, at least 8 needed"
+		of_kw="$1"
+		kind="$2"
+		name="$3"
+		shift 3
+		[ "$of_kw" != of ] && die 29 "$src_line: 'of' keyword expected, '$of_kw' given"
+		[ "$kind" != macro ] && die 30 "$src_line: implementation only supports 'macro', '$kind' given"
+		kind=macro-implementation
 	;;
 	*) die 24 "$src_line: unknown KIND ($kind) to look for" ;;
 	esac

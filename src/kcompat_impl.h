@@ -432,6 +432,72 @@ _kc_devlink_alloc(const struct devlink_ops *ops, size_t priv_size,
 #define devlink_alloc _kc_devlink_alloc
 #endif /* NEED_DEVLINK_ALLOC_SETS_DEV */
 
+#ifdef HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT
+#ifdef NEED_DEVLINK_UNLOCKED_RESOURCE
+/*
+ * NEED_DEVLINK_UNLOCKED_RESOURCE
+ *
+ * Handle devlink API change introduced in:
+ * c223d6a4bf ("net: devlink: add unlocked variants of devlink_resource*()
+ * functions")
+ * 644a66c60f ("net: devlink: convert reload command to take implicit
+ * devlink->lock")
+ *
+ * devl_resource_size_get() does not take devlink->lock where
+ * devlink_resource_size_get() takes devlink->lock, but we do not introduce
+ * locking in the driver as taking the lock in devlink_reload() was added
+ * upstream in the same version as API change.
+ *
+ * We have to rely on distro maintainers properly backporting of both mentioned
+ * commits for OOT driver to work properly.
+ * In case of backporting only c223d6a4bf assert inside
+ * devl_resource_size_get() will trigger kernel WARNING,
+ * In case of backporting only 644a66c60f devlink_resource_size_get() will
+ * attempt to take the lock second time.
+ */
+static inline int devl_resource_size_get(struct devlink *devlink,
+					 u64 resource_id,
+					 u64 *p_resource_size)
+{
+	return devlink_resource_size_get(devlink, resource_id, p_resource_size);
+}
+#endif /* NEED_DEVLINK_UNLOCKED_RESOURCE */
+
+#ifdef NEED_DEVLINK_RESOURCES_UNREGISTER_NO_RESOURCE
+/*
+ * NEED_DEVLINK_RESOURCES_UNREGISTER_NO_RESOURCE
+ *
+ * Commit 4c897cfc46 ("devlink: Simplify devlink resources unregister call")
+ * removed struct devlink_resource *resource parameter from
+ * devlink_resources_unregister() function, if NULL is passed as a resource
+ * parameter old version of devlink_resources_unregister() behaves the same
+ * way as new implementation removing all resources from:
+ * &devlink->resource_list.
+ */
+static inline void
+_kc_devlink_resources_unregister(struct devlink *devlink)
+{
+	return devlink_resources_unregister(devlink, NULL);
+}
+
+#define devlink_resources_unregister _kc_devlink_resources_unregister
+#endif /* NEED_DEVLINK_RESOURCES_UNREGISTER_NO_RESOURCE */
+#endif /* HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT */
+
+#ifdef NEED_DEVLINK_TO_DEV
+/*
+ * Commit 2131463 ("devlink: Reduce struct devlink exposure")
+ * removed devlink struct fields from header to avoid exposure
+ * and added devlink_to_dev and related functions to access
+ * them instead.
+ */
+static inline struct device *
+devlink_to_dev(const struct devlink *devlink)
+{
+	return devlink->dev;
+}
+#endif /* NEED_DEVLINK_TO_DEV */
+
 #endif /* CONFIG_NET_DEVLINK */
 
 #ifdef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
@@ -679,6 +745,30 @@ ptp_read_system_prets(struct ptp_system_timestamp *sts) { }
 static inline void
 ptp_read_system_postts(struct ptp_system_timestamp *sts) { }
 #endif /* !NEED_PTP_SYSTEM_TIMESTAMP */
+
+#ifdef NEED_PTP_CLASSIFY_RAW
+/* NEED_PTP_CLASSIFY_RAW
+ *
+ * The ptp_classify_raw() function was introduced into <linux/ptp_classify.h>
+ * as part of commit 164d8c666521 ("net: ptp: do not reimplement PTP/BPF
+ * classifier").
+ *
+ * The kernel does provide the classifier BPF program since commit
+ * 15f0127d1d18 ("net: added a BPF to help drivers detect PTP packets.").
+ * However, it requires initializing the BPF filter properly and that varies
+ * depending on the kernel version.
+ *
+ * The only current uses for this function in our drivers is to enhance
+ * debugging messages. Rather than re-implementing the function just return
+ * PTP_CLASS_NONE indicating that it could not identify any PTP frame.
+ */
+#include <linux/ptp_classify.h>
+
+static inline unsigned int ptp_classify_raw(struct sk_buff *skb)
+{
+	return PTP_CLASS_NONE;
+}
+#endif /* NEED_PTP_CLASSIFY_RAW */
 
 #ifdef NEED_PTP_PARSE_HEADER
 /* NEED_PTP_PARSE_HEADER
@@ -1617,20 +1707,12 @@ _kc_netif_napi_add(struct net_device *dev, struct napi_struct *napi,
  * Upstream commit 7888fe53b706 ("ethtool: Add common function for filling out
  * strings") introduced ethtool_sprintf, which landed in Linux v5.13
  *
- * The function is easy to directly implement.
+ * The function implementation is moved to kcompat.c since the compiler
+ * complains it can never be inlined for the function with variable argument
+ * lists.
  */
 #ifdef NEED_ETHTOOL_SPRINTF
-static inline
-__printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
-{
-	va_list args;
-
-	va_start(args, fmt);
-	vsnprintf(*data, ETH_GSTRING_LEN, fmt, args);
-	va_end(args);
-
-	*data += ETH_GSTRING_LEN;
-}
+__printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...);
 #endif /* NEED_ETHTOOL_SPRINTF */
 
 /*
@@ -1638,24 +1720,13 @@ __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
  *
  * Upstream introduced following function in
  * commit 2efc459d06f1 ("sysfs: Add sysfs_emit and sysfs_emit_at to format sysfs output")
+ *
+ * The function implementation is moved to kcompat.c since the compiler
+ * complains it can never be inlined for the function with variable argument
+ * lists.
  */
 #ifdef NEED_SYSFS_EMIT
-static inline __printf(2, 3)
-int sysfs_emit(char *buf, const char *fmt, ...)
-{
-	va_list args;
-	int len;
-
-	if (WARN(!buf || offset_in_page(buf),
-		 "invalid sysfs_emit: buf:%p\n", buf))
-		return 0;
-
-	va_start(args, fmt);
-	len = vscnprintf(buf, PAGE_SIZE, fmt, args);
-	va_end(args);
-
-	return len;
-}
+__printf(2, 3) int sysfs_emit(char *buf, const char *fmt, ...);
 #endif /* NEED_SYSFS_EMIT */
 
 /*
@@ -1695,6 +1766,77 @@ _kc_u64_stats_fetch_retry(const struct u64_stats_sync *syncp,
 	return u64_stats_fetch_retry_irq(syncp, start);
 }
 #endif /* HAVE_U64_STATS_FETCH_RETRY_IRQ */
+
+/*
+ * NEED_U64_STATS_READ
+ * NEED_U64_STATS_SET
+ *
+ * Upstream commit 316580b69d0 ("u64_stats: provide u64_stats_t type")
+ * introduces the u64_stats_t data type and other helper APIs to read,
+ * add and increment the stats, in Linux v5.5. Support them on older kernels
+ * as well.
+ *
+ * Upstream commit f2efdb179289 ("u64_stats: Introduce u64_stats_set()")
+ * introduces u64_stats_set API to set the u64_stats_t variable with the
+ * value provided, in Linux v5.16. Add support for older kernels.
+ */
+#ifdef NEED_U64_STATS_READ
+#if BITS_PER_LONG == 64
+#include <asm/local64.h>
+
+typedef struct {
+	local64_t	v;
+} u64_stats_t;
+
+static inline u64 u64_stats_read(u64_stats_t *p)
+{
+	return local64_read(&p->v);
+}
+
+static inline void u64_stats_add(u64_stats_t *p, unsigned long val)
+{
+	local64_add(val, &p->v);
+}
+
+static inline void u64_stats_inc(u64_stats_t *p)
+{
+	local64_inc(&p->v);
+}
+#else
+typedef struct {
+	u64		v;
+} u64_stats_t;
+
+static inline u64 u64_stats_read(u64_stats_t *p)
+{
+	return p->v;
+}
+
+static inline void u64_stats_add(u64_stats_t *p, unsigned long val)
+{
+	p->v += val;
+}
+
+static inline void u64_stats_inc(u64_stats_t *p)
+{
+	p->v++;
+}
+#endif /* BITS_PER_LONG == 64 */
+#endif /* NEED_U64_STATS_READ */
+
+#ifdef NEED_U64_STATS_SET
+#if BITS_PER_LONG == 64
+static inline void u64_stats_set(u64_stats_t *p, u64 val)
+{
+	local64_set(&p->v, val);
+}
+#else
+static inline void u64_stats_set(u64_stats_t *p, u64 val)
+{
+	p->v = val;
+}
+#endif /* BITS_PER_LONG == 64 */
+#endif /* NEED_U64_STATS_SET */
 
 /*
  * NEED_DEVM_KFREE
@@ -1830,5 +1972,106 @@ static inline int pci_enable_ptm(struct pci_dev *dev, u8 *granularity)
 { return -EINVAL; }
 #endif /* CONFIG_PCIE_PTM */
 #endif /* NEED_PCI_ENABLE_PTM */
+
+/* NEED_DEV_PAGE_IS_REUSABLE
+ *
+ * dev_page_is_reusable was introduced by
+ * commit bc38f30f8dbc ("net:  introduce common dev_page_is_reusable()")
+ *
+ * This function is trivial to re-implement in full.
+ */
+#ifdef NEED_DEV_PAGE_IS_REUSABLE
+static inline bool dev_page_is_reusable(struct page *page)
+{
+	return likely(page_to_nid(page) == numa_mem_id() &&
+		      !page_is_pfmemalloc(page));
+}
+#endif /* NEED_DEV_PAGE_IS_REUSABLE */
+
+/* NEED_DEBUGFS_LOOKUP
+ *
+ * Old RHELs (7.2-7.4) do not have this backported. Create a stub and always
+ * return NULL. Should not affect important features workflow and allows the
+ * driver to compile on older kernels.
+ */
+#ifdef NEED_DEBUGFS_LOOKUP
+
+#include <linux/debugfs.h>
+
+static inline struct dentry *
+debugfs_lookup(const char *name, struct dentry *parent)
+{
+	return NULL;
+}
+#endif /* NEED_DEBUGFS_LOOKUP */
+
+/* NEED_DEBUGFS_LOOKUP_AND_REMOVE
+ *
+ * Upstream commit dec9b2f1e0455("debugfs: add debugfs_lookup_and_remove()")
+ *
+ * Should work the same as upstream equivalent.
+ */
+#ifdef NEED_DEBUGFS_LOOKUP_AND_REMOVE
+
+#include <linux/debugfs.h>
+
+static inline void
+debugfs_lookup_and_remove(const char *name, struct dentry *parent)
+{
+	struct dentry *dentry;
+
+	dentry = debugfs_lookup(name, parent);
+	if (!dentry)
+		return;
+
+	debugfs_remove(dentry);
+	dput(dentry);
+}
+#endif /* NEED_DEBUGFS_LOOKUP_AND_REMOVE */
+
+/* NEED_CLASS_CREATE_WITH_MODULE_PARAM
+ *
+ * Upstream removed owner argument form helper macro class_create in
+ * 1aaba11da9aa ("remove module * from class_create()")
+ *
+ * In dcfbb67e48a2 ("use lock_class_key already present in struct subsys_private")
+ * the macro was removed completely.
+ *
+ * class_create no longer has owner/module param as it was not used.
+ */
+#ifdef NEED_CLASS_CREATE_WITH_MODULE_PARAM
+static inline struct class *_kc_class_create(const char *name)
+{
+	return class_create(THIS_MODULE, name);
+}
+#ifdef class_create
+#undef class_create
+#endif
+#define class_create _kc_class_create
+#endif /* NEED_CLASS_CREATE_WITH_MODULE_PARAM */
+
+/* NEED_LOWER_16_BITS and NEED_UPPER_16_BITS
+ *
+ * Upstream commit 03cb4473be92 ("ice: add low level PTP clock access
+ * functions") introduced the lower_16_bits() and upper_16_bits() macros. They
+ * are straight forward to implement if missing.
+ */
+#ifdef NEED_LOWER_16_BITS
+#define lower_16_bits(n) ((u16)((n) & 0xffff))
+#endif /* NEED_LOWER_16_BITS */
+
+#ifdef NEED_UPPER_16_BITS
+#define upper_16_bits(n) ((u16)((n) >> 16))
+#endif /* NEED_UPPER_16_BITS */
+
+#ifdef NEED_HWMON_CHANNEL_INFO
+#define HWMON_CHANNEL_INFO(stype, ...)	\
+	(&(struct hwmon_channel_info) {	\
+		.type = hwmon_##stype,	\
+		.config = (u32 []) {	\
+			__VA_ARGS__, 0	\
+		}			\
+	})
+#endif /* NEED_HWMON_CHANNEL_INFO */
 
 #endif /* _KCOMPAT_IMPL_H_ */

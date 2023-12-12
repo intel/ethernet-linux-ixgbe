@@ -3043,3 +3043,34 @@ u64 mul_u64_u64_div_u64(u64 a, u64 b, u64 c)
 	return res + div64_u64(a * b, c);
 }
 #endif /* NEED_MUL_U64_U64_DIV_U64 */
+
+#ifdef NEED_ETHTOOL_SPRINTF
+void ethtool_sprintf(u8 **data, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vsnprintf(*data, ETH_GSTRING_LEN, fmt, args);
+	va_end(args);
+
+	*data += ETH_GSTRING_LEN;
+}
+#endif /* NEED_ETHTOOL_SPRINTF */
+
+#ifdef NEED_SYSFS_EMIT
+int sysfs_emit(char *buf, const char *fmt, ...)
+{
+	va_list args;
+	int len;
+
+	if (WARN(!buf || offset_in_page(buf),
+		 "invalid %s: buf:%p\n", __func__, buf))
+		return 0;
+
+	va_start(args, fmt);
+	len = vscnprintf(buf, PAGE_SIZE, fmt, args);
+	va_end(args);
+
+	return len;
+}
+#endif /* NEED_SYSFS_EMIT */

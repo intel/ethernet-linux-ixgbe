@@ -16,6 +16,8 @@
 # Helpful functions #
 #####################
 
+SHELL := $(shell which bash)
+
 readlink = $(shell readlink -f ${1})
 
 # helper functions for converting kernel version to version codes
@@ -32,17 +34,6 @@ get_kvercode = $(shell [ "${1}" -ge 0 -a "${1}" -le 255 2>/dev/null ] && \
 cmd_depmod = /sbin/depmod $(if ${SYSTEM_MAP_FILE},-e -F ${SYSTEM_MAP_FILE}) \
                           $(if $(strip ${INSTALL_MOD_PATH}),-b ${INSTALL_MOD_PATH}) \
                           -a ${KVER}
-
-################
-# dracut Macro #
-################
-
-cmd_initrd := $(shell \
-                if which dracut > /dev/null 2>&1 ; then \
-                    echo "dracut --force"; \
-                elif which update-initramfs > /dev/null 2>&1 ; then \
-                    echo "update-initramfs -u"; \
-                fi )
 
 #####################
 # Environment tests #
@@ -172,6 +163,19 @@ endif
 
 get_config_value = $(shell ${CC} -E -dM ${CONFIG_FILE} 2> /dev/null |\
                            grep -m 1 ${1} | awk '{ print $$3 }')
+
+################
+# dracut Macro #
+################
+
+cmd_initrd := $(shell \
+                if [[ ${KOBJ} != /lib/modules/${BUILD_KERNEL}/* ]]; then \
+                    echo ""; \
+                elif which dracut > /dev/null 2>&1 ; then \
+                    echo "dracut --force --kver ${BUILD_KERNEL}"; \
+                elif which update-initramfs > /dev/null 2>&1 ; then \
+                    echo "update-initramfs -u -k ${BUILD_KERNEL}"; \
+                fi )
 
 ########################
 # Check module signing #

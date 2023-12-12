@@ -61,9 +61,10 @@ function gen-devlink() {
 	gen HAVE_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER if fun devlink_health_reporter_create lacks auto_recover in "$dh"
 	gen HAVE_DEVLINK_HEALTH_OPS_EXTACK if method dump of devlink_health_reporter_ops matches ext_ack in "$dh"
 	gen HAVE_DEVLINK_INFO_DRIVER_NAME_PUT if fun devlink_info_driver_name_put in "$dh"
-	gen HAVE_DEVLINK_NOTIFY_REGISTER if fun devlink_notify_register in "$dh"
 	gen HAVE_DEVLINK_PARAMS if method validate of devlink_param matches ext_ack in "$dh"
 	gen HAVE_DEVLINK_PARAMS_PUBLISH if fun devlink_params_publish in "$dh"
+	gen HAVE_DEVLINK_PORT_NEW if method port_new of devlink_ops in "$dh"
+	gen HAVE_DEVLINK_PORT_OPS if struct devlink_port_ops in "$dh"
 	gen HAVE_DEVLINK_PORT_SPLIT if method port_split of devlink_ops in "$dh"
 	gen HAVE_DEVLINK_PORT_SPLIT_EXTACK if method port_split of devlink_ops matches netlink_ext_ack in "$dh"
 	gen HAVE_DEVLINK_PORT_SPLIT_PORT_STRUCT if method port_split of devlink_ops matches devlink_port in "$dh"
@@ -79,16 +80,23 @@ function gen-devlink() {
 	gen HAVE_DEVLINK_REGISTER_SETS_DEV if fun devlink_register matches 'struct device' in "$dh"
 	gen HAVE_DEVLINK_RELOAD_ENABLE_DISABLE if fun devlink_reload_enable in "$dh"
 	gen HAVE_DEVLINK_SET_FEATURES  if fun devlink_set_features in "$dh"
-	gen HAVE_DEVLINK_UNLOCKED_RESOURCE if fun devl_resource_size_get in "$dh"
 	gen HAVE_DEVL_PORT_REGISTER if fun devl_port_register in "$dh"
 
+	gen HAVE_DEVLINK_PORT_FLAVOUR_PCI_SF if enum devlink_port_flavour matches DEVLINK_PORT_FLAVOUR_PCI_SF in include/uapi/linux/devlink.h
 	gen HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT if enum devlink_reload_action matches DEVLINK_RELOAD_ACTION_FW_ACTIVATE in include/uapi/linux/devlink.h
+
+	gen NEED_DEVLINK_RESOURCES_UNREGISTER_NO_RESOURCE if fun devlink_resources_unregister matches 'struct devlink_resource \\*' in "$dh"
+	gen NEED_DEVLINK_TO_DEV  if fun devlink_to_dev absent in "$dh"
+	gen NEED_DEVLINK_UNLOCKED_RESOURCE if fun devl_resource_size_get absent in "$dh"
 }
 
 function gen-ethtool() {
 	eth='include/linux/ethtool.h'
+	ueth='include/uapi/linux/ethtool.h'
+	gen HAVE_ETHTOOL_COALESCE_EXTACK if method get_coalesce of ethtool_ops matches 'struct kernel_ethtool_coalesce \\*' in "$eth"
 	gen HAVE_ETHTOOL_EXTENDED_RINGPARAMS if method get_ringparam of ethtool_ops matches 'struct kernel_ethtool_ringparam \\*' in "$eth"
 	gen NEED_ETHTOOL_SPRINTF if fun ethtool_sprintf absent in "$eth"
+	gen HAVE_ETHTOOL_FLOW_RSS if macro FLOW_RSS in "$ueth"
 }
 
 function gen-filter() {
@@ -107,6 +115,7 @@ function gen-flow-dissector() {
 function gen-gnss() {
 	cdh='include/linux/cdev.h'
 	clh='include/linux/device/class.h'
+	dh='include/linux/device.h'
 	gh='include/linux/gnss.h'
 	th='include/uapi/linux/types.h'
 	fh='include/linux/fs.h'
@@ -115,6 +124,9 @@ function gen-gnss() {
 	gen HAVE_DEV_UEVENT_CONST if method dev_uevent of class matches 'const struct device' in "$clh"
 	gen HAVE_POLL_T if typedef __poll_t in "$th"
 	gen HAVE_STREAM_OPEN if fun stream_open in "$fh"
+	# There can be either macro class_create or a function
+	gen NEED_CLASS_CREATE_WITH_MODULE_PARAM if fun class_create matches 'owner' in "$clh" "$dh"
+	gen NEED_CLASS_CREATE_WITH_MODULE_PARAM if macro class_create in "$clh" "$dh"
 
 	if ! grep -qE CONFIG_SUSE_KERNEL.+1 "$CONFFILE"; then
 		gen HAVE_GNSS_MODULE if struct gnss_device in "$gh"
@@ -123,6 +135,7 @@ function gen-gnss() {
 
 function gen-netdevice() {
 	ndh='include/linux/netdevice.h'
+	gen HAVE_NDO_ETH_IOCTL if fun ndo_eth_ioctl in "$ndh"
 	gen HAVE_NDO_FDB_ADD_VID    if method ndo_fdb_del of net_device_ops matches 'u16 vid' in "$ndh"
 	gen HAVE_NDO_FDB_DEL_EXTACK if method ndo_fdb_del of net_device_ops matches ext_ack in "$ndh"
 	gen HAVE_NDO_GET_DEVLINK_PORT if method ndo_get_devlink_port of net_device_ops in "$ndh"
@@ -145,26 +158,41 @@ function gen-pci() {
 }
 
 function gen-other() {
+	ush='include/linux/u64_stats_sync.h'
 	gen NEED_PCI_AER_CLEAR_NONFATAL_STATUS if fun pci_aer_clear_nonfatal_status absent in include/linux/aer.h
 	gen NEED_BITMAP_COPY_CLEAR_TAIL if fun bitmap_copy_clear_tail absent in include/linux/bitmap.h
 	gen NEED_BITMAP_FROM_ARR32 if fun bitmap_from_arr32 absent in include/linux/bitmap.h
 	gen NEED_BITMAP_TO_ARR32 if fun bitmap_to_arr32 absent in include/linux/bitmap.h
 	gen HAVE_COMPLETION_RAW_SPINLOCK if struct completion matches 'struct swait_queue_head' in include/linux/completion.h
+	gen NEED_DEBUGFS_LOOKUP if fun debugfs_lookup absent in include/linux/debugfs.h
+	gen NEED_DEBUGFS_LOOKUP_AND_REMOVE if fun debugfs_lookup_and_remove absent in include/linux/debugfs.h
 	gen NEED_ETH_HW_ADDR_SET if fun eth_hw_addr_set absent in include/linux/etherdevice.h
+	gen HAVE_HWMON_DEVICE_REGISTER_WITH_INFO if fun hwmon_device_register_with_info in include/linux/hwmon.h
+	gen NEED_HWMON_CHANNEL_INFO if macro HWMON_CHANNEL_INFO absent in include/linux/hwmon.h
 	gen HAVE_IOMMU_DEV_FEAT_AUX if enum iommu_dev_features matches IOMMU_DEV_FEAT_AUX in include/linux/iommu.h
 	gen NEED_DEFINE_STATIC_KEY_FALSE if macro DEFINE_STATIC_KEY_FALSE absent in include/linux/jump_label.h
 	gen NEED_STATIC_BRANCH_LIKELY if macro static_branch_likely absent in include/linux/jump_label.h
 	gen HAVE_STRUCT_STATIC_KEY_FALSE if struct static_key_false in include/linux/jump_label.h include/linux/jump_label_type.h
 	gen NEED_DECLARE_STATIC_KEY_FALSE if macro DECLARE_STATIC_KEY_FALSE absent in include/linux/jump_label.h include/linux/jump_label_type.h
+	gen NEED_LOWER_16_BITS if macro lower_16_bits absent in include/linux/kernel.h
+	gen NEED_UPPER_16_BITS if macro upper_16_bits absent in include/linux/kernel.h
 	gen NEED_MUL_U64_U64_DIV_U64 if fun mul_u64_u64_div_u64 absent in include/linux/math64.h
+	gen HAVE_MDEV_GET_DRVDATA if fun mdev_get_drvdata in include/linux/mdev.h
+	gen HAVE_MDEV_REGISTER_PARENT if fun mdev_register_parent in include/linux/mdev.h
 	gen NEED_DEV_PM_DOMAIN_ATTACH if fun dev_pm_domain_attach absent in include/linux/pm_domain.h include/linux/pm.h
 	gen NEED_DEV_PM_DOMAIN_DETACH if fun dev_pm_domain_detach absent in include/linux/pm_domain.h include/linux/pm.h
+	gen NEED_PTP_CLASSIFY_RAW if fun ptp_classify_raw absent in include/linux/ptp_classify.h
 	gen NEED_PTP_PARSE_HEADER if fun ptp_parse_header absent in include/linux/ptp_classify.h
+	gen HAVE_PTP_CLOCK_INFO_ADJFINE if method adjfine of ptp_clock_info in include/linux/ptp_clock_kernel.h
 	gen NEED_DIFF_BY_SCALED_PPM if fun diff_by_scaled_ppm absent in include/linux/ptp_clock_kernel.h
 	gen NEED_PTP_SYSTEM_TIMESTAMP if fun ptp_read_system_prets absent in include/linux/ptp_clock_kernel.h
+	gen NEED_DEV_PAGE_IS_REUSABLE if fun dev_page_is_reusable absent in include/linux/skbuff.h
 	gen NEED_SYSFS_EMIT if fun sysfs_emit absent in include/linux/sysfs.h
-	gen HAVE_U64_STATS_FETCH_BEGIN_IRQ if fun u64_stats_fetch_begin_irq in include/linux/u64_stats_sync.h
-	gen HAVE_U64_STATS_FETCH_RETRY_IRQ if fun u64_stats_fetch_retry_irq in include/linux/u64_stats_sync.h
+	gen HAVE_TRACE_ENABLED_SUPPORT if implementation of macro __DECLARE_TRACE matches 'trace_##name##_enabled' in include/linux/tracepoint.h
+	gen HAVE_U64_STATS_FETCH_BEGIN_IRQ if fun u64_stats_fetch_begin_irq in "$ush"
+	gen HAVE_U64_STATS_FETCH_RETRY_IRQ if fun u64_stats_fetch_retry_irq in "$ush"
+	gen NEED_U64_STATS_READ if fun u64_stats_read absent in "$ush"
+	gen NEED_U64_STATS_SET if fun u64_stats_set absent in "$ush"
 	gen HAVE_LMV1_SUPPORT if macro VFIO_REGION_TYPE_MIGRATION in include/uapi/linux/vfio.h
 }
 

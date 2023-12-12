@@ -66,6 +66,7 @@ void ixgbe_dump_registers(struct ixgbe_adapter *adapter);
  * These are defined in ixgbe_type.h on behalf of the VF driver
  * but we need them here unwrapped for the PF driver.
  */
+#define IXGBE_DEV_ID_E610_VF			0x57AD
 #define IXGBE_DEV_ID_82599_VF			0x10ED
 #define IXGBE_DEV_ID_X540_VF			0x1515
 #define IXGBE_DEV_ID_X550_VF			0x1565

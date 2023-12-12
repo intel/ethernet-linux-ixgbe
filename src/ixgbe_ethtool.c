@@ -1338,6 +1338,7 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 static int ixgbe_get_eeprom_len(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
 	return pci_resource_len(adapter->pdev, 0);
 }
 
@@ -1884,7 +1885,7 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 	u64 *queue_stat;
 	int stat_count, k;
 	struct ixgbe_ring *ring;
-	int i, j;
+	int i, data_index = 0;
 	char *p;
 
 	ixgbe_update_stats(adapter);
@@ -1894,23 +1895,23 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 
 	for (i = 0; i < IXGBE_NETDEV_STATS_LEN; i++) {
 		p = (char *)net_stats + ixgbe_gstrings_net_stats[i].stat_offset;
-		data[i] = (ixgbe_gstrings_net_stats[i].sizeof_stat ==
+		data[data_index++] = (ixgbe_gstrings_net_stats[i].sizeof_stat ==
 			sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
 	}
-	for (j = 0; j < IXGBE_GLOBAL_STATS_LEN; j++, i++) {
-		p = (char *)adapter + ixgbe_gstrings_stats[j].stat_offset;
-		data[i] = (ixgbe_gstrings_stats[j].sizeof_stat ==
+	for (i = 0; i < IXGBE_GLOBAL_STATS_LEN; i++) {
+		p = (char *)adapter + ixgbe_gstrings_stats[i].stat_offset;
+		data[data_index++] = (ixgbe_gstrings_stats[i].sizeof_stat ==
 			   sizeof(u64)) ? *(u64 *)p : *(u32 *)p;
 	}
-	for (j = 0; j < IXGBE_NUM_TX_QUEUES; j++) {
-		ring = adapter->tx_ring[j];
+	for (i = 0; i < IXGBE_NUM_TX_QUEUES; i++) {
+		ring = adapter->tx_ring[i];
 		if (!ring) {
-			data[i++] = 0;
-			data[i++] = 0;
+			data[data_index++] = 0;
+			data[data_index++] = 0;
 #ifdef BP_EXTENDED_STATS
-			data[i++] = 0;
-			data[i++] = 0;
-			data[i++] = 0;
+			data[data_index++] = 0;
+			data[data_index++] = 0;
+			data[data_index++] = 0;
 #endif
 			continue;
 		}
@@ -1919,28 +1920,28 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		do {
 			start = u64_stats_fetch_begin(&ring->syncp);
 #endif
-			data[i]   = ring->stats.packets;
-			data[i+1] = ring->stats.bytes;
+			data[data_index]   = ring->stats.packets;
+			data[data_index+1] = ring->stats.bytes;
 #ifdef HAVE_NDO_GET_STATS64
 		} while (u64_stats_fetch_retry(&ring->syncp, start));
 #endif
-		i += 2;
+		data_index += 2;
 #ifdef BP_EXTENDED_STATS
-		data[i] = ring->stats.yields;
-		data[i+1] = ring->stats.misses;
-		data[i+2] = ring->stats.cleaned;
-		i += 3;
+		data[data_index]   = ring->stats.yields;
+		data[data_index+1] = ring->stats.misses;
+		data[data_index+2] = ring->stats.cleaned;
+		data_index += 3;
 #endif
 	}
-	for (j = 0; j < IXGBE_NUM_RX_QUEUES; j++) {
-		ring = adapter->rx_ring[j];
+	for (i = 0; i < IXGBE_NUM_RX_QUEUES; i++) {
+		ring = adapter->rx_ring[i];
 		if (!ring) {
-			data[i++] = 0;
-			data[i++] = 0;
+			data[data_index++] = 0;
+			data[data_index++] = 0;
 #ifdef BP_EXTENDED_STATS
-			data[i++] = 0;
-			data[i++] = 0;
-			data[i++] = 0;
+			data[data_index++] = 0;
+			data[data_index++] = 0;
+			data[data_index++] = 0;
 #endif
 			continue;
 		}
@@ -1949,36 +1950,36 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 		do {
 			start = u64_stats_fetch_begin(&ring->syncp);
 #endif
-			data[i]   = ring->stats.packets;
-			data[i+1] = ring->stats.bytes;
+			data[data_index]   = ring->stats.packets;
+			data[data_index+1] = ring->stats.bytes;
 #ifdef HAVE_NDO_GET_STATS64
 		} while (u64_stats_fetch_retry(&ring->syncp, start));
 #endif
-		i += 2;
+		data_index += 2;
 #ifdef BP_EXTENDED_STATS
-		data[i] = ring->stats.yields;
-		data[i+1] = ring->stats.misses;
-		data[i+2] = ring->stats.cleaned;
-		i += 3;
+		data[data_index]	= ring->stats.yields;
+		data[data_index+1]	= ring->stats.misses;
+		data[data_index+2]	= ring->stats.cleaned;
+		data_index += 3;
 #endif
 	}
-	for (j = 0; j < IXGBE_MAX_PACKET_BUFFERS; j++) {
-		data[i++] = adapter->stats.pxontxc[j];
-		data[i++] = adapter->stats.pxofftxc[j];
+	for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
+		data[data_index++] = adapter->stats.pxontxc[i];
+		data[data_index++] = adapter->stats.pxofftxc[i];
 	}
-	for (j = 0; j < IXGBE_MAX_PACKET_BUFFERS; j++) {
-		data[i++] = adapter->stats.pxonrxc[j];
-		data[i++] = adapter->stats.pxoffrxc[j];
+	for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++) {
+		data[data_index++] = adapter->stats.pxonrxc[i];
+		data[data_index++] = adapter->stats.pxoffrxc[i];
 	}
 	stat_count = sizeof(struct vf_stats) / sizeof(u64);
-	for (j = 0; j < adapter->num_vfs; j++) {
-		queue_stat = (u64 *)&adapter->vfinfo[j].vfstats;
+	for (i = 0; i < adapter->num_vfs; i++) {
+		queue_stat = (u64 *)&adapter->vfinfo[i].vfstats;
 		for (k = 0; k < stat_count; k++)
-			data[i + k] = queue_stat[k];
-		queue_stat = (u64 *)&adapter->vfinfo[j].saved_rst_vfstats;
+			data[data_index + k] = queue_stat[k];
+		queue_stat = (u64 *)&adapter->vfinfo[i].saved_rst_vfstats;
 		for (k = 0; k < stat_count; k++)
-			data[i + k] += queue_stat[k];
-		i += k;
+			data[data_index + k] += queue_stat[k];
+		data_index += k;
 	}
 }
 
