@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include <linux/types.h>
 #include <linux/module.h>
@@ -1427,10 +1427,10 @@ int ixgbe_check_mdd_event(struct ixgbe_adapter *adapter)
 			/* The VF that malicious event occurred on */
 			vf = j + (i * 32);
 
-			dev_warn(pci_dev_to_dev(adapter->pdev),
-				"Malicious event on VF %d tx:%x rx:%x\n", vf,
-				IXGBE_READ_REG(hw, IXGBE_LVMMC_TX),
-				IXGBE_READ_REG(hw, IXGBE_LVMMC_RX));
+			dev_warn(ixgbe_pf_to_dev(adapter),
+				 "Malicious event on VF %d tx:%x rx:%x\n", vf,
+				 IXGBE_READ_REG(hw, IXGBE_LVMMC_TX),
+				 IXGBE_READ_REG(hw, IXGBE_LVMMC_RX));
 
 			/* restart the vf */
 			if (hw->mac.ops.restore_mdd_vf) {
@@ -1550,20 +1550,20 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 		return -EINVAL;
 
 	if (is_valid_ether_addr(mac)) {
-		dev_info(pci_dev_to_dev(adapter->pdev), "setting MAC %pM on VF %d\n",
+		dev_info(ixgbe_pf_to_dev(adapter), "setting MAC %pM on VF %d\n",
 			 mac, vf);
-		dev_info(pci_dev_to_dev(adapter->pdev), "Reload the VF driver to make this change effective.\n");
+		dev_info(ixgbe_pf_to_dev(adapter), "Reload the VF driver to make this change effective.\n");
 
 		retval = ixgbe_set_vf_mac(adapter, vf, mac);
 		if (retval >= 0) {
 			adapter->vfinfo[vf].pf_set_mac = true;
 
 			if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-				dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address has been set, but the PF device is not up.\n");
-				dev_warn(pci_dev_to_dev(adapter->pdev), "Bring the PF device up before attempting to use the VF device.\n");
+				dev_warn(ixgbe_pf_to_dev(adapter), "The VF MAC address has been set, but the PF device is not up.\n");
+				dev_warn(ixgbe_pf_to_dev(adapter), "Bring the PF device up before attempting to use the VF device.\n");
 			}
 		} else {
-			dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address was NOT set due to invalid or duplicate MAC address.\n");
+			dev_warn(ixgbe_pf_to_dev(adapter), "The VF MAC address was NOT set due to invalid or duplicate MAC address.\n");
 		}
 	} else if (is_zero_ether_addr(mac)) {
 		unsigned char *vf_mac_addr =
@@ -1573,7 +1573,7 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 		if (is_zero_ether_addr(vf_mac_addr))
 			return 0;
 
-		dev_info(pci_dev_to_dev(adapter->pdev), "removing MAC on VF %d\n",
+		dev_info(ixgbe_pf_to_dev(adapter), "removing MAC on VF %d\n",
 			 vf);
 
 		retval = ixgbe_del_mac_filter(adapter, vf_mac_addr, vf);
@@ -1581,7 +1581,7 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 			adapter->vfinfo[vf].pf_set_mac = false;
 			memcpy(vf_mac_addr, mac, ETH_ALEN);
 		} else {
-			dev_warn(pci_dev_to_dev(adapter->pdev), "Could NOT remove the VF MAC address.\n");
+			dev_warn(ixgbe_pf_to_dev(adapter), "Could NOT remove the VF MAC address.\n");
 		}
 	} else {
 		retval = -EINVAL;
@@ -1611,11 +1611,11 @@ static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,
 				IXGBE_QDE_HIDE_VLAN);
 	adapter->vfinfo[vf].pf_vlan = vlan;
 	adapter->vfinfo[vf].pf_qos = qos;
-	dev_info(pci_dev_to_dev(adapter->pdev),
+	dev_info(ixgbe_pf_to_dev(adapter),
 		 "Setting VLAN %d, QOS 0x%x on VF %d\n", vlan, qos, vf);
 	if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-		dev_warn(pci_dev_to_dev(adapter->pdev), "The VF VLAN has been set, but the PF device is not up.\n");
-		dev_warn(pci_dev_to_dev(adapter->pdev), "Bring the PF device up before attempting to use the VF device.\n");
+		dev_warn(ixgbe_pf_to_dev(adapter), "The VF VLAN has been set, but the PF device is not up.\n");
+		dev_warn(ixgbe_pf_to_dev(adapter), "Bring the PF device up before attempting to use the VF device.\n");
 	}
 
 out:
@@ -1762,7 +1762,7 @@ void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)
 
 	if (ixgbe_link_mbps(adapter) != adapter->vf_rate_link_speed) {
 		adapter->vf_rate_link_speed = 0;
-		dev_info(pci_dev_to_dev(adapter->pdev),
+		dev_info(ixgbe_pf_to_dev(adapter),
 			 "Link speed has been changed. VF Transmit rate is disabled\n");
 	}
 
@@ -1955,7 +1955,7 @@ int ixgbe_ndo_set_vf_link_state(struct net_device *netdev, int vf, int state)
 	int ret = 0;
 
 	if (vf < 0 || vf >= adapter->num_vfs) {
-		dev_err(pci_dev_to_dev(adapter->pdev),
+		dev_err(ixgbe_pf_to_dev(adapter),
 			"NDO set VF link - invalid VF identifier %d\n", vf);
 		ret = -EINVAL;
 		goto out;
@@ -1963,22 +1963,22 @@ int ixgbe_ndo_set_vf_link_state(struct net_device *netdev, int vf, int state)
 
 	switch (state) {
 	case IFLA_VF_LINK_STATE_ENABLE:
-		dev_info(pci_dev_to_dev(adapter->pdev),
+		dev_info(ixgbe_pf_to_dev(adapter),
 			 "NDO set VF %d link state %d - not supported\n",
 			vf, state);
 		break;
 	case IFLA_VF_LINK_STATE_DISABLE:
-		dev_info(pci_dev_to_dev(adapter->pdev),
+		dev_info(ixgbe_pf_to_dev(adapter),
 			 "NDO set VF %d link state disable\n", vf);
 		ixgbe_set_vf_link_state(adapter, vf, state);
 		break;
 	case IFLA_VF_LINK_STATE_AUTO:
-		dev_info(pci_dev_to_dev(adapter->pdev),
+		dev_info(ixgbe_pf_to_dev(adapter),
 			 "NDO set VF %d link state auto\n", vf);
 		ixgbe_set_vf_link_state(adapter, vf, state);
 		break;
 	default:
-		dev_err(pci_dev_to_dev(adapter->pdev),
+		dev_err(ixgbe_pf_to_dev(adapter),
 			"NDO set VF %d - invalid link state %d\n", vf, state);
 		ret = -EINVAL;
 	}

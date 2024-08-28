@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe.h"
 
@@ -115,7 +115,7 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 			udelay(100);
 	}
 	if (ddp->sgl)
-		dma_unmap_sg(pci_dev_to_dev(adapter->pdev), ddp->sgl, ddp->sgc,
+		dma_unmap_sg(ixgbe_pf_to_dev(adapter), ddp->sgl, ddp->sgc,
 			     DMA_FROM_DEVICE);
 	if (ddp->pool) {
 		dma_pool_free(ddp->pool, ddp->udl, ddp->udp);
@@ -194,7 +194,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	}
 
 	/* setup dma from scsi command sgl */
-	dmacount = dma_map_sg(pci_dev_to_dev(adapter->pdev), sgl, sgc, DMA_FROM_DEVICE);
+	dmacount = dma_map_sg(ixgbe_pf_to_dev(adapter), sgl, sgc, DMA_FROM_DEVICE);
 	if (dmacount == 0) {
 		e_err(drv, "xid 0x%x DMA map error\n", xid);
 		goto out_noddp;
@@ -338,7 +338,7 @@ out_noddp_free:
 	ixgbe_fcoe_clear_ddp(ddp);
 
 out_noddp_unmap:
-	dma_unmap_sg(pci_dev_to_dev(adapter->pdev), sgl, sgc, DMA_FROM_DEVICE);
+	dma_unmap_sg(ixgbe_pf_to_dev(adapter), sgl, sgc, DMA_FROM_DEVICE);
 out_noddp:
 	put_cpu();
 	return 0;
@@ -457,7 +457,7 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		break;
 	/* unmap the sg list when FCPRSP is received */
 	case cpu_to_le32(IXGBE_RXDADV_STAT_FCSTAT_FCPRSP):
-		dma_unmap_sg(pci_dev_to_dev(adapter->pdev), ddp->sgl,
+		dma_unmap_sg(ixgbe_pf_to_dev(adapter), ddp->sgl,
 			     ddp->sgc, DMA_FROM_DEVICE);
 		ddp->err = ddp_err;
 		ddp->sgl = NULL;
@@ -752,7 +752,7 @@ void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
 	for_each_possible_cpu(cpu)
 		ixgbe_fcoe_dma_pool_free(fcoe, cpu);
 
-	dma_unmap_single(pci_dev_to_dev(adapter->pdev),
+	dma_unmap_single(ixgbe_pf_to_dev(adapter),
 			 fcoe->extra_ddp_buffer_dma,
 			 IXGBE_FCBUFF_MIN,
 			 DMA_FROM_DEVICE);
@@ -773,7 +773,7 @@ void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
 int ixgbe_setup_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_fcoe *fcoe = &adapter->fcoe;
-	struct device *dev = pci_dev_to_dev(adapter->pdev);
+	struct device *dev = ixgbe_pf_to_dev(adapter);
 	void *buffer;
 	dma_addr_t dma;
 	unsigned int cpu;

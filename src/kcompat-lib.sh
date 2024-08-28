@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-only
-# Copyright (C) 1999 - 2023 Intel Corporation
+# Copyright (C) 1999 - 2024 Intel Corporation
 
 # to be sourced
 
@@ -159,12 +159,27 @@ function find-typedef-decl() {
 #
 # syntax:
 #   gen DEFINE if (KIND [METHOD of]) NAME [(matches|lacks) PATTERN|absent] in <list-of-files>
+#   gen DEFINE if string "actual" equals "expected"
 
 # where:
 #   DEFINE is HAVE_ or NEED_ #define to print;
 #   `if` is there to just read it easier and made syntax easier to check;
 #
 #   NAME is the name for what we are looking for;
+#
+#   `if string` can be used to check if a provided string matches an expected
+#       value. The define will only be generated if the strings are exactly
+#       equal. Otherwise, the define will not be generated. When operating in
+#       UNIFDEF_MODE, -DDEFINE is output when the strings are equal, while
+#       -UDEFINE is output when the strings are not equal. This is intended
+#       for cases where a more complex conditional is required, such as
+#       generating a define when multiple different functions exist.
+#
+#       Ex:
+#
+#         FUNC1="$(find-fun-decl devlink_foo1 devlink.h)"
+#         FUNC2="$(find-fun-decl devlink_foo2 devlink.h)"
+#         gen HAVE_FOO_12 if string "${FUNC1:+1}${FUNC2:+1}" equals "11"
 #
 #   KIND specifies what kind of declaration/definition we are looking for,
 #      could be: fun, enum, struct, method, macro, typedef,
@@ -192,9 +207,14 @@ function find-typedef-decl() {
 #  <list-of-files> is just space-separate list of files to look in,
 #    single (-) for stdin.
 #
-# PATTERN is awk pattern, will be wrapped by two slashes (/)
+# PATTERN is an awk pattern, will be wrapped by two slashes (/)
+#
+# The usual output is a list of "#define <flag>" lines for each flag that has
+# a matched definition. When UNIFDEF_MODE is set to a non-zero string, the
+# output is instead a sequence of "-D<flag>" for each matched definition, and
+# "-U<flag>" for each definition which didn't match.
 function gen() {
-	test $# -ge 6 || die 20 "too few arguments, $# given, at least 6 needed"
+	test $# -ge 4 || die 20 "too few arguments, $# given, at least 4 needed"
 	local define if_kw kind name in_kw # mandatory
 	local of_kw method_name operator pattern # optional
 	local src_line="${BASH_SOURCE[0]}:${BASH_LINENO[0]}"
@@ -205,7 +225,34 @@ function gen() {
 	shift 3
 	[ "$if_kw" != if ] && die 21 "$src_line: 'if' keyword expected, '$if_kw' given"
 	case "$kind" in
+	string)
+		local actual_str expect_str equals_kw missing_fmt found_fmt
+
+		test $# -ge 3 || die 22 "$src_line: too few arguments, $orig_args_cnt given, at least 6 needed"
+
+		actual_str="$1"
+		equals_kw="$2"
+		expect_str="$3"
+		shift 3
+
+		if [ -z ${UNIFDEF_MODE:+1} ]; then
+			found_fmt="#define %s\n"
+			missing_fmt=""
+		else
+			found_fmt="-D%s\n"
+			missing_fmt="-U%s\n"
+		fi
+
+		if [ "${actual_str}" = "${expect_str}" ]; then
+			printf -- "$found_fmt" "$define"
+		else
+			printf -- "$missing_fmt" "$define"
+		fi
+
+		return
+	;;
 	fun|enum|struct|macro|typedef)
+		test $# -ge 3 || die 22 "$src_line: too few arguments, $orig_args_cnt given, at least 6 needed"
 		name="$1"
 		shift
 	;;
@@ -254,7 +301,7 @@ function gen() {
 
 	local first_decl=
 	if [ "$kind" = method ]; then
-		first_decl="$(find-struct-decl "$name" "$@")" || exit 28
+		first_decl="$(find-struct-decl "$name" "$@")" || exit 40
 		# prepare params for next lookup phase
 		set -- - # overwrite $@ to be single dash (-)
 		name="$method_name"
@@ -264,15 +311,93 @@ function gen() {
 		first_decl="$(cat -)"
 	fi
 
+	local unifdef
+	unifdef=${UNIFDEF_MODE:+1}
+
 	# lookup the NAME
 	local body
-	body="$(find-$kind-decl "$name" "$@" <<< "$first_decl")" || exit 29
-	awk -v define="$define" -v pattern="$pattern" -v "$operator"=1 '
+	body="$(find-$kind-decl "$name" "$@" <<< "$first_decl")" || exit 41
+	awk -v define="$define" -v pattern="$pattern" -v "$operator"=1 -v unifdef="$unifdef" '
+		BEGIN {
+			# prepend "identifier boundary" to pattern, also append
+			# it, but only for patterns not ending with such already
+			#
+			# eg: "foo" -> "\bfoo\b"
+			#     "struct foo *" -> "\bstruct foo *"
+
+			# Note that mawk does not support "\b", so we have our
+			# own approximation, NI
+			NI = "[^A-Za-z0-9_]" # "Not an Indentifier"
+
+			if (!match(pattern, NI "$"))
+				pattern = pattern "(" NI "|$)"
+			pattern = "(^|" NI ")" pattern
+		}
 		/./ { not_empty = 1 }
 		$0 ~ pattern { found = 1 }
 		END {
+			if (unifdef) {
+				found_fmt="-D%s\n"
+				missing_fmt="-U%s\n"
+			} else {
+				found_fmt="#define %s\n"
+				missing_fmt=""
+			}
+
 			if (lacks && !found && not_empty || matches && found || absent && !found)
-				print "#define", define
+				printf(found_fmt, define)
+			else if (missing_fmt)
+				printf(missing_fmt, define)
 		}
 	' <<< "$body"
+}
+
+# tell if given flag is enabled in .config
+# return 0 if given flag is enabled, 1 otherwise
+# inputs:
+# $1 - flag to check (whole word, without _MODULE suffix)
+# env flag $CONFIG_FILE
+#
+# there are two "config" formats supported, to ease up integrators lifes
+# .config (without leading #~ prefix):
+#~ # CONFIG_ACPI_EC_DEBUGFS is not set
+#~ CONFIG_ACPI_AC=y
+#~ CONFIG_ACPI_VIDEO=m
+# and autoconf.h, which would be:
+#~ #define CONFIG_ACPI_AC 1
+#~ #define CONFIG_ACPI_VIDEO_MODULE 1
+function config_has() {
+	grep -qE "^(#define )?$1((_MODULE)? 1|=m|=y)$" "$CONFIG_FILE"
+}
+
+# try to locate a suitable config file from KSRC
+#
+# On success, the CONFIG_FILE variable will be updated to reflect the full
+# path to a configuration file.
+#
+# Depends on KSRC being set
+function find_config_file() {
+	local -a CSP
+	local file
+	local diagmsgs=/dev/stderr
+
+	[ -n "${QUIET_COMPAT-}" ] && diagmsgs=/dev/null
+
+	if ! [ -d "${KSRC-}" ]; then
+		return
+	fi
+
+	CSP=(
+		"$KSRC/include/generated/autoconf.h"
+		"$KSRC/include/linux/autoconf.h"
+		"$KSRC/.config"
+	)
+
+	for file in "${CSP[@]}"; do
+		if [ -f $file ]; then
+			echo >&"$diagmsgs" "using CONFIG_FILE=$file"
+			CONFIG_FILE=$file
+			return
+		fi
+	done
 }

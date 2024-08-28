@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
@@ -80,6 +80,9 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw)
 		break;
 	case ixgbe_mac_X550EM_a:
 		status = ixgbe_init_ops_X550EM_a(hw);
+		break;
+	case ixgbe_mac_E610:
+		status = ixgbe_init_ops_E610(hw);
 		break;
 	default:
 		status = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
@@ -185,6 +188,14 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_X550EM_A_QSFP_N:
 	case IXGBE_DEV_ID_X550EM_A_SFP:
 		hw->mac.type = ixgbe_mac_X550EM_a;
+		hw->mvals = ixgbe_mvals_X550EM_a;
+		break;
+	case IXGBE_DEV_ID_E610_BACKPLANE:
+	case IXGBE_DEV_ID_E610_SFP:
+	case IXGBE_DEV_ID_E610_10G_T:
+	case IXGBE_DEV_ID_E610_2_5G_T:
+	case IXGBE_DEV_ID_E610_SGMII:
+		hw->mac.type = ixgbe_mac_E610;
 		hw->mvals = ixgbe_mvals_X550EM_a;
 		break;
 	default:
@@ -410,7 +421,8 @@ s32 ixgbe_stop_adapter(struct ixgbe_hw *hw)
  **/
 s32 ixgbe_read_pba_string(struct ixgbe_hw *hw, u8 *pba_num, u32 pba_num_size)
 {
-	return ixgbe_read_pba_string_generic(hw, pba_num, pba_num_size);
+	return ixgbe_call_func(hw, hw->eeprom.ops.read_pba_string, (hw, pba_num,
+			       pba_num_size), IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
@@ -1108,6 +1120,20 @@ s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
 }
 
 /**
+ * ixgbe_get_fw_tsam_mode - Returns information whether TSAM is enabled
+ * @hw: pointer to hardware structure
+ *
+ * Checks Thermal Sensor Autonomous Mode by reading the value of the
+ * dedicated register.
+ * Returns True if TSAM is enabled, False if TSAM is disabled.
+ */
+bool ixgbe_get_fw_tsam_mode(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_fw_tsam_mode, (hw),
+			       IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
  * ixgbe_get_thermal_sensor_data - Gathers thermal sensor data
  * @hw: pointer to hardware structure
  *
@@ -1299,6 +1325,19 @@ bool ixgbe_fw_recovery_mode(struct ixgbe_hw *hw)
 {
 	if (hw->mac.ops.fw_recovery_mode)
 		return hw->mac.ops.fw_recovery_mode(hw);
+	return false;
+}
+
+/**
+ * ixgbe_fw_rollback_mode - Check if in FW NVM rollback mode
+ * @hw: pointer to hardware structure
+ *
+ * Return: true if the FW NVM is in rollback mode, otherwise false.
+ */
+bool ixgbe_fw_rollback_mode(struct ixgbe_hw *hw)
+{
+	if (hw->mac.ops.fw_rollback_mode)
+		return hw->mac.ops.fw_rollback_mode(hw);
 	return false;
 }
 
@@ -1649,3 +1688,33 @@ void ixgbe_set_rate_select_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed)
 		hw->mac.ops.set_rate_select_speed(hw, speed);
 }
 
+/**
+ * ixgbe_get_fw_version - get FW version
+ * @hw: pointer to hardware structure
+ *
+ * Get the current FW version.
+ *
+ * Return: the exit code of the operation or IXGBE_NOT_IMPLEMENTED
+ * if the function is not implemented.
+ */
+s32 ixgbe_get_fw_version(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_fw_version,
+			       (hw), IXGBE_NOT_IMPLEMENTED);
+}
+
+/**
+ * ixgbe_get_nvm_ver - get NVM version
+ * @hw: pointer to hardware structure
+ * @nvm: pointer to NVM info structure
+ *
+ * Get the current NVM version.
+ *
+ * Return: the exit code of the operation or IXGBE_NOT_IMPLEMENTED
+ * if the function is not implemented.
+ */
+s32 ixgbe_get_nvm_ver(struct ixgbe_hw* hw, struct ixgbe_nvm_info *nvm)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_nvm_version,
+			       (hw, nvm), IXGBE_NOT_IMPLEMENTED);
+}

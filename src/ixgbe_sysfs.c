@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe.h"
 #include "ixgbe_common.h"
@@ -144,7 +144,7 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 
 	return 0;
 #else
-	rc = device_create_file(pci_dev_to_dev(adapter->pdev),
+	rc = device_create_file(ixgbe_pf_to_dev(adapter),
 				&ixgbe_attr->dev_attr);
 
 	if (rc == 0)
@@ -165,8 +165,8 @@ static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter __maybe_unused *adapter
 		return;
 
 	for (i = 0; i < adapter->ixgbe_hwmon_buff.n_hwmon; i++) {
-		device_remove_file(pci_dev_to_dev(adapter->pdev),
-			   &adapter->ixgbe_hwmon_buff.hwmon_list[i].dev_attr);
+		device_remove_file(ixgbe_pf_to_dev(adapter),
+				   &adapter->ixgbe_hwmon_buff.hwmon_list[i].dev_attr);
 	}
 
 	kfree(adapter->ixgbe_hwmon_buff.hwmon_list);
@@ -272,7 +272,7 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 
 #else
 	ixgbe_hwmon->device =
-		hwmon_device_register(pci_dev_to_dev(adapter->pdev));
+		hwmon_device_register(ixgbe_pf_to_dev(adapter));
 
 	if (IS_ERR(ixgbe_hwmon->device)) {
 		rc = PTR_ERR(ixgbe_hwmon->device);

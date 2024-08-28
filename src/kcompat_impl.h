@@ -1,8 +1,31 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #ifndef _KCOMPAT_IMPL_H_
 #define _KCOMPAT_IMPL_H_
+
+/* devlink support */
+#if IS_ENABLED(CONFIG_NET_DEVLINK)
+
+/*
+ * This change is adding buffer in enum value for ice_devlink_param_id.
+ *
+ * In upstream / OOT compiled from source it is safe to use
+ * DEVLINK_PARAM_GENERIC_ID_MAX as first value for ice_devlink_param_id
+ * enum.
+ *
+ * In case of binary release (for Secure Boot purpose) this caused issue
+ * with supporting multiple kernels because backport made by SLES changed
+ * value of DEVLINK_PARAM_GENERIC_ID_MAX. This caused -EINVAL to
+ * be returned by devlink_params_register() because
+ * ICE_DEVLINK_PARAM_ID_FW_MGMT_MINSREV (compiled on older kernel) was equal
+ * to DEVLINK_PARAM_GENERIC_ID_MAX (in newer kernel).
+ */
+#define DEVLINK_PARAM_GENERIC_ID_MAX __KC_DEVLINK_PARAM_GENERIC_ID_MAX
+#include <net/devlink.h>
+#undef DEVLINK_PARAM_GENERIC_ID_MAX
+#define DEVLINK_PARAM_GENERIC_ID_MAX (__KC_DEVLINK_PARAM_GENERIC_ID_MAX + 32)
+#endif /* CONFIG_DEVLINK */
 
 /* This file contains implementations of backports from various kernels. It
  * must rely only on NEED_<FLAG> and HAVE_<FLAG> checks. It must not make any
@@ -12,6 +35,12 @@
  * All new implementations must go in this file, and legacy implementations
  * should be migrated to the new format over time.
  */
+
+/* The same kcompat code is used here and auxiliary module. To avoid
+ * duplication and functions redefitions in some scenarios, include the
+ * auxiliary kcompat implementation here.
+ */
+#include "auxiliary_compat.h"
 
 /* generic network stack functions */
 
@@ -127,6 +156,120 @@ static inline void skb_frag_off_add(skb_frag_t *frag, int delta)
 #endif /* NEED_SKB_FRAG_OFF_ADD */
 
 /*
+ * NEED_DMA_ATTRS, NEED_DMA_ATTRS_PTR and related functions
+ *
+ * dma_map_page_attrs and dma_unmap_page_attrs were added in upstream commit
+ * 0495c3d36794 ("dma: add calls for dma_map_page_attrs and
+ * dma_unmap_page_attrs")
+ *
+ * Implementing these calls in this way makes RHEL7.4 compile (which doesn't
+ * have these) and all newer kernels compile fine, while using only the new
+ * calls with no ifdeffery.
+ *
+ * In kernel 4.10 the commit ("dma-mapping: use unsigned long for dma_attrs")
+ * switched the argument from struct dma_attrs * to unsigned long.
+ *
+ * __page_frag_cache_drain was implemented in 2017, but __page_frag_drain came
+ * with the above series for _attrs, and seems to have been backported at the
+ * same time.
+ *
+ * Please note SLES12.SP3 and RHEL7.5 and newer have all three of these
+ * already.
+ *
+ * If need be in the future for some reason, we could make a separate NEED_
+ * define for __page_frag_cache_drain, but not yet.
+ *
+ * For clarity: there are three states:
+ * 1) no attrs
+ * 2) attrs but with a pointer to a struct dma_attrs
+ * 3) attrs but with unsigned long type
+ */
+#ifdef NEED_DMA_ATTRS
+static inline
+dma_addr_t __kc_dma_map_page_attrs(struct device *dev, struct page *page,
+				   size_t offset, size_t size,
+				   enum dma_data_direction dir,
+				   unsigned long __always_unused attrs)
+{
+	return dma_map_page(dev, page, offset, size, dir);
+}
+#define dma_map_page_attrs __kc_dma_map_page_attrs
+
+static inline
+void __kc_dma_unmap_page_attrs(struct device *dev,
+			       dma_addr_t addr, size_t size,
+			       enum dma_data_direction dir,
+			       unsigned long __always_unused attrs)
+{
+	dma_unmap_page(dev, addr, size, dir);
+}
+#define dma_unmap_page_attrs __kc_dma_unmap_page_attrs
+
+static inline void __page_frag_cache_drain(struct page *page,
+					   unsigned int count)
+{
+#ifdef HAVE_PAGE_COUNT_BULK_UPDATE
+	if (!page_ref_sub_and_test(page, count))
+		return;
+
+	init_page_count(page);
+#else
+	WARN_ON(count > 1);
+	if (!count)
+		return;
+#endif
+	__free_pages(page, compound_order(page));
+}
+#elif defined(NEED_DMA_ATTRS_PTR)
+static inline
+dma_addr_t __kc_dma_map_page_attrs_long(struct device *dev, struct page *page,
+				   size_t offset, size_t size,
+				   enum dma_data_direction dir,
+				   unsigned long attrs)
+{
+	struct dma_attrs dmaattrs = {};
+
+	if (attrs & DMA_ATTR_SKIP_CPU_SYNC)
+		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &dmaattrs);
+
+	if (attrs & DMA_ATTR_WEAK_ORDERING)
+		dma_set_attr(DMA_ATTR_WEAK_ORDERING, &dmaattrs);
+
+	return dma_map_page_attrs(dev, page, offset, size, dir, &dmaattrs);
+}
+#define dma_map_page_attrs __kc_dma_map_page_attrs_long
+/* there is a nasty macro buried in dma-mapping.h which reroutes dma_map_page
+ * and dma_unmap_page to attribute versions, so take control of that macro and
+ * fix it here. */
+#ifdef dma_map_page
+#undef dma_map_page
+#define dma_map_page(a,b,c,d,r) dma_map_page_attrs(a,b,c,d,r,0)
+#endif
+
+static inline
+void __kc_dma_unmap_page_attrs_long(struct device *dev,
+			       dma_addr_t addr, size_t size,
+			       enum dma_data_direction dir,
+			       unsigned long attrs)
+{
+	struct dma_attrs dmaattrs = {};
+
+	if (attrs & DMA_ATTR_SKIP_CPU_SYNC)
+		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &dmaattrs);
+
+	if (attrs & DMA_ATTR_WEAK_ORDERING)
+		dma_set_attr(DMA_ATTR_WEAK_ORDERING, &dmaattrs);
+
+	dma_unmap_page_attrs(dev, addr, size, dir, &dmaattrs);
+}
+#define dma_unmap_page_attrs __kc_dma_unmap_page_attrs_long
+#ifdef dma_unmap_page
+#undef dma_unmap_page
+#define dma_unmap_page(a,b,c,r) dma_unmap_page_attrs(a,b,c,r,0)
+#endif
+#endif /* NEED_DMA_ATTRS_PTR */
+
+/*
  * NETIF_F_HW_L2FW_DOFFLOAD related functions
  *
  * Support for NETIF_F_HW_L2FW_DOFFLOAD was first introduced upstream by
@@ -213,8 +356,6 @@ static inline bool macvlan_supports_dest_filter(struct net_device *dev)
 
 /* devlink support */
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
-
-#include <net/devlink.h>
 
 #ifdef HAVE_DEVLINK_REGIONS
 /* NEED_DEVLINK_REGION_CREATE_OPS
@@ -309,6 +450,25 @@ devlink_flash_update_timeout_notify(struct devlink *devlink,
 	devlink_flash_update_status_notify(devlink, status_msg, component, 0, 0);
 }
 #endif /* NEED_DEVLINK_FLASH_UPDATE_TIMEOUT_NOTIFY */
+
+/* NEED_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER
+ *
+ * Upstream commit ba7d16c77942 ("devlink: Implicitly set auto recover flag when
+ * registering health reporter") removed auto_recover param.
+ * CORE code does not need to bother about this param, we could simply provide
+ * it via compat.
+ */
+#ifdef NEED_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER
+static inline struct devlink_health_reporter *
+_kc_devlink_health_reporter_create(struct devlink *devlink,
+				  const struct devlink_health_reporter_ops *ops,
+				  u64 graceful_period, void *priv)
+{
+	return devlink_health_reporter_create(devlink, ops, graceful_period,
+					      !!ops->recover, priv);
+}
+#define devlink_health_reporter_create _kc_devlink_health_reporter_create
+#endif /* NEED_DEVLINK_HEALTH_DEFAULT_AUTO_RECOVER */
 
 /*
  * NEED_DEVLINK_PORT_ATTRS_SET_STRUCT
@@ -637,8 +797,7 @@ tc_cls_can_offload_and_chain0(const struct net_device *dev,
  * to access the correct clock object on returning, we use the function
  * convert_art_to_tsc, because the art_related_clocksource is inaccessible.
  */
-#ifdef NEED_CONVERT_ART_NS_TO_TSC
-#ifdef CONFIG_X86
+#if defined(CONFIG_X86) && defined(NEED_CONVERT_ART_NS_TO_TSC)
 #include <asm/tsc.h>
 
 static inline struct system_counterval_t convert_art_ns_to_tsc(u64 art_ns)
@@ -659,14 +818,7 @@ static inline struct system_counterval_t convert_art_ns_to_tsc(u64 art_ns)
 
 	return system;
 }
-#else /* CONFIG_X86 */
-static inline struct system_counterval_t convert_art_ns_to_tsc(u64 art_ns)
-{
-	WARN_ONCE(1, "%s is only supported on X86", __func__);
-	return (struct system_counterval_t){};
-}
-#endif /* !CONFIG_X86 */
-#endif /* NEED_CONVERT_ART_NS_TO_TSC */
+#endif /* CONFIG_X86 && NEED_CONVERT_ART_NS_TO_TSC */
 #endif /* HAVE_PTP_CROSSTIMESTAMP */
 
 /* PTP functions and definitions */
@@ -838,90 +990,6 @@ static inline struct ptp_header *ptp_parse_header(struct sk_buff *skb,
 #endif
 }
 #endif /* NEED_PTP_PARSE_HEADER */
-
-#ifdef NEED_BUS_FIND_DEVICE_CONST_DATA
-/* NEED_BUS_FIND_DEVICE_CONST_DATA
- *
- * bus_find_device() was updated in upstream commit 418e3ea157ef
- * ("bus_find_device: Unify the match callback with class_find_device")
- * to take a const void *data parameter and also have the match() function
- * passed in take a const void *data parameter.
- *
- * all of the kcompat below makes it so the caller can always just call
- * bus_find_device() according to the upstream kernel without having to worry
- * about const vs. non-const arguments.
- */
-struct _kc_bus_find_device_custom_data {
-	const void *real_data;
-	int (*real_match)(struct device *dev, const void *data);
-};
-
-static inline int _kc_bus_find_device_wrapped_match(struct device *dev, void *data)
-{
-	struct _kc_bus_find_device_custom_data *custom_data = data;
-
-	return custom_data->real_match(dev, custom_data->real_data);
-}
-
-static inline struct device *
-_kc_bus_find_device(struct bus_type *type, struct device *start,
-		    const void *data,
-		    int (*match)(struct device *dev, const void *data))
-{
-	struct _kc_bus_find_device_custom_data custom_data = {};
-
-	custom_data.real_data = data;
-	custom_data.real_match = match;
-
-	return bus_find_device(type, start, &custom_data,
-			       _kc_bus_find_device_wrapped_match);
-}
-
-/* force callers of bus_find_device() to call _kc_bus_find_device() on kernels
- * where NEED_BUS_FIND_DEVICE_CONST_DATA is defined
- */
-#define bus_find_device(type, start, data, match) \
-	_kc_bus_find_device(type, start, data, match)
-#endif /* NEED_BUS_FIND_DEVICE_CONST_DATA */
-
-#if defined(NEED_DEV_PM_DOMAIN_ATTACH) && defined(NEED_DEV_PM_DOMAIN_DETACH)
-#include <linux/acpi.h>
-/* NEED_DEV_PM_DOMAIN_ATTACH and NEED_DEV_PM_DOMAIN_DETACH
- *
- * dev_pm_domain_attach() and dev_pm_domain_detach() were added in upstream
- * commit 46420dd73b80 ("PM / Domains: Add APIs to attach/detach a PM domain for
- * a device"). To support older kernels and OSVs that don't have these API, just
- * implement how older versions worked by directly calling acpi_dev_pm_attach()
- * and acpi_dev_pm_detach().
- */
-static inline int dev_pm_domain_attach(struct device *dev, bool power_on)
-{
-	if (dev->pm_domain)
-		return 0;
-
-	if (ACPI_HANDLE(dev))
-		return acpi_dev_pm_attach(dev, true);
-
-	return 0;
-}
-
-static inline void dev_pm_domain_detach(struct device *dev, bool power_off)
-{
-	if (ACPI_HANDLE(dev))
-		acpi_dev_pm_detach(dev, true);
-}
-#else /* NEED_DEV_PM_DOMAIN_ATTACH && NEED_DEV_PM_DOMAIN_DETACH */
-/* it doesn't make sense to compat only one of these functions, and it is
- * likely either a failure in kcompat-generator.sh or a failed distribution
- * backport if this occurs. Don't try to support it.
- */
-#ifdef NEED_DEV_PM_DOMAIN_ATTACH
-#error "NEED_DEV_PM_DOMAIN_ATTACH defined but NEED_DEV_PM_DOMAIN_DETACH not defined???"
-#endif /* NEED_DEV_PM_DOMAIN_ATTACH */
-#ifdef NEED_DEV_PM_DOMAIN_DETACH
-#error "NEED_DEV_PM_DOMAIN_DETACH defined but NEED_DEV_PM_DOMAIN_ATTACH not defined???"
-#endif /* NEED_DEV_PM_DOMAIN_DETACH */
-#endif /* NEED_DEV_PM_DOMAIN_ATTACH && NEED_DEV_PM_DOMAIN_DETACH */
 
 #ifdef NEED_CPU_LATENCY_QOS_RENAME
 /* NEED_CPU_LATENCY_QOS_RENAME
@@ -1166,21 +1234,6 @@ static inline u32 _xsk_umem_get_rx_frame_size(struct xdp_umem *umem)
 #endif /* HAVE_AF_XDP_ZC_SUPPORT */
 #endif
 
-#ifdef NEED_XSK_BUFF_DMA_SYNC_FOR_CPU
-#ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
-#include <net/xdp_sock_drv.h>
-static inline void
-_kc_xsk_buff_dma_sync_for_cpu(struct xdp_buff *xdp,
-			      void __always_unused *pool)
-{
-	xsk_buff_dma_sync_for_cpu(xdp);
-}
-
-#define xsk_buff_dma_sync_for_cpu(xdp, pool) \
-	_kc_xsk_buff_dma_sync_for_cpu(xdp, pool)
-#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
-#endif /* NEED_XSK_BUFF_DMA_SYNC_FOR_CPU */
-
 #ifdef NEED_XSK_BUFF_POOL_RENAME
 #define XDP_SETUP_XSK_POOL XDP_SETUP_XSK_UMEM
 #define xsk_get_pool_from_qid xdp_get_umem_from_qid
@@ -1223,9 +1276,19 @@ static inline void linkmode_zero(unsigned long *dst)
 {
 	bitmap_zero(dst, __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
+
+static inline void linkmode_copy(unsigned long *dst, const unsigned long *src)
+{
+	bitmap_copy(dst, src, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static inline bool linkmode_empty(const unsigned long *src)
+{
+	return bitmap_empty(src, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
 #endif /* !HAVE_LINKMODE */
 
-#ifndef ETHTOOL_GLINKSETTINGS
+#ifdef NEED_ETHTOOL_LINK_MODE_BIT_INDICES
 /* Link mode bit indices */
 enum ethtool_link_mode_bit_indices {
 	ETHTOOL_LINK_MODE_10baseT_Half_BIT      = 0,
@@ -1259,6 +1322,33 @@ enum ethtool_link_mode_bit_indices {
 	ETHTOOL_LINK_MODE_56000baseCR4_Full_BIT = 28,
 	ETHTOOL_LINK_MODE_56000baseSR4_Full_BIT = 29,
 	ETHTOOL_LINK_MODE_56000baseLR4_Full_BIT = 30,
+#ifdef ETHTOOL_GLINKSETTINGS
+	ETHTOOL_LINK_MODE_25000baseCR_Full_BIT	= 31,
+	ETHTOOL_LINK_MODE_25000baseKR_Full_BIT	= 32,
+	ETHTOOL_LINK_MODE_25000baseSR_Full_BIT	= 33,
+	ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT	= 34,
+	ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT	= 35,
+	ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT	= 36,
+	ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT	= 37,
+	ETHTOOL_LINK_MODE_100000baseCR4_Full_BIT	= 38,
+	ETHTOOL_LINK_MODE_100000baseLR4_ER4_Full_BIT	= 39,
+	ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT		= 40,
+	ETHTOOL_LINK_MODE_1000baseX_Full_BIT	= 41,
+	ETHTOOL_LINK_MODE_10000baseCR_Full_BIT	= 42,
+	ETHTOOL_LINK_MODE_10000baseSR_Full_BIT	= 43,
+	ETHTOOL_LINK_MODE_10000baseLR_Full_BIT	= 44,
+	ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT	= 45,
+	ETHTOOL_LINK_MODE_10000baseER_Full_BIT	= 46,
+	ETHTOOL_LINK_MODE_2500baseT_Full_BIT	= 47,
+	ETHTOOL_LINK_MODE_5000baseT_Full_BIT	= 48,
+
+	ETHTOOL_LINK_MODE_FEC_NONE_BIT	= 49,
+	ETHTOOL_LINK_MODE_FEC_RS_BIT	= 50,
+	ETHTOOL_LINK_MODE_FEC_BASER_BIT	= 51,
+
+	__ETHTOOL_LINK_MODE_LAST
+	  = ETHTOOL_LINK_MODE_FEC_BASER_BIT,
+#else
 
 	/* Last allowed bit for __ETHTOOL_LINK_MODE_LEGACY_MASK is bit
 	 * 31. Please do NOT define any SUPPORTED_* or ADVERTISED_*
@@ -1268,8 +1358,9 @@ enum ethtool_link_mode_bit_indices {
 
 	__ETHTOOL_LINK_MODE_LAST
 	  = ETHTOOL_LINK_MODE_56000baseLR4_Full_BIT,
-};
 #endif /* !ETHTOOL_GLINKSETTINGS */
+};
+#endif /* NEED_ETHTOOL_LINK_MODE_BIT_INDICES */
 
 #if defined(NEED_FLOW_MATCH) && defined(HAVE_TC_SETUP_CLSFLOWER)
 /* NEED_FLOW_MATCH
@@ -1587,32 +1678,6 @@ static inline void bitmap_to_arr32(u32 *buf, const unsigned long *bitmap,
 	})
 
 /**
- * FIELD_MAX() - produce the maximum value representable by a field
- * @_mask: shifted mask defining the field's length and position
- *
- * FIELD_MAX() returns the maximum value that can be held in the field
- * specified by @_mask.
- */
-#define FIELD_MAX(_mask)						\
-	({								\
-		__BF_FIELD_CHECK(_mask, 0ULL, 0ULL, "FIELD_MAX: ");	\
-		(typeof(_mask))((_mask) >> __bf_shf(_mask));		\
-	})
-
-/**
- * FIELD_FIT() - check if value fits in the field
- * @_mask: shifted mask defining the field's length and position
- * @_val:  value to test against the field
- *
- * Return: true if @_val can fit inside @_mask, false if @_val is too big.
- */
-#define FIELD_FIT(_mask, _val)						\
-	({								\
-		__BF_FIELD_CHECK(_mask, 0ULL, 0ULL, "FIELD_FIT: ");	\
-		!((((typeof(_mask))_val) << __bf_shf(_mask)) & ~(_mask)); \
-	})
-
-/**
  * FIELD_PREP() - prepare a bitfield element
  * @_mask: shifted mask defining the field's length and position
  * @_val:  value to put in the field
@@ -1640,6 +1705,91 @@ static inline void bitmap_to_arr32(u32 *buf, const unsigned long *bitmap,
 		(typeof(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));	\
 	})
 #endif /* HAVE_INCLUDE_BITFIELD */
+
+#ifdef NEED_BITFIELD_FIELD_MAX
+/* linux/bitfield.h has FIELD_MAX added to it in Linux 5.7 in upstream
+ * commit e31a50162feb ("bitfield.h: add FIELD_MAX() and field_max()")
+ */
+/**
+ * FIELD_MAX() - produce the maximum value representable by a field
+ * @_mask: shifted mask defining the field's length and position
+ *
+ * FIELD_MAX() returns the maximum value that can be held in the field
+ * specified by @_mask.
+ */
+#define FIELD_MAX(_mask)						\
+	({								\
+		__BF_FIELD_CHECK(_mask, 0ULL, 0ULL, "FIELD_MAX: ");	\
+		(typeof(_mask))((_mask) >> __bf_shf(_mask));		\
+	})
+#endif /* HAVE_BITFIELD_FIELD_MAX */
+
+#ifdef NEED_BITFIELD_FIELD_FIT
+/**
+ * FIELD_FIT() - check if value fits in the field
+ * @_mask: shifted mask defining the field's length and position
+ * @_val:  value to test against the field
+ *
+ * Return: true if @_val can fit inside @_mask, false if @_val is too big.
+ */
+#define FIELD_FIT(_mask, _val)						\
+	({								\
+		__BF_FIELD_CHECK(_mask, 0ULL, 0ULL, "FIELD_FIT: ");	\
+		!((((typeof(_mask))_val) << __bf_shf(_mask)) & ~(_mask)); \
+	})
+#endif /* NEED_BITFIELD_FIELD_FIT */
+
+#ifdef NEED_BITFIELD_FIELD_MASK
+/**
+ * linux/bitfield.h has field_mask() along with *_encode_bits() in 4.16:
+ * 00b0c9b82663 ("Add primitives for manipulating bitfields both in host and fixed-endian.")
+ *
+ */
+extern void __compiletime_error("value doesn't fit into mask")
+__field_overflow(void);
+extern void __compiletime_error("bad bitfield mask")
+__bad_mask(void);
+static __always_inline u64 field_multiplier(u64 field)
+{
+	if ((field | (field - 1)) & ((field | (field - 1)) + 1))
+		__bad_mask();
+	return field & -field;
+}
+static __always_inline u64 field_mask(u64 field)
+{
+	return field / field_multiplier(field);
+}
+#define ____MAKE_OP(type,base,to,from)					\
+static __always_inline __##type type##_encode_bits(base v, base field)	\
+{									\
+	if (__builtin_constant_p(v) && (v & ~field_mask(field)))	\
+		__field_overflow();					\
+	return to((v & field_mask(field)) * field_multiplier(field));	\
+}									\
+static __always_inline __##type type##_replace_bits(__##type old,	\
+					base val, base field)		\
+{									\
+	return (old & ~to(field)) | type##_encode_bits(val, field);	\
+}									\
+static __always_inline void type##p_replace_bits(__##type *p,		\
+					base val, base field)		\
+{									\
+	*p = (*p & ~to(field)) | type##_encode_bits(val, field);	\
+}									\
+static __always_inline base type##_get_bits(__##type v, base field)	\
+{									\
+	return (from(v) & field)/field_multiplier(field);		\
+}
+#define __MAKE_OP(size)							\
+	____MAKE_OP(le##size,u##size,cpu_to_le##size,le##size##_to_cpu)	\
+	____MAKE_OP(be##size,u##size,cpu_to_be##size,be##size##_to_cpu)	\
+	____MAKE_OP(u##size,u##size,,)
+__MAKE_OP(16)
+__MAKE_OP(32)
+__MAKE_OP(64)
+#undef __MAKE_OP
+#undef ____MAKE_OP
+#endif
 
 #ifdef NEED_BUILD_BUG_ON
 /* Force a compilation error if a constant expression is not a power of 2 */
@@ -1714,6 +1864,80 @@ _kc_netif_napi_add(struct net_device *dev, struct napi_struct *napi,
 #ifdef NEED_ETHTOOL_SPRINTF
 __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...);
 #endif /* NEED_ETHTOOL_SPRINTF */
+
+/*
+ * NEED_SYSFS_MATCH_STRING
+ *
+ * Upstream commit e1fe7b6a7b37 ("lib/string: add sysfs_match_string helper")
+ * introduced a helper for looking up strings in an array - it's pure algo stuff
+ * that is easy to backport if needed.
+ * Instead of covering sysfs_streq() by yet another flag just copy it.
+ */
+#ifdef NEED_SYSFS_MATCH_STRING
+/*
+ * sysfs_streq - return true if strings are equal, modulo trailing newline
+ * @s1: one string
+ * @s2: another string
+ *
+ * This routine returns true iff two strings are equal, treating both
+ * NUL and newline-then-NUL as equivalent string terminations.  It's
+ * geared for use with sysfs input strings, which generally terminate
+ * with newlines but are compared against values without newlines.
+ */
+static inline bool _kc_sysfs_streq(const char *s1, const char *s2)
+{
+	while (*s1 && *s1 == *s2) {
+		s1++;
+		s2++;
+	}
+
+	if (*s1 == *s2)
+		return true;
+	if (!*s1 && *s2 == '\n' && !s2[1])
+		return true;
+	if (*s1 == '\n' && !s1[1] && !*s2)
+		return true;
+	return false;
+}
+
+/*
+ * __sysfs_match_string - matches given string in an array
+ * @array: array of strings
+ * @n: number of strings in the array or -1 for NULL terminated arrays
+ * @str: string to match with
+ *
+ * Returns index of @str in the @array or -EINVAL, just like match_string().
+ * Uses sysfs_streq instead of strcmp for matching.
+ *
+ * This routine will look for a string in an array of strings up to the
+ * n-th element in the array or until the first NULL element.
+ *
+ * Historically the value of -1 for @n, was used to search in arrays that
+ * are NULL terminated. However, the function does not make a distinction
+ * when finishing the search: either @n elements have been compared OR
+ * the first NULL element was found.
+ */
+static inline int _kc___sysfs_match_string(const char * const *array, size_t n,
+					   const char *str)
+{
+	const char *item;
+	int index;
+
+	for (index = 0; index < n; index++) {
+		item = array[index];
+		if (!item)
+			break;
+		if (sysfs_streq(item, str))
+			return index;
+	}
+
+	return -EINVAL;
+}
+
+#define sysfs_match_string(_a, _s) \
+	_kc___sysfs_match_string(_a, ARRAY_SIZE(_a), _s)
+
+#endif /* NEED_SYSFS_MATCH_STRING */
 
 /*
  * NEED_SYSFS_EMIT
@@ -1849,15 +2073,18 @@ static inline void u64_stats_set(u64_stats_t *p, u64 val)
 #ifdef NEED_DEVM_KFREE
 #define devm_kfree(dev, p) kfree(p)
 #else
-static inline void _kc_devm_kfree(struct device *dev, void *p)
+/* Since commit 0571967dfb5d ("devres: constify p in devm_kfree()") the
+ * devm_kfree function has accepted a const void * parameter. Since commit
+ * cad064f1bd52 ("devres: handle zero size in devm_kmalloc()"), it has also
+ * accepted a NULL pointer safely. However, the null pointer acceptance is in
+ * devres.c and thus cannot be checked by kcompat-generator.sh. To handle
+ * this, unconditionally replace devm_kfree with a variant that both accepts
+ * a const void * pointer and handles a NULL value correctly.
+ */
+static inline void _kc_devm_kfree(struct device *dev, const void *p)
 {
-	/* Upstream devm_kfree() has this NULL check since
-	 * commit cad064f1bd52 ("devres: handle zero size in devm_kmalloc()"),
-	 * but it's done in devres.c (not header), so we could NOT use
-	 * kcompat generator to check for it's presence.
-	 */
 	if (p)
-		devm_kfree(dev, p);
+		devm_kfree(dev, (void *)p);
 }
 #define devm_kfree _kc_devm_kfree
 #endif /* NEED_DEVM_KFREE */
@@ -1973,6 +2200,42 @@ static inline int pci_enable_ptm(struct pci_dev *dev, u8 *granularity)
 #endif /* CONFIG_PCIE_PTM */
 #endif /* NEED_PCI_ENABLE_PTM */
 
+/* NEED_PCIE_FLR
+ * NEED_PCIE_FLR_RETVAL
+ *
+ * pcie_flr() was added in the past, but wasn't generally available until 4.12
+ * commit a60a2b73ba69 (4.12) made this function available as an extern
+ * commit 91295d79d658 (4.17) made this function return int instead of void
+
+ * This declares/defines the function for kernels missing it or needing a
+ * retval in linux/pci.h
+ */
+#ifdef NEED_PCIE_FLR
+static inline int pcie_flr(struct pci_dev *dev)
+{
+	u32 cap;
+
+	pcie_capability_read_dword(dev, PCI_EXP_DEVCAP, &cap);
+	if (!(cap & PCI_EXP_DEVCAP_FLR))
+		return -ENOTTY;
+
+	if (!pci_wait_for_pending_transaction(dev))
+		dev_err(&dev->dev, "timed out waiting for pending transaction; performing function level reset anyway\n");
+
+	pcie_capability_set_word(dev, PCI_EXP_DEVCTL, PCI_EXP_DEVCTL_BCR_FLR);
+	msleep(100);
+	return 0;
+}
+#endif /* NEED_PCIE_FLR */
+#ifdef NEED_PCIE_FLR_RETVAL
+static inline int _kc_pcie_flr(struct pci_dev *dev)
+{
+	pcie_flr(dev);
+	return 0;
+}
+#define pcie_flr(dev) _kc_pcie_flr((dev))
+#endif /* NEED_PCIE_FLR_RETVAL */
+
 /* NEED_DEV_PAGE_IS_REUSABLE
  *
  * dev_page_is_reusable was introduced by
@@ -1987,6 +2250,31 @@ static inline bool dev_page_is_reusable(struct page *page)
 		      !page_is_pfmemalloc(page));
 }
 #endif /* NEED_DEV_PAGE_IS_REUSABLE */
+
+#ifdef NEED_NAPI_ALLOC_SKB
+static inline
+struct sk_buff *kc_napi_alloc_skb(struct napi_struct *napi, unsigned int len)
+{
+	return __napi_alloc_skb(napi, len, GFP_ATOMIC | __GFP_NOWARN);
+}
+
+#define napi_alloc_skb(napi, len) kc_napi_alloc_skb(napi, len)
+#endif /* NEED_NAPI_ALLOC_SKB */
+
+/* NEED_NAPI_BUILD_SKB
+ *
+ * napi_build_skb was introduced by
+ * commit f450d539c05a: ("skbuff: introduce {,__}napi_build_skb() which reuses NAPI cache heads")
+ *
+ * This function is a more efficient version of build_skb().
+ */
+#ifdef NEED_NAPI_BUILD_SKB
+static inline
+struct sk_buff *napi_build_skb(void *data, unsigned int frag_size)
+{
+	return build_skb(data, frag_size);
+}
+#endif /* NEED_NAPI_BUILD_SKB */
 
 /* NEED_DEBUGFS_LOOKUP
  *
@@ -2028,6 +2316,22 @@ debugfs_lookup_and_remove(const char *name, struct dentry *parent)
 	dput(dentry);
 }
 #endif /* NEED_DEBUGFS_LOOKUP_AND_REMOVE */
+
+/* NEED_FS_FILE_DENTRY
+ *
+ * this is simple impl of file_dentry() (introduced in v4.6, backported to
+ * stable mainline 4.5 and 4.6 kernels)
+ *
+ * prior to file_dentry() existence logic of this function was open-coded,
+ * and if given kernel has had not backported it, then "oversimplification bugs"
+ * are present there anyway.
+ */
+#ifdef NEED_FS_FILE_DENTRY
+static inline struct dentry *file_dentry(const struct file *file)
+{
+	return file->f_path.dentry;
+}
+#endif /* NEED_FS_FILE_DENTRY */
 
 /* NEED_CLASS_CREATE_WITH_MODULE_PARAM
  *
@@ -2073,5 +2377,419 @@ static inline struct class *_kc_class_create(const char *name)
 		}			\
 	})
 #endif /* NEED_HWMON_CHANNEL_INFO */
+
+/* NEED_ASSIGN_BIT
+ *
+ * Upstream commit 5307e2ad69ab ("bitops: Introduce assign_bit()") added helper
+ * assign_bit() to replace if check for setting/clearing bits.
+ */
+#ifdef NEED_ASSIGN_BIT
+static inline void assign_bit(long nr, unsigned long *addr, bool value)
+{
+	if (value)
+		set_bit(nr, addr);
+	else
+		clear_bit(nr, addr);
+}
+#endif /* NEED_ASSIGN_BIT */
+
+/*
+ * __has_builtin is supported on gcc >= 10, clang >= 3 and icc >= 21.
+ * In the meantime, to support gcc < 10, we implement __has_builtin
+ * by hand.
+ */
+#ifndef __has_builtin
+#define __has_builtin(x) (0)
+#endif
+
+/* NEED___STRUCT_SIZE
+ *
+ * 9f7d69c5cd23 ("fortify: Convert to struct vs member helpers") of kernel v6.2
+ * has added two following macros, one of them used by DEFINE_FLEX()
+ */
+#ifdef NEED___STRUCT_SIZE
+/*
+ * When the size of an allocated object is needed, use the best available
+ * mechanism to find it. (For cases where sizeof() cannot be used.)
+ */
+#if __has_builtin(__builtin_dynamic_object_size)
+#define __struct_size(p)       __builtin_dynamic_object_size(p, 0)
+#define __member_size(p)       __builtin_dynamic_object_size(p, 1)
+#else
+#define __struct_size(p)       __builtin_object_size(p, 0)
+#define __member_size(p)       __builtin_object_size(p, 1)
+#endif
+#endif /* NEED___STRUCT_SIZE */
+
+/* NEED_KREALLOC_ARRAY
+ *
+ * krealloc_array was added by upstream commit
+ * f0dbd2bd1c22 ("mm: slab: provide krealloc_array()").
+ *
+ * For older kernels, add a new API wrapper around krealloc().
+ */
+#ifdef NEED_KREALLOC_ARRAY
+static inline void *__must_check krealloc_array(void *p,
+						size_t new_n,
+						size_t new_size,
+						gfp_t flags)
+{
+	size_t bytes;
+
+	if (unlikely(check_mul_overflow(new_n, new_size, &bytes)))
+		return NULL;
+
+	return krealloc(p, bytes, flags);
+}
+#endif /* NEED_KREALLOC_ARRAY */
+
+/* NEED_XDP_DO_FLUSH
+ *
+ * Upstream commit 1d233886dd90 ("xdp: Use bulking for non-map XDP_REDIRECT
+ * and consolidate code paths") replaced xdp_do_flush_map with xdp_do_flush
+ * and 7f04bd109d4c ("net: Tree wide: Replace xdp_do_flush_map() with 
+ * xdp_do_flush()") cleaned up related code.
+ */
+#ifdef NEED_XDP_DO_FLUSH
+static inline void xdp_do_flush(void)
+{
+	xdp_do_flush_map();
+}
+#endif /* NEED_XDP_DO_FLUSH */
+
+#ifdef NEED_XDP_FEATURES
+enum netdev_xdp_act {
+	NETDEV_XDP_ACT_BASIC = 1,
+	NETDEV_XDP_ACT_REDIRECT = 2,
+	NETDEV_XDP_ACT_NDO_XMIT = 4,
+	NETDEV_XDP_ACT_XSK_ZEROCOPY = 8,
+	NETDEV_XDP_ACT_HW_OFFLOAD = 16,
+	NETDEV_XDP_ACT_RX_SG = 32,
+	NETDEV_XDP_ACT_NDO_XMIT_SG = 64,
+
+	NETDEV_XDP_ACT_MASK = 127,
+};
+
+typedef u32 xdp_features_t;
+
+static inline void
+xdp_set_features_flag(struct net_device *dev, xdp_features_t val)
+{
+}
+
+static inline void xdp_clear_features_flag(struct net_device *dev)
+{
+}
+
+static inline void
+xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
+{
+}
+
+static inline void xdp_features_clear_redirect_target(struct net_device *dev)
+{
+}
+#endif /* NEED_XDP_FEATURES */
+
+#ifdef NEED_FIND_NEXT_BIT_WRAP
+/* NEED_FIND_NEXT_BIT_WRAP
+ *
+ * The find_next_bit_wrap function was added by commit 6cc18331a987
+ * ("lib/find_bit: add find_next{,_and}_bit_wrap")
+ *
+ * For older kernels, define find_next_bit_wrap function that calls
+ * find_next_bit function and find_first_bit macro.
+ */
+static inline
+unsigned long find_next_bit_wrap(const unsigned long *addr,
+				 unsigned long size, unsigned long offset)
+{
+	unsigned long bit = find_next_bit(addr, size, offset);
+
+	if (bit < size)
+		return bit;
+
+	bit = find_first_bit(addr, offset);
+	return bit < offset ? bit : size;
+}
+#endif /* NEED_FIND_NEXT_BIT_WRAP */
+
+#ifdef NEED_IS_CONSTEXPR
+/* __is_constexpr() macro has moved acros 3 upstream kernel headers:
+ * commit 3c8ba0d61d04 ("kernel.h: Retain constant expression output for max()/min()")
+ * introduced it in kernel.h, for kernel v4.17
+ * commit b296a6d53339 ("kernel.h: split out min()/max() et al. helpers") moved
+ * it to minmax.h;
+ * commit f747e6667ebb ("linux/bits.h: fix compilation error with GENMASK")
+ * moved it to its current location of const.h
+ */
+/*
+ * This returns a constant expression while determining if an argument is
+ * a constant expression, most importantly without evaluating the argument.
+ * Glory to Martin Uecker <Martin.Uecker@med.uni-goettingen.de>
+ */
+#define __is_constexpr(x) \
+	(sizeof(int) == sizeof(*(8 ? ((void *)((long)(x) * 0l)) : (int *)8)))
+#endif /* NEED_IS_CONSTEXPR */
+
+/* NEED_DECLARE_FLEX_ARRAY
+ *
+ * Upstream commit 3080ea5553 ("stddef: Introduce DECLARE_FLEX_ARRAY() helper")
+ * introduces DECLARE_FLEX_ARRAY to support flexible arrays in unions or
+ * alone in a structure.
+ */
+#ifdef NEED_DECLARE_FLEX_ARRAY
+#define DECLARE_FLEX_ARRAY(TYPE, NAME)	\
+	struct { \
+		struct { } __empty_ ## NAME; \
+		TYPE NAME[]; \
+	}
+#endif /* NEED_DECLARE_FLEX_ARRAY */
+
+#ifdef NEED_LIST_COUNT_NODES
+/* list_count_nodes was added as part of the list.h API by commit 4d70c74659d9
+ * ("i915: Move list_count() to list.h as list_count_nodes() for broader use")
+ * This landed in Linux v6.3
+ *
+ * Its straightforward to directly implement the basic loop.
+ */
+static inline size_t list_count_nodes(struct list_head *head)
+{
+	struct list_head *pos;
+	size_t count = 0;
+
+	list_for_each(pos, head)
+		count++;
+
+	return count;
+}
+#endif /* NEED_LIST_COUNT_NODES */
+#ifdef NEED_STATIC_ASSERT
+/*
+ * NEED_STATIC_ASSERT Introduced with upstream commit 6bab69c6501
+ * ("build_bug.h: add wrapper for _Static_assert")
+ *  * Available for kernels >= 5.1
+ *
+ *  Macro for _Static_assert GCC keyword (C11)
+ */
+#define static_assert(expr, ...) __static_assert(expr, ##__VA_ARGS__, #expr)
+#define __static_assert(expr, msg, ...) _Static_assert(expr, msg)
+#endif /* NEED_STATIC_ASSERT */
+
+#ifdef NEED_ETH_TYPE_VLAN
+#include <linux/if_vlan.h>
+/**
+ * eth_type_vlan was added in commit fe19c4f971a5 ("lan: Check for vlan ethernet
+ * types for 8021.q or 802.1ad").
+ *
+ * eth_type_vlan - check for valid vlan ether type.
+ * @ethertype: ether type to check
+ *
+ * Returns true if the ether type is a vlan ether type.
+ */
+static inline bool eth_type_vlan(__be16 ethertype)
+{
+	switch (ethertype) {
+	case htons(ETH_P_8021Q):
+	case htons(ETH_P_8021AD):
+		return true;
+	default:
+		return false;
+	}
+}
+#endif /* NEED_ETH_TYPE_VLAN */
+
+#ifdef NEED___STRUCT_GROUP
+/**
+ * __struct_group() - Create a mirrored named and anonyomous struct
+ *
+ * @TAG: The tag name for the named sub-struct (usually empty)
+ * @NAME: The identifier name of the mirrored sub-struct
+ * @ATTRS: Any struct attributes (usually empty)
+ * @MEMBERS: The member declarations for the mirrored structs
+ *
+ * Used to create an anonymous union of two structs with identical layout
+ * and size: one anonymous and one named. The former's members can be used
+ * normally without sub-struct naming, and the latter can be used to
+ * reason about the start, end, and size of the group of struct members.
+ * The named struct can also be explicitly tagged for layer reuse, as well
+ * as both having struct attributes appended.
+ */
+#define __struct_group(TAG, NAME, ATTRS, MEMBERS...) \
+	union { \
+		struct { MEMBERS } ATTRS; \
+		struct TAG { MEMBERS } ATTRS NAME; \
+	}
+#endif /* NEED___STRUCT_GROUP */
+
+#ifdef NEED_STRUCT_GROUP
+/**
+ * struct_group() - Wrap a set of declarations in a mirrored struct
+ *
+ * @NAME: The identifier name of the mirrored sub-struct
+ * @MEMBERS: The member declarations for the mirrored structs
+ *
+ * Used to create an anonymous union of two structs with identical
+ * layout and size: one anonymous and one named. The former can be
+ * used normally without sub-struct naming, and the latter can be
+ * used to reason about the start, end, and size of the group of
+ * struct members.
+ */
+#define struct_group(NAME, MEMBERS...)  \
+	__struct_group(/* no tag */, NAME, /* no attrs */, MEMBERS)
+
+/**
+ * struct_group_tagged() - Create a struct_group with a reusable tag
+ *
+ * @TAG: The tag name for the named sub-struct
+ * @NAME: The identifier name of the mirrored sub-struct
+ * @MEMBERS: The member declarations for the mirrored structs
+ *
+ * Used to create an anonymous union of two structs with identical
+ * layout and size: one anonymous and one named. The former can be
+ * used normally without sub-struct naming, and the latter can be
+ * used to reason about the start, end, and size of the group of
+ * struct members. Includes struct tag argument for the named copy,
+ * so the specified layout can be reused later.
+ */
+#define struct_group_tagged(TAG, NAME, MEMBERS...) \
+	__struct_group(TAG, NAME, /* no attrs */, MEMBERS)
+#endif /* NEED_STRUCT_GROUP */
+
+#ifdef NEED_READ_POLL_TIMEOUT
+/*
+ * 5f5323a14cad ("iopoll: introduce read_poll_timeout macro")
+ * Added in kernel 5.8
+ */
+#define read_poll_timeout(op, val, cond, sleep_us, timeout_us, \
+				sleep_before_read, args...) \
+({ \
+	u64 __timeout_us = (timeout_us); \
+	unsigned long __sleep_us = (sleep_us); \
+	ktime_t __timeout = ktime_add_us(ktime_get(), __timeout_us); \
+	might_sleep_if((__sleep_us) != 0); \
+	if (sleep_before_read && __sleep_us) \
+		usleep_range((__sleep_us >> 2) + 1, __sleep_us); \
+	for (;;) { \
+		(val) = op(args); \
+		if (cond) \
+			break; \
+		if (__timeout_us && \
+		    ktime_compare(ktime_get(), __timeout) > 0) { \
+			(val) = op(args); \
+			break; \
+		} \
+		if (__sleep_us) \
+			usleep_range((__sleep_us >> 2) + 1, __sleep_us); \
+		cpu_relax(); \
+	} \
+	(cond) ? 0 : -ETIMEDOUT; \
+})
+#else
+#include <linux/iopoll.h>
+#endif /* NEED_READ_POLL_TIMEOUT */
+
+#ifndef HAVE_DPLL_LOCK_STATUS_ERROR
+/* Copied from include/uapi/linux/dpll.h to have common dpll status enums
+ * between sysfs and dpll subsystem based solutions.
+ * cf4f0f1e1c465 ("dpll: extend uapi by lock status error attribute")
+ * Added in kernel 6.9
+ */
+enum dpll_lock_status_error {
+	DPLL_LOCK_STATUS_ERROR_NONE = 1,
+	DPLL_LOCK_STATUS_ERROR_UNDEFINED,
+	DPLL_LOCK_STATUS_ERROR_MEDIA_DOWN,
+	DPLL_LOCK_STATUS_ERROR_FRACTIONAL_FREQUENCY_OFFSET_TOO_HIGH,
+
+	/* private: */
+	__DPLL_LOCK_STATUS_ERROR_MAX,
+	DPLL_LOCK_STATUS_ERROR_MAX = (__DPLL_LOCK_STATUS_ERROR_MAX - 1)
+};
+
+#endif /* HAVE_DPLL_LOCK_STATUS_ERROR */
+
+#ifdef NEED_DPLL_NETDEV_PIN_SET
+#define dpll_netdev_pin_set netdev_dpll_pin_set
+#define dpll_netdev_pin_clear netdev_dpll_pin_clear
+#endif /* NEED_DPLL_NETDEV_PIN_SET */
+
+#ifdef NEED_RADIX_TREE_EMPTY
+static inline bool radix_tree_empty(struct radix_tree_root *root)
+{
+	return !root->rnode;
+}
+#endif /* NEED_RADIX_TREE_EMPTY */
+
+#ifdef NEED_SET_SCHED_FIFO
+/*
+ * 7318d4cc14c8 ("sched: Provide sched_set_fifo()")
+ * Added in kernel 5.9,
+ * converted to a macro for kcompat
+ */
+#include <linux/sched.h>
+
+#ifdef NEED_SCHED_PARAM
+#include <uapi/linux/sched/types.h>
+#endif /* NEED_SCHED_PARAM */
+#ifdef NEED_RT_H
+#include <linux/sched/rt.h>
+#else/* NEED_RT_H */
+#include <linux/sched/prio.h>
+#endif /* NEED_RT_H */
+#define sched_set_fifo(p)						   \
+({									   \
+	struct sched_param sp = { .sched_priority = MAX_RT_PRIO / 2 };	   \
+									   \
+	WARN_ON_ONCE(sched_setscheduler_nocheck((p), SCHED_FIFO,&sp) != 0);\
+})
+#endif /* NEED_SET_SCHED_FIFO */
+
+#ifndef HAVE_ETHTOOL_KEEE
+#ifndef __ETHTOOL_DECLARE_LINK_MODE_MASK
+#define __ETHTOOL_DECLARE_LINK_MODE_MASK(name)		\
+	DECLARE_BITMAP(name, __ETHTOOL_LINK_MODE_MASK_NBITS)
+#endif /* __ETHTOOL_DECLARE_LINK_MODE_MASK */
+struct ethtool_keee {
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(supported);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(advertised);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(lp_advertised);
+	u32	tx_lpi_timer;
+	bool	tx_lpi_enabled;
+	bool	eee_active;
+	bool	eee_enabled;
+};
+
+void eee_to_keee(struct ethtool_keee *keee,
+		 const struct ethtool_eee *eee);
+
+void ethtool_convert_legacy_u32_to_link_mode(unsigned long *dst,
+					     u32 legacy_u32);
+bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
+					     const unsigned long *src);
+bool ethtool_eee_use_linkmodes(const struct ethtool_keee *eee);
+
+void keee_to_eee(struct ethtool_eee *eee,
+		 const struct ethtool_keee *keee);
+#endif /* !HAVE_ETHTOOL_KEEE */
+
+#ifdef HAVE_ASSIGN_STR_2_PARAMS
+#define _kc__assign_str(dst, src) __assign_str(dst, src)
+#else
+#define _kc__assign_str(dst, src) __assign_str(dst)
+#endif
+
+#ifdef NEED_XSK_BUFF_DMA_SYNC_FOR_CPU_NO_POOL
+#include <net/xdp_sock_drv.h>
+static inline void
+_kc_xsk_buff_dma_sync_for_cpu(struct xdp_buff *xdp)
+{
+	struct xdp_buff_xsk *xskb = container_of(xdp, struct xdp_buff_xsk, xdp);
+
+	xsk_buff_dma_sync_for_cpu(xdp, xskb->pool);
+}
+
+#define xsk_buff_dma_sync_for_cpu(xdp) \
+	_kc_xsk_buff_dma_sync_for_cpu(xdp)
+#endif /* NEED_XSK_BUFF_DMA_SYNC_FOR_CPU_NO_POOL */
 
 #endif /* _KCOMPAT_IMPL_H_ */

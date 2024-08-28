@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 /* glue for the OS independent part of ixgbe
  * includes register access macros
@@ -45,23 +45,22 @@ struct ixgbe_msg {
 struct net_device *ixgbe_hw_to_netdev(const struct ixgbe_hw *hw);
 struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
-#ifdef DBG
+#define ixgbe_info_fwlog(hw, rowsize, groupsize, buf, len)	\
+	print_hex_dump(KERN_INFO, " FWLOG: ", DUMP_PREFIX_NONE,	\
+		       rowsize, groupsize, buf, len, false)
+
 #define hw_dbg(hw, format, arg...) \
 	netdev_dbg(ixgbe_hw_to_netdev(hw), format, ## arg)
-#else
-#define hw_dbg(hw, format, arg...) do {} while (0)
-#endif
-
 #define hw_err(hw, format, arg...) \
 	netdev_err(ixgbe_hw_to_netdev(hw), format, ## arg)
 #define e_dev_info(format, arg...) \
-	dev_info(pci_dev_to_dev(adapter->pdev), format, ## arg)
+	dev_info(ixgbe_pf_to_dev(adapter), format, ## arg)
 #define e_dev_warn(format, arg...) \
-	dev_warn(pci_dev_to_dev(adapter->pdev), format, ## arg)
+	dev_warn(ixgbe_pf_to_dev(adapter), format, ## arg)
 #define e_dev_err(format, arg...) \
-	dev_err(pci_dev_to_dev(adapter->pdev), format, ## arg)
+	dev_err(ixgbe_pf_to_dev(adapter), format, ## arg)
 #define e_dev_notice(format, arg...) \
-	dev_notice(pci_dev_to_dev(adapter->pdev), format, ## arg)
+	dev_notice(ixgbe_pf_to_dev(adapter), format, ## arg)
 #define e_dbg(msglvl, format, arg...) \
 	netif_dbg(adapter, msglvl, adapter->netdev, format, ## arg)
 #define e_info(msglvl, format, arg...) \
@@ -119,6 +118,11 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str);
 #define IXGBE_LE64_TO_CPU(_i) le64_to_cpu(_i)
 #define EWARN(H, W) ewarn(H, W)
 
+#undef TRUE
+#define TRUE true
+#undef FALSE
+#define FALSE false
+
 enum {
 	IXGBE_ERROR_SOFTWARE,
 	IXGBE_ERROR_POLLING,
@@ -170,5 +174,15 @@ enum {
 	uninitialized_var(_r);				\
 	uninitialized_var(_s);				\
 } while (0)
+
+#define ixgbe_malloc(hw, size) kzalloc(size, GFP_KERNEL)
+#define ixgbe_calloc(hw, cnt, size) kcalloc(cnt, size, GFP_KERNEL)
+#define ixgbe_free(hw, mptr) kfree(mptr)
+
+#define ixgbe_lock mutex
+#define ixgbe_init_lock(lock) mutex_init(lock)
+#define ixgbe_destroy_lock(lock) mutex_destroy(lock)
+#define ixgbe_acquire_lock(lock) mutex_lock(lock)
+#define ixgbe_release_lock(lock) mutex_unlock(lock)
 
 #endif /* _IXGBE_OSDEP_H_ */

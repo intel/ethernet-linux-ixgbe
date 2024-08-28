@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #ifndef _KCOMPAT_STD_DEFS_H_
 #define _KCOMPAT_STD_DEFS_H_
@@ -44,7 +44,6 @@
 #else /* >= 4,9,0 */
 #define HAVE_KTHREAD_DELAYED_API
 #define HAVE_NDO_OFFLOAD_STATS
-#define HAVE_INCLUDE_BITFIELD
 #endif /* 4,9,0 */
 
 /*****************************************************************************/
@@ -176,6 +175,7 @@
 #define NEED_XSK_UMEM_GET_RX_FRAME_SIZE
 #else /* >= 5.8.0 */
 #undef HAVE_XSK_UNALIGNED_CHUNK_PLACEMENT
+#define HAVE_RT_IRQ_SCHED_FIX
 #endif /* 5.8.0 */
 
 /*****************************************************************************/
@@ -190,7 +190,6 @@
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0))
 #define NEED_DEVLINK_FLASH_UPDATE_TIMEOUT_NOTIFY
-#define NEED_XSK_BUFF_DMA_SYNC_FOR_CPU
 #define NEED_XSK_BUFF_POOL_RENAME
 #else /* >= 5.10.0 */
 #define HAVE_UDP_TUNNEL_NIC_SHARED
@@ -201,7 +200,6 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0))
 #else /* >= 5.11.0 */
 #define HAVE_XSK_BATCHED_DESCRIPTOR_INTERFACES
-#define HAVE_PASID_SUPPORT
 #undef HAVE_XDP_RXQ_INFO_REG_3_PARAMS
 #define HAVE_XSK_TX_PEEK_RELEASE_DESC_BATCH_3_PARAMS
 #endif /* 5.11.0 */
@@ -215,15 +213,6 @@
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,13,0))
-/* HAVE_KOBJ_IN_MDEV_PARENT_OPS_CREATE
- *
- * create api changed as part of the commit c2ef2f50ad0c( vfio/mdev: Remove
- * kobj from mdev_parent_ops->create())
- *
- * if flag is defined use the old API else new API
- */
-#define HAVE_KOBJ_IN_MDEV_PARENT_OPS_CREATE
-#define HAVE_DEV_IN_MDEV_API
 #else /* >= 5.13.0 */
 #define HAVE_XPS_MAP_TYPE
 #endif /* 5.13.0 */
@@ -246,7 +235,6 @@
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,16,0))
 #else /* >= 5.16.0 */
-#undef HAVE_PASID_SUPPORT
 #define HAVE_XSK_BATCHED_RX_ALLOC
 #endif /* 5.16.0 */
 

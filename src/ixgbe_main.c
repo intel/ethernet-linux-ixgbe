@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -55,6 +55,7 @@
 #endif /* NETIF_F_HW_TC */
 
 
+#include "ixgbe_devlink.h"
 #include "ixgbe_dcb_82599.h"
 #include "ixgbe_sriov.h"
 #include "ixgbe_txrx_common.h"
@@ -72,7 +73,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.19.9" \
+#define DRV_VERSION	"5.21.5" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -83,7 +84,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright (C) 1999 - 2023 Intel Corporation";
+static const char ixgbe_copyright[] = "Copyright (C) 1999 - 2024 Intel Corporation";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -146,6 +147,11 @@ static const struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_SFP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_1G_T), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_A_1G_T_L), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_E610_BACKPLANE), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_E610_SFP), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_E610_10G_T), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_E610_2_5G_T), 0},
+	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_E610_SGMII), 0},
 	/* required last entry */
 	{ .device = 0 }
 };
@@ -173,6 +179,10 @@ DEFINE_STATIC_KEY_FALSE(ixgbe_xdp_locking_key);
 EXPORT_SYMBOL(ixgbe_xdp_locking_key);
 
 #define DEFAULT_DEBUG_LEVEL_SHIFT 3
+
+static ushort fwlog_method = IXGBE_FWLOG_METHOD_ARQ;
+module_param(fwlog_method, ushort, 0644);
+MODULE_PARM_DESC(fwlog_method, "FW event logging method. 0=ARQ event logging, 1=UART event logging\n");
 
 static struct workqueue_struct *ixgbe_wq;
 
@@ -489,6 +499,8 @@ static void ixgbe_set_ivar(struct ixgbe_adapter *adapter, s8 direction,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		if (direction == -1) {
 			/* other causes */
 			msix_vector |= IXGBE_IVAR_ALLOC_VAL;
@@ -528,6 +540,8 @@ void ixgbe_irq_rearm_queues(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		mask = (qmask & 0xFFFFFFFF);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS_EX(0), mask);
 		mask = (qmask >> 32);
@@ -636,6 +650,49 @@ static u64 ixgbe_get_tx_pending(struct ixgbe_ring *ring)
 	tail = ring->next_to_use;
 
 	return ((head <= tail) ? tail : tail + ring->count) - head;
+}
+
+/**
+ * ixgbe_get_vf_idx - provide vf index number of defined queue
+ * @adapter: pointer to the adpter struct
+ * @queue: tx queue identifier
+ * @vf: output vf index
+ *
+ * Returns : IXGBE_SUCCESS if vf provided or error number
+ *
+ * This function provide vf index number associated to the input queue
+ */
+static s32 ixgbe_get_vf_idx(struct ixgbe_adapter *adapter, u16 queue, u16 *vf)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	u8 queue_count;
+	u32 reg;
+
+	if (queue > adapter->num_tx_queues - 1)
+		return IXGBE_ERR_PARAM;
+
+	/*
+	 * Determine number of queues by checking
+	 * number of virtual functions
+	 */
+	reg = IXGBE_READ_REG(hw, IXGBE_GCR_EXT);
+	switch (reg & IXGBE_GCR_EXT_VT_MODE_MASK) {
+	case IXGBE_GCR_EXT_VT_MODE_64:
+		queue_count = 2;
+		break;
+	case IXGBE_GCR_EXT_VT_MODE_32:
+		queue_count = 4;
+		break;
+	case IXGBE_GCR_EXT_VT_MODE_16:
+		queue_count = 8;
+		break;
+	default:
+		return IXGBE_ERR_CONFIG;
+	}
+
+	*vf = queue / queue_count;
+
+	return IXGBE_SUCCESS;
 }
 
 static bool ixgbe_check_tx_hang(struct ixgbe_ring *tx_ring)
@@ -756,6 +813,118 @@ static void ixgbe_reset_pf_report(struct ixgbe_ring *tx_ring,
 }
 
 /**
+ * ixgbe_reset_vf_report - reset vf and print reset report
+ * @adapter: structure containing ring specific data
+ * @vf: vf index
+ *
+ * Print a message containing details about maliciuos driver detection.
+ * Disable malicious VF driver if the detection happened several times.
+ */
+static void ixgbe_reset_vf_report(struct ixgbe_adapter *adapter, u16 vf)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		e_info(drv,
+			"Malicious Driver Detection tx hang detected on PF %d VF %d MAC: %pM mdd-disable-vf=on",
+			hw->bus.func, vf,
+			adapter->vfinfo[vf].vf_mac_addresses);
+
+		adapter->tx_hang_count[vf]++;
+		if (adapter->tx_hang_count[vf] == IXGBE_MAX_TX_VF_HANGS) {
+			ixgbe_set_vf_link_state(adapter, vf,
+						IFLA_VF_LINK_STATE_DISABLE);
+			adapter->tx_hang_count[vf] = 0;
+		}
+	}
+}
+
+/**
+ * ixgbe_check_illegal_queue - check illegality packet
+ * @adapter: structure containing ring specific data
+ * @queue: queue index
+ *
+ * Returns : true if queue contain illegality packet
+ *
+ * Check if tx descriptor connected with input queue
+ * contain illegal packet.
+ */
+static bool ixgbe_check_illegal_queue(struct ixgbe_adapter *adapter,
+				      u16 queue)
+{
+	struct ixgbe_adv_tx_context_desc cd;
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 mss_len, header_len, reg;
+	u16 i;
+
+	for (i = 0; i < IXGBE_MAX_TX_DESCRIPTORS; i++) {
+		/*
+		 * HW will clear bit IXGBE_TXDESCIC_READY when address
+		 * is written to “Address” field. HW will set this bit
+		 * when iCache read is done, and data is ready at TIC_DWx.
+		 * Set descriptor address.
+		 */
+		IXGBE_WRITE_REG(hw, IXGBE_TXDESCIC, queue*i);
+		do {
+			reg = IXGBE_READ_REG(hw, IXGBE_TXDESCIC);
+		} while (!(reg & IXGBE_TXDESCIC_READY));
+
+		/* read tx descriptor access registers */
+		cd.vlan_macip_lens = IXGBE_READ_REG(hw, IXGBE_TIC_DW2(0));
+		cd.seqnum_seed = IXGBE_READ_REG(hw, IXGBE_TIC_DW2(1));
+		cd.type_tucmd_mlhl = IXGBE_READ_REG(hw, IXGBE_TIC_DW2(2));
+		cd.mss_l4len_idx = IXGBE_READ_REG(hw, IXGBE_TIC_DW2(3));
+
+		/* check if Advanced Context Descriptor */
+		if ((cd.type_tucmd_mlhl & 0x00F00000 >> 20) == 2) {
+			/* Determine legality */
+			/* check for illegal MSS and Header length */
+			mss_len = cd.mss_l4len_idx & 0xFFFF0000 >> 16;
+			header_len = cd.vlan_macip_lens & 0x000001FF;
+			if ((mss_len + header_len) > 16384) {
+				e_info(probe,
+				       "mss len + header len too long\n");
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+/**
+ * ixgbe_handle_mdd_event - handle mdd event
+ * @adapter: structure containing ring specific data
+ * @tx_ring: tx descriptor ring to handle
+ *
+ * Reset VF driver if malicious vf detected or
+ * illegal packet in an any queue detected.
+ */
+static void ixgbe_handle_mdd_event(struct ixgbe_adapter *adapter,
+				   struct ixgbe_ring *tx_ring)
+{
+	u16 vf, q;
+
+	if (adapter->flags & IXGBE_FLAG_MDD_ENABLED &&
+	    adapter->vfinfo && ixgbe_check_mdd_event(adapter)) {
+		/* vf mdd info and malicious vf detected */
+		if (!ixgbe_get_vf_idx(adapter, tx_ring->queue_index,
+				      &vf)) {
+			ixgbe_reset_vf_report(adapter, vf);
+		}
+	} else {
+		/* malicious vf not detected */
+		for (q = 0; q < IXGBE_MAX_TX_QUEUES; q++) {
+			if (ixgbe_check_illegal_queue(adapter, q) &&
+			    !ixgbe_get_vf_idx(adapter, q, &vf)) {
+				/* illegal queue detected */
+				ixgbe_reset_vf_report(adapter, vf);
+			}
+		}
+	}
+}
+
+/**
  * ixgbe_clean_tx_irq - Reclaim resources after transmit completes
  * @q_vector: structure containing interrupt and ring information
  * @tx_ring: tx ring to clean
@@ -870,6 +1039,8 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 	q_vector->tx.total_packets += total_packets;
 
 	if (check_for_tx_hang(tx_ring) && ixgbe_check_tx_hang(tx_ring)) {
+		if (adapter->hw.mac.type == ixgbe_mac_E610)
+			ixgbe_handle_mdd_event(adapter, tx_ring);
 		/* reset PF */
 		ixgbe_reset_pf_report(tx_ring, i);
 
@@ -2386,7 +2557,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	}
 
 	if (xdp_xmit & IXGBE_XDP_REDIR)
-		xdp_do_flush_map();
+		xdp_do_flush();
 
 	if (xdp_xmit & IXGBE_XDP_TX) {
 		struct ixgbe_ring *ring = ixgbe_determine_xdp_ring(adapter);
@@ -2639,6 +2810,8 @@ static void ixgbe_configure_msix(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		ixgbe_set_ivar(adapter, -1, 1, v_idx);
 		break;
 	default:
@@ -2651,6 +2824,8 @@ static void ixgbe_configure_msix(struct ixgbe_adapter *adapter)
 	mask &= ~(IXGBE_EIMS_OTHER |
 		  IXGBE_EIMS_MAILBOX |
 		  IXGBE_EIMS_LSC);
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		mask &= ~IXGBE_EIMS_FW_EVENT;
 
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIAC, mask);
 }
@@ -2878,6 +3053,8 @@ void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		/*
 		 * set the WDIS bit to not clear the timer bits and cause an
 		 * immediate assertion of the interrupt
@@ -2990,6 +3167,8 @@ static void ixgbe_check_mng_event(struct ixgbe_adapter *adapter, u32 eicr)
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
+		fallthrough;
+	case ixgbe_mac_E610:
 		break;
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
@@ -3020,6 +3199,311 @@ static void ixgbe_check_fan_failure(struct ixgbe_adapter *adapter, u32 eicr)
 		e_crit(probe, "Fan has stopped, replace the adapter\n");
 		/* write to clear the interrupt */
 		IXGBE_WRITE_REG(hw, IXGBE_EICR, IXGBE_EICR_GPI_SDP1);
+	}
+}
+
+/**
+ * ixgbe_print_health_status_string - Print message for given FW health event
+ * @adapter: pointer to the adapter structure
+ * @hse: pointer to the health status element containing the health status code
+ *
+ * Print the error/diagnostic string in response to the given Health Status
+ * Event code.
+ */
+static void
+ixgbe_print_health_status_string(struct ixgbe_adapter *adapter,
+				 struct ixgbe_aci_cmd_health_status_elem *hse)
+{
+	u16 status_code = le16_to_cpu(hse->health_status_code);
+	u32 internal_data1 = le32_to_cpu(hse->internal_data1);
+	u32 internal_data2 = le32_to_cpu(hse->internal_data2);
+	struct net_device *netdev = adapter->netdev;
+
+	switch (status_code) {
+	case IXGBE_ACI_HEALTH_STATUS_INFO_RECOVERY:
+		netdev_info(netdev,
+			    "The device is in firmware recovery mode.\n");
+		netdev_info(netdev,
+			    "Possible Solution: Update to the latest NVM image.\n");
+		netdev_info(netdev, "Extended Error: 0x%08x.\n",
+			    internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_FLASH_ACCESS:
+		netdev_err(netdev, "The flash chip cannot be accessed.\n");
+		netdev_err(netdev,
+			   "Possible Solution: If issue persists, call customer support.\n");
+		netdev_err(netdev, "Access Type: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_NVM_AUTH:
+		netdev_err(netdev, "NVM authentication failed.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_OROM_AUTH:
+		netdev_err(netdev, "Option ROM authentication failed.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_DDP_AUTH:
+		netdev_err(netdev, "DDP package failed.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to latest base driver and DDP package.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_NVM_COMPAT:
+		netdev_err(netdev, "NVM image is incompatible.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_OROM_COMPAT:
+		netdev_err(netdev, "Option ROM is incompatible.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev,
+			   "Expected PCI Device Id: 0x%08x and Expected Module Id: 0x%08x.\n",
+			   internal_data1, internal_data2);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_DCB_MIB:
+		netdev_err(netdev,
+			   "Supplied MIB file is invalid. DCB reverted to default configuration.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Disable FW-LLDP and check DCBx system configuration.\n");
+		netdev_err(netdev, "Port Number: %d and MIB Id: %d.\n",
+			   internal_data1, internal_data2);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_UNKNOWN_MOD_STRICT:
+	case IXGBE_ACI_HEALTH_STATUS_ERR_UNKNOWN_MOD_LENIENT:
+		netdev_err(netdev, "An unsupported module was detected.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Check your cable connection.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: Change or replace the module or cable.\n");
+		netdev_err(netdev,
+			   "Possible Solution 3: Manually set speed and duplex.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MOD_TYPE:
+		netdev_err(netdev, "Module type is not supported.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Change or replace the module or cable.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MOD_QUAL:
+		netdev_err(netdev, "Module is not qualified.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Check your cable connection.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: Change or replace the module or cable.\n");
+		netdev_err(netdev,
+			   "Possible Solution 3: Manually set speed and duplex.\n");
+		netdev_err(netdev, "Port Number: %d\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MOD_COMM:
+		netdev_err(netdev,
+			   "Device cannot communicate with the module.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Check your cable connection.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: Change or replace the module or cable.\n");
+		netdev_err(netdev,
+			   "Possible Solution 3: Manually set speed and duplex.\n");
+		netdev_err(netdev,
+			   "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MOD_CONFLICT:
+		netdev_err(netdev, "Unresolved module conflict.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Manually set speed/duplex or use Intel(R) Ethernet Port Configuration Tool to change the port option.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: If the problem persists, use a cable/module that is found in the supported modules and cables list for this device.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MOD_NOT_PRESENT:
+		netdev_err(netdev, "Module is not present.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Check that the module is inserted correctly.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: If the problem persists, use a cable/module that is found in the supported modules and cables list for this device.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_INFO_MOD_UNDERUTILIZED:
+		netdev_info(netdev, "Underutilized module.\n");
+		netdev_info(netdev,
+			    "Possible Solution 1: Change or replace the module or cable.\n");
+		netdev_info(netdev,
+			    "Possible Solution 2: Use Intel(R) Ethernet Port Configuration Tool to change the port option.\n");
+		netdev_info(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_INVALID_LINK_CFG:
+		netdev_err(netdev, "Invalid link configuration.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_PORT_ACCESS:
+		netdev_err(netdev, "Port hardware access error.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_PORT_UNREACHABLE:
+		netdev_err(netdev, "A port is unreachable.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Use Intel(R) Ethernet Port Configuration Tool to change the port option.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_INFO_PORT_SPEED_MOD_LIMITED:
+		netdev_info(netdev, "Port speed is limited due to module.\n");
+		netdev_info(netdev,
+			    "Possible Solution: Change the module or use Intel(R) Ethernet Port Configuration Tool to configure the port option to match the current module speed.\n");
+		netdev_info(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_PARALLEL_FAULT:
+		netdev_err(netdev, "A parallel fault was detected.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Check link partner connection and configuration.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_INFO_PORT_SPEED_PHY_LIMITED:
+		netdev_info(netdev,
+			    "Port speed is limited by PHY capabilities.\n");
+		netdev_info(netdev,
+			    "Possible Solution 1: Change the module to align to port option.\n");
+		netdev_info(netdev,
+			    "Possible Solution 2: Use Intel(R) Ethernet Port Configuration Tool to change the port option.\n");
+		netdev_info(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_NETLIST_TOPO:
+		netdev_err(netdev, "LOM topology netlist is corrupted.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_NETLIST:
+		netdev_err(netdev, "Unrecoverable netlist error.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_TOPO_CONFLICT:
+		netdev_err(netdev, "Port topology conflict.\n");
+		netdev_err(netdev,
+			   "Possible Solution 1: Use Intel(R) Ethernet Port Configuration Tool to change the port option.\n");
+		netdev_err(netdev,
+			   "Possible Solution 2: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_LINK_HW_ACCESS:
+		netdev_err(netdev, "Unrecoverable hardware access error.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_LINK_RUNTIME:
+		netdev_err(netdev, "Unrecoverable runtime error.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_DNL_INIT:
+		netdev_err(netdev,
+			   "Link management engine failed to initialize.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_PHY_FW_LOAD:
+		netdev_err(netdev,
+			   "Failed to load the firmware image in the external PHY.\n");
+		netdev_err(netdev,
+			   "Possible Solution: Update to the latest NVM image.\n");
+		netdev_err(netdev, "Port Number: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MOD_DIAGNOSTIC_FEATURE:
+		netdev_err(netdev,
+			   "Module diagnostic feature not implemented.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_NVM_SEC_VIOLATION:
+		netdev_err(netdev, "NVM Security version violation.\n");
+		netdev_err(netdev,
+			   "Non-permitted Security version downgrade attempt, minimum version expected = 0x%08x.\n",
+			   internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_OROM_SEC_VIOLATION:
+		netdev_err(netdev, "OROM Security version violation.\n");
+		netdev_err(netdev,
+			   "Non-permitted Security version downgrade attempt, minimum version expected = 0x%08x.\n",
+			   internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_MNG_TIMEOUT:
+		netdev_err(netdev, "MNG timeout.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_BMC_RESET:
+		netdev_err(netdev, "Reset was triggered by Manageability.\n");
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_LAST_MNG_FAIL:
+		netdev_err(netdev, "Manageability command failed.\n");
+		netdev_err(netdev, "MNG type: %d and Failed Opcode: 0x%08x.\n",
+			   internal_data1, internal_data2);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_RESOURCE_ALLOC_FAIL:
+		netdev_err(netdev, "Resource allocation failure.\n");
+		netdev_err(netdev, "Resource type: %d and PF ID: %d.\n",
+			   internal_data1, internal_data2);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_FW_LOOP:
+		netdev_err(netdev, "Firmware experience resets in loop.\n");
+		netdev_err(netdev,
+			   "GLGEN_RSTAT information for EMPR/CORER/GLOBR. EMPR Reason (WD, Exception, ECC etc.): %d.\n",
+			   internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_FW_PFR_FAIL:
+		netdev_err(netdev, "Firmware failed to execute PF reset.\n");
+		netdev_err(netdev, "PF ID: %d.\n", internal_data1);
+		break;
+	case IXGBE_ACI_HEALTH_STATUS_ERR_LAST_FAIL_AQ:
+		netdev_err(netdev, "ACI command failure.\n");
+		netdev_err(netdev,
+			   "Failed command opcode: 0x%08x and PF ID: %d.\n",
+			   internal_data1, internal_data2);
+		break;
+	default:
+		break;
+	}
+}
+
+/**
+ * ixgbe_process_health_status_event - Process the health status event from FW
+ * @adapter: pointer to the adapter structure
+ * @e: event structure containing the Health Status Event opcode
+ *
+ * Decode the Health Status Events and print the associated messages
+ */
+static void ixgbe_process_health_status_event(struct ixgbe_adapter *adapter,
+					      struct ixgbe_aci_event *e)
+{
+	struct ixgbe_aci_cmd_health_status_elem *health_info;
+	u16 health_status_elem_count;
+	int i;
+
+	health_info = (struct ixgbe_aci_cmd_health_status_elem *)e->msg_buf;
+	health_status_elem_count =
+		le16_to_cpu(e->desc.params.get_health_status.health_status_count);
+
+	/* In practice it's rare to encounter this event, and even more uncommon
+	 * to observe multiple health status elements in a single message, but
+	 * there's no boundary defined that separates an unlikely scenario from
+	 * an erroneous one. If the count reported by the firmware is clearly
+	 * incorrect then don't process the message and return.
+	 */
+	if (health_status_elem_count > (e->buf_len / sizeof(*health_info))) {
+		netdev_err(adapter->netdev,
+			   "Received a health status event with invalid element count\n");
+		return;
+	}
+
+	for (i = 0; i < health_status_elem_count; i++) {
+		ixgbe_print_health_status_string(adapter, health_info);
+		health_info++;
 	}
 }
 
@@ -3054,6 +3538,8 @@ static void ixgbe_check_overtemp_event(struct ixgbe_adapter *adapter, u32 eicr)
 		}
 		return;
 	case ixgbe_mac_X550:
+		fallthrough;
+	case ixgbe_mac_E610:
 	case ixgbe_mac_X540:
 		if (!(eicr & IXGBE_EICR_TS))
 			return;
@@ -3109,6 +3595,254 @@ static void ixgbe_check_lsc(struct ixgbe_adapter *adapter)
 		ixgbe_service_event_schedule(adapter);
 	}
 }
+
+/**
+ * ixgbe_check_phy_fw_load - check if PHY FW load failed
+ * @adapter: pointer to adapter structure
+ * @link_cfg_err: bitmap from the link info structure
+ *
+ * Check if external PHY FW load failed and print an error message if it did.
+ */
+static void ixgbe_check_phy_fw_load(struct ixgbe_adapter *adapter,
+				    u8 link_cfg_err)
+{
+	if (!(link_cfg_err & IXGBE_ACI_LINK_EXTERNAL_PHY_LOAD_FAILURE)) {
+		adapter->flags2 &= ~IXGBE_FLAG2_PHY_FW_LOAD_FAILED;
+		return;
+	}
+
+	if (adapter->flags2 & IXGBE_FLAG2_PHY_FW_LOAD_FAILED)
+		return;
+
+	if (link_cfg_err & IXGBE_ACI_LINK_EXTERNAL_PHY_LOAD_FAILURE) {
+		netdev_err(adapter->netdev, "Device failed to load the FW for the external PHY. Please download and install the latest NVM for your device and try again\n");
+		adapter->flags2 |= IXGBE_FLAG2_PHY_FW_LOAD_FAILED;
+	}
+}
+
+/**
+ * ixgbe_check_module_power - check module power level
+ * @adapter: pointer to adapter structure
+ * @link_cfg_err: bitmap from the link info structure
+ *
+ * Check module power level returned by a previous call to aci_get_link_info
+ * and print error messages if module power level is not supported.
+ */
+static void ixgbe_check_module_power(struct ixgbe_adapter *adapter,
+				     u8 link_cfg_err)
+{
+	/* if module power level is supported, clear the flag */
+	if (!(link_cfg_err & (IXGBE_ACI_LINK_INVAL_MAX_POWER_LIMIT |
+			      IXGBE_ACI_LINK_MODULE_POWER_UNSUPPORTED))) {
+		adapter->flags2 &= ~IXGBE_FLAG2_MOD_POWER_UNSUPPORTED;
+		return;
+	}
+
+	/* if IXGBE_FLAG2_MOD_POWER_UNSUPPORTED was previously set and the
+	 * above block didn't clear this bit, there's nothing to do
+	 */
+	if (adapter->flags2 & IXGBE_FLAG2_MOD_POWER_UNSUPPORTED)
+		return;
+
+	if (link_cfg_err & IXGBE_ACI_LINK_INVAL_MAX_POWER_LIMIT) {
+		netdev_err(adapter->netdev, "The installed module is incompatible with the device's NVM image. Cannot start link\n");
+		adapter->flags2 |= IXGBE_FLAG2_MOD_POWER_UNSUPPORTED;
+	} else if (link_cfg_err & IXGBE_ACI_LINK_MODULE_POWER_UNSUPPORTED) {
+		netdev_err(adapter->netdev, "The module's power requirements exceed the device's power supply. Cannot start link\n");
+		adapter->flags2 |= IXGBE_FLAG2_MOD_POWER_UNSUPPORTED;
+	}
+}
+
+/**
+ * ixgbe_check_link_cfg_err - check if link configuration failed
+ * @adapter: pointer to adapter structure
+ * @link_cfg_err: bitmap from the link info structure
+ *
+ * Print if any link configuration failure happens due to the value in the
+ * link_cfg_err parameter in the link info structure.
+ */
+static void ixgbe_check_link_cfg_err(struct ixgbe_adapter *adapter,
+				     u8 link_cfg_err)
+{
+	ixgbe_check_module_power(adapter, link_cfg_err);
+	ixgbe_check_phy_fw_load(adapter, link_cfg_err);
+}
+
+/**
+ * ixgbe_process_link_status_event - process the link event
+ * @adapter: pointer to adapter structure
+ * @link_up: true if the physical link is up and false if it is down
+ * @link_speed: current link speed received from the link event
+ *
+ * Return: 0 on success and negative on failure.
+ */
+static int
+ixgbe_process_link_status_event(struct ixgbe_adapter *adapter, bool link_up,
+				u16 link_speed)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	int status;
+
+	/* update the link info structures and re-enable link events,
+	 * don't bail on failure due to other book keeping needed
+	 */
+	status = ixgbe_update_link_info(hw);
+	if (status)
+		e_dev_err("Failed to update link status, err %d aq_err %d\n",
+			  status, hw->aci.last_status);
+
+	ixgbe_check_link_cfg_err(adapter, hw->link.link_info.link_cfg_err);
+
+	/* Check if the link state is up after updating link info, and treat
+	 * this event as an UP event since the link is actually UP now.
+	 */
+	if (hw->link.link_info.link_info & IXGBE_ACI_LINK_UP)
+		link_up = true;
+
+	/* turn off PHY if media was removed */
+	if (!(adapter->flags2 & IXGBE_FLAG2_NO_MEDIA) &&
+	    !(hw->link.link_info.link_info & IXGBE_ACI_MEDIA_AVAILABLE)) {
+		adapter->flags2 |= IXGBE_FLAG2_NO_MEDIA;
+	}
+
+	if ((link_up == adapter->link_up) &&
+	    link_up == netif_carrier_ok(adapter->netdev))
+		return IXGBE_SUCCESS;
+
+	if (link_up)
+		ixgbe_watchdog_link_is_up(adapter);
+	else
+		ixgbe_watchdog_link_is_down(adapter);
+
+	if (link_speed != adapter->link_speed) {
+		adapter->flags |= IXGBE_FLAG_NEED_LINK_UPDATE;
+		ixgbe_watchdog_update_link(adapter);
+	}
+
+	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_handle_link_status_event - handle link status event via ACI
+ * @adapter: pointer to adapter structure
+ * @e: event structure containing link status info
+ */
+static void
+ixgbe_handle_link_status_event(struct ixgbe_adapter *adapter,
+			       struct ixgbe_aci_event *e)
+{
+	struct ixgbe_aci_cmd_get_link_status_data *link_data;
+	u16 link_speed;
+	bool link_up;
+
+	link_data = (struct ixgbe_aci_cmd_get_link_status_data *)e->msg_buf;
+
+	link_up = !!(link_data->link_info & IXGBE_ACI_LINK_UP);
+	link_speed = le16_to_cpu(link_data->link_speed);
+
+	if (ixgbe_process_link_status_event(adapter, link_up, link_speed))
+		e_dev_warn("Could not process link status event");
+}
+
+/**
+ * ixgbe_schedule_fw_event - schedule Firmware event
+ * @adapter: pointer to the adapter structure
+ *
+ * If the adapter is not in down, removing or resetting state,
+ * an event is scheduled.
+ */
+static void ixgbe_schedule_fw_event(struct ixgbe_adapter *adapter)
+{
+	if (adapter->hw.mac.type != ixgbe_mac_E610)
+		return;
+
+	if (!test_bit(__IXGBE_DOWN, &adapter->state) &&
+	    !test_bit(__IXGBE_REMOVING, &adapter->state) &&
+	    !test_bit(__IXGBE_RESETTING, &adapter->state)) {
+		adapter->flags2 |= IXGBE_FLAG2_FW_ASYNC_EVENT;
+		ixgbe_service_event_schedule(adapter);
+	}
+}
+
+/**
+ * ixgbe_get_fwlog_data - copy the FW log data from ACI event
+ * @hw: pointer to private hardware struct
+ * @event: pointer to message from f/w
+ */
+static void
+ixgbe_get_fwlog_data(struct ixgbe_hw *hw, struct ixgbe_aci_event *event)
+{
+	struct ixgbe_fwlog_data *fwlog;
+
+	fwlog = &hw->fwlog_ring.rings[hw->fwlog_ring.tail];
+
+	memset(fwlog->data, 0, PAGE_SIZE);
+	fwlog->data_size = le16_to_cpu(event->desc.datalen);
+
+	memcpy(fwlog->data, event->msg_buf, fwlog->data_size);
+	ixgbe_fwlog_ring_increment(&hw->fwlog_ring.tail, hw->fwlog_ring.size);
+
+	if (ixgbe_fwlog_ring_full(&hw->fwlog_ring)) {
+		/* the rings are full so bump the head to create room */
+		ixgbe_fwlog_ring_increment(&hw->fwlog_ring.head,
+					   hw->fwlog_ring.size);
+	}
+}
+
+/**
+ * ixgbe_handle_fw_event - handle Firmware event
+ * @adapter: pointer to the adapter structure
+ *
+ * Obtain an event from ACI and then
+ * depending on the type of event through the opcode
+ * correspondingly process it.
+ */
+static void ixgbe_handle_fw_event(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_aci_event event;
+	bool pending = false;
+	s32 status;
+
+	if (adapter->hw.mac.type != ixgbe_mac_E610)
+		return;
+
+	if (adapter->flags2 & IXGBE_FLAG2_FW_ASYNC_EVENT)
+		adapter->flags2 &= ~IXGBE_FLAG2_FW_ASYNC_EVENT;
+
+	event.buf_len = IXGBE_ACI_MAX_BUFFER_SIZE;
+	event.msg_buf = kzalloc(event.buf_len, GFP_KERNEL);
+	if (!event.msg_buf)
+		return;
+
+	do {
+		u16 opcode;
+
+		status = ixgbe_aci_get_event(hw, &event, &pending);
+		if (status)
+			break;
+
+		opcode = le16_to_cpu(event.desc.opcode);
+
+		switch (opcode) {
+		case ixgbe_aci_opc_get_link_status:
+			ixgbe_handle_link_status_event(adapter, &event);
+			break;
+		case ixgbe_aci_opc_get_health_status:
+			ixgbe_process_health_status_event(adapter, &event);
+			break;
+		case ixgbe_aci_opc_fw_logs_event:
+			ixgbe_get_fwlog_data(hw, &event);
+			break;
+		default:
+			e_warn(hw, "unknown FW async event captured\n");
+			break;
+		}
+
+	} while (pending);
+
+	kfree(event.msg_buf);
+}
 static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 {
 	u32 mask;
@@ -3124,6 +3858,8 @@ static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		mask = (qmask & 0xFFFFFFFF);
 		if (mask)
 			IXGBE_WRITE_REG(hw, IXGBE_EIMS_EX(0), mask);
@@ -3176,6 +3912,9 @@ static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter, bool queues,
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
+		fallthrough;
+	case ixgbe_mac_E610:
+		mask |= IXGBE_EIMS_FW_EVENT;
 		fallthrough;
 	case ixgbe_mac_X550EM_a:
 		if (adapter->hw.device_id == IXGBE_DEV_ID_X550EM_X_SFP ||
@@ -3236,6 +3975,8 @@ static irqreturn_t ixgbe_msix_other(int __always_unused irq, void *data)
 
 	if (eicr & IXGBE_EICR_MAILBOX)
 		ixgbe_msg_task(adapter);
+	if (eicr & IXGBE_EICR_FW_EVENT)
+		ixgbe_schedule_fw_event(adapter);
 
 	switch (hw->mac.type) {
 	case ixgbe_mac_82599EB:
@@ -3243,6 +3984,8 @@ static irqreturn_t ixgbe_msix_other(int __always_unused irq, void *data)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		if (hw->phy.type == ixgbe_phy_x550em_ext_t &&
 		    (eicr & IXGBE_EICR_GPI_SDP0_X540)) {
 			adapter->flags2 |= IXGBE_FLAG2_PHY_INTERRUPT;
@@ -3445,14 +4188,6 @@ static int ixgbe_request_msix_irqs(struct ixgbe_adapter *adapter)
 			      "Error: %d\n", q_vector->name, err);
 			goto free_queue_irqs;
 		}
-#ifdef HAVE_IRQ_AFFINITY_HINT
-		/* If Flow Director is enabled, set interrupt affinity */
-		if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE) {
-			/* assign the mask for this irq */
-			irq_set_affinity_hint(entry->vector,
-					      &q_vector->affinity_mask);
-		}
-#endif /* HAVE_IRQ_AFFINITY_HINT */
 	}
 
 	err = request_irq(adapter->msix_entries[vector].vector,
@@ -3467,10 +4202,6 @@ static int ixgbe_request_msix_irqs(struct ixgbe_adapter *adapter)
 free_queue_irqs:
 	while (vector) {
 		vector--;
-#ifdef HAVE_IRQ_AFFINITY_HINT
-		irq_set_affinity_hint(adapter->msix_entries[vector].vector,
-				      NULL);
-#endif
 		free_irq(adapter->msix_entries[vector].vector,
 			 adapter->q_vector[vector]);
 	}
@@ -3518,12 +4249,17 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 	if (eicr & IXGBE_EICR_LSC)
 		ixgbe_check_lsc(adapter);
 
+	if (eicr & IXGBE_EICR_FW_EVENT)
+		ixgbe_schedule_fw_event(adapter);
+
 	switch (hw->mac.type) {
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 
 		if (eicr & IXGBE_EICR_ECC) {
 			e_info(link, "Received unrecoverable ECC Err,"
@@ -3606,11 +4342,6 @@ static void ixgbe_free_irq(struct ixgbe_adapter *adapter)
 		if (!q_vector->rx.ring && !q_vector->tx.ring)
 			continue;
 
-#ifdef HAVE_IRQ_AFFINITY_HINT
-		/* clear the affinity_mask in the IRQ descriptor */
-		irq_set_affinity_hint(entry->vector, NULL);
-
-#endif
 		free_irq(entry->vector, q_vector);
 	}
 
@@ -3632,6 +4363,8 @@ static inline void ixgbe_irq_disable(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, 0xFFFF0000);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC_EX(0), ~0);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC_EX(1), ~0);
@@ -4398,6 +5131,8 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 #if (PAGE_SIZE < 8192)
 		rxdctl &= ~(IXGBE_RXDCTL_RLPMLMASK |
@@ -4566,6 +5301,8 @@ static void ixgbe_configure_virtualization(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		vmdctl = IXGBE_READ_REG(hw, IXGBE_VT_CTL);
 		vmdctl |= IXGBE_VT_CTL_VT_ENABLE;
 		vmdctl &= ~IXGBE_VT_CTL_POOL_MASK;
@@ -4657,6 +5394,8 @@ static void ixgbe_set_rx_buffer_len(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		max_frame += IXGBE_TS_HDR_LEN;
 	default:
 		break;
@@ -4770,6 +5509,8 @@ static void ixgbe_setup_rdrxctl(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		if (adapter->num_vfs)
 			rdrxctl |= IXGBE_RDRXCTL_PSP;
 		fallthrough;
@@ -5048,6 +5789,8 @@ void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			struct ixgbe_ring *ring = adapter->rx_ring[i];
 
@@ -5084,6 +5827,8 @@ void ixgbe_vlan_strip_enable(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			struct ixgbe_ring *ring = adapter->rx_ring[i];
 
@@ -6027,6 +6772,9 @@ static void ixgbe_configure_lli(struct ixgbe_adapter *adapter)
 	/* LLI not supported on X550EM_a */
 	if (adapter->hw.mac.type == ixgbe_mac_X550EM_a)
 		return;
+	/* LLI not supported on X550 and E610 */
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		return;
 	if (adapter->hw.mac.type != ixgbe_mac_82598EB) {
 		ixgbe_configure_lli_82599(adapter);
 		return;
@@ -6094,6 +6842,8 @@ static int ixgbe_hpbthresh(struct ixgbe_adapter *adapter, int pb)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		dv_id = IXGBE_DV_X540(link, tc);
 		break;
 	default:
@@ -6155,6 +6905,8 @@ static int ixgbe_lpbthresh(struct ixgbe_adapter *adapter, int __maybe_unused pb)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		dv_id = IXGBE_LOW_DV_X540(tc);
 		break;
 	default:
@@ -6423,6 +7175,48 @@ static void ixgbe_configure(struct ixgbe_adapter *adapter)
 	ixgbe_configure_rx(adapter);
 }
 
+/**
+ * ixgbe_enable_link_status_events - enable link status events
+ * @adapter: pointer to the adapter structure
+ * @mask: event mask to be set
+ *
+ * Enables link status events by invoking ixgbe_configure_lse()
+ *
+ * Return: the exit code of the operation.
+ */
+static s32 ixgbe_enable_link_status_events(struct ixgbe_adapter *adapter,
+					   u16 mask)
+{
+	s32 rc;
+
+	rc = ixgbe_configure_lse(&adapter->hw, true, mask);
+	if (rc)
+		return rc;
+
+	adapter->lse_mask = mask;
+	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_disable_link_status_events - disable link status events
+ * @adapter: pointer to the adapter structure
+ *
+ * Disables link status events by invoking ixgbe_configure_lse()
+ *
+ * Return: the exit code of the operation.
+ */
+static s32 ixgbe_disable_link_status_events(struct ixgbe_adapter *adapter)
+{
+	s32 rc;
+
+	rc = ixgbe_configure_lse(&adapter->hw, false, adapter->lse_mask);
+	if (rc)
+		return rc;
+
+	adapter->lse_mask = 0;
+	return IXGBE_SUCCESS;
+}
+
 static bool ixgbe_is_sfp(struct ixgbe_hw *hw)
 {
 	switch (hw->mac.type) {
@@ -6475,6 +7269,12 @@ static void ixgbe_sfp_link_config(struct ixgbe_adapter *adapter)
  **/
 static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 {
+	u16 mask = ~((u16)(IXGBE_ACI_LINK_EVENT_UPDOWN |
+			   IXGBE_ACI_LINK_EVENT_MEDIA_NA |
+			   IXGBE_ACI_LINK_EVENT_MODULE_QUAL_FAIL |
+			   IXGBE_ACI_LINK_EVENT_PHY_FW_LOAD_FAIL));
+	struct ixgbe_adapter *adapter = container_of(hw, struct ixgbe_adapter,
+						     hw);
 	u32 ret = IXGBE_ERR_LINK_SETUP;
 	bool autoneg, link_up = false;
 	u32 speed;
@@ -6497,12 +7297,50 @@ static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 		goto link_cfg_out;
 
 	if (hw->mac.ops.setup_link) {
+		if (adapter->hw.mac.type == ixgbe_mac_E610) {
+			ret = ixgbe_enable_link_status_events(adapter, mask);
+			if (ret)
+				goto link_cfg_out;
+		}
 		ret = hw->mac.ops.setup_link(hw, speed, link_up);
 	}
 link_cfg_out:
 	return ret;
 }
 
+/**
+ * ixgbe_check_media_subtask - Check for media
+ * @adapter: pointer to adapter structure
+ *
+ * If media is available, then initialize PHY user configuration if it is not
+ * been, and configure the PHY if the interface is up.
+ */
+static void ixgbe_check_media_subtask(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	/* No need to check for media if it's already present */
+	if (!(adapter->flags2 & IXGBE_FLAG2_NO_MEDIA))
+		return;
+
+	/* Refresh link info and check if media is present */
+	if (ixgbe_update_link_info(hw))
+		return;
+
+	ixgbe_check_link_cfg_err(adapter, hw->link.link_info.link_cfg_err);
+
+	if (hw->link.link_info.link_info & IXGBE_ACI_MEDIA_AVAILABLE) {
+		/* PHY settings are reset on media insertion, reconfigure
+		 * PHY to preserve settings.
+		 */
+		if (!(ixgbe_non_sfp_link_config(&adapter->hw)))
+			adapter->flags2 &= ~IXGBE_FLAG2_NO_MEDIA;
+
+		/* A Link Status Event will be generated; the event handler
+		 * will complete bringing the interface up
+		 */
+	}
+}
 /**
  * ixgbe_clear_vf_stats_counters - Clear out VF stats after reset
  * @adapter: board private structure
@@ -6566,6 +7404,8 @@ static void ixgbe_setup_gpie(struct ixgbe_adapter *adapter)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
+			fallthrough;
+		case ixgbe_mac_E610:
 		default:
 			IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(0), 0xFFFFFFFF);
 			IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(1), 0xFFFFFFFF);
@@ -6921,6 +7761,8 @@ dma_engine_disable:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		IXGBE_WRITE_REG(hw, IXGBE_DMATXCTL,
 				(IXGBE_READ_REG(hw, IXGBE_DMATXCTL) &
 				 ~IXGBE_DMATXCTL_TE));
@@ -6928,6 +7770,277 @@ dma_engine_disable:
 	default:
 		break;
 	}
+}
+
+bool ixgbe_fwlog_ring_full(struct ixgbe_fwlog_ring *rings)
+{
+	u16 head, tail;
+
+	head = rings->head;
+	tail = rings->tail;
+
+	if ((head < tail && (tail - head == (rings->size - 1))) ||
+	    (head > tail && (tail == (head - 1))))
+		return true;
+
+	return false;
+}
+
+bool ixgbe_fwlog_ring_empty(struct ixgbe_fwlog_ring *rings)
+{
+	return rings->head == rings->tail;
+}
+
+void ixgbe_fwlog_ring_increment(u16 *item, u16 size)
+{
+	*item = (*item + 1) & (size - 1);
+}
+
+static int ixgbe_fwlog_alloc_ring_buffs(struct ixgbe_fwlog_ring *rings)
+{
+	int i, ret = 0;
+
+	for (i = 0; i < rings->size; i++) {
+		struct ixgbe_fwlog_data *ring = &rings->rings[i];
+
+		ring->data_size = PAGE_SIZE;
+		ring->data = vzalloc(ring->data_size);
+		if (!ring->data) {
+			ret = -ENOMEM;
+			break;
+		}
+	}
+
+	return ret;
+}
+
+static void ixgbe_fwlog_free_ring_buffs(struct ixgbe_fwlog_ring *rings)
+{
+	int i;
+
+	for (i = 0; i < rings->size; i++) {
+		struct ixgbe_fwlog_data *ring = &rings->rings[i];
+
+		vfree(ring->data);
+
+		ring->data_size = 0;
+	}
+}
+
+void ixgbe_fwlog_realloc_rings(struct ixgbe_hw *hw, int ring_size)
+{
+	struct ixgbe_fwlog_ring ring;
+	struct ixgbe_adapter *adapter = hw->back;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	int status;
+
+	if (ring_size == hw->fwlog_ring.size)
+		return;
+
+	/* allocate space for the new rings and buffers then release the
+	 * old rings and buffers. that way if we don't have enough
+	 * memory then we at least have what we had before
+	 */
+	ring.rings = kcalloc(IXGBE_FWLOG_RING_SIZE_DFLT,
+			     sizeof(*ring.rings), GFP_KERNEL);
+	if (!ring.rings) {
+		dev_warn(dev, "Unable to allocate memory for FW log ring\n");
+		return;
+	}
+
+	ring.size = ring_size;
+
+	status = ixgbe_fwlog_alloc_ring_buffs(&ring);
+	if (status) {
+		dev_warn(dev, "Unable to allocate memory for FW log ring data buffers\n");
+		ixgbe_fwlog_free_ring_buffs(&ring);
+		kfree(ring.rings);
+		return;
+	}
+
+	ixgbe_fwlog_free_ring_buffs(&hw->fwlog_ring);
+	kfree(hw->fwlog_ring.rings);
+
+	hw->fwlog_ring.rings = ring.rings;
+	hw->fwlog_ring.size = ring.size;
+	hw->fwlog_ring.head = 0;
+	hw->fwlog_ring.tail = 0;
+}
+
+/**
+ * ixgbe_pf_fwlog_is_input_valid - validate user input level/events
+ * @adapter: pointer to the adapter struct
+ * @user_input: input parameters to validate
+ *
+ * Check if user input level or events are valid.
+ * If the validation fails, the corresponding message is printed.
+ *
+ * Return: true if the user input level/events are valid.
+ */
+static bool
+ixgbe_pf_fwlog_is_input_valid(struct ixgbe_adapter *adapter,
+			      struct ixgbe_fwlog_user_input *user_input)
+{
+	unsigned long events = user_input->events;
+	u8 log_level = user_input->log_level;
+
+	if (log_level >= IXGBE_FWLOG_LEVEL_INVALID) {
+		dev_err(ixgbe_pf_to_dev(adapter),
+			"Invalid FW log level %u, all level(s) >= %u are invalid\n",
+			log_level, IXGBE_FWLOG_LEVEL_INVALID);
+		return false;
+	}
+
+	if (events >= BIT(IXGBE_ACI_FW_LOG_ID_MAX)) {
+		dev_err(ixgbe_pf_to_dev(adapter),
+			"Invalid FW log events 0x%lx, all FW log event bits >= 0x%lx are invalid\n",
+			events, BIT(IXGBE_ACI_FW_LOG_ID_MAX));
+		return false;
+	}
+
+	if (user_input->log_method > IXGBE_FWLOG_METHOD_UART) {
+		dev_err(ixgbe_pf_to_dev(adapter),
+			"Invalid FW log method %u, all FW log methods > %u are invalid\n",
+			user_input->log_method, IXGBE_FWLOG_METHOD_UART);
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * ixgbe_pf_fwlog_update_modules - update 1 or more modules via debugfs
+ * @adapter: pointer to the adapter struct
+ * @log_level: log_level to use for the @events
+ * @events: events to update
+ *
+ * Take all the present modules and
+ * use ixgbe_fwlog_update_modules to update them.
+ *
+ * Return: the exit code of the operation.
+ */
+u32 ixgbe_pf_fwlog_update_modules(struct ixgbe_adapter *adapter, u8 log_level,
+				  unsigned long events)
+{
+	struct ixgbe_fwlog_user_input user_input = { 0 };
+	u16 num_entries, module_id, max_bits, i = 0;
+	struct ixgbe_fwlog_module_entry *entries;
+	u32 status;
+
+	user_input.log_level = log_level;
+	user_input.events = events;
+	if (!ixgbe_pf_fwlog_is_input_valid(adapter, &user_input))
+		return -EINVAL;
+
+	num_entries = hweight_long(events);
+	entries = (struct ixgbe_fwlog_module_entry *)
+	kcalloc(num_entries, sizeof(*entries), GFP_KERNEL);
+	if (!entries)
+		return -ENOMEM;
+
+	max_bits = min_t(u16, BITS_PER_TYPE(unsigned long),
+			 IXGBE_ACI_FW_LOG_ID_MAX);
+
+	for_each_set_bit(module_id, &events, max_bits) {
+		entries[i].module_id = module_id;
+		entries[i].log_level = log_level;
+		i++;
+	}
+
+	status = ixgbe_fwlog_update_modules(&adapter->hw, entries,
+					    num_entries);
+
+	kfree(entries);
+	return status;
+}
+
+s32 ixgbe_fwlog_init(struct ixgbe_hw *hw)
+{
+	struct ixgbe_adapter *adapter = hw->back;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	int status;
+
+	ixgbe_fwlog_set_support_ena(hw);
+
+	if (ixgbe_fwlog_supported(hw)) {
+		/* read the current config from the FW and store it */
+		status = ixgbe_fwlog_get(hw, &hw->fwlog_cfg);
+		if (status)
+			return status;
+
+		hw->fwlog_ring.rings = kcalloc(IXGBE_FWLOG_RING_SIZE_DFLT,
+					       sizeof(*hw->fwlog_ring.rings),
+					       GFP_KERNEL);
+		if (!hw->fwlog_ring.rings) {
+			dev_warn(dev, "Unable to allocate memory for FW log ring\n");
+			return -ENOMEM;
+		}
+
+		hw->fwlog_ring.size = IXGBE_FWLOG_RING_SIZE_DFLT;
+
+		status = ixgbe_fwlog_alloc_ring_buffs(&hw->fwlog_ring);
+		if (status) {
+			dev_warn(dev, "Unable to allocate memory for FW log ring data buffers\n");
+			ixgbe_fwlog_free_ring_buffs(&hw->fwlog_ring);
+			kfree(hw->fwlog_ring.rings);
+			return status;
+		}
+	} else {
+		dev_warn(dev, "FW logging is not supported in this NVM image. Please update the NVM to get FW log support\n");
+	}
+
+	return IXGBE_SUCCESS;
+}
+
+#ifdef HAVE_IXGBE_DEBUG_FS
+/**
+ * ixgbe_pf_fwlog_update_module - update 1 module
+ * @adapter: pointer to the PF struct
+ * @log_level: log_level to use for the @events
+ * @module: module to update
+ */
+void ixgbe_pf_fwlog_update_module(struct ixgbe_adapter *adapter, int log_level, int module)
+{
+	struct ixgbe_fwlog_module_entry *entries;
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	entries = (struct ixgbe_fwlog_module_entry *)hw->fwlog_cfg.module_entries;
+
+	entries[module].log_level = log_level;
+}
+#endif /* HAVE_IXGBE_DEBUG_FS */
+
+/**
+ * ixgbe_pf_fwlog_init - initialize FW logging
+ * @adapter: pointer to the adapter struct
+ *
+ * Initialize Firmware logging configuration on device init.
+ *
+ * Return: the exit code of the operation.
+ */
+static s32
+ixgbe_pf_fwlog_init(struct ixgbe_adapter *adapter)
+{
+	s32 status;
+
+	if (!adapter->hw.fwlog_support_ena)
+		return -EOPNOTSUPP;
+
+	adapter->hw.fwlog_cfg.options |= IXGBE_FWLOG_OPTION_REGISTER_ON_INIT;
+
+	status = ixgbe_fwlog_init(&adapter->hw);
+	if (status) {
+		dev_err(ixgbe_pf_to_dev(adapter), "Failed to init FW log configuration.");
+		return status;
+	}
+
+	if ((adapter->hw.fwlog_cfg.options & IXGBE_FWLOG_OPTION_REGISTER_ON_INIT) &&
+	    ixgbe_fwlog_register(&adapter->hw))
+		dev_dbg(ixgbe_pf_to_dev(adapter), "Failed to register for FW logging events\n");
+	else
+		dev_dbg(ixgbe_pf_to_dev(adapter), "Failed to re-enable FW logging\n");
+
+	return 0;
 }
 
 void ixgbe_reset(struct ixgbe_adapter *adapter)
@@ -7004,7 +8117,6 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 		ixgbe_set_phy_power(hw, false);
 	else
 		ixgbe_set_phy_power(hw, true);
-
 }
 
 /**
@@ -7196,6 +8308,8 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	ixgbe_clean_all_tx_rings(adapter);
 	ixgbe_clean_all_rx_rings(adapter);
 
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		ixgbe_disable_link_status_events(adapter);
 }
 
 /**
@@ -7209,6 +8323,10 @@ static inline void ixgbe_set_eee_capable(struct ixgbe_adapter *adapter)
 	switch (hw->device_id) {
 	case IXGBE_DEV_ID_X550EM_A_1G_T:
 	case IXGBE_DEV_ID_X550EM_A_1G_T_L:
+	case IXGBE_DEV_ID_E610_BACKPLANE:
+	case IXGBE_DEV_ID_E610_SFP:
+	case IXGBE_DEV_ID_E610_10G_T:
+	case IXGBE_DEV_ID_E610_2_5G_T:
 		if (!hw->phy.eee_speeds_supported)
 			break;
 		adapter->flags2 |= IXGBE_FLAG2_EEE_CAPABLE;
@@ -7406,6 +8524,14 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		}
 		fallthrough;
 	case ixgbe_mac_X550EM_x:
+		fallthrough;
+	case ixgbe_mac_E610:
+		fwsm = IXGBE_READ_REG(hw, IXGBE_FWSM_X550EM_a);
+		if ((fwsm & IXGBE_FWSM_TS_ENABLED) &&
+		    (hw->mac.type == ixgbe_mac_E610))
+			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_CAPABLE;
+		adapter->flags2 &= ~IXGBE_FLAG2_FWLOG_CAPABLE;
+		hw->fwlog_support_ena = false;
 #if IS_ENABLED(CONFIG_DCB)
 		adapter->flags &= ~IXGBE_FLAG_DCB_CAPABLE;
 #endif
@@ -7416,6 +8542,9 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		adapter->fcoe.up_set = 0;
 #endif /* CONFIG_DCB */
 #endif /* CONFIG_FCOE */
+		if (hw->mac.type == ixgbe_mac_E610) {
+			adapter->flags2 |= IXGBE_FLAG2_FWLOG_CAPABLE;
+		}
 		fallthrough;
 	case ixgbe_mac_X550:
 		if (hw->mac.type == ixgbe_mac_X550)
@@ -7447,6 +8576,8 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
+		fallthrough;
+	case ixgbe_mac_E610:
 		adapter->dcb_cfg.num_tcs.pg_tcs = 4;
 		adapter->dcb_cfg.num_tcs.pfc_tcs = 4;
 		break;
@@ -7465,6 +8596,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	    hw->mac.type == ixgbe_mac_X550 ||
 	    hw->mac.type == ixgbe_mac_X550EM_x ||
 	    hw->mac.type == ixgbe_mac_X550EM_a ||
+	    hw->mac.type == ixgbe_mac_E610 ||
 	    hw->mac.type == ixgbe_mac_X540)
 		ixgbe_init_mbx_params_pf(hw);
 
@@ -7917,6 +9049,18 @@ int ixgbe_open(struct net_device *netdev)
 	vxlan_get_rx_port(netdev);
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD */
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD && HAVE_UDP_TUNNEL_NIC_INFO */
+	if (!(adapter->hw.mac.type == ixgbe_mac_E610))
+		goto out;
+
+	if (ixgbe_update_link_info(&adapter->hw))
+		e_dev_warn("ixgbe_update_link_info failed\n");
+
+	ixgbe_check_link_cfg_err(adapter,
+				 adapter->hw.link.link_info.link_cfg_err);
+
+	if (ixgbe_non_sfp_link_config(&adapter->hw))
+		e_dev_warn("link setup failed\n");
+out:
 	return IXGBE_SUCCESS;
 
 err_set_queues:
@@ -8178,6 +9322,8 @@ static int __ixgbe_shutdown(struct pci_dev *pdev, bool *enable_wake)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		pci_wake_from_d3(pdev, !!wufc);
 		break;
 	default:
@@ -8463,6 +9609,8 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
+			fallthrough;
+		case ixgbe_mac_E610:
 			hwstats->pxonrxc[i] +=
 				IXGBE_READ_REG(hw, IXGBE_PXONRXCNT(i));
 			break;
@@ -8479,6 +9627,7 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 		    (hw->mac.type == ixgbe_mac_X550) ||
 		    (hw->mac.type == ixgbe_mac_X550EM_x) ||
 		    (hw->mac.type == ixgbe_mac_X550EM_a) ||
+		    (hw->mac.type == ixgbe_mac_E610) ||
 		    (hw->mac.type == ixgbe_mac_X540)) {
 			hwstats->qbtc[i] += IXGBE_READ_REG(hw, IXGBE_QBTC_L(i));
 			IXGBE_READ_REG(hw, IXGBE_QBTC_H(i)); /* to clear */
@@ -8505,6 +9654,8 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		/* OS2BMC stats are X540 only*/
 		hwstats->o2bgptc += IXGBE_READ_REG(hw, IXGBE_O2BGPTC);
 		hwstats->o2bspc += IXGBE_READ_REG(hw, IXGBE_O2BSPC);
@@ -8756,7 +9907,8 @@ static void ixgbe_watchdog_update_link(struct ixgbe_adapter *adapter)
 
 #endif
 	if (link_up && !((adapter->flags & IXGBE_FLAG_DCB_ENABLED) && pfc_en)) {
-		if (hw->mac.type == ixgbe_mac_X550)
+		if ((hw->mac.type == ixgbe_mac_X550) ||
+		    (hw->mac.type == ixgbe_mac_E610))
 			ixgbe_setup_fc(hw);
 		hw->mac.ops.fc_enable(hw);
 
@@ -8856,6 +10008,8 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540: {
 		u32 mflcn = IXGBE_READ_REG(hw, IXGBE_MFLCN);
@@ -9333,6 +10487,28 @@ static void ixgbe_reset_subtask(struct ixgbe_adapter *adapter)
 	rtnl_unlock();
 }
 
+static int ixgbe_check_fw_api_ver(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	if (hw->api_maj_ver > IXGBE_FW_API_VER_MAJOR) {
+		e_dev_err("The driver for the device stopped because the NVM image is newer than expected. You must install the most recent version of the network driver.\n");
+
+		ixgbe_down(adapter);
+		return -EOPNOTSUPP;
+
+	} else if (hw->api_maj_ver == IXGBE_FW_API_VER_MAJOR &&
+		   hw->api_min_ver > (IXGBE_FW_API_VER_MINOR + 2)) {
+		e_dev_info("The driver for the device detected a newer version of the NVM image than expected. Please install the most recent version of the network driver.\n");
+
+	} else if (hw->api_maj_ver < IXGBE_FW_API_VER_MAJOR ||
+		   hw->api_min_ver < IXGBE_FW_API_VER_MINOR - 2) {
+		e_dev_info("The driver for the device detected an older version of the NVM image than expected. Please update the NVM image.\n");
+	}
+
+	return 0;
+}
+
 /**
  * ixgbe_check_fw_error - Check firmware for errors
  * @adapter: the adapter private structure
@@ -9342,21 +10518,28 @@ static void ixgbe_reset_subtask(struct ixgbe_adapter *adapter)
 static bool ixgbe_check_fw_error(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	u32 fwsm;
-
-	/* read fwsm.ext_err_ind register and log errors */
-	fwsm = IXGBE_READ_REG(hw, IXGBE_FWSM_BY_MAC(hw));
-
-	if (fwsm & IXGBE_FWSM_EXT_ERR_IND_MASK ||
-	    !(fwsm & IXGBE_FWSM_FW_VAL_BIT))
-		e_dev_warn("Warning firmware error detected FWSM: 0x%08X\n",
-			   fwsm);
 
 	if (hw->mac.ops.fw_recovery_mode && hw->mac.ops.fw_recovery_mode(hw)) {
 		e_dev_err("Firmware recovery mode detected. Limiting functionality. Refer to the Intel(R) Ethernet Adapters and Devices User Guide for details on firmware recovery mode.\n");
 		return true;
 	}
 
+	if (hw->mac.type == ixgbe_mac_E610) {
+		if (ixgbe_fw_rollback_mode(hw)) {
+			struct ixgbe_nvm_info *nvm_info = &adapter->hw.flash.nvm;
+			char ver_buff[64] = "";
+
+			if (!ixgbe_get_fw_version(hw) && !ixgbe_get_nvm_ver(hw, nvm_info)) {
+				snprintf(ver_buff, sizeof(ver_buff),
+					 "Current version is NVM:%u.%u.%u, FW:%d.%d. ",
+					 nvm_info->major, nvm_info->minor, nvm_info->eetrack,
+					 hw->fw_maj_ver, hw->fw_maj_ver);
+			}
+
+			e_dev_warn("Firmware rollback mode detected. %sDevice may exhibit limited functionality. Refer to the Intel(R) Ethernet Adapters and Devices User Guide for details on firmware rollback mode.",
+				   ver_buff);
+		}
+	}
 	return false;
 }
 
@@ -9369,6 +10552,7 @@ static void ixgbe_service_task(struct work_struct *work)
 	struct ixgbe_adapter *adapter = container_of(work,
 						     struct ixgbe_adapter,
 						     service_task);
+	struct ixgbe_hw *hw = &adapter->hw;
 
 	if (IXGBE_REMOVED(adapter->hw.hw_addr)) {
 		if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
@@ -9388,6 +10572,8 @@ static void ixgbe_service_task(struct work_struct *work)
 		ixgbe_service_event_complete(adapter);
 		return;
 	}
+	if (adapter->flags2 & IXGBE_FLAG2_FW_ASYNC_EVENT)
+		ixgbe_handle_fw_event(adapter);
 #if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 #ifndef HAVE_UDP_TUNNEL_NIC_INFO
 	if (adapter->flags2 & IXGBE_FLAG2_UDP_TUN_REREG_NEEDED) {
@@ -9402,6 +10588,8 @@ static void ixgbe_service_task(struct work_struct *work)
 	}
 #endif /* HAVE_UDP_TUNNEL_NIC_INFO */
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
+	if (hw->mac.type == ixgbe_mac_E610)
+		ixgbe_check_media_subtask(adapter);
 	ixgbe_reset_subtask(adapter);
 	ixgbe_phy_interrupt_subtask(adapter);
 	ixgbe_sfp_detection_subtask(adapter);
@@ -12514,6 +13702,23 @@ bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 
 	return false;
 }
+/**
+ * ixgbe_set_fw_version_E610 - Set FW version specifically on E610 adapters
+ * @adapter: the adapter private structure
+ *
+ * This function is used by probe and ethtool to determine the FW version to
+ * format to display. The FW version is taken from the EEPROM/NVM.
+ *
+ */
+static void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_orom_info *orom = &adapter->hw.flash.orom;
+	struct ixgbe_nvm_info *nvm = &adapter->hw.flash.nvm;
+
+	snprintf(adapter->eeprom_id, sizeof(adapter->eeprom_id),
+		 "%x.%02x 0x%x %d.%d.%d", nvm->major, nvm->minor,
+		 nvm->eetrack, orom->major, orom->build, orom->patch);
+}
 
 /**
  * ixgbe_set_fw_version - Set FW version
@@ -12530,6 +13735,10 @@ static void ixgbe_set_fw_version(struct ixgbe_adapter *adapter)
 	u16 offset = 0;
 	u32 etrack_id;
 
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		ixgbe_set_fw_version_E610(adapter);
+		return;
+	}
 	/* Check for OEM Product Version block format */
 	hw->eeprom.ops.read(hw, 0x1b, &offset);
 
@@ -12653,16 +13862,16 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	if (err)
 		return err;
 
-	if (!dma_set_mask(pci_dev_to_dev(pdev), DMA_BIT_MASK(64)) &&
-	    !dma_set_coherent_mask(pci_dev_to_dev(pdev), DMA_BIT_MASK(64))) {
+	if (!dma_set_mask(&pdev->dev, DMA_BIT_MASK(64)) &&
+	    !dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64))) {
 		pci_using_dac = 1;
 	} else {
-		err = dma_set_mask(pci_dev_to_dev(pdev), DMA_BIT_MASK(32));
+		err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
 		if (err) {
-			err = dma_set_coherent_mask(pci_dev_to_dev(pdev),
+			err = dma_set_coherent_mask(&pdev->dev,
 						    DMA_BIT_MASK(32));
 			if (err) {
-				dev_err(pci_dev_to_dev(pdev), "No usable DMA "
+				dev_err(&pdev->dev, "No usable DMA "
 					"configuration, aborting\n");
 				goto err_dma;
 			}
@@ -12672,7 +13881,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 
 	err = pci_request_mem_regions(pdev, ixgbe_driver_name);
 	if (err) {
-		dev_err(pci_dev_to_dev(pdev),
+		dev_err(&pdev->dev,
 			"pci_request_selected_regions failed 0x%x\n", err);
 		goto err_pci_reg;
 	}
@@ -12704,7 +13913,9 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	if (mac_type == ixgbe_mac_82598EB)
 		pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S);
 
+#ifdef HAVE_PCI_ENABLE_PCIE_ERROR_REPORTING
 	pci_enable_pcie_error_reporting(pdev);
+#endif /* HAVE_PCI_ENABLE_PCIE_ERROR_REPORTING */
 
 	pci_set_master(pdev);
 
@@ -12716,6 +13927,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		indices = IXGBE_MAX_RSS_INDICES;
 #endif /* !CONFIG_DCB */
 	}
+	if (mac_type == ixgbe_mac_E610)
+		indices = IXGBE_MAX_RSS_INDICES_E610;
 
 	netdev = alloc_etherdev_mq(sizeof(struct ixgbe_adapter), indices);
 #else /* HAVE_TX_MQ */
@@ -12728,7 +13941,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	}
 
 	SET_MODULE_OWNER(netdev);
-	SET_NETDEV_DEV(netdev, pci_dev_to_dev(pdev));
+	SET_NETDEV_DEV(netdev, &pdev->dev);
 
 	adapter = netdev_priv(netdev);
 
@@ -12750,6 +13963,15 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		err = -EIO;
 		goto err_ioremap;
 	}
+	if (mac_type == ixgbe_mac_E610) {
+		struct ixgbe_adapter **padapter = NULL;
+
+		padapter = ixgbe_allocate_devlink(adapter);
+		if (!padapter) {
+			err = -ENOMEM;
+			goto err_alloc_devlink;
+		}
+	}
 
 	ixgbe_assign_netdev_ops(netdev);
 
@@ -12762,15 +13984,48 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	err = ixgbe_sw_init(adapter);
 	if (err)
 		goto err_sw_init;
+	if (mac_type == ixgbe_mac_E610) {
+		u32 status;
+
+		e_info(probe, "OROM signature reading is temporarily skipped due to lack of support from fw side");
+
+		status = ixgbe_init_nvm(&adapter->hw);
+		if (status)
+			pr_err("ixgbe_init_nvm failed %d\n", status);
+
+		status = ixgbe_get_caps(&adapter->hw);
+		if (status)
+			pr_err("ixgbe_get_caps failed %d\n", status);
+
+		status = ixgbe_aci_get_fw_ver(hw);
+		if (status)
+			pr_err("ixgbe_aci_get_fw_ver failed %d\n", status);
+	}
 
 	if (adapter->hw.mac.type == ixgbe_mac_82599EB)
 		adapter->flags2 |= IXGBE_FLAG2_AUTO_DISABLE_VF;
+
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		if (adapter->flags2 & IXGBE_FLAG2_FWLOG_CAPABLE)
+			ixgbe_fwlog_set_support_ena(hw);
+
+		if (hw->fwlog_support_ena) {
+			if (ixgbe_pf_fwlog_init(adapter)) {
+				dev_err(&pdev->dev, "failed to initialize FW logging 0x%x\n",
+					err);
+				err = -EIO;
+				goto err_ioremap;
+			}
+		}
+	}
 
 #if defined(HAVE_UDP_ENC_RX_OFFLOAD) && defined(HAVE_UDP_TUNNEL_NIC_INFO)
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X550EM_x:
+		fallthrough;
+	case ixgbe_mac_E610:
 		netdev->udp_tunnel_nic_info = &ixgbe_udp_tunnels_x550;
 		break;
 	default:
@@ -12788,6 +14043,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_WUS, ~0);
 		break;
 	default:
@@ -12948,6 +14205,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		netdev->features |= NETIF_F_SCTP_CSUM;
 #ifdef HAVE_NDO_SET_FEATURES
 		hw_features |= NETIF_F_SCTP_CSUM |
@@ -13059,7 +14318,13 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 	}
 
-	if (ixgbe_check_fw_error(adapter)) {
+	if (mac_type == ixgbe_mac_E610 && ixgbe_check_fw_api_ver(adapter)) {
+		err = -EIO;
+		goto err_sw_init;
+	}
+
+	if (!(mac_type == ixgbe_mac_E610) &&
+	    ixgbe_check_fw_error(adapter)) {
 		err = -EIO;
 		goto err_sw_init;
 	}
@@ -13083,6 +14348,10 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	/* Set hw->mac.addr to permanent MAC address */
 	ether_addr_copy(hw->mac.addr, hw->mac.perm_addr);
 	ixgbe_mac_set_default_filter(adapter);
+
+	if (mac_type == ixgbe_mac_E610) {
+		ixgbe_init_aci(hw);
+	}
 
 	timer_setup(&adapter->service_timer, ixgbe_service_timer, 0);
 
@@ -13108,7 +14377,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 
 	hw->wol_enabled = !!(adapter->wol);
 
-	device_set_wakeup_enable(pci_dev_to_dev(adapter->pdev), adapter->wol);
+	device_set_wakeup_enable(ixgbe_pf_to_dev(adapter), adapter->wol);
 
 	ixgbe_set_fw_version(adapter);
 
@@ -13134,7 +14403,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		goto err_register;
 	}
 
-	/* pick up the PCI bus settings for reporting later */
 	if (ixgbe_pcie_from_parent(hw))
 		ixgbe_get_parent_bus_info(hw);
 	else
@@ -13144,10 +14412,26 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	strscpy(netdev->name, "eth%d", sizeof(netdev->name));
 	pci_set_drvdata(pdev, adapter);
 
+	if (mac_type == ixgbe_mac_E610) {
+		ixgbe_devlink_register_port(adapter);
+#ifdef HAVE_SET_NETDEV_DEVLINK_PORT
+		SET_NETDEV_DEVLINK_PORT(adapter->netdev,
+					&adapter->devlink_port);
+#endif
+	}
+
+	if (!((mac_type == ixgbe_mac_E610) &&
+	      ixgbe_check_fw_error(adapter))) {
 		err = register_netdev(netdev);
 		if (err)
 			goto err_register;
 		adapter->netdev_registered = true;
+	}
+#ifndef HAVE_SET_NETDEV_DEVLINK_PORT
+	if (mac_type == ixgbe_mac_E610)
+		devlink_port_type_eth_set(&adapter->devlink_port,
+					  adapter->netdev);
+#endif /* HAVE_SET_NETDEV_DEVLINK_PORT */
 
 #ifdef HAVE_PCI_ERS
 	/*
@@ -13169,7 +14453,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 
 #if IS_ENABLED(CONFIG_DCA)
 	if (adapter->flags & IXGBE_FLAG_DCA_CAPABLE) {
-		err = dca_add_requester(pci_dev_to_dev(pdev));
+		err = dca_add_requester(&pdev->dev);
 		switch (err) {
 		case IXGBE_SUCCESS:
 			adapter->flags |= IXGBE_FLAG_DCA_ENABLED;
@@ -13289,11 +14573,61 @@ no_info_string:
 		hw->mac.ops.setup_eee(hw, eee_enable);
 	}
 
+	if (mac_type == ixgbe_mac_E610) {
+#ifndef HAVE_DEVLINK_PARAMS_PUBLISH
+		bool need_register = true;
+
+		/* for old kernels, prior to auto-publish of devlink params,
+		 * API has required a call to devlink_register() prior to
+		 * registering params. API has changed to be the other way
+		 * around at the same moment that explicit param
+		 * publishing was deprecated.
+		 * Some older kernels have backported the removal of param publishing
+		 * but not the reversing of register order. Because of that, we need
+		 * to check if devlink->dev was properly allocated before registering
+		 * params to avoid segfaults.
+		 */
+		if (!devlink_to_dev(adapter->devlink)) {
+			ixgbe_devlink_register(adapter);
+			need_register = false;
+		}
+#endif /* HAVE_DEVLINK_PARAMS_PUBLISH */
+
+		err = ixgbe_devlink_register_params(adapter);
+		if (err)
+			goto err_devlink_register;
+		ixgbe_devlink_init_regions(adapter);
+
+#ifndef HAVE_DEVLINK_PARAMS_PUBLISH
+		if (need_register)
+			ixgbe_devlink_register(adapter);
+#endif /* !HAVE_DEVLINK_PARAMS_PUBLISH */
+	}
+
 	return 0;
 
+err_devlink_register:
+#ifdef HAVE_DEVLINK_PARAMS_PUBLISH
+	if (mac_type == ixgbe_mac_E610)
+		ixgbe_devlink_unregister(adapter);
+#endif /* HAVE_DEVLINK_PARAMS_PUBLISH */
 err_register:
+	if (mac_type == ixgbe_mac_E610)
+		ixgbe_devlink_unregister_port(adapter);
 	ixgbe_clear_interrupt_scheme(adapter);
+
+	if (mac_type == ixgbe_mac_E610 &&
+	    hw->fwlog_support_ena &&
+	    ixgbe_fwlog_unregister(&adapter->hw)) {
+		struct device *dev = ixgbe_pf_to_dev(adapter);
+
+		dev_dbg(dev,
+			"failed to unregister from FW logging\n");
+	}
+
 err_aci_lock:
+	if (mac_type == ixgbe_mac_E610)
+		ixgbe_shutdown_aci(&adapter->hw);
 err_sw_init:
 	ixgbe_release_hw_control(adapter);
 #ifdef CONFIG_PCI_IOV
@@ -13307,6 +14641,9 @@ err_sw_init:
 	kfree(adapter->rss_key);
 	bitmap_free(adapter->af_xdp_zc_qps);
 	iounmap(adapter->io_addr);
+	if (mac_type == ixgbe_mac_E610)
+		devlink_free(adapter->devlink);
+err_alloc_devlink:
 
 err_ioremap:
 	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
@@ -13346,6 +14683,20 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	if (!adapter)
 		return;
 
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		ixgbe_devlink_unregister(adapter);
+		ixgbe_devlink_destroy_regions(adapter);
+		ixgbe_devlink_unregister_params(adapter);
+	}
+	if (adapter->hw.mac.type == ixgbe_mac_E610 &&
+	    adapter->hw.fwlog_support_ena &&
+	    ixgbe_fwlog_unregister(&adapter->hw)) {
+		struct device *dev = ixgbe_pf_to_dev(adapter);
+
+		dev_dbg(dev,
+			"failed to unregister from FW logging\n");
+	}
+
 	netdev = adapter->netdev;
 #ifdef HAVE_IXGBE_DEBUG_FS
 	ixgbe_dbg_adapter_exit(adapter);
@@ -13354,10 +14705,12 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	set_bit(__IXGBE_REMOVING, &adapter->state);
 	cancel_work_sync(&adapter->service_task);
 
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		ixgbe_shutdown_aci(&adapter->hw);
 #if IS_ENABLED(CONFIG_DCA)
 	if (adapter->flags & IXGBE_FLAG_DCA_ENABLED) {
 		adapter->flags &= ~IXGBE_FLAG_DCA_ENABLED;
-		dca_remove_requester(pci_dev_to_dev(pdev));
+		dca_remove_requester(&pdev->dev);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_DCA_CTRL,
 				IXGBE_DCA_CTRL_DCA_DISABLE);
 	}
@@ -13383,6 +14736,10 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	if (adapter->netdev_registered) {
 		unregister_netdev(netdev);
 		adapter->netdev_registered = false;
+	}
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		ixgbe_devlink_unregister_port(adapter);
+		devlink_free(adapter->devlink);
 	}
 
 #if IS_ENABLED(CONFIG_FCOE)
@@ -13416,7 +14773,9 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
 	free_netdev(netdev);
 
+#ifdef HAVE_PCI_ENABLE_PCIE_ERROR_REPORTING
 	pci_disable_pcie_error_reporting(pdev);
+#endif /* HAVE_PCI_ENABLE_PCIE_ERROR_REPORTING */
 
 	if (disable_dev)
 		pci_disable_device(pdev);
@@ -13557,6 +14916,9 @@ static pci_ers_result_t ixgbe_io_error_detected(struct pci_dev *pdev,
 		case ixgbe_mac_X550EM_a:
 			device_id = IXGBE_DEV_ID_X550EM_A_VF;
 			break;
+		case ixgbe_mac_E610:
+			device_id = IXGBE_DEV_ID_E610_VF;
+			break;
 		default:
 			device_id = 0;
 			break;
@@ -13691,7 +15053,7 @@ static void ixgbe_io_resume(struct pci_dev *pdev)
 #ifdef HAVE_PCI_ERROR_HANDLER_RESET_NOTIFY
 static void ixgbe_io_reset_notify(struct pci_dev *pdev, bool prepare)
 {
-	struct device *dev = pci_dev_to_dev(pdev);
+	struct device *dev = &pdev->dev;
 
 	if (prepare)
 		ixgbe_suspend(dev);
@@ -13703,14 +15065,14 @@ static void ixgbe_io_reset_notify(struct pci_dev *pdev, bool prepare)
 #ifdef HAVE_PCI_ERROR_HANDLER_RESET_PREPARE
 static void pci_io_reset_prepare(struct pci_dev *pdev)
 {
-	struct device *dev = pci_dev_to_dev(pdev);
+	struct device *dev = &pdev->dev;
 
 	ixgbe_suspend(dev);
 }
 
 static void pci_io_reset_done(struct pci_dev *pdev)
 {
-	struct device *dev = pci_dev_to_dev(pdev);
+	struct device *dev = &pdev->dev;
 
 	ixgbe_resume(dev);
 }
@@ -13844,7 +15206,7 @@ static int __init ixgbe_init_module(void)
 		ixgbe_procfs_topdir_exit();
 #endif
 		return ret;
-}
+	}
 #if IS_ENABLED(CONFIG_DCA)
 
 	dca_register_notify(&dca_notifier);

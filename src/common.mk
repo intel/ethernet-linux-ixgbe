@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
-# Copyright (C) 1999 - 2023 Intel Corporation
+# Copyright (C) 1999 - 2024 Intel Corporation
 
 #
 # common Makefile rules useful for out-of-tree Linux driver builds
@@ -17,7 +17,7 @@
 #####################
 
 SHELL := $(shell which bash)
-
+src ?= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 readlink = $(shell readlink -f ${1})
 
 # helper functions for converting kernel version to version codes
@@ -50,10 +50,8 @@ endif
 KSP :=  /lib/modules/${BUILD_KERNEL}/source \
         /lib/modules/${BUILD_KERNEL}/build \
         /usr/src/linux-${BUILD_KERNEL} \
-        /usr/src/linux-$(${BUILD_KERNEL} | sed 's/-.*//') \
         /usr/src/kernel-headers-${BUILD_KERNEL} \
         /usr/src/kernel-source-${BUILD_KERNEL} \
-        /usr/src/linux-$(${BUILD_KERNEL} | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/') \
         /usr/src/linux \
         /usr/src/kernels/${BUILD_KERNEL} \
         /usr/src/kernels
@@ -314,50 +312,16 @@ minimum_kver_check = $(eval $(call _minimum_kver_check,${1},${2},${3}))
 # entire feature ought to be excluded on some kernels due to missing
 # functionality.
 #
-# To support this, kcompat_defs.h is compiled and converted into a word list
+# To support this, kcompat_defs.h is preprocessed and converted into a word list
 # that can be checked to determine whether a given kcompat feature flag will
 # be defined for this kernel.
 #
-# KCOMPAT_DEFINITIONS holds the set of all macros which are defined. Note
-# this does include a large number of standard/builtin definitions.
-#
-# Use is_kcompat_defined as a $(call) function to check whether a given flag
-# is defined or undefined. For example:
-#
-#   ifeq ($(call is_kcompat_defined,HAVE_FEATURE_FLAG),1)
-#
-#   ifneq ($(call is_kcompat_defined,HAVE_FEATURE_FLAG),1)
-#
-# The is_kcompat_defined function returns 1 if the macro name is defined,
-# and the empty string otherwise.
-#
-# There is no mechanism to extract the value of the kcompat definition.
-# Supporting this would be non-trivial as Make does not have a map variable
-# type.
-#
-# Note that only the new layout is supported. Legacy definitions in
-# kcompat.h are not supported. If you need to check one of these, please
-# refactor it into the new layout.
 
-ifneq ($(wildcard ./kcompat_defs.h),)
 # call script that populates defines automatically
-#
-# since is_kcompat_defined() is a macro, it's "computed" before any target
-# recipe, kcompat_generated_defs.h is needed prior to that, so needs to be
-# generated also via $(shell) call, which makes error handling ugly
-$(if $(shell KSRC=${KSRC} OUT=kcompat_generated_defs.h CONFFILE=${CONFIG_FILE} \
-    bash kcompat-generator.sh && echo ok), , $(error kcompat-generator.sh failed))
-
-KCOMPAT_DEFINITIONS := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM \
-                                     -I${KOBJ}/include \
-                                     -I${KOBJ}/include/generated/uapi \
-                                     kcompat_defs.h | awk '{ print $$2 }')
-
-is_kcompat_defined = $(if $(filter ${1},${KCOMPAT_DEFINITIONS}),1,)
-else
-KCOMPAT_DEFINITIONS :=
-is_kcompat_defined =
-endif
+$(if $(shell \
+    $(if $(findstring 1,${V}),,QUIET_COMPAT=1) \
+    KSRC=${KSRC} OUT=${src}/kcompat_generated_defs.h CONFIG_FILE=${CONFIG_FILE} \
+    bash ${src}/kcompat-generator.sh && echo ok), , $(error kcompat-generator.sh failed))
 
 ################
 # Manual Pages #
@@ -434,14 +398,15 @@ export INSTALL_AUX_DIR ?= updates/drivers/net/ethernet/intel/auxiliary
 
 # If we're installing auxiliary bus out-of-tree, the following steps are
 # necessary to ensure the relevant files get put in place.
-AUX_BUS_HEADER ?= linux/auxiliary_bus.h
+AUX_BUS_HEADERS ?= linux/auxiliary_bus.h auxiliary_compat.h kcompat_generated_defs.h
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_install
 	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
 	install -d ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}
 	mv -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/intel_auxiliary.ko* \
 	      ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/
-	install -D -m 644 ${AUX_BUS_HEADER} ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
+	install -d ${INSTALL_MOD_PATH}/${KSRC}/include/linux
+	install -D -m 644 ${AUX_BUS_HEADERS} -t ${INSTALL_MOD_PATH}/${KSRC}/include/linux
 endef
 else
 auxiliary_post_install =
@@ -452,6 +417,8 @@ define auxiliary_post_uninstall
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/intel_auxiliary.ko*
 	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
+	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_compat.h
+	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/kcompat_generated_defs.h
 endef
 else
 auxiliary_post_uninstall =
@@ -481,7 +448,7 @@ endif
 # W -- if set, enables the W= kernel warnings options
 # C -- if set, enables the C= kernel sparse build options
 #
-kernelbuild = $(call warn_signed_modules) \
+kernelbuild = ${Q}$(call warn_signed_modules) \
               ${MAKE} $(if ${GCC_I_SYS},CC="${GCC_I_SYS}") \
                       ${CCFLAGS_VAR}="${EXTRA_CFLAGS}" \
                       -C "${KSRC}" \

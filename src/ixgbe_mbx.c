@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe_type.h"
 #include "ixgbe_mbx.h"
@@ -797,6 +797,7 @@ STATIC s32 ixgbe_check_for_rst_pf(struct ixgbe_hw *hw, u16 vf_id)
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_E610:
 		vflre = IXGBE_READ_REG(hw, IXGBE_PFVFLREC(index));
 		break;
 	default:
@@ -1103,6 +1104,7 @@ void ixgbe_init_mbx_params_pf(struct ixgbe_hw *hw)
 	    hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
 	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610 &&
 	    hw->mac.type != ixgbe_mac_X540)
 		return;
 
@@ -1145,6 +1147,7 @@ void ixgbe_upgrade_mbx_params_pf(struct ixgbe_hw *hw, u16 vf_id)
 	    hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
 	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610 &&
 	    hw->mac.type != ixgbe_mac_X540)
 		return;
 

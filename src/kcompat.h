@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #ifndef _KCOMPAT_H_
 #define _KCOMPAT_H_
@@ -38,13 +38,9 @@
 #include <linux/udp.h>
 #include <linux/vmalloc.h>
 
-
-
 #ifndef IEEE_8021QAZ_APP_SEL_DSCP
 #define IEEE_8021QAZ_APP_SEL_DSCP	5
 #endif
-
-
 
 #ifndef NSEC_PER_MSEC
 #define NSEC_PER_MSEC 1000000L
@@ -2348,11 +2344,6 @@ void _kc_pci_restore_state(struct pci_dev *);
 void _kc_free_netdev(struct net_device *);
 #define free_netdev(netdev) _kc_free_netdev(netdev)
 #endif
-static inline int pci_enable_pcie_error_reporting(struct pci_dev __always_unused *dev)
-{
-	return 0;
-}
-#define pci_disable_pcie_error_reporting(dev) do {} while (0)
 #define pci_cleanup_aer_uncorrect_error_status(dev) do {} while (0)
 
 void *_kc_kmemdup(const void *src, size_t len, unsigned gfp);
@@ -4306,10 +4297,6 @@ void _kc_skb_add_rx_frag(struct sk_buff * skb, int i, struct page *page,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0) )
 
-#ifndef SIZE_MAX
-#define SIZE_MAX (~(size_t)0)
-#endif
-
 #ifndef BITS_PER_LONG_LONG
 #define BITS_PER_LONG_LONG 64
 #endif
@@ -6076,7 +6063,6 @@ int _kc_kstrtobool(const char *s, bool *res);
 #else /* >= 4.6.0 */
 #define HAVE_PAGE_COUNT_BULK_UPDATE
 #define HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
-#define HAVE_PTP_CROSSTIMESTAMP
 #define HAVE_TC_SETUP_CLSFLOWER
 #define HAVE_TC_SETUP_CLSU32
 #endif /* 4.6.0 */
@@ -6188,22 +6174,6 @@ static inline void bitmap_from_u64(unsigned long *dst, u64 mask)
 		dst[1] = mask >> 32;
 }
 #endif /* <RHEL7.4 */
-#if (!(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,4)) && \
-     !(SLE_VERSION_CODE >= SLE_VERSION(12,3,0)) && \
-     !(UBUNTU_VERSION_CODE >= UBUNTU_VERSION(4,13,0,16)))
-static inline bool eth_type_vlan(__be16 ethertype)
-{
-	switch (ethertype) {
-	case htons(ETH_P_8021Q):
-#ifdef ETH_P_8021AD
-	case htons(ETH_P_8021AD):
-#endif
-		return true;
-	default:
-		return false;
-	}
-}
-#endif /* Linux < 4.9 || RHEL < 7.4 || SLES < 12.3 || Ubuntu < 4.3.0-16 */
 #else /* >=4.9 */
 #define HAVE_FLOW_DISSECTOR_KEY_VLAN_PRIO
 #define HAVE_ETHTOOL_NEW_1G_BITS
@@ -6241,58 +6211,13 @@ static inline bool _kc_napi_complete_done2(struct napi_struct *napi,
 #define HAVE_ETHTOOL_NEW_2500MB_BITS
 #define HAVE_ETHTOOL_5G_BITS
 #endif /* RHEL7.4+ */
-#if (SLE_VERSION_CODE && (SLE_VERSION_CODE == SLE_VERSION(12,3,0)))
-#define HAVE_STRUCT_DMA_ATTRS
-#endif /* (SLES == 12.3.0) */
 #if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0)))
 #define HAVE_NETDEVICE_MIN_MAX_MTU
 #endif /* (SLES >= 12.3.0) */
 #if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5)))
-#define HAVE_STRUCT_DMA_ATTRS
 #define HAVE_RHEL7_EXTENDED_MIN_MAX_MTU
 #define HAVE_NETDEVICE_MIN_MAX_MTU
 #endif
-#if (!(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0))) && \
-     !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5))))
-#ifndef dma_map_page_attrs
-#define dma_map_page_attrs __kc_dma_map_page_attrs
-static inline dma_addr_t __kc_dma_map_page_attrs(struct device *dev,
-						 struct page *page,
-						 size_t offset, size_t size,
-						 enum dma_data_direction dir,
-						 unsigned long __always_unused attrs)
-{
-	return dma_map_page(dev, page, offset, size, dir);
-}
-#endif
-
-#ifndef dma_unmap_page_attrs
-#define dma_unmap_page_attrs __kc_dma_unmap_page_attrs
-static inline void __kc_dma_unmap_page_attrs(struct device *dev,
-					     dma_addr_t addr, size_t size,
-					     enum dma_data_direction dir,
-					     unsigned long __always_unused attrs)
-{
-	dma_unmap_page(dev, addr, size, dir);
-}
-#endif
-
-static inline void __page_frag_cache_drain(struct page *page,
-					   unsigned int count)
-{
-#ifdef HAVE_PAGE_COUNT_BULK_UPDATE
-	if (!page_ref_sub_and_test(page, count))
-		return;
-
-	init_page_count(page);
-#else
-	BUG_ON(count > 1);
-	if (!count)
-		return;
-#endif
-	__free_pages(page, compound_order(page));
-}
-#endif /* !SLE_VERSION(12,3,0) && !RHEL_VERSION(7,5) */
 #if ((SLE_VERSION_CODE && (SLE_VERSION_CODE > SLE_VERSION(12,3,0))) ||\
      (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5)))
 #define HAVE_SWIOTLB_SKIP_CPU_SYNC
@@ -6328,7 +6253,6 @@ static inline void __page_frag_cache_drain(struct page *page,
  */
 #define HAVE_NAPI_STATE_IN_BUSY_POLL
 #define HAVE_TCF_MIRRED_EGRESS_REDIRECT
-#define HAVE_PTP_CLOCK_INFO_ADJFINE
 #endif /* 4.10.0 */
 
 /*****************************************************************************/
@@ -6707,14 +6631,10 @@ void _kc_pcie_print_link_status(struct pci_dev *dev);
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
-#include "kcompat_overflow.h"
-
 #if (SLE_VERSION_CODE < SLE_VERSION(15,1,0))
 #define firmware_request_nowarn	request_firmware_direct
 #endif /* SLES < 15.1 */
-
 #else
-#include <linux/overflow.h>
 #include <net/xdp_sock.h>
 #define HAVE_XDP_FRAME_STRUCT
 #define HAVE_XDP_SOCK
@@ -7007,8 +6927,6 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev);
 /* RHEL >= 8.4 */
 #define HAVE_XDP_BUFF_FRAME_SZ
 #endif
-#define flex_array_size(p, member, count) \
-	array_size(count, sizeof(*(p)->member) + __must_be_array((p)->member))
 #else /* >= 5.8.0 */
 #define HAVE_TC_FLOW_INDIR_DEV
 #define HAVE_TC_FLOW_INDIR_BLOCK_CLEANUP

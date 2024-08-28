@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
@@ -9,7 +9,7 @@
 #include <linux/pci.h>
 #include <linux/netdevice.h>
 #include <linux/vmalloc.h>
-
+#include <linux/aer.h>
 #ifdef SIOCETHTOOL
 #include <linux/ethtool.h>
 #endif
@@ -47,6 +47,12 @@
 #endif /* CONFIG_FCOE */
 
 #include "ixgbe_api.h"
+
+#if IS_ENABLED(CONFIG_NET_DEVLINK)
+#include <net/devlink.h>
+#endif /* CONFIG_NET_DEVLINK */
+
+#include "ixgbe_e610.h"
 
 #include "ixgbe_common.h"
 
@@ -516,6 +522,7 @@ enum ixgbe_ring_f_enum {
 #define IXGBE_MAX_DCB_INDICES		8
 #define IXGBE_MAX_RSS_INDICES		16
 #define IXGBE_MAX_RSS_INDICES_X550	63
+#define IXGBE_MAX_RSS_INDICES_E610	63
 #define IXGBE_MAX_VMDQ_INDICES		64
 #define IXGBE_MAX_FDIR_INDICES		63
 #if IS_ENABLED(CONFIG_FCOE)
@@ -527,6 +534,10 @@ enum ixgbe_ring_f_enum {
 #define MAX_TX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #endif /* CONFIG_FCOE */
 #define IXGBE_MAX_XDP_QS  (IXGBE_MAX_FDIR_INDICES + 1)
+
+#define IXGBE_MAX_TX_QUEUES		128
+#define IXGBE_MAX_TX_DESCRIPTORS	40
+#define IXGBE_MAX_TX_VF_HANGS		4
 
 DECLARE_STATIC_KEY_FALSE(ixgbe_xdp_locking_key);
 
@@ -595,6 +606,8 @@ struct ixgbe_ring_container {
 	u8 count;			/* total number of rings in vector */
 	u8 itr;				/* current ITR setting for ring */
 };
+
+#define ixgbe_pf_to_dev(pf) (&((pf)->pdev->dev))
 
 /* iterator for handling rings in ring container */
 #define ixgbe_for_each_ring(pos, head) \
@@ -742,6 +755,14 @@ struct hwmon_buff {
 	unsigned int n_hwmon;
 };
 #endif /* IXGBE_HWMON */
+
+struct ixgbe_fwlog_user_input {
+	unsigned long events;
+#define IXGBE_FWLOG_METHOD_ARQ	0
+#define IXGBE_FWLOG_METHOD_UART	1
+	u8 log_method;
+	u8 log_level;
+};
 
 /*
  * microsecond values for various ITR rates shifted by 2 to fit itr register
@@ -911,6 +932,8 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
+#define IXGBE_FLAG2_FW_ASYNC_EVENT              BIT(12)
+#define IXGBE_FLAG2_MOD_POWER_UNSUPPORTED	BIT(13)
 #define IXGBE_FLAG2_EEE_CAPABLE			(u32)(1 << 14)
 #define IXGBE_FLAG2_EEE_ENABLED			(u32)(1 << 15)
 #define IXGBE_FLAG2_UDP_TUN_REREG_NEEDED	(u32)(1 << 16)
@@ -918,6 +941,9 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_VLAN_PROMISC		(u32)(1 << 18)
 #define IXGBE_FLAG2_RX_LEGACY			(u32)(1 << 19)
 #define IXGBE_FLAG2_AUTO_DISABLE_VF		BIT(20)
+#define IXGBE_FLAG2_PHY_FW_LOAD_FAILED		BIT(24)
+#define IXGBE_FLAG2_NO_MEDIA			BIT(25)
+#define IXGBE_FLAG2_FWLOG_CAPABLE		BIT(26)
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -1077,6 +1103,8 @@ struct ixgbe_adapter {
 	u32 vferr_refcount;
 #endif
 	struct ixgbe_mac_addr *mac_table;
+	u16 tx_hang_count[IXGBE_MAX_TX_QUEUES];
+	u16 lse_mask;
 #ifdef IXGBE_SYSFS
 #ifdef IXGBE_HWMON
 #ifdef HAVE_HWMON_DEVICE_REGISTER_WITH_GROUPS
@@ -1096,7 +1124,11 @@ struct ixgbe_adapter {
 #endif /* IXGBE_SYSFS */
 
 #ifdef HAVE_IXGBE_DEBUG_FS
-	struct dentry *ixgbe_dbg_adapter;
+	struct dentry *ixgbe_dbg_adapter_pf;
+	struct dentry *ixgbe_dbg_adapter_fw;
+	struct dentry *ixgbe_dbg_adapter_fw_cluster;
+	void *ixgbe_cluster_blk;
+	u16 fw_dump_cluster_id;
 #endif /*HAVE_IXGBE_DEBUG_FS*/
 	u8 default_up;
 #ifdef HAVE_TC_SETUP_CLSU32
@@ -1129,6 +1161,14 @@ struct ixgbe_adapter {
 	u16 num_xsk_pools_used;
 	u16 num_xsk_pools;
 #endif
+	struct devlink *devlink;
+	struct devlink_port devlink_port;
+#ifdef HAVE_DEVLINK_REGIONS
+	struct devlink_region *nvm_region;
+	struct devlink_region *sram_region;
+	struct devlink_region *devcaps_region;
+#endif /* HAVE_DEVLINK_REGIONS */
+	bool fw_emp_reset_disabled;
 
 };
 
@@ -1161,6 +1201,8 @@ static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550EM_a:
 		return IXGBE_MAX_RSS_INDICES_X550;
 		break;
+	case ixgbe_mac_E610:
+		return IXGBE_MAX_RSS_INDICES_X550;
 	default:
 		return 0;
 		break;
@@ -1288,7 +1330,6 @@ void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter);
 #ifdef ETHTOOL_OPS_COMPAT
 int ethtool_ioctl(struct ifreq *ifr);
 #endif
-
 #if IS_ENABLED(CONFIG_FCOE)
 void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter);
 int ixgbe_fso(struct ixgbe_ring *tx_ring,
@@ -1330,6 +1371,7 @@ void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter);
 void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter);
 void ixgbe_dbg_init(void);
 void ixgbe_dbg_exit(void);
+void ixgbe_pf_fwlog_update_module(struct ixgbe_adapter *adapter, int log_level, int module);
 #endif /* HAVE_IXGBE_DEBUG_FS */
 
 static inline struct netdev_queue *txring_txq(const struct ixgbe_ring *ring)
@@ -1343,6 +1385,8 @@ s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
 #endif /* HAVE_DCBNL_IEEE */
 #endif /* CONFIG_DCB */
 
+u32 ixgbe_pf_fwlog_update_modules(struct ixgbe_adapter *adapter, u8 log_level,
+				  unsigned long events);
 bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			 u16 subdevice_id);
 void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter);
@@ -1360,6 +1404,8 @@ int ixgbe_find_vlvf_entry(struct ixgbe_hw *hw, u32 vlan);
 #endif
 #endif
 #ifdef HAVE_PTP_1588_CLOCK
+#ifdef IXGBE_SYSFS
+#endif /* IXGBE_SYSFS */
 void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter);
@@ -1404,4 +1450,11 @@ void ixgbe_store_key(struct ixgbe_adapter *adapter);
 void ixgbe_store_reta(struct ixgbe_adapter *adapter);
 
 void ixgbe_set_rx_drop_en(struct ixgbe_adapter *adapter);
+
+bool ixgbe_fwlog_ring_full(struct ixgbe_fwlog_ring *rings);
+bool ixgbe_fwlog_ring_empty(struct ixgbe_fwlog_ring *rings);
+void ixgbe_fwlog_ring_increment(u16 *item, u16 size);
+void ixgbe_fwlog_realloc_rings(struct ixgbe_hw *hw, int ring_size);
+s32 ixgbe_fwlog_init(struct ixgbe_hw *hw);
+
 #endif /* _IXGBE_H_ */

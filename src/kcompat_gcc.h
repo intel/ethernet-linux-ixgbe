@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #ifndef _KCOMPAT_GCC_H_
 #define _KCOMPAT_GCC_H_
@@ -9,6 +9,14 @@
 		     + __GNUC_MINOR__ * 100	\
 		     + __GNUC_PATCHLEVEL__)
 #endif /* GCC_VERSION */
+
+/* as GCC_VERSION yields 40201 for any modern clang (checked on clang 7 & 13)
+ * we want other means to add workarounds for "old GCC" */
+#ifdef __clang__
+#define GCC_IS_BELOW(x) 0
+#else
+#define GCC_IS_BELOW(x) (GCC_VERSION < (x))
+#endif
 
 #ifdef __has_attribute
 #if __has_attribute(__fallthrough__)
@@ -20,9 +28,21 @@
 # define fallthrough do {} while (0)  /* fallthrough */
 #endif /* __has_attribute */
 
+/*
+ * upstream commit 4eb6bd55cfb2 ("compiler.h: drop fallback overflow checkers")
+ * removed bunch of code for builitin overflow fallback implementations, that
+ * we need for gcc prior to 5.1
+ */
+#if !GCC_IS_BELOW(50100)
+#ifndef COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW
+#define COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW	1
+#endif
+#endif /* GCC_VERSION >= 50100 */
+
+#include "kcompat_overflow.h"
+
 /* Backport macros for controlling GCC diagnostics */
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0) )
-
 /* Compilers before gcc-4.6 do not understand "#pragma GCC diagnostic push" */
 #if GCC_VERSION >= 40600
 #define __diag_str1(s)		#s
@@ -35,8 +55,7 @@
 #define __diag_pop()	__diag(pop)
 #endif /* LINUX_VERSION < 4.18.0 */
 
-#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#if GCC_VERSION < 50000
+#if GCC_IS_BELOW(50000)
 /* Workaround for gcc bug - not accepting "(type)" before "{ ... }" as part of
  * static struct initializers [when used with -std=gnu11 switch]
  * https://bugzilla.redhat.com/show_bug.cgi?id=1672652
@@ -114,7 +133,6 @@
 	   (d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7)		\
 	}}
 
-#endif /* GCC_VERSION < 5.0 */
-#endif /* C11 */
+#endif /* old GCC < 5.0 */
 
 #endif /* _KCOMPAT_GCC_H_ */

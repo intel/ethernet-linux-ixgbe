@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe.h"
 #include "ixgbe_sriov.h"
@@ -54,6 +54,8 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		/* start at VMDq register offset for SR-IOV enabled setups */
 		reg_idx = vmdq->offset * __ALIGN_MASK(1, ~vmdq->mask);
 		for (i = 0; i < adapter->num_rx_queues; i++, reg_idx++) {
@@ -132,6 +134,8 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		if (num_tcs > 4) {
 			/*
 			 * TCs    : TC0/1 TC2/3 TC4-7
@@ -369,6 +373,8 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
@@ -580,6 +586,8 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
@@ -996,7 +1004,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 	while (txr_count) {
 		/* assign generic ring traits */
-		ring->dev = pci_dev_to_dev(adapter->pdev);
+		ring->dev = ixgbe_pf_to_dev(adapter);
 		ring->netdev = adapter->netdev;
 
 		/* configure backlink on ring */
@@ -1050,7 +1058,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	}
 	while (rxr_count) {
 		/* assign generic ring traits */
-		ring->dev = pci_dev_to_dev(adapter->pdev);
+		ring->dev = ixgbe_pf_to_dev(adapter);
 		ring->netdev = adapter->netdev;
 
 		/* configure backlink on ring */

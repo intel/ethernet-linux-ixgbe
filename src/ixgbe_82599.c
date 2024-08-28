@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe_type.h"
 #include "ixgbe_82599.h"
@@ -549,13 +549,15 @@ out:
  **/
 void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw)
 {
-	u32 autoc2_reg;
 	u16 ee_ctrl_2 = 0;
+	u32 autoc2_reg;
+	u32 status;
 
 	DEBUGFUNC("ixgbe_stop_mac_link_on_d3_82599");
-	ixgbe_read_eeprom(hw, IXGBE_EEPROM_CTRL_2, &ee_ctrl_2);
+	status = ixgbe_read_eeprom(hw, IXGBE_EEPROM_CTRL_2, &ee_ctrl_2);
 
-	if (!ixgbe_mng_present(hw) && !hw->wol_enabled &&
+	if (status == IXGBE_SUCCESS &&
+	    !ixgbe_mng_present(hw) && !hw->wol_enabled &&
 	    ee_ctrl_2 & IXGBE_EEPROM_CCD_BIT) {
 		autoc2_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
 		autoc2_reg |= IXGBE_AUTOC2_LINK_DISABLE_ON_D3_MASK;
@@ -1381,7 +1383,8 @@ void ixgbe_set_fdir_drop_queue_82599(struct ixgbe_hw *hw, u8 dropqueue)
 	fdirctrl |= (dropqueue << IXGBE_FDIRCTRL_DROP_Q_SHIFT);
 	if ((hw->mac.type == ixgbe_mac_X550) ||
 	    (hw->mac.type == ixgbe_mac_X550EM_x) ||
-	    (hw->mac.type == ixgbe_mac_X550EM_a))
+	    (hw->mac.type == ixgbe_mac_X550EM_a) ||
+	    (hw->mac.type == ixgbe_mac_E610))
 		fdirctrl |= IXGBE_FDIRCTRL_DROP_NO_MATCH;
 
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRCMD,
@@ -1795,6 +1798,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
+		case ixgbe_mac_E610:
 			IXGBE_WRITE_REG(hw, IXGBE_FDIRSCTPM, 0xFFFFFFFF);
 			break;
 		default:
@@ -1818,6 +1822,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
+		case ixgbe_mac_E610:
 			IXGBE_WRITE_REG(hw, IXGBE_FDIRSCTPM, ~fdirtcpm);
 			break;
 		default:

@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright (C) 2020 - 2023 Intel Corporation. */
 
 /* This is taken from upstream "lib/pldmfw/pldmfw.c" */
+
+#include "kcompat.h"
 
 #include <asm/unaligned.h>
 #include <linux/crc32.h>
@@ -16,7 +18,6 @@
 #include <linux/slab.h>
 #include <linux/uuid.h>
 
-#include "kcompat.h"
 #include "kcompat_pldmfw.h"
 
 #if IS_ENABLED(CONFIG_PLDMFW)

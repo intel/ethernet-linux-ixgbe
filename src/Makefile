@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
-# Copyright (C) 1999 - 2023 Intel Corporation
+# Copyright (C) 1999 - 2024 Intel Corporation
 
 ifneq ($(KERNELRELEASE),)
 # kbuild part of makefile
@@ -28,6 +28,9 @@ define ixgbe-y
 	ixgbe_82599.o
 	ixgbe_x540.o
 	ixgbe_x550.o
+	ixgbe_e610.o
+	ixgbe_devlink.o
+	ixgbe_fw_update.o
 endef
 ixgbe-y := $(strip ${ixgbe-y})
 
@@ -41,6 +44,10 @@ ixgbe-$(CONFIG_PTP_1588_CLOCK:m=y) += ixgbe_ptp.o
 
 ixgbe-${CONFIG_SYSFS} += ixgbe_sysfs.o
 
+# Use kcompat pldmfw.c if kernel does not provide CONFIG_PLDMFW
+ifndef CONFIG_PLDMFW
+ixgbe-y += kcompat_pldmfw.o
+endif
 
 ixgbe-y += kcompat.o
 

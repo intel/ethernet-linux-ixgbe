@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe.h"
 
@@ -9,7 +9,174 @@
 
 static struct dentry *ixgbe_dbg_root;
 
+#define IXGBE_FW_DUMP_BLK_MAX	0xFFFF
+#define IXGBE_FW_DUMP_DATA_SIZE	4096
+#define IXGBE_FW_DUMP_HDR_SIZE	24
+/* dump blk = Cluster header + dump data */
+#define IXGBE_FW_DUMP_BLK_SIZE	(IXGBE_FW_DUMP_DATA_SIZE + IXGBE_FW_DUMP_HDR_SIZE)
+#define IXGBE_FW_DUMP_FILENAME	"debug_dump"
+#define IXGBE_FW_DUMP_LAST_IDX	0xFFFFFFFF
+#define IXGBE_FW_DUMP_LAST_ID	0xFF
+#define IXGBE_FW_DUMP_LAST_ID2	0xFFFF
+
 static char ixgbe_dbg_reg_ops_buf[256] = "";
+
+/* the ordering in this array is important. it matches the ordering of the
+ * values in the FW so the index is the same value as in ice_aqc_fw_logging_mod
+ */
+static const char * const ixgbe_fwlog_module_string[] = {
+	"GENERAL",
+	"CTRL",
+	"LINK",
+	"LINK_TOPO",
+	"DNL",
+	"I2C",
+	"SDP",
+	"MDIO",
+	"ADMINQ",
+	"HDMA",
+	"LLDP",
+	"DCBX",
+	"DCB",
+	"XLR",
+	"NVM",
+	"AUTH",
+	"VPD",
+	"IOSF",
+	"PARSER",
+	"SW",
+	"SCHEDULER",
+	"TXQ",
+	"RSVD",
+	"POST",
+	"WATCHDOG",
+	"TASK_DISPATCH",
+	"MNG",
+	"HEALTH",
+	"TSDRV",
+	"PFREG",
+	"MDLVER",
+	"ALL",
+};
+
+/* the ordering in this array is important. it matches the ordering of the
+ * values in the FW so the index is the same value as in ice_fwlog_level
+ */
+static const char * const ixgbe_fwlog_level_string[] = {
+	"NONE",
+	"ERROR",
+	"WARNING",
+	"NORMAL",
+	"VERBOSE",
+};
+
+static void ixgbe_print_fwlog_config(struct ixgbe_hw *hw, struct ixgbe_fwlog_cfg *cfg,
+				     char **buff, int *size)
+{
+	char *tmp = *buff;
+	int used = *size;
+	u16 i, len;
+
+	len = snprintf(tmp, used, "Log_resolution: %d\n", cfg->log_resolution);
+	tmp = tmp + len;
+	used -= len;
+	len = snprintf(tmp, used, "Options: 0x%04x\n", cfg->options);
+	tmp = tmp + len;
+	used -= len;
+	len = snprintf(tmp, used, "\tarq_ena: %s\n",
+		       (cfg->options &
+		       IXGBE_FWLOG_OPTION_ARQ_ENA) ? "true" : "false");
+	tmp = tmp + len;
+	used -= len;
+	len = snprintf(tmp, used, "\tuart_ena: %s\n",
+		       (cfg->options &
+		       IXGBE_FWLOG_OPTION_UART_ENA) ? "true" : "false");
+	tmp = tmp + len;
+	used -= len;
+	len = snprintf(tmp, used, "\trunning: %s\n",
+		       (cfg->options &
+		       IXGBE_FWLOG_OPTION_IS_REGISTERED) ? "true" : "false");
+	tmp = tmp + len;
+	used -= len;
+	len = snprintf(tmp, used, "Module Entries:\n");
+	tmp = tmp + len;
+	used -= len;
+
+	for (i = 0; i < IXGBE_ACI_FW_LOG_ID_MAX; i++) {
+		struct ixgbe_fwlog_module_entry *entry =
+			&cfg->module_entries[i];
+
+		len = snprintf(tmp, used, "\tModule: %s, Log Level: %s\n",
+			       ixgbe_fwlog_module_string[entry->module_id],
+			       ixgbe_fwlog_level_string[entry->log_level]);
+		tmp = tmp + len;
+		used -= len;
+	}
+
+	len = snprintf(tmp, used, "Valid log levels:\n");
+	tmp = tmp + len;
+	used -= len;
+
+	for (i = 0; i < IXGBE_FWLOG_LEVEL_INVALID; i++) {
+		len = snprintf(tmp, used, "\t%s\n", ixgbe_fwlog_level_string[i]);
+		tmp = tmp + len;
+		used -= len;
+	}
+
+	*buff = tmp;
+	*size = used;
+}
+
+/**
+ * ixgbe_fwlog_dump_cfg - Dump current FW logging configuration
+ * @hw: pointer to the HW structure
+ * @buff: pointer to a buffer to hold the config strings
+ * @buff_size: size of the buffer in bytes
+ */
+static void ixgbe_fwlog_dump_cfg(struct ixgbe_hw *hw, char *buff, int buff_size)
+{
+	int len;
+
+	len = snprintf(buff, buff_size, "FWLOG Configuration:\n");
+	buff = buff + len;
+	buff_size -= len;
+
+	ixgbe_print_fwlog_config(hw, &hw->fwlog_cfg, &buff, &buff_size);
+}
+
+/**
+ * ixgbe_debugfs_parse_cmd_line - Parse the command line that was passed in
+ * @src: pointer to a buffer holding the command line
+ * @len: size of the buffer in bytes
+ * @argv: pointer to store the command line items
+ * @argc: pointer to store the number of command line items
+ */
+static ssize_t ixgbe_debugfs_parse_cmd_line(const char __user *src, size_t len,
+					    char ***argv, int *argc)
+{
+	char *cmd_buf, *cmd_buf_tmp;
+
+	cmd_buf = memdup_user(src, len + 1);
+	if (IS_ERR(cmd_buf))
+		return PTR_ERR(cmd_buf);
+	cmd_buf[len] = '\0';
+
+	/** the cmd_buf has a newline at the end of the command so
+	 * remove it
+	 */
+	cmd_buf_tmp = strchr(cmd_buf, '\n');
+	if (cmd_buf_tmp) {
+		*cmd_buf_tmp = '\0';
+		len = (size_t)cmd_buf_tmp - (size_t)cmd_buf + 1;
+	}
+
+	*argv = argv_split(GFP_KERNEL, cmd_buf, argc);
+	if (!*argv)
+		return -ENOMEM;
+
+	kfree(cmd_buf);
+	return 0;
+}
 
 /**
  * ixgbe_dbg_reg_ops_read - read for reg_ops datum
@@ -210,29 +377,895 @@ static struct file_operations ixgbe_dbg_netdev_ops_fops = {
 	.write = ixgbe_dbg_netdev_ops_write,
 };
 
+struct ixgbe_cluster_header {
+	u32 cluster_id;
+	u32 table_id;
+	u32 table_len;
+	u32 table_offset;
+	u32 reserved[2];
+};
+
+/**
+ * ixgbe_get_last_table_id - get a value that should be used as End of Table
+ * @pf: pointer to pf struct
+ *
+ * Different versions of FW may indicate End Of Table by different value. Read
+ * FW capabilities and decide what value to use as End of Table.
+ *
+ * Return: end of table identifier.
+ */
+static u16 ixgbe_get_last_table_id(struct ixgbe_adapter *adapter)
+{
+	if (adapter->hw.func_caps.common_cap.next_cluster_id_support ||
+	    adapter->hw.dev_caps.common_cap.next_cluster_id_support)
+		return IXGBE_FW_DUMP_LAST_ID2;
+	else
+		return IXGBE_FW_DUMP_LAST_ID;
+}
+
+/**
+ * ixgbe_debugfs_fw_dump - send request to FW to dump cluster and save to file
+ * @adapter: pointer to adapter struct
+ * @cluster_id: number or FW cluster to be dumped
+ *
+ * Create FW configuration binary snapshot. Repeatedly send ACI requests to dump
+ * FW cluster, FW responds in 4KB blocks and sets new values for table_id
+ * and table_idx. Repeat until all tables in given cluster were read.
+ *
+ * Return: 0 on success or error code on failure.
+ */
+static int ixgbe_debugfs_fw_dump(struct ixgbe_adapter *adapter,
+				 u16 cluster_id, bool read_all_clusters)
+{
+	u16 buf_len, next_tbl_id, next_cluster_id, last_tbl_id, tbl_id = 0;
+	u32 next_blk_idx, blk_idx = 0, ntw = 0, ctw = 0, offset = 0;
+	struct debugfs_blob_wrapper *desc_blob;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_cluster_header header = {};
+	struct dentry *pfile;
+	u8 *vblk;
+	int i;
+
+	desc_blob = devm_kzalloc(dev, sizeof(*desc_blob), GFP_KERNEL);
+	if (!desc_blob)
+		return -ENOMEM;
+
+	vfree(adapter->ixgbe_cluster_blk);
+	adapter->ixgbe_cluster_blk = NULL;
+
+	vblk = vmalloc(IXGBE_FW_DUMP_BLK_MAX * IXGBE_FW_DUMP_BLK_SIZE);
+	if (!vblk)
+		return -ENOMEM;
+
+	last_tbl_id = ixgbe_get_last_table_id(adapter);
+
+	for (i = 0; i < IXGBE_FW_DUMP_BLK_MAX; i++) {
+		int res;
+
+		/* Skip the header bytes */
+		ntw += sizeof(struct ixgbe_cluster_header);
+
+		res = ixgbe_aci_get_internal_data(&adapter->hw, cluster_id,
+						  tbl_id, blk_idx, vblk + ntw,
+						  IXGBE_FW_DUMP_DATA_SIZE,
+						  &buf_len, &next_cluster_id,
+						  &next_tbl_id, &next_blk_idx);
+
+		if (res) {
+			dev_err(dev, "Internal FW error %d while dumping cluster %d\n",
+				res, cluster_id);
+			devm_kfree(dev, desc_blob);
+			vfree(vblk);
+			return -EINVAL;
+		}
+		ntw += buf_len;
+
+		header.cluster_id = cluster_id;
+		header.table_id = tbl_id;
+		header.table_len = buf_len;
+		header.table_offset = offset;
+
+		memcpy(vblk + ctw, &header, sizeof(header));
+		ctw = ntw;
+		memset(&header, 0, sizeof(header));
+
+		offset += buf_len;
+
+		if (blk_idx == next_blk_idx)
+			blk_idx = IXGBE_FW_DUMP_LAST_IDX;
+		else
+			blk_idx = next_blk_idx;
+
+		if (blk_idx != IXGBE_FW_DUMP_LAST_IDX)
+			continue;
+
+		blk_idx = 0;
+		offset = 0;
+
+		if (next_cluster_id == IXGBE_FW_DUMP_LAST_ID2)
+			break;
+
+		if (next_tbl_id != last_tbl_id)
+			tbl_id = next_tbl_id;
+
+		/* End of cluster */
+		if (cluster_id != next_cluster_id) {
+			if (read_all_clusters) {
+				dev_info(dev, "All FW clusters dump - cluster %d appended",
+					 cluster_id);
+				cluster_id = next_cluster_id;
+				tbl_id = 0;
+			} else {
+				break;
+			}
+		}
+	}
+
+	desc_blob->size = (unsigned long)ntw;
+	desc_blob->data = vblk;
+
+	pfile = debugfs_create_blob(IXGBE_FW_DUMP_FILENAME, 0400,
+				    adapter->ixgbe_dbg_adapter_fw_cluster, desc_blob);
+	if (!pfile)
+		return -ENODEV;
+
+	adapter->ixgbe_cluster_blk = vblk;
+
+	if (read_all_clusters)
+		dev_info(dev, "Created FW dump of all available clusters in file %s\n",
+			 IXGBE_FW_DUMP_FILENAME);
+	else
+		dev_info(dev, "Created FW dump of cluster %d in file %s\n",
+			 cluster_id, IXGBE_FW_DUMP_FILENAME);
+
+	return 0;
+}
+
+/**
+ * dump_cluster_id_read - show currently set FW cluster id to dump
+ * @file: kernel file struct
+ * @buf: user space buffer to fill with correct data
+ * @len: buf's length
+ * @offset: current position in buf
+ */
+static ssize_t dump_cluster_id_read(struct file *file, char __user *buf,
+				    size_t len, loff_t *offset)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	char tmp_buf[11];
+	int ret;
+
+	ret = snprintf(tmp_buf, sizeof(tmp_buf), "%u\n",
+		       adapter->fw_dump_cluster_id);
+
+	return simple_read_from_buffer(buf, len, offset, tmp_buf, ret);
+}
+
+/**
+ * dump_cluster_id_write - set FW cluster id to dump
+ * @file: kernel file struct
+ * @buf: user space buffer containing data to read
+ * @len: buf's length
+ * @offset: current position in buf
+ */
+static ssize_t dump_cluster_id_write(struct file *file, const char __user *buf,
+				     size_t len, loff_t *offset)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	bool read_all_clusters = false;
+	char kbuf[11] = { 0 };
+	int bytes_read, err;
+	u16 cluster_id;
+
+	bytes_read = simple_write_to_buffer(kbuf, sizeof(kbuf), offset, buf,
+					    len);
+
+	if (bytes_read < 0)
+		return -EINVAL;
+
+	if (bytes_read == 1 && kbuf[0] == '\n') {
+		cluster_id = 0;
+		read_all_clusters = true;
+	} else {
+		err = kstrtou16(kbuf, 10, &cluster_id);
+		if (err)
+			return err;
+	}
+
+	debugfs_lookup_and_remove(IXGBE_FW_DUMP_FILENAME, adapter->ixgbe_dbg_adapter_fw_cluster);
+	err = ixgbe_debugfs_fw_dump(adapter, cluster_id, read_all_clusters);
+	if (err)
+		return err;
+
+	/* Not all cluster IDs are supported in every FW version, save
+	 * the value only when FW returned success
+	 */
+	adapter->fw_dump_cluster_id = cluster_id;
+
+	return bytes_read;
+}
+
+static const struct file_operations dump_cluster_id_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = dump_cluster_id_read,
+	.write = dump_cluster_id_write,
+};
+
+/**
+ * ixgbe_debugfs_enable_read - read from 'enable' file
+ * @file: the opened file
+ * @buffer: where to write the data for the user to read
+ * @count: the size of the user's buffer
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_enable_read(struct file *file,
+					 char __user *buffer, size_t count,
+					 loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct ixgbe_hw *hw = &adapter->hw;
+	char buff[32] = {};
+	int status;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	snprintf(buff, sizeof(buff), "%u\n",
+		 (u16)(hw->fwlog_cfg.options &
+		 IXGBE_FWLOG_OPTION_IS_REGISTERED) >> 3);
+
+	status = simple_read_from_buffer(buffer, count, ppos, buff,
+					 strlen(buff));
+
+	return status;
+}
+
+/**
+ * ixgbe_debugfs_enable_write - write into 'enable' file
+ * @file: the opened file
+ * @buf: where to find the user's data
+ * @count: the length of the user's data
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_enable_write(struct file *file, const char __user *buf,
+					  size_t count, loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_hw *hw = &adapter->hw;
+	ssize_t ret;
+	char **argv;
+	int argc;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	/* don't allow partial writes */
+	if (*ppos != 0)
+		return 0;
+
+	ret = ixgbe_debugfs_parse_cmd_line(buf, count, &argv, &argc);
+	if (ret)
+		goto err_copy_from_user;
+
+	if (argc == 1) {
+		bool enable;
+
+		ret = kstrtobool(argv[0], &enable);
+		if (ret)
+			goto enable_write_error;
+
+		if (enable)
+			hw->fwlog_cfg.options |= IXGBE_FWLOG_OPTION_ARQ_ENA;
+		else
+			hw->fwlog_cfg.options &= ~IXGBE_FWLOG_OPTION_ARQ_ENA;
+
+		ret = ixgbe_fwlog_set(hw, &hw->fwlog_cfg);
+		if (ret)
+			goto enable_write_error;
+
+		if (enable)
+			ret = ixgbe_fwlog_register(hw);
+		else
+			ret = ixgbe_fwlog_unregister(hw);
+
+		if (ret)
+			goto enable_write_error;
+	} else {
+		dev_info(dev, "unknown or invalid command '%s'\n", argv[0]);
+		ret = -EINVAL;
+		goto enable_write_error;
+	}
+
+	/* if we get here, nothing went wrong; return bytes copied */
+	ret = (ssize_t)count;
+
+enable_write_error:
+	argv_free(argv);
+err_copy_from_user:
+	/* This function always consumes all of the written input, or produces
+	 * an error. Check and enforce this. Otherwise, the write operation
+	 * won't complete properly.
+	 */
+	if (WARN_ON(ret != (ssize_t)count && ret >= 0))
+		ret = -EIO;
+
+	return ret;
+}
+
+static const struct file_operations ixgbe_debugfs_enable_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = ixgbe_debugfs_enable_read,
+	.write = ixgbe_debugfs_enable_write,
+};
+
+/**
+ * ixgbe_debugfs_data_read - read from 'data' file
+ * @file: the opened file
+ * @buffer: where to write the data for the user to read
+ * @count: the size of the user's buffer
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_data_read(struct file *file, char __user *buffer,
+				       size_t count, loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct ixgbe_hw *hw = &adapter->hw;
+	int data_copied = 0;
+	bool done = false;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	if (ixgbe_fwlog_ring_empty(&hw->fwlog_ring))
+		return 0;
+
+	while (!ixgbe_fwlog_ring_empty(&hw->fwlog_ring) && !done) {
+		struct ixgbe_fwlog_data *log;
+		u16 cur_buf_len;
+
+		log = &hw->fwlog_ring.rings[hw->fwlog_ring.head];
+		cur_buf_len = log->data_size;
+
+		if (cur_buf_len >= count) {
+			done = true;
+			continue;
+		}
+
+		if (copy_to_user(buffer, log->data, cur_buf_len)) {
+			/* if there is an error then bail and return whatever
+			 * the driver has copied so far
+			 */
+			done = true;
+			continue;
+		}
+
+		data_copied += cur_buf_len;
+		buffer += cur_buf_len;
+		count -= cur_buf_len;
+		*ppos += cur_buf_len;
+		ixgbe_fwlog_ring_increment(&hw->fwlog_ring.head,
+					   hw->fwlog_ring.size);
+	}
+
+	return data_copied;
+}
+
+/**
+ * ixgbe_debugfs_data_write - write into 'data' file
+ * @file: the opened file
+ * @buf: where to find the user's data
+ * @count: the length of the user's data
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_data_write(struct file *file, const char __user *buf, size_t count,
+					loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_hw *hw = &adapter->hw;
+	ssize_t ret;
+	char **argv;
+	int argc;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	/* don't allow partial writes */
+	if (*ppos != 0)
+		return 0;
+
+	ret = ixgbe_debugfs_parse_cmd_line(buf, count, &argv, &argc);
+	if (ret)
+		goto err_copy_from_user;
+
+	if (argc == 1) {
+		if (!(hw->fwlog_cfg.options & IXGBE_FWLOG_OPTION_IS_REGISTERED)) {
+			hw->fwlog_ring.head = 0;
+			hw->fwlog_ring.tail = 0;
+		} else {
+			dev_info(dev, "Can't clear FW log data while FW log running\n");
+			ret = -EINVAL;
+			goto nr_buffs_write_error;
+		}
+	} else {
+		dev_info(dev, "unknown or invalid command '%s'\n", argv[0]);
+		ret = -EINVAL;
+		goto nr_buffs_write_error;
+	}
+
+	/* if we get here, nothing went wrong; return bytes copied */
+	ret = (ssize_t)count;
+
+nr_buffs_write_error:
+	argv_free(argv);
+err_copy_from_user:
+	/* This function always consumes all of the written input, or produces
+	 * an error. Check and enforce this. Otherwise, the write operation
+	 * won't complete properly.
+	 */
+	if (WARN_ON(ret != (ssize_t)count && ret >= 0))
+		ret = -EIO;
+
+	return ret;
+}
+
+static const struct file_operations ixgbe_debugfs_data_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = ixgbe_debugfs_data_read,
+	.write = ixgbe_debugfs_data_write,
+};
+
+/**
+ * ixgbe_debugfs_nr_buffs_read - read from 'nr_buffs' file
+ * @file: the opened file
+ * @buffer: where to write the data for the user to read
+ * @count: the size of the user's buffer
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_nr_buffs_read(struct file *file,
+					   char __user *buffer, size_t count,
+					   loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct ixgbe_hw *hw = &adapter->hw;
+	char buff[32] = {};
+	int status;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	snprintf(buff, sizeof(buff), "%d\n", hw->fwlog_ring.size);
+
+	status = simple_read_from_buffer(buffer, count, ppos, buff,
+					 strlen(buff));
+
+	return status;
+}
+
+/**
+ * ixgbe_debugfs_nr_buffs_write - write into 'nr_buffs' file
+ * @file: the opened file
+ * @buf: where to find the user's data
+ * @count: the length of the user's data
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_nr_buffs_write(struct file *file, const char __user *buf,
+					    size_t count, loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_hw *hw = &adapter->hw;
+	ssize_t ret;
+	char **argv;
+	int argc;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	/* don't allow partial writes */
+	if (*ppos != 0)
+		return 0;
+
+	ret = ixgbe_debugfs_parse_cmd_line(buf, count, &argv, &argc);
+	if (ret)
+		goto err_copy_from_user;
+
+	if (argc == 1) {
+		s16 nr_buffs;
+
+		ret = kstrtos16(argv[0], 0, &nr_buffs);
+		if (ret)
+			goto nr_buffs_write_error;
+
+		if (nr_buffs <= 0 || nr_buffs > IXGBE_FWLOG_RING_SIZE_MAX) {
+			dev_info(dev, "nr_buffs '%d' is not within bounds. Please use a value between 1 and %d\n",
+				 nr_buffs, IXGBE_FWLOG_RING_SIZE_MAX);
+			ret = -EINVAL;
+			goto nr_buffs_write_error;
+		} else if (hweight16(nr_buffs) > 1) {
+			dev_info(dev, "nr_buffs '%d' is not a power of 2. Please use a value that is a power of 2.\n",
+				 nr_buffs);
+			ret = -EINVAL;
+			goto nr_buffs_write_error;
+		} else if (hw->fwlog_cfg.options &
+			   IXGBE_FWLOG_OPTION_IS_REGISTERED) {
+			dev_info(dev, "FW logging is currently running. Please disable FW logging to change nr_buffs\n");
+			ret = -EINVAL;
+			goto nr_buffs_write_error;
+		}
+
+		/* free all the buffers and the tracking info and resize */
+		ixgbe_fwlog_realloc_rings(hw, nr_buffs);
+	} else {
+		dev_info(dev, "unknown or invalid command '%s'\n", argv[0]);
+		ret = -EINVAL;
+		goto nr_buffs_write_error;
+	}
+
+	/* if we get here, nothing went wrong; return bytes copied */
+	ret = (ssize_t)count;
+
+nr_buffs_write_error:
+	argv_free(argv);
+err_copy_from_user:
+	/* This function always consumes all of the written input, or produces
+	 * an error. Check and enforce this. Otherwise, the write operation
+	 * won't complete properly.
+	 */
+	if (WARN_ON(ret != (ssize_t)count && ret >= 0))
+		ret = -EIO;
+
+	return ret;
+}
+
+static const struct file_operations ixgbe_debugfs_nr_buffs_fops = {
+	.owner = THIS_MODULE,
+	.open  = simple_open,
+	.read = ixgbe_debugfs_nr_buffs_read,
+	.write = ixgbe_debugfs_nr_buffs_write,
+};
+
+/**
+ * ixgbe_debugfs_module_read - read from 'module' file
+ * @file: the opened file
+ * @buffer: where to write the data for the user to read
+ * @count: the size of the user's buffer
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_module_read(struct file *file, char __user *buffer,
+					 size_t count, loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_hw *hw = &adapter->hw;
+	char *data = NULL;
+	int status;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	data = vzalloc(PAGE_SIZE);
+	if (!data) {
+		dev_warn(dev, "Unable to allocate memory for FW configuration!\n");
+		return -ENOMEM;
+	}
+
+	ixgbe_fwlog_dump_cfg(hw, data, PAGE_SIZE);
+
+	if (count < strlen(data))
+		return -ENOSPC;
+
+	status = simple_read_from_buffer(buffer, count, ppos, data,
+					 strlen(data));
+	vfree(data);
+
+	return status;
+}
+
+/**
+ * ixgbe_debugfs_module_write - write into 'module' file
+ * @file: the opened file
+ * @buf: where to find the user's data
+ * @count: the length of the user's data
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_module_write(struct file *file, const char __user *buf,
+					  size_t count, loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_hw *hw = &adapter->hw;
+	ssize_t ret;
+	char **argv;
+	int argc;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	/* don't allow partial writes */
+	if (*ppos != 0)
+		return 0;
+
+	ret = ixgbe_debugfs_parse_cmd_line(buf, count, &argv, &argc);
+	if (ret)
+		goto err_copy_from_user;
+
+	if (argc == 2) {
+		int module, log_level;
+
+		module = sysfs_match_string(ixgbe_fwlog_module_string, argv[0]);
+		if (module < 0) {
+			dev_info(dev, "unknown module '%s'\n", argv[0]);
+			ret = -EINVAL;
+			goto module_write_error;
+		}
+
+		log_level = sysfs_match_string(ixgbe_fwlog_level_string, argv[1]);
+		if (log_level < 0) {
+			dev_info(dev, "unknown log level '%s'\n", argv[1]);
+			ret = -EINVAL;
+			goto module_write_error;
+		}
+
+		/* module is valid because it was range checked using
+		 * sysfs_match_string()
+		 */
+		if (module != IXGBE_ACI_FW_LOG_ID_MAX) {
+			ixgbe_pf_fwlog_update_module(adapter, log_level, module);
+		} else {
+			/* the module 'ALL' is a shortcut so that we can set
+			 * all of the modules to the same level quickly
+			 */
+			int i;
+
+			for (i = 0; i < IXGBE_ACI_FW_LOG_ID_MAX; i++)
+				ixgbe_pf_fwlog_update_module(adapter, log_level, i);
+		}
+	} else {
+		dev_info(dev, "unknown or invalid command '%s'\n", argv[0]);
+		ret = -EINVAL;
+		goto module_write_error;
+	}
+
+	/* if we get here, nothing went wrong; return bytes copied */
+	ret = (ssize_t)count;
+
+module_write_error:
+	argv_free(argv);
+err_copy_from_user:
+	/* This function always consumes all of the written input, or produces
+	 * an error. Check and enforce this. Otherwise, the write operation
+	 * won't complete properly.
+	 */
+	if (WARN_ON(ret != (ssize_t)count && ret >= 0))
+		ret = -EIO;
+
+	return ret;
+}
+
+static const struct file_operations ixgbe_dbg_module_fops = {
+	.owner = THIS_MODULE,
+	.open  = simple_open,
+	.read = ixgbe_debugfs_module_read,
+	.write = ixgbe_debugfs_module_write,
+};
+
+/**
+ * ixgbe_debugfs_resolution_read - read from 'resolution' file
+ * @file: the opened file
+ * @buffer: where to write the data for the user to read
+ * @count: the size of the user's buffer
+ * @ppos: file position offset
+ */
+static ssize_t ixgbe_debugfs_resolution_read(struct file *file,
+					     char __user *buffer, size_t count,
+					     loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct ixgbe_hw *hw = &adapter->hw;
+	char buff[32] = {};
+	int status;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	snprintf(buff, sizeof(buff), "%d\n",
+		 hw->fwlog_cfg.log_resolution);
+
+	status = simple_read_from_buffer(buffer, count, ppos, buff,
+					 strlen(buff));
+
+	return status;
+}
+
+/**
+ * ixgbe_debugfs_resolution_write - write into 'resolution' file
+ * @file: the opened file
+ * @buf: where to find the user's data
+ * @count: the length of the user's data
+ * @ppos: file position offset
+ */
+static ssize_t
+ixgbe_debugfs_resolution_write(struct file *file, const char __user *buf,
+			       size_t count, loff_t *ppos)
+{
+	struct ixgbe_adapter *adapter = file->private_data;
+	struct device *dev = ixgbe_pf_to_dev(adapter);
+	struct ixgbe_hw *hw = &adapter->hw;
+	ssize_t ret;
+	char **argv;
+	int argc;
+
+	/* don't allow commands if the FW doesn't support it */
+	if (!ixgbe_fwlog_supported(hw))
+		return -EOPNOTSUPP;
+
+	/* don't allow partial writes */
+	if (*ppos != 0)
+		return 0;
+
+	ret = ixgbe_debugfs_parse_cmd_line(buf, count, &argv, &argc);
+	if (ret)
+		goto err_copy_from_user;
+
+	if (argc == 1) {
+		s16 resolution;
+
+		ret = kstrtos16(argv[0], 0, &resolution);
+		if (ret)
+			goto resolution_write_error;
+
+		if (resolution < IXGBE_ACI_FW_LOG_MIN_RESOLUTION ||
+		    resolution > IXGBE_ACI_FW_LOG_MAX_RESOLUTION) {
+			dev_err(dev, "Invalid FW log resolution %d, value must be between %d - %d\n",
+				resolution, IXGBE_ACI_FW_LOG_MIN_RESOLUTION,
+				IXGBE_ACI_FW_LOG_MAX_RESOLUTION);
+			ret = -EINVAL;
+			goto resolution_write_error;
+		}
+
+		hw->fwlog_cfg.log_resolution = resolution;
+	} else {
+		dev_info(dev, "unknown or invalid command '%s'\n", argv[0]);
+		ret = -EINVAL;
+		goto resolution_write_error;
+	}
+
+	/* if we get here, nothing went wrong; return bytes copied */
+	ret = (ssize_t)count;
+
+resolution_write_error:
+	argv_free(argv);
+err_copy_from_user:
+	/* This function always consumes all of the written input, or produces
+	 * an error. Check and enforce this. Otherwise, the write operation
+	 * won't complete properly.
+	 */
+	if (WARN_ON(ret != (ssize_t)count && ret >= 0))
+		ret = -EIO;
+
+	return ret;
+}
+
+static const struct file_operations ixgbe_dbg_resolution_fops = {
+	.owner = THIS_MODULE,
+	.open  = simple_open,
+	.read = ixgbe_debugfs_resolution_read,
+	.write = ixgbe_debugfs_resolution_write,
+};
+
 /**
  * ixgbe_dbg_adapter_init - setup the debugfs directory for the adapter
  * @adapter: the adapter that is starting up
- **/
+ */
 void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter)
 {
 	const char *name = pci_name(adapter->pdev);
-	struct dentry *pfile;
-	adapter->ixgbe_dbg_adapter = debugfs_create_dir(name, ixgbe_dbg_root);
-	if (adapter->ixgbe_dbg_adapter) {
-		pfile = debugfs_create_file("reg_ops", 0600,
-					    adapter->ixgbe_dbg_adapter, adapter,
-					    &ixgbe_dbg_reg_ops_fops);
-		if (!pfile)
-			e_dev_err("debugfs reg_ops for %s failed\n", name);
-		pfile = debugfs_create_file("netdev_ops", 0600,
-					    adapter->ixgbe_dbg_adapter, adapter,
-					    &ixgbe_dbg_netdev_ops_fops);
-		if (!pfile)
-			e_dev_err("debugfs netdev_ops for %s failed\n", name);
-	} else {
-		e_dev_err("debugfs entry for %s failed\n", name);
+
+	adapter->ixgbe_dbg_adapter_pf = debugfs_create_dir(name, ixgbe_dbg_root);
+	if (!adapter->ixgbe_dbg_adapter_pf) {
+		e_dev_err("debugfs pf entry for %s failed\n", name);
+		return;
 	}
+
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		adapter->ixgbe_dbg_adapter_fw =
+			debugfs_create_dir("fwlog", adapter->ixgbe_dbg_adapter_pf);
+		if (!adapter->ixgbe_dbg_adapter_fw) {
+			e_dev_err("debugfs fwlog entry for %s failed\n", name);
+			return;
+		}
+
+		adapter->ixgbe_dbg_adapter_fw_cluster =
+			debugfs_create_dir("fw", adapter->ixgbe_dbg_adapter_pf);
+		if (!adapter->ixgbe_dbg_adapter_fw_cluster) {
+			e_dev_err("debugfs fw entry for %s failed\n", name);
+			return;
+		}
+
+		if (!debugfs_create_file("dump_cluster_id", 0600,
+					 adapter->ixgbe_dbg_adapter_fw_cluster,
+					 adapter,
+					 &dump_cluster_id_fops)) {
+			e_dev_err("debugfs dump_cluster_id for %s failed\n", name);
+			goto create_failed;
+		}
+
+		if (!debugfs_create_file("enable", 0600,
+					 adapter->ixgbe_dbg_adapter_fw,
+					 adapter,
+					 &ixgbe_debugfs_enable_fops)) {
+			e_dev_err("debugfs enable for %s failed\n", name);
+			goto create_failed;
+		}
+
+		if (!debugfs_create_file("data", 0600,
+					 adapter->ixgbe_dbg_adapter_fw,
+					 adapter,
+					 &ixgbe_debugfs_data_fops)) {
+			e_dev_err("debugfs data for %s failed\n", name);
+			goto create_failed;
+		}
+
+		if (!debugfs_create_file("modules", 0600,
+					 adapter->ixgbe_dbg_adapter_fw,
+					 adapter,
+					 &ixgbe_dbg_module_fops)) {
+			e_dev_err("debugfs modules for %s failed\n", name);
+			goto create_failed;
+		}
+
+		if (!debugfs_create_file("resolution", 0600,
+					 adapter->ixgbe_dbg_adapter_fw,
+					 adapter,
+					 &ixgbe_dbg_resolution_fops)) {
+			e_dev_err("debugfs resolution for %s failed\n", name);
+			goto create_failed;
+		}
+
+		if (!debugfs_create_file("nr_buffs", 0600,
+					 adapter->ixgbe_dbg_adapter_fw,
+					 adapter,
+					 &ixgbe_debugfs_nr_buffs_fops)) {
+			e_dev_err("debugfs nr_buffs for %s failed\n", name);
+			goto create_failed;
+		}
+	}
+
+	if (!debugfs_create_file("reg", 0600,
+				 adapter->ixgbe_dbg_adapter_pf,
+				 adapter,
+				 &ixgbe_dbg_reg_ops_fops)) {
+		e_dev_err("debugfs reg for %s failed\n", name);
+		goto create_failed;
+	}
+
+	if (!debugfs_create_file("netdev", 0600,
+				 adapter->ixgbe_dbg_adapter_pf,
+				 adapter,
+				 &ixgbe_dbg_netdev_ops_fops)) {
+		e_dev_err("debugfs netdev for %s failed\n", name);
+		goto create_failed;
+	}
+
+	return;
+
+create_failed:
+	debugfs_remove_recursive(adapter->ixgbe_dbg_adapter_pf);
+	adapter->ixgbe_dbg_adapter_pf = NULL;
 }
 
 /**
@@ -241,13 +1274,16 @@ void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter)
  **/
 void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter)
 {
-	if (adapter->ixgbe_dbg_adapter)
-		debugfs_remove_recursive(adapter->ixgbe_dbg_adapter);
-	adapter->ixgbe_dbg_adapter = NULL;
+	if (adapter->ixgbe_dbg_adapter_pf)
+		debugfs_remove_recursive(adapter->ixgbe_dbg_adapter_pf);
+	adapter->ixgbe_dbg_adapter_pf = NULL;
+
+	vfree(adapter->ixgbe_cluster_blk);
+	adapter->ixgbe_cluster_blk = NULL;
 }
 
 /**
- * ixgbe_dbg_init - start up debugfs for the driver
+ * ixgbe_dbg_init - create root directory for debugfs entries
  **/
 void ixgbe_dbg_init(void)
 {

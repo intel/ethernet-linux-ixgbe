@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2023 Intel Corporation */
+/* Copyright (C) 1999 - 2024 Intel Corporation */
 
 #include "ixgbe.h"
 #include <linux/ptp_classify.h>
@@ -135,6 +135,7 @@
  * proper mult and shift to convert the cycles into nanoseconds of time.
  */
 #define IXGBE_X550_BASE_PERIOD 0xC80000000ULL
+#define IXGBE_E610_BASE_PERIOD 0x333333334ULL
 #define INCVALUE_MASK	0x7FFFFFFF
 #define ISGN		0x80000000
 #define MAX_TIMADJ	0x7FFFFFFF
@@ -411,6 +412,8 @@ static void ixgbe_ptp_convert_to_hwtstamp(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		/* Upper 32 bits represent billions of cycles, lower 32 bits
 		 * represent cycles. However, we use timespec64_to_ns for the
 		 * correct math even though the units haven't been corrected
@@ -518,8 +521,12 @@ static int ixgbe_ptp_adjfine_X550(struct ptp_clock_info *ptp, long scaled_ppm)
 	bool neg_adj;
 	u64 rate;
 	u32 inca;
-
-	neg_adj = diff_by_scaled_ppm(IXGBE_X550_BASE_PERIOD, scaled_ppm, &rate);
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		neg_adj = diff_by_scaled_ppm(IXGBE_E610_BASE_PERIOD,
+					     scaled_ppm, &rate);
+	else
+		neg_adj = diff_by_scaled_ppm(IXGBE_X550_BASE_PERIOD,
+					     scaled_ppm, &rate);
 
 	/* warn if rate is too large */
 	if (rate >= INCVALUE_MASK)
@@ -609,6 +616,8 @@ static int ixgbe_ptp_gettimex(struct ptp_clock_info *ptp,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		/* Upper 32 bits represent billions of cycles, lower 32 bits
 		 * represent cycles. However, we use timespec64_to_ns for the
 		 * correct math even though the units haven't been corrected
@@ -1163,6 +1172,8 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		/* enable timestamping all packets only if at least some
 		 * packets were requested. Otherwise, play nice and disable
 		 * timestamping
@@ -1327,6 +1338,8 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 		fallthrough;
 	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X550:
+		fallthrough;
+	case ixgbe_mac_E610:
 		cc.read = ixgbe_ptp_read_X550;
 
 		/* enable SYSTIME counter */
@@ -1493,6 +1506,8 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
+		fallthrough;
+	case ixgbe_mac_E610:
 		snprintf(adapter->ptp_caps.name, 16, "%s", netdev->name);
 		adapter->ptp_caps.owner = THIS_MODULE;
 		adapter->ptp_caps.max_adj = 30000000;
@@ -1527,7 +1542,7 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 	}
 
 	adapter->ptp_clock = ptp_clock_register(&adapter->ptp_caps,
-						pci_dev_to_dev(adapter->pdev));
+						ixgbe_pf_to_dev(adapter));
 	if (IS_ERR(adapter->ptp_clock)) {
 		err = PTR_ERR(adapter->ptp_clock);
 		adapter->ptp_clock = NULL;
