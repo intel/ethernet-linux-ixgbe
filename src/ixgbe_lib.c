@@ -1124,10 +1124,7 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 		else
 			adapter->tx_ring[ring->queue_index] = NULL;
 	}
-
-	if (static_key_enabled((struct static_key *)&ixgbe_xdp_locking_key))
-		static_branch_dec(&ixgbe_xdp_locking_key);
-
+	
 	ixgbe_for_each_ring(ring, q_vector->rx)
 		adapter->rx_ring[ring->queue_index] = NULL;
 
