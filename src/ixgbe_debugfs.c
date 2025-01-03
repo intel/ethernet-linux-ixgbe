@@ -52,6 +52,7 @@ static const char * const ixgbe_fwlog_module_string[] = {
 	"WATCHDOG",
 	"TASK_DISPATCH",
 	"MNG",
+	"SYNCE",
 	"HEALTH",
 	"TSDRV",
 	"PFREG",
@@ -105,6 +106,10 @@ static void ixgbe_print_fwlog_config(struct ixgbe_hw *hw, struct ixgbe_fwlog_cfg
 	for (i = 0; i < IXGBE_ACI_FW_LOG_ID_MAX; i++) {
 		struct ixgbe_fwlog_module_entry *entry =
 			&cfg->module_entries[i];
+
+		/* TODO: Remove this hack when SyncE gets turned on always */
+		if (i == IXGBE_ACI_FW_LOG_ID_SYNCE)
+			continue;
 
 		len = snprintf(tmp, used, "\tModule: %s, Log Level: %s\n",
 			       ixgbe_fwlog_module_string[entry->module_id],
@@ -387,7 +392,7 @@ struct ixgbe_cluster_header {
 
 /**
  * ixgbe_get_last_table_id - get a value that should be used as End of Table
- * @pf: pointer to pf struct
+ * @adapter: pointer to adapter struct
  *
  * Different versions of FW may indicate End Of Table by different value. Read
  * FW capabilities and decide what value to use as End of Table.
@@ -407,6 +412,7 @@ static u16 ixgbe_get_last_table_id(struct ixgbe_adapter *adapter)
  * ixgbe_debugfs_fw_dump - send request to FW to dump cluster and save to file
  * @adapter: pointer to adapter struct
  * @cluster_id: number or FW cluster to be dumped
+ * @read_all_clusters: ignore cluster_id and dump all clusters
  *
  * Create FW configuration binary snapshot. Repeatedly send ACI requests to dump
  * FW cluster, FW responds in 4KB blocks and sets new values for table_id
@@ -1012,6 +1018,12 @@ static ssize_t ixgbe_debugfs_module_write(struct file *file, const char __user *
 			goto module_write_error;
 		}
 
+		/* TODO: remove this hack when SyncE gets turned on always */
+		if (module == IXGBE_ACI_FW_LOG_ID_SYNCE) {
+			ret = -EINVAL;
+			goto module_write_error;
+		}
+
 		log_level = sysfs_match_string(ixgbe_fwlog_level_string, argv[1]);
 		if (log_level < 0) {
 			dev_info(dev, "unknown log level '%s'\n", argv[1]);
@@ -1023,7 +1035,7 @@ static ssize_t ixgbe_debugfs_module_write(struct file *file, const char __user *
 		 * sysfs_match_string()
 		 */
 		if (module != IXGBE_ACI_FW_LOG_ID_MAX) {
-			ixgbe_pf_fwlog_update_module(adapter, log_level, module);
+			ixgbe_pf_fwlog_update_modules(adapter, log_level, 1 << module);
 		} else {
 			/* the module 'ALL' is a shortcut so that we can set
 			 * all of the modules to the same level quickly
@@ -1031,7 +1043,7 @@ static ssize_t ixgbe_debugfs_module_write(struct file *file, const char __user *
 			int i;
 
 			for (i = 0; i < IXGBE_ACI_FW_LOG_ID_MAX; i++)
-				ixgbe_pf_fwlog_update_module(adapter, log_level, i);
+				ixgbe_pf_fwlog_update_modules(adapter, log_level, 1 << i);
 		}
 	} else {
 		dev_info(dev, "unknown or invalid command '%s'\n", argv[0]);

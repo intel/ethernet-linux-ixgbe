@@ -144,13 +144,15 @@ function find-macro-implementation-decl() {
 	find-decl "$what" "$end" "$@"
 }
 
-# yield first line of $1 typedef definition (simple typedefs only)
-# this probably won't handle typedef struct { \n int foo;\n};
+# yield first line of $1 typedef definition
+# This only handles typedefs where the name is on first line
 function find-typedef-decl() {
 	test $# -ge 2
 	local what end
-	what="/^typedef .* $1"';$/'
-	end=1
+	# Assumes type name is followed by other ')', '(', or ';', or
+	# whitespace
+	what="/^typedef$WB.*$1"'[\(\); \t\n]/'
+	end='/;$/'
 	shift
 	find-decl "$what" "$end" "$@"
 }
@@ -350,6 +352,17 @@ function gen() {
 				printf(missing_fmt, define)
 		}
 	' <<< "$body"
+}
+
+# check() - Like gen, but return true/false instead of generating output
+#
+# syntax:
+#   See gen(), except do not pass a DEFINE name, or the action keyword.
+function check() {
+	# Always run check in unifdef mode
+	local UNIFDEF_MODE=1
+
+	[[ "$(gen CHECK if "$@")" = "-DCHECK" ]]
 }
 
 # tell if given flag is enabled in .config

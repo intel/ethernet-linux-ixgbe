@@ -59,7 +59,6 @@
 #else /* >= 7.7 */
 #define HAVE_DEVLINK_PORT_ATTRS_SET_PORT_FLAVOUR
 #define HAVE_ETHTOOL_NEW_100G_BITS
-#undef NEED_NETDEV_TX_SENT_QUEUE
 #undef NEED_IN_TASK
 #define HAVE_FLOW_DISSECTOR_KEY_ENC_IP
 #endif /* 7.7 */
@@ -72,19 +71,14 @@
 #define HAVE_NDO_OFFLOAD_STATS
 #undef HAVE_RHEL7_EXTENDED_OFFLOAD_STATS
 #define HAVE_TCF_EXTS_FOR_EACH_ACTION
-/* 7.7 undefs it due to a backport in 7.7+, but 8.0 needs it still */
-#define NEED_NETDEV_TX_SENT_QUEUE
 #endif /* 8.0 */
 
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,1))
 #define NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
-#define NEED_FLOW_MATCH
 #else /* >= 8.1 */
 #define HAVE_ETHTOOL_NEW_100G_BITS
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
-#undef NEED_FLOW_MATCH
-#undef NEED_NETDEV_TX_SENT_QUEUE
 #undef NEED_INDIRECT_CALL_WRAPPER_MACROS
 #define HAVE_INDIRECT_CALL_WRAPPER_HEADER
 #define HAVE_GRETAP_TYPE
@@ -96,9 +90,6 @@
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,2))
 #else /* >= 8.2 */
-#undef NEED_DEVLINK_FLASH_UPDATE_STATUS_NOTIFY
-#undef NEED_SKB_FRAG_OFF
-#undef NEED_SKB_FRAG_OFF_ADD
 #undef NEED_FLOW_INDR_BLOCK_CB_REGISTER
 #define HAVE_FLOW_INDR_BLOCK_LOCK
 #define HAVE_DEVLINK_PORT_ATTRS_SET_SWITCH_ID
@@ -109,7 +100,6 @@
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,3))
 #else /* >= 8.3 */
 #undef NEED_CPU_LATENCY_QOS_RENAME
-#undef NEED_DEVLINK_REGION_CREATE_OPS
 #define HAVE_RT_IRQ_SCHED_FIX
 #endif /* 8.3 */
 
@@ -117,7 +107,6 @@
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,4))
 #else /* >= 8.4 */
 #undef NEED_DEVLINK_PORT_ATTRS_SET_STRUCT
-#undef NEED_DEVLINK_FLASH_UPDATE_TIMEOUT_NOTIFY
 #undef HAVE_XDP_QUERY_PROG
 #define HAVE_AF_XDP_ZC_SUPPORT
 #define HAVE_MEM_TYPE_XSK_BUFF_POOL
@@ -125,7 +114,6 @@
 #define XSK_UMEM_RETURNS_XDP_DESC
 #undef NEED_XSK_UMEM_GET_RX_FRAME_SIZE
 #define HAVE_ETHTOOL_COALESCE_PARAMS_SUPPORT
-#define HAVE_PTP_FIND_PIN_UNLOCKED
 #endif /* 8.4 */
 
 /*****************************************************************************/

@@ -69,7 +69,6 @@
 #define NEED_TC_SETUP_QDISC_MQPRIO
 #define NEED_NETDEV_XDP_STRUCT
 #else /* >= 4,15,0 */
-#define HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
 #define HAVE_NDO_BPF
 #endif /* 4,15,0 */
 
@@ -108,7 +107,6 @@
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0))
-#define NEED_NETDEV_TX_SENT_QUEUE
 #else /* >= 4.20.0 */
 #define HAVE_VXLAN_TYPE
 #define HAVE_LINKMODE
@@ -125,7 +123,6 @@
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0))
-#define NEED_FLOW_MATCH
 #else /* >= 5.1.0 */
 #define HAVE_ETHTOOL_200G_BITS
 #define HAVE_ETHTOOL_NEW_100G_BITS
@@ -138,24 +135,7 @@
 #endif /* 5.2.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
-#define NEED_DEVLINK_FLASH_UPDATE_STATUS_NOTIFY
-#else /* >= 5.3.0 */
-#endif /* 5.3.0 */
-
-/*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0))
-#define NEED_SKB_FRAG_OFF_ADD
-#define NEED_SKB_FRAG_OFF
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(4,14,241) && \
-     LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
-#undef NEED_SKB_FRAG_OFF
-#endif /* > 4.14.241 && < 4.15.0 */
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(4,19,200) && \
-     LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0))
-#undef NEED_SKB_FRAG_OFF
-#endif /* > 4.19.200 && < 4.20.0 */
-
 #define NEED_FLOW_INDR_BLOCK_CB_REGISTER
 #else /* >= 5.4.0 */
 #define HAVE_FLOW_INDR_BLOCK_LOCK
@@ -164,10 +144,8 @@
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,7,0))
-#define NEED_DEVLINK_REGION_CREATE_OPS
 #define NEED_CPU_LATENCY_QOS_RENAME
 #else /* >= 5.7.0 */
-#define HAVE_PTP_FIND_PIN_UNLOCKED
 #endif /* 5.7.0 */
 
 /*****************************************************************************/
@@ -189,7 +167,6 @@
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0))
-#define NEED_DEVLINK_FLASH_UPDATE_TIMEOUT_NOTIFY
 #define NEED_XSK_BUFF_POOL_RENAME
 #else /* >= 5.10.0 */
 #define HAVE_UDP_TUNNEL_NIC_SHARED

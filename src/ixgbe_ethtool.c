@@ -791,7 +791,7 @@ static int ixgbe_set_link_ksettings(struct net_device *netdev,
 		if (old == advertised)
 			return err;
 		/* this sets the link speed and restarts auto-neg */
-		while (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+		while (test_and_set_bit(__IXGBE_IN_SFP_INIT, adapter->state))
 			usleep_range(1000, 2000);
 
 		hw->mac.autotry_restart = true;
@@ -800,7 +800,7 @@ static int ixgbe_set_link_ksettings(struct net_device *netdev,
 			e_info(probe, "setup link failed with code %d\n", err);
 			hw->mac.ops.setup_link(hw, old, true);
 		}
-		clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
+		clear_bit(__IXGBE_IN_SFP_INIT, adapter->state);
 	} else {
 		/* in this case we currently only support 10Gb/FULL */
 		u32 speed = cmd->base.speed;
@@ -857,7 +857,7 @@ static int ixgbe_set_settings(struct net_device *netdev,
 		if (old == advertised)
 			return err;
 		/* this sets the link speed and restarts auto-neg */
-		while (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+		while (test_and_set_bit(__IXGBE_IN_SFP_INIT, adapter->state))
 			usleep_range(1000, 2000);
 
 		hw->mac.autotry_restart = true;
@@ -866,7 +866,7 @@ static int ixgbe_set_settings(struct net_device *netdev,
 			e_info(probe, "setup link failed with code %d\n", err);
 			hw->mac.ops.setup_link(hw, old, true);
 		}
-		clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
+		clear_bit(__IXGBE_IN_SFP_INIT, adapter->state);
 	}
 	else {
 		/* in this case we currently only support 10Gb/FULL */
@@ -919,6 +919,11 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 	    (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
 		return -EINVAL;
 
+	if ((hw->mac.type == ixgbe_mac_E610) &&
+	    (pause->autoneg == AUTONEG_DISABLE)) {
+		netdev_info(netdev, "Cannot disable autonegotiation for that device.\n");
+		return -EOPNOTSUPP;
+	}
 
 	/* some devices do not support autoneg of flow control */
 	if ((pause->autoneg == AUTONEG_ENABLE) &&
@@ -927,7 +932,8 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 
 	fc.disable_fc_autoneg = (pause->autoneg != AUTONEG_ENABLE);
 
-	if ((pause->rx_pause && pause->tx_pause) || pause->autoneg)
+	if ((pause->rx_pause && pause->tx_pause) ||
+	    (pause->autoneg && hw->mac.type != ixgbe_mac_E610))
 		fc.requested_mode = ixgbe_fc_full;
 	else if (pause->rx_pause)
 		fc.requested_mode = ixgbe_fc_rx_pause;
@@ -1530,7 +1536,7 @@ static int ixgbe_get_eeprom(struct net_device *netdev,
 	last_word = (eeprom->offset + eeprom->len - 1) >> 1;
 	eeprom_len = last_word - first_word + 1;
 
-	eeprom_buff = kmalloc(sizeof(u16) * eeprom_len, GFP_KERNEL);
+	eeprom_buff = kzalloc(sizeof(u16) * eeprom_len, GFP_KERNEL);
 	if (!eeprom_buff)
 		return -ENOMEM;
 
@@ -1539,7 +1545,7 @@ static int ixgbe_get_eeprom(struct net_device *netdev,
 
 	/* Device's eeprom is always little-endian, word addressable */
 	for (i = 0; i < eeprom_len; i++)
-		le16_to_cpus(&eeprom_buff[i]);
+		eeprom_buff[i] = le16_to_cpu(eeprom_buff[i]);
 
 	memcpy(bytes, (u8 *)eeprom_buff + (eeprom->offset & 1), eeprom->len);
 	kfree(eeprom_buff);
@@ -1556,7 +1562,7 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	struct ixgbe_nvm_access *nvm;
 	u32 magic;
 	u16 *eeprom_buff, i;
-	void *ptr;
+	u8 *ptr;
 
 	if (eeprom->len == 0)
 		return -EINVAL;
@@ -1577,11 +1583,11 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 
 	first_word = eeprom->offset >> 1;
 	last_word = (eeprom->offset + eeprom->len - 1) >> 1;
-	eeprom_buff = kmalloc(max_len, GFP_KERNEL);
+	eeprom_buff = kzalloc(max_len, GFP_KERNEL);
 	if (!eeprom_buff)
 		return -ENOMEM;
 
-	ptr = eeprom_buff;
+	ptr = (u8 *)eeprom_buff;
 
 	if (eeprom->offset & 1) {
 		/*
@@ -1607,12 +1613,12 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 
 	/* Device's eeprom is always little-endian, word addressable */
 	for (i = 0; i < last_word - first_word + 1; i++)
-		le16_to_cpus(&eeprom_buff[i]);
+		eeprom_buff[i] = le16_to_cpu(eeprom_buff[i]);
 
 	memcpy(ptr, bytes, eeprom->len);
 
 	for (i = 0; i < last_word - first_word + 1; i++)
-		cpu_to_le16s(&eeprom_buff[i]);
+		eeprom_buff[i] = cpu_to_le16(eeprom_buff[i]);
 
 	ret_val = hw->eeprom.ops.write_buffer(hw, first_word,
 					    last_word - first_word + 1,
@@ -1627,10 +1633,25 @@ err:
 	return ret_val;
 }
 
+#if defined(HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT)
+static void ixgbe_refresh_fw_version(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	ixgbe_init_nvm(hw);
+	ixgbe_set_fw_version_E610(adapter);
+}
+#endif
+
 static void ixgbe_get_drvinfo(struct net_device *netdev,
 			      struct ethtool_drvinfo *drvinfo)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+#if defined(HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT)
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		ixgbe_refresh_fw_version(adapter);
+#endif
 
 	strscpy(drvinfo->driver, ixgbe_driver_name,
 		sizeof(drvinfo->driver));
@@ -1721,7 +1742,7 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 		return -EBUSY;
 #endif /* HAVE_AF_XDP_ZC_SUPPORT */
 
-	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
+	while (test_and_set_bit(__IXGBE_RESETTING, adapter->state))
 		usleep_range(1000, 2000);
 
 	if (!netif_running(adapter->netdev)) {
@@ -1840,7 +1861,7 @@ err_setup:
 	ixgbe_up(adapter);
 	vfree(temp_ring);
 clear_reset:
-	clear_bit(__IXGBE_RESETTING, &adapter->state);
+	clear_bit(__IXGBE_RESETTING, adapter->state);
 	return err;
 }
 
@@ -2877,7 +2898,7 @@ static void ixgbe_diag_test(struct net_device *netdev,
 		eth_test->flags |= ETH_TEST_FL_FAILED;
 		return;
 	}
-	set_bit(__IXGBE_TESTING, &adapter->state);
+	set_bit(__IXGBE_TESTING, adapter->state);
 	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
 		if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
 			int i;
@@ -2894,7 +2915,7 @@ static void ixgbe_diag_test(struct net_device *netdev,
 					data[4] = 1;
 					eth_test->flags |= ETH_TEST_FL_FAILED;
 					clear_bit(__IXGBE_TESTING,
-						  &adapter->state);
+						  adapter->state);
 					goto skip_ol_tests;
 				}
 			}
@@ -2946,7 +2967,7 @@ skip_loopback:
 		ixgbe_reset(adapter);
 
 		/* clear testing bit and return adapter to previous state */
-		clear_bit(__IXGBE_TESTING, &adapter->state);
+		clear_bit(__IXGBE_TESTING, adapter->state);
 		if (if_running)
 			ixgbe_open(netdev);
 		else if (hw->mac.ops.disable_tx_laser)
@@ -2964,7 +2985,7 @@ skip_loopback:
 		data[2] = 0;
 		data[3] = 0;
 
-		clear_bit(__IXGBE_TESTING, &adapter->state);
+		clear_bit(__IXGBE_TESTING, adapter->state);
 	}
 
 skip_ol_tests:
@@ -4318,8 +4339,13 @@ static int ixgbe_set_rxfh(struct net_device *netdev, const u32 *indir,
 #endif /* ETHTOOL_GRSSH && ETHTOOL_SRSSH */
 
 #ifdef HAVE_ETHTOOL_GET_TS_INFO
+#ifdef HAVE_ETHTOOL_KERNEL_TS_INFO
+static int ixgbe_get_ts_info(struct net_device *dev,
+			     struct kernel_ethtool_ts_info *info)
+#else
 static int ixgbe_get_ts_info(struct net_device *dev,
 			     struct ethtool_ts_info *info)
+#endif /* HAVE_ETHTOOL_KERNEL_TS_INFO */
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 
@@ -4546,7 +4572,7 @@ static int ixgbe_get_module_eeprom(struct net_device *dev,
 
 	for (i = ee->offset; i < ee->offset + ee->len; i++) {
 		/* I2C reads can take long time */
-		if (test_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+		if (test_bit(__IXGBE_IN_SFP_INIT, adapter->state))
 			return -EBUSY;
 
 		if (i < ETH_MODULE_SFF_8079_LEN)
@@ -4724,13 +4750,22 @@ static int ixgbe_get_keee(struct net_device *netdev, struct ethtool_keee *kedata
 }
 
 #ifndef HAVE_ETHTOOL_KEEE
+
+#define IXGBE_LINK_MODE_MASK	0xFFFFFFFF
+
 static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
 {
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
 	struct ethtool_keee kedata;
 	int ret;
 
 	eee_to_keee(&kedata, edata);
 	ret = ixgbe_get_keee(netdev, &kedata);
+
+	/* workaround for kernels limiting linkmode up to 32 bits */
+	ethtool_convert_legacy_u32_to_link_mode(mask, IXGBE_LINK_MODE_MASK);
+	linkmode_and(kedata.supported, kedata.supported, mask);
+
 	keee_to_eee(edata, &kedata);
 
 	return ret;
@@ -4808,11 +4843,17 @@ static int ixgbe_set_keee(struct net_device *netdev, struct ethtool_keee *kedata
 #ifndef HAVE_ETHTOOL_KEEE
 static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 {
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
 	struct ethtool_keee kedata;
 	int ret;
 
 	eee_to_keee(&kedata, edata);
 	ret = ixgbe_set_keee(netdev, &kedata);
+
+	/* workaround for kernels limiting linkmode up to 32 bits */
+	ethtool_convert_legacy_u32_to_link_mode(mask, IXGBE_LINK_MODE_MASK);
+	linkmode_and(kedata.supported, kedata.supported, mask);
+
 	keee_to_eee(edata, &kedata);
 
 	return ret;

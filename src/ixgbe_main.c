@@ -73,7 +73,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.21.6" \
+#define DRV_VERSION	"5.22.25" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -331,19 +331,20 @@ static inline int ixgbe_enumerate_functions(struct ixgbe_adapter *adapter)
 
 static void ixgbe_service_event_schedule(struct ixgbe_adapter *adapter)
 {
-	if (!test_bit(__IXGBE_DOWN, &adapter->state) &&
-	    !test_bit(__IXGBE_REMOVING, &adapter->state) &&
-	    !test_and_set_bit(__IXGBE_SERVICE_SCHED, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state) &&
+	    !test_bit(__IXGBE_REMOVING, adapter->state) &&
+	    !test_and_set_bit(__IXGBE_SERVICE_SCHED, adapter->state))
 		queue_work(ixgbe_wq, &adapter->service_task);
 }
 
 static void ixgbe_service_event_complete(struct ixgbe_adapter *adapter)
 {
-	BUG_ON(!test_bit(__IXGBE_SERVICE_SCHED, &adapter->state));
+	/* In case something went really wrong with scheduling, trigger BUG. */
+	BUG_ON(!test_bit(__IXGBE_SERVICE_SCHED, adapter->state));
 
 	/* flush memory to make sure state is correct before next watchog */
 	smp_mb__before_atomic();
-	clear_bit(__IXGBE_SERVICE_SCHED, &adapter->state);
+	clear_bit(__IXGBE_SERVICE_SCHED, adapter->state);
 }
 
 static void ixgbe_remove_adapter(struct ixgbe_hw *hw)
@@ -354,7 +355,7 @@ static void ixgbe_remove_adapter(struct ixgbe_hw *hw)
 		return;
 	hw->hw_addr = NULL;
 	e_dev_err("Adapter removed\n");
-	if (test_bit(__IXGBE_SERVICE_INITED, &adapter->state))
+	if (test_bit(__IXGBE_SERVICE_INITED, adapter->state))
 		ixgbe_service_event_schedule(adapter);
 }
 
@@ -738,8 +739,8 @@ static void ixgbe_tx_timeout_reset(struct ixgbe_adapter *adapter)
 {
 
 	/* Do the reset outside of interrupt context */
-	if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
-		set_bit(__IXGBE_RESET_REQUESTED, &adapter->state);
+	if (!test_bit(__IXGBE_DOWN, adapter->state)) {
+		set_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 		ixgbe_service_event_schedule(adapter);
 	}
 }
@@ -940,7 +941,7 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 	unsigned int budget = q_vector->tx.work_limit;
 	unsigned int i = tx_ring->next_to_clean;
 
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state))
 		return true;
 
 	tx_buffer = &tx_ring->tx_buffer_info[i];
@@ -1068,15 +1069,15 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 		smp_mb();
 #ifdef HAVE_TX_MQ
 		if (__netif_subqueue_stopped(netdev_ring(tx_ring),
-					     ring_queue_index(tx_ring))
-		    && !test_bit(__IXGBE_DOWN, &q_vector->adapter->state)) {
+					     ring_queue_index(tx_ring)) &&
+		    !test_bit(__IXGBE_DOWN, q_vector->adapter->state)) {
 			netif_wake_subqueue(netdev_ring(tx_ring),
 					    ring_queue_index(tx_ring));
 			++tx_ring->tx_stats.restart_queue;
 		}
 #else
 		if (netif_queue_stopped(netdev_ring(tx_ring)) &&
-		    !test_bit(__IXGBE_DOWN, &q_vector->adapter->state)) {
+		    !test_bit(__IXGBE_DOWN, q_vector->adapter->state)) {
 			netif_wake_queue(netdev_ring(tx_ring));
 			++tx_ring->tx_stats.restart_queue;
 		}
@@ -2741,7 +2742,7 @@ static int ixgbe_busy_poll_recv(struct napi_struct *napi)
 	struct ixgbe_ring  *ring;
 	int found = 0;
 
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state))
 		return LL_FLUSH_FAILED;
 
 	if (!ixgbe_qv_lock_poll(q_vector))
@@ -3099,7 +3100,7 @@ static void ixgbe_check_overtemp_subtask(struct ixgbe_adapter *adapter)
 	u32 eicr = adapter->interrupt_event;
 	s32 rc;
 
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state))
 		return;
 
 	if (!(adapter->flags2 & IXGBE_FLAG2_TEMP_SENSOR_EVENT))
@@ -3180,7 +3181,7 @@ static void ixgbe_check_mng_event(struct ixgbe_adapter *adapter, u32 eicr)
 			if (hw->fw_rst_cnt < fw_reset_cnt) {
 				hw->fw_rst_cnt = fw_reset_cnt;
 				set_bit(__IXGBE_RESET_REQUESTED,
-					&adapter->state);
+					adapter->state);
 				ixgbe_service_event_schedule(adapter);
 			}
 		}
@@ -3519,7 +3520,7 @@ static void ixgbe_check_overtemp_event(struct ixgbe_adapter *adapter, u32 eicr)
 		 * on service task
 		 */
 		if (((eicr & IXGBE_EICR_GPI_SDP0) || (eicr & IXGBE_EICR_LSC)) &&
-		    (!test_bit(__IXGBE_DOWN, &adapter->state))) {
+		    (!test_bit(__IXGBE_DOWN, adapter->state))) {
 			adapter->interrupt_event = eicr;
 			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_EVENT;
 			ixgbe_service_event_schedule(adapter);
@@ -3564,7 +3565,7 @@ static void ixgbe_check_sfp_event(struct ixgbe_adapter *adapter, u32 eicr)
 	if (eicr & eicr_mask) {
 		/* Clear the interrupt */
 		IXGBE_WRITE_REG(hw, IXGBE_EICR, eicr_mask);
-		if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
+		if (!test_bit(__IXGBE_DOWN, adapter->state)) {
 			adapter->flags2 |= IXGBE_FLAG2_SFP_NEEDS_RESET;
 			adapter->sfp_poll_time = 0;
 			ixgbe_service_event_schedule(adapter);
@@ -3575,7 +3576,7 @@ static void ixgbe_check_sfp_event(struct ixgbe_adapter *adapter, u32 eicr)
 	    (eicr & IXGBE_EICR_GPI_SDP1_BY_MAC(hw))) {
 		/* Clear the interrupt */
 		IXGBE_WRITE_REG(hw, IXGBE_EICR, IXGBE_EICR_GPI_SDP1_BY_MAC(hw));
-		if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
+		if (!test_bit(__IXGBE_DOWN, adapter->state)) {
 			adapter->flags |= IXGBE_FLAG_NEED_LINK_CONFIG;
 			ixgbe_service_event_schedule(adapter);
 		}
@@ -3589,7 +3590,7 @@ static void ixgbe_check_lsc(struct ixgbe_adapter *adapter)
 	adapter->lsc_int++;
 	adapter->flags |= IXGBE_FLAG_NEED_LINK_UPDATE;
 	adapter->link_check_timeout = jiffies;
-	if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
+	if (!test_bit(__IXGBE_DOWN, adapter->state)) {
 		IXGBE_WRITE_REG(hw, IXGBE_EIMC, IXGBE_EIMC_LSC);
 		IXGBE_WRITE_FLUSH(hw);
 		ixgbe_service_event_schedule(adapter);
@@ -3756,9 +3757,9 @@ static void ixgbe_schedule_fw_event(struct ixgbe_adapter *adapter)
 	if (adapter->hw.mac.type != ixgbe_mac_E610)
 		return;
 
-	if (!test_bit(__IXGBE_DOWN, &adapter->state) &&
-	    !test_bit(__IXGBE_REMOVING, &adapter->state) &&
-	    !test_bit(__IXGBE_RESETTING, &adapter->state)) {
+	if (!test_bit(__IXGBE_DOWN, adapter->state) &&
+	    !test_bit(__IXGBE_REMOVING, adapter->state) &&
+	    !test_bit(__IXGBE_RESETTING, adapter->state)) {
 		adapter->flags2 |= IXGBE_FLAG2_FW_ASYNC_EVENT;
 		ixgbe_service_event_schedule(adapter);
 	}
@@ -3799,6 +3800,7 @@ ixgbe_get_fwlog_data(struct ixgbe_hw *hw, struct ixgbe_aci_event *event)
  */
 static void ixgbe_handle_fw_event(struct ixgbe_adapter *adapter)
 {
+	struct net_device *netdev = adapter->netdev;
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_aci_event event;
 	bool pending = false;
@@ -3833,6 +3835,10 @@ static void ixgbe_handle_fw_event(struct ixgbe_adapter *adapter)
 			break;
 		case ixgbe_aci_opc_fw_logs_event:
 			ixgbe_get_fwlog_data(hw, &event);
+			break;
+		case ixgbe_aci_opc_temp_tca_event:
+			e_crit(drv, "%s\n", ixgbe_overheat_msg);
+			ixgbe_close(netdev);
 			break;
 		default:
 			e_warn(hw, "unknown FW async event captured\n");
@@ -3897,6 +3903,7 @@ static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter, bool queues,
 			break;
 		case ixgbe_mac_X540:
 		case ixgbe_mac_X550:
+		case ixgbe_mac_E610:
 			mask |= IXGBE_EIMS_TS;
 			break;
 		default:
@@ -3996,7 +4003,7 @@ static irqreturn_t ixgbe_msix_other(int __always_unused irq, void *data)
 		if (eicr & IXGBE_EICR_ECC) {
 			e_info(link, "Received unrecoverable ECC Err,"
 			       "initiating reset.\n");
-			set_bit(__IXGBE_RESET_REQUESTED, &adapter->state);
+			set_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 			ixgbe_service_event_schedule(adapter);
 			IXGBE_WRITE_REG(hw, IXGBE_EICR, IXGBE_EICR_ECC);
 		}
@@ -4040,7 +4047,7 @@ static irqreturn_t ixgbe_msix_other(int __always_unused irq, void *data)
 #endif
 
 	/* re-enable the original interrupt state, no lsc, no queues */
-	if (!test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state))
 		ixgbe_irq_enable(adapter, false, false);
 
 	return IRQ_HANDLED;
@@ -4143,7 +4150,7 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 	if (likely(napi_complete_done(napi, work_done))) {
 		if (adapter->rx_itr_setting == 1)
 			ixgbe_set_itr(q_vector);
-		if (!test_bit(__IXGBE_DOWN, &adapter->state))
+		if (!test_bit(__IXGBE_DOWN, adapter->state))
 			ixgbe_irq_enable_queues(adapter,
 						((u64)1 << q_vector->v_idx));
 	}
@@ -4241,7 +4248,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 		 * finish the workaround of silicon errata on 82598.  Unmask
 		 * the interrupt that we masked before the EICR read.
 		 */
-		if (!test_bit(__IXGBE_DOWN, &adapter->state))
+		if (!test_bit(__IXGBE_DOWN, adapter->state))
 			ixgbe_irq_enable(adapter, true, true);
 		return IRQ_NONE;	/* Not our interrupt */
 	}
@@ -4264,7 +4271,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 		if (eicr & IXGBE_EICR_ECC) {
 			e_info(link, "Received unrecoverable ECC Err,"
 			       "initiating reset.\n");
-			set_bit(__IXGBE_RESET_REQUESTED, &adapter->state);
+			set_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 			ixgbe_service_event_schedule(adapter);
 			IXGBE_WRITE_REG(hw, IXGBE_EICR, IXGBE_EICR_ECC);
 		}
@@ -4289,7 +4296,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 	 * re-enable link(maybe) and non-queue interrupts, no flush.
 	 * ixgbe_poll will re-enable the queue interrupts
 	 */
-	if (!test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state))
 		ixgbe_irq_enable(adapter, false, false);
 
 	return IRQ_HANDLED;
@@ -5730,12 +5737,12 @@ static void ixgbe_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 #endif
 
 #ifdef HAVE_VLAN_RX_REGISTER
-	if (!test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state))
 		ixgbe_irq_disable(adapter);
 
 	vlan_group_set_device(adapter->vlgrp, vid, NULL);
 
-	if (!test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state))
 		ixgbe_irq_enable(adapter, true, true);
 
 #endif /* HAVE_VLAN_RX_REGISTER */
@@ -5973,12 +5980,12 @@ void ixgbe_vlan_mode(struct net_device *netdev, u32 features)
 #endif
 
 #ifdef HAVE_VLAN_RX_REGISTER
-	if (!test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state))
 		ixgbe_irq_disable(adapter);
 
 	adapter->vlgrp = grp;
 
-	if (!test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, adapter->state))
 		ixgbe_irq_enable(adapter, true, true);
 #endif
 #ifdef HAVE_8021P_SUPPORT
@@ -7482,7 +7489,7 @@ static void ixgbe_up_complete(struct ixgbe_adapter *adapter)
 	ixgbe_set_phy_power(hw, true);
 
 	smp_mb__before_atomic();
-	clear_bit(__IXGBE_DOWN, &adapter->state);
+	clear_bit(__IXGBE_DOWN, adapter->state);
 	ixgbe_napi_enable_all(adapter);
 #ifndef IXGBE_NO_LLI
 	ixgbe_configure_lli(adapter);
@@ -7539,7 +7546,7 @@ void ixgbe_reinit_locked(struct ixgbe_adapter *adapter)
 	adapter->netdev->trans_start = jiffies;
 #endif
 
-	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
+	while (test_and_set_bit(__IXGBE_RESETTING, adapter->state))
 		usleep_range(1000, 2000);
 	if (adapter->hw.phy.type == ixgbe_phy_fw)
 		ixgbe_watchdog_link_is_down(adapter);
@@ -7553,7 +7560,7 @@ void ixgbe_reinit_locked(struct ixgbe_adapter *adapter)
 	if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED)
 		msleep(2000);
 	ixgbe_up(adapter);
-	clear_bit(__IXGBE_RESETTING, &adapter->state);
+	clear_bit(__IXGBE_RESETTING, adapter->state);
 }
 
 void ixgbe_up(struct ixgbe_adapter *adapter)
@@ -7992,24 +7999,6 @@ s32 ixgbe_fwlog_init(struct ixgbe_hw *hw)
 	return IXGBE_SUCCESS;
 }
 
-#ifdef HAVE_IXGBE_DEBUG_FS
-/**
- * ixgbe_pf_fwlog_update_module - update 1 module
- * @adapter: pointer to the PF struct
- * @log_level: log_level to use for the @events
- * @module: module to update
- */
-void ixgbe_pf_fwlog_update_module(struct ixgbe_adapter *adapter, int log_level, int module)
-{
-	struct ixgbe_fwlog_module_entry *entries;
-	struct ixgbe_hw *hw = &adapter->hw;
-
-	entries = (struct ixgbe_fwlog_module_entry *)hw->fwlog_cfg.module_entries;
-
-	entries[module].log_level = log_level;
-}
-#endif /* HAVE_IXGBE_DEBUG_FS */
-
 /**
  * ixgbe_pf_fwlog_init - initialize FW logging
  * @adapter: pointer to the adapter struct
@@ -8043,6 +8032,28 @@ ixgbe_pf_fwlog_init(struct ixgbe_adapter *adapter)
 	return 0;
 }
 
+/**
+ * ixgbe_pf_fwlog_deinit - de-initialize FW logging
+ * @adapter: pointer to the adapter struct
+ *
+ * Cleanup Firmware logging configuration on device de-init.
+ *
+ * Return: nothing, just message in dmesg
+ */
+static void
+ixgbe_pf_fwlog_deinit(struct ixgbe_adapter *adapter)
+{
+	if (ixgbe_fwlog_unregister(&adapter->hw)) {
+		struct device *dev = ixgbe_pf_to_dev(adapter);
+
+		dev_dbg(dev,
+			"failed to unregister from FW logging\n");
+	}
+
+	ixgbe_fwlog_free_ring_buffs(&adapter->hw.fwlog_ring);
+	kfree(adapter->hw.fwlog_ring.rings);
+}
+
 void ixgbe_reset(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -8054,7 +8065,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 	if (IXGBE_REMOVED(hw->hw_addr))
 		return;
 	/* lock SFP init bit to prevent race conditions with the watchdog */
-	while (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+	while (test_and_set_bit(__IXGBE_IN_SFP_INIT, adapter->state))
 		usleep_range(1000, 2000);
 
 	/* clear all SFP and link config related flags while holding SFP_INIT */
@@ -8087,7 +8098,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 		e_dev_err("Hardware Error: %d\n", err);
 	}
 
-	clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
+	clear_bit(__IXGBE_IN_SFP_INIT, adapter->state);
 
 	/* flush entries out of MAC table */
 	ixgbe_flush_sw_mac_table(adapter);
@@ -8109,7 +8120,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 	hw->mac.dmac_config.num_tcs = 0;
 
 #ifdef HAVE_PTP_1588_CLOCK
-	if (test_bit(__IXGBE_PTP_RUNNING, &adapter->state))
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state))
 		ixgbe_ptp_reset(adapter);
 #endif
 
@@ -8253,7 +8264,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	int i;
 
 	/* signal that we are down to the interrupt handler */
-	if (test_and_set_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_and_set_bit(__IXGBE_DOWN, adapter->state))
 		return; /* do nothing if already down */
 
 	/* Shut off incoming Tx traffic */
@@ -8276,7 +8287,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	ixgbe_napi_disable_all(adapter);
 
 	adapter->flags2 &= ~(IXGBE_FLAG2_FDIR_REQUIRES_REINIT);
-	clear_bit(__IXGBE_RESET_REQUESTED, &adapter->state);
+	clear_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 	adapter->flags &= ~IXGBE_FLAG_NEED_LINK_UPDATE;
 
 	del_timer_sync(&adapter->service_timer);
@@ -8617,7 +8628,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	/* set default work limits */
 	adapter->tx_work_limit = IXGBE_DEFAULT_TX_WORK;
 
-	set_bit(__IXGBE_DOWN, &adapter->state);
+	set_bit(__IXGBE_DOWN, adapter->state);
 out:
 	return err;
 }
@@ -8997,7 +9008,7 @@ int ixgbe_open(struct net_device *netdev)
 	int err;
 
 	/* disallow open during test */
-	if (test_bit(__IXGBE_TESTING, &adapter->state))
+	if (test_bit(__IXGBE_TESTING, adapter->state))
 		return -EBUSY;
 
 	netif_carrier_off(netdev);
@@ -9164,7 +9175,7 @@ static int ixgbe_resume(struct pci_dev *pdev)
 		return err;
 	}
 	smp_mb__before_atomic();
-	clear_bit(__IXGBE_DISABLED, &adapter->state);
+	clear_bit(__IXGBE_DISABLED, adapter->state);
 	pci_set_master(pdev);
 
 	pci_wake_from_d3(pdev, false);
@@ -9336,7 +9347,7 @@ static int __ixgbe_shutdown(struct pci_dev *pdev, bool *enable_wake)
 
 	ixgbe_release_hw_control(adapter);
 
-	if (!test_and_set_bit(__IXGBE_DISABLED, &adapter->state))
+	if (!test_and_set_bit(__IXGBE_DISABLED, adapter->state))
 		pci_disable_device(pdev);
 
 	return 0;
@@ -9528,8 +9539,8 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	u64 alloc_rx_page = 0;
 	u64 bytes = 0, packets = 0, hw_csum_rx_error = 0;
 
-	if (test_bit(__IXGBE_DOWN, &adapter->state) ||
-	    test_bit(__IXGBE_RESETTING, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state) ||
+	    test_bit(__IXGBE_RESETTING, adapter->state))
 		return;
 
 	if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED) {
@@ -9765,7 +9776,7 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	 * are not clear on read and otherwise you'll sometimes get
 	 * crazy values.
 	 */
-	if (!test_bit(__IXGBE_RESETTING, &adapter->state)) {
+	if (!test_bit(__IXGBE_RESETTING, adapter->state)) {
 		for (i = 0; i < adapter->num_vfs; i++) {
 			UPDATE_VF_COUNTER_32bit(IXGBE_PVFGPRC(i),	      \
 					adapter->vfinfo[i].last_vfstats.gprc, \
@@ -9804,7 +9815,7 @@ static void ixgbe_fdir_reinit_subtask(struct ixgbe_adapter *adapter)
 	adapter->flags2 &= ~IXGBE_FLAG2_FDIR_REQUIRES_REINIT;
 
 	/* if interface is down do nothing */
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state))
 		return;
 
 	/* do nothing if we are not using signature filters */
@@ -9845,9 +9856,9 @@ static void ixgbe_check_hang_subtask(struct ixgbe_adapter *adapter)
 	int i;
 
 	/* If we're down, removing or resetting, just bail */
-	if (test_bit(__IXGBE_DOWN, &adapter->state) ||
-	    test_bit(__IXGBE_REMOVING, &adapter->state) ||
-	    test_bit(__IXGBE_RESETTING, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state) ||
+	    test_bit(__IXGBE_REMOVING, adapter->state) ||
+	    test_bit(__IXGBE_RESETTING, adapter->state))
 		return;
 
 	/* Force detection of hung controller */
@@ -10027,7 +10038,7 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 #ifdef HAVE_PTP_1588_CLOCK
 	adapter->last_rx_ptp_check = jiffies;
 
-	if (test_bit(__IXGBE_PTP_RUNNING, &adapter->state))
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state))
 		ixgbe_ptp_start_cyclecounter(adapter);
 
 #endif
@@ -10096,7 +10107,7 @@ static void ixgbe_watchdog_link_is_down(struct ixgbe_adapter *adapter)
 		adapter->flags2 |= IXGBE_FLAG2_SEARCH_FOR_SFP;
 
 #ifdef HAVE_PTP_1588_CLOCK
-	if (test_bit(__IXGBE_PTP_RUNNING, &adapter->state))
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state))
 		ixgbe_ptp_start_cyclecounter(adapter);
 
 #endif
@@ -10172,7 +10183,7 @@ static void ixgbe_watchdog_flush_tx(struct ixgbe_adapter *adapter)
 			 * (Do the reset outside of interrupt context).
 			 */
 			e_warn(drv, "initiating reset due to lost link with pending Tx work\n");
-			set_bit(__IXGBE_RESET_REQUESTED, &adapter->state);
+			set_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 		}
 	}
 }
@@ -10297,9 +10308,9 @@ static void ixgbe_spoof_check(struct ixgbe_adapter *adapter)
 static void ixgbe_watchdog_subtask(struct ixgbe_adapter *adapter)
 {
 	/* if interface is down, removing or resetting, do nothing */
-	if (test_bit(__IXGBE_DOWN, &adapter->state) ||
-	    test_bit(__IXGBE_REMOVING, &adapter->state) ||
-	    test_bit(__IXGBE_RESETTING, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state) ||
+	    test_bit(__IXGBE_REMOVING, adapter->state) ||
+	    test_bit(__IXGBE_RESETTING, adapter->state))
 		return;
 
 	ixgbe_watchdog_update_link(adapter);
@@ -10336,7 +10347,7 @@ static void ixgbe_sfp_detection_subtask(struct ixgbe_adapter *adapter)
 		return;	/* If not yet time to poll for SFP */
 
 	/* someone else is in init, wait until next service event */
-	if (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+	if (test_and_set_bit(__IXGBE_IN_SFP_INIT, adapter->state))
 		return;
 
 	adapter->sfp_poll_time = jiffies + IXGBE_SFP_POLL_JIFFIES - 1;
@@ -10378,7 +10389,7 @@ static void ixgbe_sfp_detection_subtask(struct ixgbe_adapter *adapter)
 	e_info(probe, "detected SFP+: %d\n", hw->phy.sfp_type);
 
 sfp_out:
-	clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
+	clear_bit(__IXGBE_IN_SFP_INIT, adapter->state);
 
 	if ((err == IXGBE_ERR_SFP_NOT_SUPPORTED) &&
 	    adapter->netdev_registered) {
@@ -10406,7 +10417,7 @@ static void ixgbe_sfp_link_config_subtask(struct ixgbe_adapter *adapter)
 		return;
 
 	/* someone else is in init, wait until next service event */
-	if (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+	if (test_and_set_bit(__IXGBE_IN_SFP_INIT, adapter->state))
 		return;
 
 	adapter->flags &= ~IXGBE_FLAG_NEED_LINK_CONFIG;
@@ -10428,7 +10439,7 @@ static void ixgbe_sfp_link_config_subtask(struct ixgbe_adapter *adapter)
 
 	adapter->flags |= IXGBE_FLAG_NEED_LINK_UPDATE;
 	adapter->link_check_timeout = jiffies;
-	clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
+	clear_bit(__IXGBE_IN_SFP_INIT, adapter->state);
 }
 
 /**
@@ -10467,14 +10478,14 @@ static void ixgbe_phy_interrupt_subtask(struct ixgbe_adapter *adapter)
 
 static void ixgbe_reset_subtask(struct ixgbe_adapter *adapter)
 {
-	if (!test_and_clear_bit(__IXGBE_RESET_REQUESTED, &adapter->state))
+	if (!test_and_clear_bit(__IXGBE_RESET_REQUESTED, adapter->state))
 		return;
 
 	rtnl_lock();
 	/* If we're already down or resetting, just bail */
-	if (test_bit(__IXGBE_DOWN, &adapter->state) ||
-	    test_bit(__IXGBE_REMOVING, &adapter->state) ||
-	    test_bit(__IXGBE_RESETTING, &adapter->state)) {
+	if (test_bit(__IXGBE_DOWN, adapter->state) ||
+	    test_bit(__IXGBE_REMOVING, adapter->state) ||
+	    test_bit(__IXGBE_RESETTING, adapter->state)) {
 		rtnl_unlock();
 		return;
 	}
@@ -10555,7 +10566,7 @@ static void ixgbe_service_task(struct work_struct *work)
 	struct ixgbe_hw *hw = &adapter->hw;
 
 	if (IXGBE_REMOVED(adapter->hw.hw_addr)) {
-		if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
+		if (!test_bit(__IXGBE_DOWN, adapter->state)) {
 			rtnl_lock();
 			ixgbe_down(adapter);
 			rtnl_unlock();
@@ -10565,7 +10576,7 @@ static void ixgbe_service_task(struct work_struct *work)
 	}
 
 	if (ixgbe_check_fw_error(adapter)) {
-		if (!test_bit(__IXGBE_DOWN, &adapter->state)) {
+		if (!test_bit(__IXGBE_DOWN, adapter->state)) {
 			unregister_netdev(adapter->netdev);
 			adapter->netdev_registered = false;
 		}
@@ -10601,7 +10612,7 @@ static void ixgbe_service_task(struct work_struct *work)
 #endif
 	ixgbe_check_hang_subtask(adapter);
 #ifdef HAVE_PTP_1588_CLOCK
-	if (test_bit(__IXGBE_PTP_RUNNING, &adapter->state)) {
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state)) {
 		ixgbe_ptp_overflow_check(adapter);
 		if (unlikely(adapter->flags & IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER))
 			ixgbe_ptp_rx_hang(adapter);
@@ -11524,13 +11535,13 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 	if (unlikely(skb_tx(skb)->hardware) &&
 	    adapter->ptp_clock) {
 		if (!test_and_set_bit_lock(__IXGBE_PTP_TX_IN_PROGRESS,
-					   &adapter->state)) {
+					   adapter->state)) {
 			skb_tx(skb)->in_progress = 1;
 #else
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 	    adapter->ptp_clock) {
 		if (!test_and_set_bit_lock(__IXGBE_PTP_TX_IN_PROGRESS,
-				   &adapter->state)) {
+				   adapter->state)) {
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 #endif
 			tx_flags |= IXGBE_TX_FLAGS_TSTAMP;
@@ -11648,7 +11659,7 @@ cleanup_tx_tstamp:
 		dev_kfree_skb_any(adapter->ptp_tx_skb);
 		adapter->ptp_tx_skb = NULL;
 		cancel_work_sync(&adapter->ptp_tx_work);
-		clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
+		clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, adapter->state);
 	}
 #endif
 
@@ -11867,7 +11878,7 @@ static void ixgbe_netpoll(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 	/* if interface is down do nothing */
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state))
 		return;
 
 	if (adapter->flags & IXGBE_FLAG_MSIX_ENABLED) {
@@ -13327,7 +13338,7 @@ static int ixgbe_xdp_xmit(struct net_device *dev, struct xdp_buff *xdp)
 	int err;
 #endif
 
-	if (unlikely(test_bit(__IXGBE_DOWN, &adapter->state)))
+	if (unlikely(test_bit(__IXGBE_DOWN, adapter->state)))
 		return -ENETDOWN;
 
 #ifdef HAVE_NDO_XDP_XMIT_BULK_AND_FLAGS
@@ -13392,7 +13403,7 @@ static void ixgbe_xdp_flush(struct net_device *dev)
 	/* Its possible the device went down between xdp xmit and flush so
 	 * we need to ensure device is still up.
 	 */
-	if (unlikely(test_bit(__IXGBE_DOWN, &adapter->state)))
+	if (unlikely(test_bit(__IXGBE_DOWN, adapter->state)))
 		return;
 
 	ring = adapter->xdp_prog ? adapter->xdp_ring[smp_processor_id()] : NULL;
@@ -13710,7 +13721,7 @@ bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
  * format to display. The FW version is taken from the EEPROM/NVM.
  *
  */
-static void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter)
+void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_orom_info *orom = &adapter->hw.flash.orom;
 	struct ixgbe_nvm_info *nvm = &adapter->hw.flash.nvm;
@@ -13858,6 +13869,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #endif
 #endif /* NETIF_F_GSO_PARTIAL */
 	int i;
+
 	err = pci_enable_device_mem(pdev);
 	if (err)
 		return err;
@@ -13989,6 +14001,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 
 		e_info(probe, "OROM signature reading is temporarily skipped due to lack of support from fw side");
 
+		ixgbe_init_aci(hw);
+
 		status = ixgbe_init_nvm(&adapter->hw);
 		if (status)
 			pr_err("ixgbe_init_nvm failed %d\n", status);
@@ -14013,8 +14027,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 			if (ixgbe_pf_fwlog_init(adapter)) {
 				dev_err(&pdev->dev, "failed to initialize FW logging 0x%x\n",
 					err);
-				err = -EIO;
-				goto err_ioremap;
+				adapter->flags2 &= ~IXGBE_FLAG2_FWLOG_CAPABLE;
+				hw->fwlog_support_ena = false;
 			}
 		}
 	}
@@ -14318,11 +14332,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 	}
 
-	if (mac_type == ixgbe_mac_E610 && ixgbe_check_fw_api_ver(adapter)) {
-		err = -EIO;
-		goto err_sw_init;
-	}
-
 	if (!(mac_type == ixgbe_mac_E610) &&
 	    ixgbe_check_fw_error(adapter)) {
 		err = -EIO;
@@ -14349,10 +14358,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	ether_addr_copy(hw->mac.addr, hw->mac.perm_addr);
 	ixgbe_mac_set_default_filter(adapter);
 
-	if (mac_type == ixgbe_mac_E610) {
-		ixgbe_init_aci(hw);
-	}
-
 	timer_setup(&adapter->service_timer, ixgbe_service_timer, 0);
 
 	if (IXGBE_REMOVED(hw->hw_addr)) {
@@ -14360,8 +14365,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		goto err_aci_lock;
 	}
 	INIT_WORK(&adapter->service_task, ixgbe_service_task);
-	set_bit(__IXGBE_SERVICE_INITED, &adapter->state);
-	clear_bit(__IXGBE_SERVICE_SCHED, &adapter->state);
+	set_bit(__IXGBE_SERVICE_INITED, adapter->state);
+	clear_bit(__IXGBE_SERVICE_SCHED, adapter->state);
 
 	err = ixgbe_init_interrupt_scheme(adapter);
 	if (err)
@@ -14421,7 +14426,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	}
 
 	if (!((mac_type == ixgbe_mac_E610) &&
-	      ixgbe_check_fw_error(adapter))) {
+	      (ixgbe_check_fw_error(adapter) ||
+	       ixgbe_check_fw_api_ver(adapter)))) {
 		err = register_netdev(netdev);
 		if (err)
 			goto err_register;
@@ -14617,13 +14623,8 @@ err_register:
 	ixgbe_clear_interrupt_scheme(adapter);
 
 	if (mac_type == ixgbe_mac_E610 &&
-	    hw->fwlog_support_ena &&
-	    ixgbe_fwlog_unregister(&adapter->hw)) {
-		struct device *dev = ixgbe_pf_to_dev(adapter);
-
-		dev_dbg(dev,
-			"failed to unregister from FW logging\n");
-	}
+	    hw->fwlog_support_ena)
+		ixgbe_pf_fwlog_deinit(adapter);
 
 err_aci_lock:
 	if (mac_type == ixgbe_mac_E610)
@@ -14646,7 +14647,7 @@ err_sw_init:
 err_alloc_devlink:
 
 err_ioremap:
-	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
+	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, adapter->state);
 	free_netdev(netdev);
 err_alloc_etherdev:
 	pci_release_mem_regions(pdev);
@@ -14689,20 +14690,15 @@ static void ixgbe_remove(struct pci_dev *pdev)
 		ixgbe_devlink_unregister_params(adapter);
 	}
 	if (adapter->hw.mac.type == ixgbe_mac_E610 &&
-	    adapter->hw.fwlog_support_ena &&
-	    ixgbe_fwlog_unregister(&adapter->hw)) {
-		struct device *dev = ixgbe_pf_to_dev(adapter);
-
-		dev_dbg(dev,
-			"failed to unregister from FW logging\n");
-	}
+	    adapter->hw.fwlog_support_ena)
+		ixgbe_pf_fwlog_deinit(adapter);
 
 	netdev = adapter->netdev;
 #ifdef HAVE_IXGBE_DEBUG_FS
 	ixgbe_dbg_adapter_exit(adapter);
 
 #endif /*HAVE_IXGBE_DEBUG_FS */
-	set_bit(__IXGBE_REMOVING, &adapter->state);
+	set_bit(__IXGBE_REMOVING, adapter->state);
 	cancel_work_sync(&adapter->service_task);
 
 	if (adapter->hw.mac.type == ixgbe_mac_E610)
@@ -14770,7 +14766,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	kfree(adapter->rss_key);
 	bitmap_free(adapter->af_xdp_zc_qps);
 
-	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, &adapter->state);
+	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, adapter->state);
 	free_netdev(netdev);
 
 #ifdef HAVE_PCI_ENABLE_PCIE_ERROR_REPORTING
@@ -14958,7 +14954,7 @@ static pci_ers_result_t ixgbe_io_error_detected(struct pci_dev *pdev,
 
 skip_bad_vf_detection:
 #endif /* CONFIG_PCI_IOV */
-	if (!test_bit(__IXGBE_SERVICE_INITED, &adapter->state))
+	if (!test_bit(__IXGBE_SERVICE_INITED, adapter->state))
 		return PCI_ERS_RESULT_DISCONNECT;
 
 	if (!netif_device_present(netdev))
@@ -14975,7 +14971,7 @@ skip_bad_vf_detection:
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 
-	if (!test_and_set_bit(__IXGBE_DISABLED, &adapter->state))
+	if (!test_and_set_bit(__IXGBE_DISABLED, adapter->state))
 		pci_disable_device(pdev);
 	rtnl_unlock();
 
@@ -14999,7 +14995,7 @@ static pci_ers_result_t ixgbe_io_slot_reset(struct pci_dev *pdev)
 		result = PCI_ERS_RESULT_DISCONNECT;
 	} else {
 		smp_mb__before_atomic();
-		clear_bit(__IXGBE_DISABLED, &adapter->state);
+		clear_bit(__IXGBE_DISABLED, adapter->state);
 		adapter->hw.hw_addr = adapter->io_addr;
 		pci_set_master(pdev);
 		pci_restore_state(pdev);

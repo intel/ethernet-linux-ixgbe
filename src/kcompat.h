@@ -928,6 +928,15 @@ struct _kc_ethtool_pauseparam {
 /* Include definitions from the new kcompat layout */
 #include "kcompat_defs.h"
 
+#ifdef NEED_FLOW_CLS_OFFLOAD
+#define flow_block_offload tc_block_offload
+#define flow_block_command tc_block_command
+#define flow_cls_offload tc_cls_flower_offload
+#define flow_block_binder_type tcf_block_binder_type
+#define flow_cls_common_offload tc_cls_common_offload
+#define flow_cls_offload_flow_rule tc_cls_flower_offload_flow_rule
+#endif
+
 /*
  * ADQ depends on __TC_MQPRIO_MODE_MAX and related kernel code
  * added around 4.15. Some distributions (e.g. Oracle Linux 7.7)
@@ -5476,14 +5485,6 @@ void __kc_skb_complete_tx_timestamp(struct sk_buff *skb,
 #define skb_clone_sk __kc_skb_clone_sk
 #define skb_complete_tx_timestamp __kc_skb_complete_tx_timestamp
 #endif
-#if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))))
-u32 __kc_eth_get_headlen(const struct net_device *dev, unsigned char *data,
-			 unsigned int max_len);
-#else
-unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_len);
-#endif /* !RHEL >= 8.2 */
-
-#define eth_get_headlen __kc_eth_get_headlen
 #ifndef ETH_P_XDSA
 #define ETH_P_XDSA 0x00F8
 #endif
@@ -5748,7 +5749,6 @@ unsigned int _kc_cpumask_local_spread(unsigned int i, int node);
 #endif /* HAVE_RHASHTABLE */
 #else /* >= 4,1,0 */
 #define HAVE_NDO_GET_PHYS_PORT_NAME
-#define HAVE_PTP_CLOCK_INFO_GETTIME64
 #define HAVE_NDO_BRIDGE_GETLINK_NLFLAGS
 #define HAVE_PASSTHRU_FEATURES_CHECK
 #define HAVE_NDO_SET_VF_RSS_QUERY_EN
@@ -6041,18 +6041,9 @@ static inline void page_ref_inc(struct page *page)
 #define	IPV4_USER_FLOW	0x0d	/* spec only (usr_ip4_spec) */
 #endif
 
-#if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,4))
-#define HAVE_TC_SETUP_CLSFLOWER
-#define HAVE_TC_FLOWER_ENC
-#endif
-
 #if ((RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,7)) || \
      (SLE_VERSION_CODE >= SLE_VERSION(12,2,0)))
 #define HAVE_TC_SETUP_CLSU32
-#endif
-
-#if (SLE_VERSION_CODE >= SLE_VERSION(12,2,0))
-#define HAVE_TC_SETUP_CLSFLOWER
 #endif
 
 #ifndef kstrtobool
@@ -6063,7 +6054,6 @@ int _kc_kstrtobool(const char *s, bool *res);
 #else /* >= 4.6.0 */
 #define HAVE_PAGE_COUNT_BULK_UPDATE
 #define HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
-#define HAVE_TC_SETUP_CLSFLOWER
 #define HAVE_TC_SETUP_CLSU32
 #endif /* 4.6.0 */
 
@@ -6155,12 +6145,6 @@ pci_release_mem_regions(struct pci_dev *pdev)
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0))
-#ifdef HAVE_TC_SETUP_CLSFLOWER
-#if (!(RHEL_RELEASE_CODE) && !(SLE_VERSION_CODE) || \
-    (SLE_VERSION_CODE && (SLE_VERSION_CODE < SLE_VERSION(12,3,0))))
-#define HAVE_TC_FLOWER_VLAN_IN_TAGS
-#endif /* !RHEL_RELEASE_CODE && !SLE_VERSION_CODE || <SLE_VERSION(12,3,0) */
-#endif /* HAVE_TC_SETUP_CLSFLOWER */
 #if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,4))
 #define HAVE_ETHTOOL_NEW_1G_BITS
 #define HAVE_ETHTOOL_NEW_10G_BITS
@@ -6239,7 +6223,6 @@ static inline bool _kc_napi_complete_done2(struct napi_struct *napi,
 #define HAVE_NAPI_STATE_IN_BUSY_POLL
 #endif /* RHEL >= 7.5 || SLES >=12.4 */
 #else /* >= 4.10 */
-#define HAVE_TC_FLOWER_ENC
 #define HAVE_NETDEVICE_MIN_MAX_MTU
 #define HAVE_SWIOTLB_SKIP_CPU_SYNC
 #define HAVE_NETDEV_TC_RESETS_XPS
@@ -6373,7 +6356,6 @@ static inline bool uuid_equal(const uuid_t *u1, const uuid_t *u2)
 #define HAVE_HWTSTAMP_FILTER_NTP_ALL
 #define HAVE_NDO_SETUP_TC_CHAIN_INDEX
 #define HAVE_PCI_ERROR_HANDLER_RESET_PREPARE
-#define HAVE_PTP_CLOCK_DO_AUX_WORK
 #endif /* 4.13.0 */
 
 /*****************************************************************************/
@@ -6541,7 +6523,6 @@ const char *_kc_phy_speed_to_str(int speed);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
 #if ((RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6))) || \
      (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0))))
-#define HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
 #define HAVE_TCF_BLOCK
 #else /* RHEL >= 7.6 || SLES >= 15.1 */
 #endif /* !(RHEL >= 7.6) && !(SLES >= 15.1) */
@@ -6550,7 +6531,6 @@ void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 #define ethtool_intersect_link_masks _kc_ethtool_intersect_link_masks
 #else /* >= 4.15 */
 #define HAVE_XDP_BUFF_DATA_META
-#define HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
 #define HAVE_TCF_BLOCK
 #endif /* 4.15.0 */
 
@@ -6684,16 +6664,7 @@ static inline void __kc_metadata_dst_free(void *md_dst)
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0))
 #define HAVE_XDP_UMEM_PROPS
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,0)))
-#define HAVE_DEVLINK_ESWITCH_OPS_EXTACK
-#endif /* RHEL >= 8.0 */
-#if ((SLE_VERSION_CODE >= SLE_VERSION(12,5,0) && \
-      SLE_VERSION_CODE < SLE_VERSION(15,0,0)) || \
-     (SLE_VERSION_CODE >= SLE_VERSION(15,1,0)))
-#define HAVE_DEVLINK_ESWITCH_OPS_EXTACK
-#endif /* SLE == 12sp5 || SLE >= 15sp1 */
 #else /* >= 4.20.0 */
-#define HAVE_DEVLINK_ESWITCH_OPS_EXTACK
 #define HAVE_AF_XDP_ZC_SUPPORT
 #define HAVE_ETF_SUPPORT /* Earliest TxTime First */
 #endif /* 4.20.0 */
@@ -6728,37 +6699,20 @@ _kc_dev_change_flags(struct net_device *netdev, unsigned int flags,
 
 #define dev_change_flags _kc_dev_change_flags
 #endif /* !(RHEL_RELEASE_CODE && RHEL > RHEL(8,0)) */
-#if (RHEL_RELEASE_CODE && \
-     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,7) && \
-      RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,0)) || \
-     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
-#define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
-#define HAVE_PTP_CLOCK_INFO_GETTIMEX64
-#endif /* !(RHEL >= 7.7 && RHEL != 8.0) */
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
-#define HAVE_NDO_BRIDGE_SETLINK_EXTACK
-#endif /* RHEL 8.1 */
 #if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))
-#define HAVE_TC_INDIR_BLOCK
 #endif /* RHEL 8.2 */
 #else /* >= 5.0.0 */
-#define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
-#define HAVE_PTP_CLOCK_INFO_GETTIMEX64
-#define HAVE_NDO_BRIDGE_SETLINK_EXTACK
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
-#define HAVE_TC_INDIR_BLOCK
 #endif /* 5.0.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0))
 #if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
 #define HAVE_TC_FLOW_RULE_INFRASTRUCTURE
-#define HAVE_NDO_FDB_ADD_EXTACK
 #define HAVE_DEVLINK_INFO_GET
 #define HAVE_DEVLINK_FLASH_UPDATE
 #endif /* RHEL < 8.1 */
 #else /* >= 5.1.0 */
-#define HAVE_NDO_FDB_ADD_EXTACK
 #define NO_XDP_QUERY_XSK_UMEM
 #define HAVE_AF_XDP_NETDEV_UMEM
 #define HAVE_TC_FLOW_RULE_INFRASTRUCTURE
@@ -6774,19 +6728,6 @@ _kc_dev_change_flags(struct net_device *netdev, unsigned int flags,
 #else
 #define netdev_xmit_more()	(0)
 #endif
-
-#if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))))
-#ifndef eth_get_headlen
-static inline u32
-__kc_eth_get_headlen(const struct net_device __always_unused *dev, void *data,
-		     unsigned int len)
-{
-	return eth_get_headlen(data, len);
-}
-
-#define eth_get_headlen(dev, data, len) __kc_eth_get_headlen(dev, data, len)
-#endif /* !eth_get_headlen */
-#endif /* !RHEL >= 8.2 */
 
 #ifndef mmiowb
 #ifdef CONFIG_IA64
@@ -6804,12 +6745,6 @@ __kc_eth_get_headlen(const struct net_device __always_unused *dev, void *data,
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
 #if (!(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2)))
-#define flow_block_offload tc_block_offload
-#define flow_block_command tc_block_command
-#define flow_cls_offload tc_cls_flower_offload
-#define flow_block_binder_type tcf_block_binder_type
-#define flow_cls_common_offload tc_cls_common_offload
-#define flow_cls_offload_flow_rule tc_cls_flower_offload_flow_rule
 #define FLOW_CLS_REPLACE TC_CLSFLOWER_REPLACE
 #define FLOW_CLS_DESTROY TC_CLSFLOWER_DESTROY
 #define FLOW_CLS_STATS TC_CLSFLOWER_STATS
@@ -6919,11 +6854,7 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev);
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0))
-#if !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4))) && \
-    !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(15,3,0))
-/* (RHEL < 8.4) || (SLE < 15.3) */
-#define xdp_convert_buff_to_frame convert_to_xdp_frame
-#elif (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4)))
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4)))
 /* RHEL >= 8.4 */
 #define HAVE_XDP_BUFF_FRAME_SZ
 #endif

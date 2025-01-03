@@ -31,14 +31,22 @@ struct xsk_buff_pool *ixgbe_xsk_umem(struct ixgbe_adapter *adapter,
 	bool xdp_on = READ_ONCE(adapter->xdp_prog);
 	int qid = ring->ring_idx;
 
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 	if (!adapter->xsk_pools || !adapter->xsk_pools[qid] ||
 	    qid >= adapter->num_xsk_pools || !xdp_on ||
 	    !test_bit(qid, adapter->af_xdp_zc_qps))
 		return NULL;
 
 	return adapter->xsk_pools[qid];
+#else
+	if (!xdp_on || !test_bit(qid, adapter->af_xdp_zc_qps))
+		return NULL;
+
+	return xsk_get_pool_from_qid(adapter->netdev, qid);
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 }
 
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 static int ixgbe_alloc_xsk_umems(struct ixgbe_adapter *adapter)
 {
 	if (adapter->xsk_pools)
@@ -56,37 +64,9 @@ static int ixgbe_alloc_xsk_umems(struct ixgbe_adapter *adapter)
 
 	return 0;
 }
-
-/**
- * ixgbe_xsk_any_rx_ring_enabled - Checks if Rx rings have AF_XDP UMEM attached
- * @adapter: adapter
- *
- * Returns true if any of the Rx rings has an AF_XDP UMEM attached
- **/
-bool ixgbe_xsk_any_rx_ring_enabled(struct ixgbe_adapter *adapter)
-{
-	int i;
-
-	if (!adapter->xsk_pools)
-		return false;
-
-	for (i = 0; i < adapter->num_xsk_pools; i++) {
-		if (adapter->xsk_pools[i])
-			return true;
-	}
-
-	return false;
-}
-
-#ifndef HAVE_NETDEV_BPF_XSK_POOL
 static int ixgbe_add_xsk_umem(struct ixgbe_adapter *adapter,
 			      struct xdp_umem *pool,
 			      u16 qid)
-#else
-static int ixgbe_add_xsk_umem(struct ixgbe_adapter *adapter,
-			      struct xsk_buff_pool *pool,
-			      u16 qid)
-#endif
 {
 	int err;
 
@@ -110,6 +90,33 @@ static void ixgbe_remove_xsk_umem(struct ixgbe_adapter *adapter, u16 qid)
 		adapter->xsk_pools = NULL;
 		adapter->num_xsk_pools = 0;
 	}
+}
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
+
+/**
+ * ixgbe_xsk_any_rx_ring_enabled - Checks if Rx rings have AF_XDP UMEM attached
+ * @adapter: adapter
+ *
+ * Returns true if any of the Rx rings has an AF_XDP UMEM attached
+ */
+bool ixgbe_xsk_any_rx_ring_enabled(struct ixgbe_adapter *adapter)
+{
+	int i;
+
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
+	if (!adapter->xsk_pools)
+		return false;
+
+	for (i = 0; i < adapter->num_xsk_pools; i++) {
+		if (adapter->xsk_pools[i])
+#else
+	for (i = 0; i < adapter->num_rx_queues; i++) {
+		if (xsk_get_pool_from_qid(adapter->netdev, i))
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
+			return true;
+	}
+
+	return false;
 }
 
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
@@ -175,12 +182,19 @@ static int ixgbe_xsk_umem_enable(struct ixgbe_adapter *adapter,
 	if (qid >= adapter->num_rx_queues)
 		return -EINVAL;
 
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 	if (adapter->xsk_pools) {
 		if (qid >= adapter->num_xsk_pools)
 			return -EINVAL;
 		if (adapter->xsk_pools[qid])
 			return -EBUSY;
 	}
+#else
+	if (qid >= adapter->netdev->real_num_rx_queues ||
+	    qid >= adapter->netdev->real_num_tx_queues)
+		return -EINVAL;
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
+
 
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 	reuseq = xsk_reuseq_prepare(adapter->rx_ring[0]->count);
@@ -203,9 +217,11 @@ static int ixgbe_xsk_umem_enable(struct ixgbe_adapter *adapter,
 		ixgbe_txrx_ring_disable(adapter, qid);
 
 	set_bit(qid, adapter->af_xdp_zc_qps);
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 	err = ixgbe_add_xsk_umem(adapter, pool, qid);
 	if (err)
 		return err;
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 
 	if (if_running) {
 		ixgbe_txrx_ring_enable(adapter, qid);
@@ -216,8 +232,15 @@ static int ixgbe_xsk_umem_enable(struct ixgbe_adapter *adapter,
 #else
 		err = ixgbe_xsk_async_xmit(adapter->netdev, qid);
 #endif
-		if (err)
+		if (err) {
+			clear_bit(qid, adapter->af_xdp_zc_qps);
+#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
+			ixgbe_xsk_umem_dma_unmap(adapter, adapter->xsk_pools[qid]);
+#else
+			xsk_pool_dma_unmap(pool, IXGBE_RX_DMA_ATTR);
+#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 			return err;
+		}
 	}
 
 	return 0;
@@ -227,9 +250,13 @@ static int ixgbe_xsk_umem_disable(struct ixgbe_adapter *adapter, u16 qid)
 {
 	bool if_running;
 
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 	if (!adapter->xsk_pools || qid >= adapter->num_xsk_pools ||
 	    !adapter->xsk_pools[qid])
+#else
+	if (!xsk_get_pool_from_qid(adapter->netdev, qid))
 		return -EINVAL;
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 
 	if_running = netif_running(adapter->netdev) &&
 		     READ_ONCE(adapter->xdp_prog);
@@ -239,12 +266,17 @@ static int ixgbe_xsk_umem_disable(struct ixgbe_adapter *adapter, u16 qid)
 
 	clear_bit(qid, adapter->af_xdp_zc_qps);
 
+#ifdef HAVE_NETDEV_BPF_XSK_POOL
+	xsk_pool_dma_unmap(xsk_get_pool_from_qid(adapter->netdev, qid),
+			   IXGBE_RX_DMA_ATTR);
+#else
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 	ixgbe_xsk_umem_dma_unmap(adapter, adapter->xsk_pools[qid]);
 #else
 	xsk_pool_dma_unmap(adapter->xsk_pools[qid], IXGBE_RX_DMA_ATTR);
 #endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 	ixgbe_remove_xsk_umem(adapter, qid);
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 
 	if (if_running)
 		ixgbe_txrx_ring_enable(adapter, qid);
@@ -983,7 +1015,7 @@ int ixgbe_xsk_async_xmit(struct net_device *dev, u32 qid)
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	struct ixgbe_ring *ring;
 
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (test_bit(__IXGBE_DOWN, adapter->state))
 		return -ENETDOWN;
 
 	if (!READ_ONCE(adapter->xdp_prog))
@@ -992,7 +1024,11 @@ int ixgbe_xsk_async_xmit(struct net_device *dev, u32 qid)
 	if (qid >= adapter->num_xdp_queues)
 		return -ENXIO;
 
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 	if (!adapter->xsk_pools || !adapter->xsk_pools[qid])
+#else
+	if (!xsk_get_pool_from_qid(adapter->netdev, qid))
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 		return -ENXIO;
 
 	ring = adapter->xdp_ring[qid];

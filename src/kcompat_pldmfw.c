@@ -8,7 +8,11 @@
 
 #include "kcompat.h"
 
+#ifdef HAVE_LINUX_UNALIGNED_HEADER
+#include <linux/unaligned.h>
+#else /* HAVE_LINUX_UNALIGNED_HEADER */
 #include <asm/unaligned.h>
+#endif /* !HAVE_LINUX_UNALIGNED_HEADER */
 #include <linux/crc32.h>
 #include <linux/device.h>
 #include <linux/firmware.h>

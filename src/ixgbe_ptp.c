@@ -861,7 +861,7 @@ static void ixgbe_ptp_clear_tx_timestamp(struct ixgbe_adapter *adapter)
 		dev_kfree_skb_any(adapter->ptp_tx_skb);
 		adapter->ptp_tx_skb = NULL;
 	}
-	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
+	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, adapter->state);
 }
 
 /**
@@ -876,7 +876,7 @@ void ixgbe_ptp_tx_hang(struct ixgbe_adapter *adapter)
 	if (!adapter->ptp_tx_skb)
 		return;
 
-	if (!test_bit(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state))
+	if (!test_bit(__IXGBE_PTP_TX_IN_PROGRESS, adapter->state))
 		return;
 
 	/* If we haven't received a timestamp within the timeout, it is
@@ -916,7 +916,7 @@ static void ixgbe_ptp_tx_hwtstamp(struct ixgbe_adapter *adapter)
 	 * to the lock bit being clear.
 	 */
 	adapter->ptp_tx_skb = NULL;
-	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, &adapter->state);
+	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, adapter->state);
 
 	/* Notify the stack and then free the skb after we've unlocked */
 	skb_tstamp_tx(skb, &shhwtstamps);
@@ -1588,7 +1588,7 @@ void ixgbe_ptp_init(struct ixgbe_adapter *adapter)
 	ixgbe_ptp_reset(adapter);
 
 	/* enter the IXGBE_PTP_RUNNING state */
-	set_bit(__IXGBE_PTP_RUNNING, &adapter->state);
+	set_bit(__IXGBE_PTP_RUNNING, adapter->state);
 
 	return;
 }
@@ -1603,7 +1603,7 @@ void ixgbe_ptp_init(struct ixgbe_adapter *adapter)
 void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter)
 {
 	/* Leave the IXGBE_PTP_RUNNING state. */
-	if (!test_and_clear_bit(__IXGBE_PTP_RUNNING, &adapter->state))
+	if (!test_and_clear_bit(__IXGBE_PTP_RUNNING, adapter->state))
 		return;
 
 	adapter->flags2 &= ~IXGBE_FLAG2_PTP_PPS_ENABLED;

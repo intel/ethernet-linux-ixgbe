@@ -1118,6 +1118,31 @@ static inline void eth_hw_addr_set(struct net_device *dev, const u8 *addr)
 }
 #endif /* NEED_ETH_HW_ADDR_SET */
 
+/* NEED_ETH_GET_HEADLEN_NET_DEVICE_ARG
+ *
+ *
+ * eth_get_headlen was modified by upstream commit
+ * 59753ce8b196 ("ethernet: constify eth_get_headlen()'s data argument")
+ * c43f1255b866 ("net: pass net_device argument to the eth_get_headlen")
+ *
+ * This allows core driver code to simply call eth_get_headlen with all
+ * 3 parameters, and have kcompat automatically drop it depending on what
+ * the kernel supports.
+
+ * For kernels older than 3.18, eth_get_headlen didn't exist.
+ */
+
+#ifdef NEED_ETH_GET_HEADLEN_NET_DEVICE_ARG
+static inline u32
+__kc_eth_get_headlen(const struct net_device __always_unused *dev,
+		void *data, unsigned int len)
+{
+	return eth_get_headlen(data, len);
+}
+
+#define eth_get_headlen(dev, data, len) __kc_eth_get_headlen(dev, data, len)
+#endif /* NEED_ETH_GET_HEADLEN_NET_DEVICE_ARG */
+
 #ifdef NEED_JIFFIES_64_TIME_IS_MACROS
 /* NEED_JIFFIES_64_TIME_IS_MACROS
  *
@@ -1265,6 +1290,24 @@ int _kc_pci_iov_vf_id(struct pci_dev *dev);
 #ifdef NEED_MUL_U64_U64_DIV_U64
 u64 mul_u64_u64_div_u64(u64 a, u64 mul, u64 div);
 #endif /* NEED_MUL_U64_U64_DIV_U64 */
+
+/* NEED_ROUNDUP_U64 and NEED_DIV_U64_ROUND_UP
+ *
+ * roundup_u64 and DIV_U64_FOUND_UP were introduced by commit 1d4ce389da2b
+ * ("ice: add and use roundup_u64 instead of open coding equivalent"). They
+ * are straight forward to re-implement here.
+ */
+#ifdef NEED_DIV_U64_ROUND_UP
+#define DIV_U64_ROUND_UP(ll, d)		\
+	({ u32 _tmp = (d); div_u64((ll) + _tmp - 1, _tmp); })
+#endif /* NEED_DIV_U64_ROUND_UP */
+
+#ifdef NEED_ROUNDUP_U64
+static inline u64 roundup_u64(u64 x, u32 y)
+{
+	return DIV_U64_ROUND_UP(x, y) * y;
+}
+#endif /* NEED_ROUNDUP_U64 */
 
 #ifndef HAVE_LINKMODE
 static inline void linkmode_set_bit(int nr, volatile unsigned long *addr)
@@ -2333,7 +2376,7 @@ static inline struct dentry *file_dentry(const struct file *file)
 }
 #endif /* NEED_FS_FILE_DENTRY */
 
-/* NEED_CLASS_CREATE_WITH_MODULE_PARAM
+/* NEED_CLASS_CREATE_WITHOUT_OWNER
  *
  * Upstream removed owner argument form helper macro class_create in
  * 1aaba11da9aa ("remove module * from class_create()")
@@ -2343,7 +2386,7 @@ static inline struct dentry *file_dentry(const struct file *file)
  *
  * class_create no longer has owner/module param as it was not used.
  */
-#ifdef NEED_CLASS_CREATE_WITH_MODULE_PARAM
+#ifdef NEED_CLASS_CREATE_WITHOUT_OWNER
 static inline struct class *_kc_class_create(const char *name)
 {
 	return class_create(THIS_MODULE, name);
@@ -2352,7 +2395,7 @@ static inline struct class *_kc_class_create(const char *name)
 #undef class_create
 #endif
 #define class_create _kc_class_create
-#endif /* NEED_CLASS_CREATE_WITH_MODULE_PARAM */
+#endif /* NEED_CLASS_CREATE_WITHOUT_OWNER */
 
 /* NEED_LOWER_16_BITS and NEED_UPPER_16_BITS
  *
@@ -2685,9 +2728,44 @@ static inline bool eth_type_vlan(__be16 ethertype)
 	} \
 	(cond) ? 0 : -ETIMEDOUT; \
 })
-#else
-#include <linux/iopoll.h>
+
 #endif /* NEED_READ_POLL_TIMEOUT */
+#ifdef NEED_READ_POLL_TIMEOUT_ATOMIC
+#define read_poll_timeout_atomic(op, val, cond, delay_us, timeout_us, \
+					delay_before_read, args...) \
+({ \
+	u64 __timeout_us = (timeout_us); \
+	s64 __left_ns = __timeout_us * NSEC_PER_USEC; \
+	unsigned long __delay_us = (delay_us); \
+	u64 __delay_ns = __delay_us * NSEC_PER_USEC; \
+	if (delay_before_read && __delay_us) { \
+		udelay(__delay_us); \
+		if (__timeout_us) \
+			__left_ns -= __delay_ns; \
+	} \
+	for (;;) { \
+		(val) = op(args); \
+		if (cond) \
+			break; \
+		if (__timeout_us && __left_ns < 0) { \
+			(val) = op(args); \
+			break; \
+		} \
+		if (__delay_us) { \
+			udelay(__delay_us); \
+			if (__timeout_us) \
+				__left_ns -= __delay_ns; \
+		} \
+		cpu_relax(); \
+		if (__timeout_us) \
+			__left_ns--; \
+	} \
+	(cond) ? 0 : -ETIMEDOUT; \
+})
+#endif /* NEED_READ_POLL_TIMEOUT_ATOMIC */
+#if !defined(NEED_READ_POLL_TIMEOUT) || !defined(NEED_READ_POLL_TIMEOUT_ATOMIC)
+#include <linux/iopoll.h>
+#endif /* !NEED_READ_POLL_TIMEOUT || !NEED_READ_POLL_TIMEOUT_ATOMIC */
 
 #ifndef HAVE_DPLL_LOCK_STATUS_ERROR
 /* Copied from include/uapi/linux/dpll.h to have common dpll status enums
@@ -2770,6 +2848,54 @@ bool ethtool_eee_use_linkmodes(const struct ethtool_keee *eee);
 
 void keee_to_eee(struct ethtool_eee *eee,
 		 const struct ethtool_keee *keee);
+
+#ifndef HAVE_MII_EEE_CAP1_MOD_LINKMODE
+#include <linux/mdio.h>
+#define _kc_linkmode_mod_bit(_nr, _addr, set) do {\
+		const int nr = _nr;		\
+		unsigned long  *addr = _addr;	\
+		if (set)			\
+			set_bit(nr, addr);	\
+		else				\
+			clear_bit(nr, addr);	\
+	} while (false)
+
+static inline void mii_eee_cap1_mod_linkmode_t(unsigned long *adv, u32 val)
+{
+	_kc_linkmode_mod_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+			     adv, val & MDIO_EEE_100TX);
+	_kc_linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+			     adv, val & MDIO_EEE_1000T);
+	_kc_linkmode_mod_bit(ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
+			     adv, val & MDIO_EEE_10GT);
+	_kc_linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseKX_Full_BIT,
+			     adv, val & MDIO_EEE_1000KX);
+	_kc_linkmode_mod_bit(ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT,
+			     adv, val & MDIO_EEE_10GKX4);
+	_kc_linkmode_mod_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
+			     adv, val & MDIO_EEE_10GKR);
+}
+
+static inline u32 linkmode_to_mii_eee_cap1_t(unsigned long *adv)
+{
+	u32 result = 0;
+
+	if (test_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, adv))
+		result |= MDIO_EEE_100TX;
+	if (test_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, adv))
+		result |= MDIO_EEE_1000T;
+	if (test_bit(ETHTOOL_LINK_MODE_10000baseT_Full_BIT, adv))
+		result |= MDIO_EEE_10GT;
+	if (test_bit(ETHTOOL_LINK_MODE_1000baseKX_Full_BIT, adv))
+		result |= MDIO_EEE_1000KX;
+	if (test_bit(ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT, adv))
+		result |= MDIO_EEE_10GKX4;
+	if (test_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT, adv))
+		result |= MDIO_EEE_10GKR;
+
+	return result;
+}
+#endif /* !HAVE_MII_EEE_CAP1_MOD_LINKMODE */
 #endif /* !HAVE_ETHTOOL_KEEE */
 
 #ifdef HAVE_ASSIGN_STR_2_PARAMS
@@ -2791,5 +2917,9 @@ _kc_xsk_buff_dma_sync_for_cpu(struct xdp_buff *xdp)
 #define xsk_buff_dma_sync_for_cpu(xdp) \
 	_kc_xsk_buff_dma_sync_for_cpu(xdp)
 #endif /* NEED_XSK_BUFF_DMA_SYNC_FOR_CPU_NO_POOL */
+
+#ifdef NEED_XDP_CONVERT_BUFF_TO_FRAME
+#define xdp_convert_buff_to_frame convert_to_xdp_frame
+#endif
 
 #endif /* _KCOMPAT_IMPL_H_ */

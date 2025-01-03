@@ -980,9 +980,8 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 		return 0;
 
 	err = ixgbe_set_vf_vlan(adapter, add, vid, vf);
-
 	if (err)
-		return err;
+		goto out;
 
 #ifdef HAVE_VLAN_RX_REGISTER
 	/* in case of promiscuous mode any VLAN filter set for a VF must
@@ -991,7 +990,7 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 	if (add && adapter->netdev->flags & IFF_PROMISC) {
 		err = ixgbe_set_vf_vlan(adapter, add, vid, VMDQ_P(0));
 		if (err)
-			return err;
+			goto out;
 	}
 
 #ifdef CONFIG_PCI_IOV
@@ -1030,11 +1029,9 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 			err = ixgbe_set_vf_vlan(adapter, add, vid, VMDQ_P(0));
 	}
 
-out:
 #endif /* CONFIG_PCI_IOV */
-#else /* HAVE_VLAN_RX_REGISTER */
-	return 0;
 #endif /* HAVE_VLAN_RX_REGISTER */
+out:
 	return err;
 }
 
@@ -1455,7 +1452,9 @@ void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 vf;
 
-	if (adapter->flags & IXGBE_FLAG_MDD_ENABLED && adapter->vfinfo)
+	if (!adapter->vfinfo)
+		return;
+	if (adapter->flags & IXGBE_FLAG_MDD_ENABLED)
 		ixgbe_check_mdd_event(adapter);
 
 	for (vf = 0; vf < adapter->num_vfs; vf++) {
@@ -1558,7 +1557,7 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 		if (retval >= 0) {
 			adapter->vfinfo[vf].pf_set_mac = true;
 
-			if (test_bit(__IXGBE_DOWN, &adapter->state)) {
+			if (test_bit(__IXGBE_DOWN, adapter->state)) {
 				dev_warn(ixgbe_pf_to_dev(adapter), "The VF MAC address has been set, but the PF device is not up.\n");
 				dev_warn(ixgbe_pf_to_dev(adapter), "Bring the PF device up before attempting to use the VF device.\n");
 			}
@@ -1613,7 +1612,7 @@ static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,
 	adapter->vfinfo[vf].pf_qos = qos;
 	dev_info(ixgbe_pf_to_dev(adapter),
 		 "Setting VLAN %d, QOS 0x%x on VF %d\n", vlan, qos, vf);
-	if (test_bit(__IXGBE_DOWN, &adapter->state)) {
+	if (test_bit(__IXGBE_DOWN, adapter->state)) {
 		dev_warn(ixgbe_pf_to_dev(adapter), "The VF VLAN has been set, but the PF device is not up.\n");
 		dev_warn(ixgbe_pf_to_dev(adapter), "Bring the PF device up before attempting to use the VF device.\n");
 	}
@@ -1921,7 +1920,7 @@ void ixgbe_set_vf_link_state(struct ixgbe_adapter *adapter, int vf, int state)
 
 	switch (state) {
 	case IFLA_VF_LINK_STATE_AUTO:
-		if (test_bit(__IXGBE_DOWN, &adapter->state))
+		if (test_bit(__IXGBE_DOWN, adapter->state))
 			adapter->vfinfo[vf].link_enable = false;
 		else
 			adapter->vfinfo[vf].link_enable = true;

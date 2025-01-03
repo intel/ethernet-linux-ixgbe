@@ -303,7 +303,7 @@ static void ixgbe_dcbnl_devreset(struct net_device *dev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 
-	while (test_and_set_bit(__IXGBE_RESETTING, &adapter->state))
+	while (test_and_set_bit(__IXGBE_RESETTING, adapter->state))
 		usleep_range(1000, 2000);
 
 	if (netif_running(dev))
@@ -323,7 +323,7 @@ static void ixgbe_dcbnl_devreset(struct net_device *dev)
 		dev->open(dev);
 #endif
 
-	clear_bit(__IXGBE_RESETTING, &adapter->state);
+	clear_bit(__IXGBE_RESETTING, adapter->state);
 }
 
 static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
@@ -646,7 +646,7 @@ static int ixgbe_dcbnl_ieee_setets(struct net_device *dev,
 		return -EINVAL;
 
 	if (!adapter->ixgbe_ieee_ets) {
-		adapter->ixgbe_ieee_ets = kmalloc(sizeof(struct ieee_ets),
+		adapter->ixgbe_ieee_ets = kzalloc(sizeof(struct ieee_ets),
 						  GFP_KERNEL);
 		if (!adapter->ixgbe_ieee_ets)
 			return -ENOMEM;
@@ -724,7 +724,7 @@ static int ixgbe_dcbnl_ieee_setpfc(struct net_device *dev,
 		return -EINVAL;
 
 	if (!adapter->ixgbe_ieee_pfc) {
-		adapter->ixgbe_ieee_pfc = kmalloc(sizeof(struct ieee_pfc),
+		adapter->ixgbe_ieee_pfc = kzalloc(sizeof(struct ieee_pfc),
 						  GFP_KERNEL);
 		if (!adapter->ixgbe_ieee_pfc)
 			return -ENOMEM;

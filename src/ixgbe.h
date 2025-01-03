@@ -846,6 +846,23 @@ struct ixgbe_therm_proc_data {
 
 #define IXGBE_PRIMARY_ABORT_LIMIT	5
 
+enum ixgbe_state_t {
+	__IXGBE_TESTING,
+	__IXGBE_RESETTING,
+	__IXGBE_DOWN,
+	__IXGBE_DISABLED,
+	__IXGBE_REMOVING,
+	__IXGBE_SERVICE_SCHED,
+	__IXGBE_SERVICE_INITED,
+	__IXGBE_IN_SFP_INIT,
+#ifdef HAVE_PTP_1588_CLOCK
+	__IXGBE_PTP_RUNNING,
+	__IXGBE_PTP_TX_IN_PROGRESS,
+#endif
+	__IXGBE_RESET_REQUESTED,
+	__IXGBE_STATE_T_NUM /* Must be last */
+};
+
 /* board specific private data structure */
 struct ixgbe_adapter {
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
@@ -860,7 +877,7 @@ struct ixgbe_adapter {
 	struct bpf_prog *xdp_prog;
 	struct pci_dev *pdev;
 
-	unsigned long state;
+	DECLARE_BITMAP(state, __IXGBE_STATE_T_NUM);
 
 	/* Some features need tri-state capability,
 	 * thus the additional *_CAPABLE flags.
@@ -1153,13 +1170,11 @@ struct ixgbe_adapter {
 #endif
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 	/* AF_XDP zero-copy */
-#ifdef HAVE_NETDEV_BPF_XSK_POOL
-	struct xsk_buff_pool **xsk_pools;
-#else
+#ifndef HAVE_NETDEV_BPF_XSK_POOL
 	struct xdp_umem **xsk_pools;
-#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 	u16 num_xsk_pools_used;
 	u16 num_xsk_pools;
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 #endif
 	struct devlink *devlink;
 	struct devlink_port devlink_port;
@@ -1214,22 +1229,6 @@ struct ixgbe_fdir_filter {
 	union ixgbe_atr_input filter;
 	u16 sw_idx;
 	u64 action;
-};
-
-enum ixgbe_state_t {
-	__IXGBE_TESTING,
-	__IXGBE_RESETTING,
-	__IXGBE_DOWN,
-	__IXGBE_DISABLED,
-	__IXGBE_REMOVING,
-	__IXGBE_SERVICE_SCHED,
-	__IXGBE_SERVICE_INITED,
-	__IXGBE_IN_SFP_INIT,
-#ifdef HAVE_PTP_1588_CLOCK
-	__IXGBE_PTP_RUNNING,
-	__IXGBE_PTP_TX_IN_PROGRESS,
-#endif
-	__IXGBE_RESET_REQUESTED,
 };
 
 struct ixgbe_cb {
@@ -1371,7 +1370,6 @@ void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter);
 void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter);
 void ixgbe_dbg_init(void);
 void ixgbe_dbg_exit(void);
-void ixgbe_pf_fwlog_update_module(struct ixgbe_adapter *adapter, int log_level, int module);
 #endif /* HAVE_IXGBE_DEBUG_FS */
 
 static inline struct netdev_queue *txring_txq(const struct ixgbe_ring *ring)
@@ -1456,5 +1454,6 @@ bool ixgbe_fwlog_ring_empty(struct ixgbe_fwlog_ring *rings);
 void ixgbe_fwlog_ring_increment(u16 *item, u16 size);
 void ixgbe_fwlog_realloc_rings(struct ixgbe_hw *hw, int ring_size);
 s32 ixgbe_fwlog_init(struct ixgbe_hw *hw);
+void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter);
 
 #endif /* _IXGBE_H_ */
