@@ -1,7 +1,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ******************************************************************
 
-December 09, 2024
+January 10, 2025
 
 
 Contents
@@ -111,6 +111,8 @@ The driver is compatible with devices based on the following:
 * Intel(R) Ethernet Controller X552
 
 * Intel(R) Ethernet Controller X553
+
+* Intel(R) Ethernet Controller E610
 
 For information on how to identify your adapter, and for the latest
 Intel network drivers, refer to the Intel Support website at
@@ -436,7 +438,7 @@ build by default with DCA enabled.
 
 Note:
 
-  DCA is not supported on X550-based adapters.
+  DCA is not supported on X550-based and E610-based adapters.
 
 
 Command Line Parameters
@@ -502,7 +504,7 @@ control of the feature.
 
 Note:
 
-  DCA is not supported on X550-based adapters.
+  DCA is not supported on X550-based and E610-based adapters.
 
 
 IntMode
@@ -547,9 +549,9 @@ throughput in some circumstances.
 
   Note:
 
-    * On 82599, and X540, and X550-based adapters, disabling
-      "InterruptThrottleRate" will also result in the driver disabling
-      HW RSC.
+    * On 82599, and X540, X550-based and E610-based adapters,
+      disabling "InterruptThrottleRate" will also result in the driver
+      disabling HW RSC.
 
     * On 82598-based adapters, disabling "InterruptThrottleRate" will
       also result in disabling LRO (Large Receive Offloads).
@@ -581,7 +583,7 @@ MSI-X (see "cat /proc/interrupts") to successfully use LLI.
 
 Note:
 
-  LLI is not supported on X550-based adapters.
+  LLI is not supported on X550-based and E610-based adapters.
 
 
 LLIPort
@@ -604,7 +606,7 @@ Warning:
 
 Note:
 
-  LLI is not supported on X550-based adapters.
+  LLI is not supported on X550-based and E610-based adapters.
 
 
 LLIPush
@@ -619,7 +621,7 @@ Note:
 
   * Enabling LLIPush may allow a denial of service attack.
 
-  * LLI is not supported on X550-based adapters.
+  * LLI is not supported on X550-based and E610-based adapters.
 
 
 LLISize
@@ -632,7 +634,7 @@ smaller than the specified size.
 
 Note:
 
-  LLI is not supported on X550-based adapters.
+  LLI is not supported on X550-based and E610-based adapters.
 
 
 LLIEType
@@ -645,7 +647,7 @@ protocol type.
 
 Note:
 
-  LLI is not supported on X550-based adapters.
+  LLI is not supported on X550-based and E610-based adapters.
 
 
 LLIVLANP
@@ -657,7 +659,7 @@ This parameter specifies the LLI on VLAN priority threshold.
 
 Note:
 
-  LLI is not supported on X550-based adapters.
+  LLI is not supported on X550-based and E610-based adapters.
 
 
 FdirPballoc
@@ -799,8 +801,8 @@ receive in the stack, thereby potentially decreasing CPU utilization
 for receives.
 
 This technique is also referred to as Hardware Receive Side Coalescing
-(HW RSC). 82599, X540, and X550-based adapters support HW RSC. The LRO
-parameter controls HW RSC enablement.
+(HW RSC). 82599, X540, X550-based and E610-based adapters support HW
+RSC. The LRO parameter controls HW RSC enablement.
 
 You can verify that the driver is using LRO by looking at these
 counters in ethtool:
@@ -854,7 +856,8 @@ This parameter enables or disables DMA Coalescing (DMAC) feature.
 Values are in microseconds and set the internal DMA Coalescing
 internal timer.
 
-DMAC is available on Intel(R) X550 (and later) based adapters.
+DMAC is available on Intel(R) X550 (and later) and E610-based based
+adapters.
 
 DMA (Direct Memory Access) allows the network device to move packet
 data directly to the system's memory, reducing CPU utilization.
@@ -1618,6 +1621,163 @@ Note:
   documentation for details.
 
 
+Firmware Logs
+-------------
+
+Intel Ethernet E610 Series devices support Firmware Logs. The ixgbe
+driver allows you to generate firmware logs for supported categories
+of events, to help debug issues with Customer Support.
+
+* The driver supports firmware logging via the debugfs interface on PF
+  0 only.
+
+* Firmware logs are stored in a data file in binary form.
+
+The following operations are supported.
+
+Activate Firmware Logs:
+
+   echo 1 > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/enable
+
+Save data to a file:
+
+   cat /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/data > fwlog.bin
+
+The Firmware Logs can be configured by writing to the 'fwlog/modules'
+file like this:
+
+   echo <fwlog_event> <fwlog_level> > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/modules
+
+* "<fwlog_event>" represents the following supported events:
+
+  * "CTRL" - Control
+
+  * "LINK" - Link Management
+
+  * "LINK_TOPO" - Link Topology Detection
+
+  * "I2C" - I2C
+
+  * "SDP" - SDP
+
+  * "MDIO" - MDIO
+
+  * "ADMINQ" - Admin Queue
+
+  * "NVM" - NVM
+
+  * "AUTH" - Authentication
+
+  * "VPD" - Vital Product Data
+
+  * "IOSF" - Intel On-Chip System Fabric
+
+  * "WATCHDOG" - Watchdog
+
+  * "TASK_DISPATCH" - Task Dispatcher
+
+  * "MNG" - Manageability
+
+  * "HEALTH" - Health
+
+  * "TSDRV" - Time Sync
+
+  * "PFREG" - PF Registration
+
+  * "MDLVER" - Module Version
+
+  * "ALL" - Allows to set all of the modules to the specified
+    "fwlog_level" or to read the "fwlog_level" of all of the modules
+
+* "<fwlog_level>" is the desired verbosity level of the firmware logs.
+  Supported values include:
+
+  * NONE
+
+  * ERROR
+
+  * WARNING
+
+  * NORMAL
+
+  * VERBOSE
+
+Example usage to configure the modules:
+
+   echo LINK VERBOSE > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/modules
+
+The Firmware Logs resolution can be adjusted using following command:
+
+   echo 50 > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/resolution
+
+Example value 50 means that Firmware will send at least 50 messages
+per single event. Available values are within 1..128 range.
+
+The Firmware Logs buffers can be configured by following command:
+
+   echo 128 > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/nr_buffs
+
+Memory for allocation of 128 ring buffers is requested here. The
+available values are within 1..512 range. In X86 architecture, ring
+buffers are 4 kb in size for Firmware Logs. So, Ring buffers shall
+have at least 4kb size for other CPU architectures too.
+
+
+Debug Dump
+----------
+
+Intel Ethernet E610 Series devices support debug dump, which allows
+you to obtain runtime register values from the firmware for "clusters"
+of events and then write the results to a single dump file, for
+debugging complicated issues in the field.
+
+This debug dump contains a snapshot of the device and its existing
+hardware configuration, such as switch tables, transmit scheduler
+tables, and other information. Debug dump captures the current state
+of the specified cluster(s) and is a stateless snapshot of the whole
+device.
+
+Note:
+
+  * Like with firmware logs, the contents of the debug dump are not
+    human-readable. You must work with Customer Support to decode the
+    file.
+
+  * Debug dump is per device, not per PF.
+
+The ixgbe driver uses the debugfs interface for debug dump. To
+generate a debug dump file in Linux, do the following:
+
+1. Specify the cluster(s) to include in the dump file, using one of
+   the following commands. You can either set a single cluster or all
+   clusters.
+
+   * To dump all clusters:
+
+        echo > /sys/kernel/debug/ixgbe/<pci_addr>/fw/dump_cluster_id
+
+   * To dump a single cluster:
+
+        echo <cluster ID> > /sys/kernel/debug/ixgbe/<pci_addr>/fw/dump_cluster_id
+
+     Possible values for "<cluster ID>" are:
+
+        * 0 - Link
+
+        * 1 - CSR
+
+   For example, to dump the CSR space, use the following:
+
+      echo 1 > /sys/kernel/debug/ixgbe/<pci_addr>/fw/dump_cluster_id
+
+2. Save the debug dump to a file, using one of the following. Replace
+   the ".bin" name with the file name you want to use. For example:
+
+   * For the file dumped using one of the previous commands:
+
+        cat /sys/kernel/debug/ixgbe/<pci_addr>/fw/debug_dump > ~/single_cluster_dump.bin
+
+
 IEEE 1588 Precision Time Protocol (PTP) Hardware Clock (PHC)
 ------------------------------------------------------------
 
@@ -1681,6 +1841,38 @@ For reduced latency:
 * Disable ITR by setting "rx-usecs" to 0 using ethtool:
 
      ethtool -C <ethX> rx-usecs 0
+
+
+Using Devlink to update a device's NVM
+--------------------------------------
+
+When you update the NVM on some devices, the update may use the
+devlink interface, rather than the ethtool interface. This will happen
+if the following are true:
+
+* You are updating an Intel Ethernet E610 Series device.
+
+* Your system is running a distro that supports the "devlink dev
+  flash" command.
+
+* The firmware currently installed on the device supports it.
+
+* The new NVM conforms to the correct PLDM format.
+
+On devices that support it, you can also use the devlink command line
+directly to update the device NVM. However, for a feature rich,
+usability experience we recommend that you use NVMUpdate.
+
+   devlink dev flash pci/0000:63:00.0 file filename.bin
+
+Where:
+
+pci/0000:63:00.0:
+   The device you wish to update. You can get a list of devices with
+   the "devlink dev info" command.
+
+filename.bin:
+   The file that contains the new NVM image.
 
 
 Known Issues/Troubleshooting
@@ -1812,8 +2004,7 @@ When using 82598-based network connections, ixgbe driver only supports
 Due to known hardware limitations, RSS can only filter in a maximum of
 16 receive queues.
 
-82599, X540, and X550-based network connections support up to 64
-queues.
+82599, X540, X550-based network connections support up to 64 queues.
 
 
 Lower than expected performance

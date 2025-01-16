@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "IXGBE" "7" "December 09, 2024" "" "Linux ixgbe README"
+.TH "IXGBE" "7" "January 10, 2025" "" "Linux ixgbe README"
 .SH NAME
 ixgbe \- ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 .SS Contents
@@ -138,6 +138,8 @@ Intel(R) Ethernet Controller x550
 Intel(R) Ethernet Controller X552
 .IP \(bu 2
 Intel(R) Ethernet Controller X553
+.IP \(bu 2
+Intel(R) Ethernet Controller E610
 .UNINDENT
 .sp
 For information on how to identify your adapter, and for the latest Intel
@@ -726,7 +728,7 @@ default with DCA enabled.
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-DCA is not supported on X550\-based adapters.
+DCA is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SH COMMAND LINE PARAMETERS
@@ -804,7 +806,7 @@ the feature.
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-DCA is not supported on X550\-based adapters.
+DCA is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SS IntMode
@@ -851,7 +853,7 @@ of the higher interrupt rate.
 .INDENT 3.5
 .INDENT 0.0
 .IP \(bu 2
-On 82599, and X540, and X550\-based adapters, disabling
+On 82599, and X540, X550\-based and E610\-based adapters, disabling
 \fBInterruptThrottleRate\fP will also result in the driver disabling
 HW RSC.
 .IP \(bu 2
@@ -885,7 +887,7 @@ interrupts are used. You must be using MSI or MSI\-X (see
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-LLI is not supported on X550\-based adapters.
+LLI is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SS LLIPort
@@ -910,7 +912,7 @@ panic.
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-LLI is not supported on X550\-based adapters.
+LLI is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SS LLIPush
@@ -927,7 +929,7 @@ in an environment with many small transactions.
 .IP \(bu 2
 Enabling LLIPush may allow a denial of service attack.
 .IP \(bu 2
-LLI is not supported on X550\-based adapters.
+LLI is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -941,7 +943,7 @@ than the specified size.
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-LLI is not supported on X550\-based adapters.
+LLI is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SS LLIEType
@@ -953,7 +955,7 @@ This parameter specifies the Low Latency Interrupt (LLI) Ethernet protocol type.
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-LLI is not supported on X550\-based adapters.
+LLI is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SS LLIVLANP
@@ -965,7 +967,7 @@ This parameter specifies the LLI on VLAN priority threshold.
 \fBNOTE:\fP
 .INDENT 0.0
 .INDENT 3.5
-LLI is not supported on X550\-based adapters.
+LLI is not supported on X550\-based and E610\-based adapters.
 .UNINDENT
 .UNINDENT
 .SS FdirPballoc
@@ -1140,7 +1142,7 @@ Ethernet frames into a single receive in the stack, thereby potentially
 decreasing CPU utilization for receives.
 .sp
 This technique is also referred to as Hardware Receive Side Coalescing
-(HW RSC). 82599, X540, and X550\-based adapters support HW RSC. The
+(HW RSC). 82599, X540, X550\-based and E610\-based adapters support HW RSC. The
 LRO parameter controls HW RSC enablement.
 .sp
 You can verify that the driver is using LRO by looking at these counters in
@@ -1208,7 +1210,7 @@ Valid Range: 0, 41\-10000
 This parameter enables or disables DMA Coalescing (DMAC) feature. Values are in
 microseconds and set the internal DMA Coalescing internal timer.
 .sp
-DMAC is available on Intel(R) X550 (and later) based adapters.
+DMAC is available on Intel(R) X550 (and later) and E610\-based based adapters.
 .sp
 DMA (Direct Memory Access) allows the network device to move packet data
 directly to the system\(aqs memory, reducing CPU utilization. However, the
@@ -2286,6 +2288,259 @@ connector do not support WoL. Some systems do not provide the correct power
 connection. See your system documentation for details.
 .UNINDENT
 .UNINDENT
+.SS Firmware Logs
+.sp
+Intel Ethernet E610 Series devices support Firmware Logs. The ixgbe driver
+allows you to generate firmware logs for supported categories of events, to
+help debug issues with Customer Support.
+.INDENT 0.0
+.IP \(bu 2
+The driver supports firmware logging via the debugfs interface on PF 0 only.
+.IP \(bu 2
+Firmware logs are stored in a data file in binary form.
+.UNINDENT
+.sp
+The following operations are supported.
+.sp
+Activate Firmware Logs:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo 1 > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/enable
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Save data to a file:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+cat /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/data > fwlog.bin
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+The Firmware Logs can be configured by writing to the \(aqfwlog/modules\(aq file like
+this:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo <fwlog_event> <fwlog_level> > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/modules
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.INDENT 0.0
+.IP \(bu 2
+\fB<fwlog_event>\fP represents the following supported events:
+.INDENT 2.0
+.IP \(bu 2
+\fBCTRL\fP \- Control
+.IP \(bu 2
+\fBLINK\fP \- Link Management
+.IP \(bu 2
+\fBLINK_TOPO\fP \- Link Topology Detection
+.IP \(bu 2
+\fBI2C\fP \- I2C
+.IP \(bu 2
+\fBSDP\fP \- SDP
+.IP \(bu 2
+\fBMDIO\fP \- MDIO
+.IP \(bu 2
+\fBADMINQ\fP \- Admin Queue
+.IP \(bu 2
+\fBNVM\fP \- NVM
+.IP \(bu 2
+\fBAUTH\fP \- Authentication
+.IP \(bu 2
+\fBVPD\fP \- Vital Product Data
+.IP \(bu 2
+\fBIOSF\fP \- Intel On\-Chip System Fabric
+.IP \(bu 2
+\fBWATCHDOG\fP \- Watchdog
+.IP \(bu 2
+\fBTASK_DISPATCH\fP \- Task Dispatcher
+.IP \(bu 2
+\fBMNG\fP \- Manageability
+.IP \(bu 2
+\fBHEALTH\fP \- Health
+.IP \(bu 2
+\fBTSDRV\fP \- Time Sync
+.IP \(bu 2
+\fBPFREG\fP \- PF Registration
+.IP \(bu 2
+\fBMDLVER\fP \- Module Version
+.IP \(bu 2
+\fBALL\fP \- Allows to set all of the modules to the specified \fBfwlog_level\fP or
+to read the \fBfwlog_level\fP of all of the modules
+.UNINDENT
+.IP \(bu 2
+\fB<fwlog_level>\fP is the desired verbosity level of the firmware logs. Supported
+values include:
+.INDENT 2.0
+.IP \(bu 2
+NONE
+.IP \(bu 2
+ERROR
+.IP \(bu 2
+WARNING
+.IP \(bu 2
+NORMAL
+.IP \(bu 2
+VERBOSE
+.UNINDENT
+.UNINDENT
+.sp
+Example usage to configure the modules:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo LINK VERBOSE > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/modules
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+The Firmware Logs resolution can be adjusted using following command:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo 50 > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/resolution
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Example value 50 means that Firmware will send at least 50 messages per single
+event. Available values are within 1..128 range.
+.sp
+The Firmware Logs buffers can be configured by following command:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo 128 > /sys/kernel/debug/ixgbe/0000:18:00.0/fwlog/nr_buffs
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Memory for allocation of 128 ring buffers is requested here. The available
+values are within 1..512 range. In X86 architecture, ring buffers are 4 kb in
+size for Firmware Logs. So, Ring buffers shall have at least 4kb size for
+other CPU architectures too.
+.SS Debug Dump
+.sp
+Intel Ethernet E610 Series devices support debug dump, which allows you to
+obtain runtime register values from the firmware for \(dqclusters\(dq of events and
+then write the results to a single dump file, for debugging complicated issues
+in the field.
+.sp
+This debug dump contains a snapshot of the device and its existing hardware
+configuration, such as switch tables, transmit scheduler tables, and other
+information. Debug dump captures the current state of the specified cluster(s)
+and is a stateless snapshot of the whole device.
+.sp
+\fBNOTE:\fP
+.INDENT 0.0
+.INDENT 3.5
+.INDENT 0.0
+.IP \(bu 2
+Like with firmware logs, the contents of the debug dump are not
+human\-readable. You must work with Customer Support to decode the file.
+.IP \(bu 2
+Debug dump is per device, not per PF.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.sp
+The ixgbe driver uses the debugfs interface for debug dump. To generate a debug
+dump file in Linux, do the following:
+.INDENT 0.0
+.IP 1. 3
+Specify the cluster(s) to include in the dump file, using one of the
+following commands. You can either set a single cluster or all clusters.
+.INDENT 3.0
+.IP \(bu 2
+To dump all clusters:
+.INDENT 3.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo > /sys/kernel/debug/ixgbe/<pci_addr>/fw/dump_cluster_id
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.IP \(bu 2
+To dump a single cluster:
+.INDENT 3.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo <cluster ID> > /sys/kernel/debug/ixgbe/<pci_addr>/fw/dump_cluster_id
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Possible values for \fB<cluster ID>\fP are:
+.INDENT 3.0
+.INDENT 3.5
+.INDENT 0.0
+.IP \(bu 2
+0 \- Link
+.IP \(bu 2
+1 \- CSR
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.sp
+For example, to dump the CSR space, use the following:
+.INDENT 3.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+echo 1 > /sys/kernel/debug/ixgbe/<pci_addr>/fw/dump_cluster_id
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.IP 2. 3
+Save the debug dump to a file, using one of the following. Replace the
+\fB\&.bin\fP name with the file name you want to use. For example:
+.INDENT 3.0
+.IP \(bu 2
+For the file dumped using one of the previous commands:
+.INDENT 3.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+cat /sys/kernel/debug/ixgbe/<pci_addr>/fw/debug_dump > ~/single_cluster_dump.bin
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.UNINDENT
 .SS IEEE 1588 Precision Time Protocol (PTP) Hardware Clock (PHC)
 .sp
 Precision Time Protocol (PTP) is used to synchronize clocks in a computer
@@ -2386,6 +2641,46 @@ ethtool \-C <ethX> rx\-usecs 0
 .fi
 .UNINDENT
 .UNINDENT
+.UNINDENT
+.SS Using Devlink to update a device\(aqs NVM
+.sp
+When you update the NVM on some devices, the update may use the devlink
+interface, rather than the ethtool interface. This will happen if the following
+are true:
+.INDENT 0.0
+.IP \(bu 2
+You are updating an Intel Ethernet E610 Series device.
+.IP \(bu 2
+Your system is running a distro that supports the \fBdevlink dev flash\fP command.
+.IP \(bu 2
+The firmware currently installed on the device supports it.
+.IP \(bu 2
+The new NVM conforms to the correct PLDM format.
+.UNINDENT
+.sp
+On devices that support it, you can also use the devlink command line directly
+to update the device NVM. However, for a feature rich, usability experience
+we recommend that you use NVMUpdate.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+devlink dev flash pci/0000:63:00.0 file filename.bin
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Where:
+.INDENT 0.0
+.TP
+.B pci/0000:63:00.0
+The device you wish to update. You can get a list of devices
+with the \fBdevlink dev info\fP command.
+.TP
+.B filename.bin
+The file that contains the new NVM image.
 .UNINDENT
 .SH KNOWN ISSUES/TROUBLESHOOTING
 .SS Software Issues
@@ -2516,7 +2811,7 @@ queues on a platform with more than 16 cores.
 Due to known hardware limitations, RSS can only filter in a maximum of 16
 receive queues.
 .sp
-82599, X540, and X550\-based network connections support up to 64 queues.
+82599, X540, X550\-based network connections support up to 64 queues.
 .SS Lower than expected performance
 .sp
 Some PCIe x8 slots are actually configured as x4 slots. These slots have

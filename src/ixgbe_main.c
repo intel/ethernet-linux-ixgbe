@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2024 Intel Corporation */
+/* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
@@ -73,7 +73,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"5.22.25" \
+#define DRV_VERSION	"6.0.5" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -84,7 +84,7 @@ char ixgbe_driver_name[] = "ixgbe";
 const char ixgbe_driver_name[] = "ixgbe";
 #endif
 static const char ixgbe_driver_string[] = DRV_SUMMARY;
-static const char ixgbe_copyright[] = "Copyright (C) 1999 - 2024 Intel Corporation";
+static const char ixgbe_copyright[] = "Copyright (C) 1999 - 2025 Intel Corporation";
 static const char ixgbe_overheat_msg[] =
 		"Network adapter has been stopped because it has over heated. "
 		"Restart the computer. If the problem persists, "
@@ -3707,18 +3707,18 @@ ixgbe_process_link_status_event(struct ixgbe_adapter *adapter, bool link_up,
 	}
 
 	if ((link_up == adapter->link_up) &&
-	    link_up == netif_carrier_ok(adapter->netdev))
+	    link_up == netif_carrier_ok(adapter->netdev) &&
+	    link_speed == adapter->link_speed)
 		return IXGBE_SUCCESS;
+
+	adapter->flags |= IXGBE_FLAG_NEED_LINK_UPDATE;
+	adapter->link_check_timeout = jiffies;
+	ixgbe_watchdog_update_link(adapter);
 
 	if (link_up)
 		ixgbe_watchdog_link_is_up(adapter);
 	else
 		ixgbe_watchdog_link_is_down(adapter);
-
-	if (link_speed != adapter->link_speed) {
-		adapter->flags |= IXGBE_FLAG_NEED_LINK_UPDATE;
-		ixgbe_watchdog_update_link(adapter);
-	}
 
 	return IXGBE_SUCCESS;
 }

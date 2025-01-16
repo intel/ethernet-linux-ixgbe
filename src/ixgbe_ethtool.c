@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 1999 - 2024 Intel Corporation */
+/* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /* ethtool support for ixgbe */
 
@@ -3072,11 +3072,38 @@ static int ixgbe_nway_reset(struct net_device *netdev)
 }
 
 #ifdef HAVE_ETHTOOL_SET_PHYS_ID
+static int ixgbe_set_phys_id_E610(struct ixgbe_adapter *adapter,
+				  enum ethtool_phys_id_state state)
+{
+	bool led_active;
+	int err;
+
+	switch (state) {
+	case ETHTOOL_ID_ACTIVE:
+		led_active = true;
+		break;
+	case ETHTOOL_ID_INACTIVE:
+		led_active = false;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	err = ixgbe_aci_set_port_id_led(&adapter->hw, !led_active);
+	if (err)
+		err = -EIO;
+
+	return err;
+}
+
 static int ixgbe_set_phys_id(struct net_device *netdev,
 			     enum ethtool_phys_id_state state)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
+
+	if (hw->mac.type == ixgbe_mac_E610)
+		return ixgbe_set_phys_id_E610(adapter, state);
 
 	if (!hw->mac.ops.led_on || !hw->mac.ops.led_off)
 		return -EOPNOTSUPP;
