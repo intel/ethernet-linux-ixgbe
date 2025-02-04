@@ -6632,7 +6632,7 @@ static void ixgbe_configure_dcb(struct ixgbe_adapter *adapter)
 	}
 
 #if IS_ENABLED(CONFIG_FCOE)
-	if (netdev->features & NETIF_F_FCOE_MTU)
+	if (netdev->features & netdev->fcoe_mtu)
 		max_frame = max_t(int, max_frame,
 				  IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif /* CONFIG_FCOE */
@@ -6837,7 +6837,7 @@ static int ixgbe_hpbthresh(struct ixgbe_adapter *adapter, int pb)
 
 #if IS_ENABLED(CONFIG_FCOE)
 	/* FCoE traffic class uses FCOE jumbo frames */
-	if ((dev->features & NETIF_F_FCOE_MTU) &&
+	if ((dev->features & dev->fcoe_mtu) &&
 	    (tc < IXGBE_FCOE_JUMBO_FRAME_SIZE) &&
 	    (pb == netdev_get_prio_tc_map(dev, adapter->fcoe.up)))
 		tc = IXGBE_FCOE_JUMBO_FRAME_SIZE;
@@ -6900,7 +6900,7 @@ static int ixgbe_lpbthresh(struct ixgbe_adapter *adapter, int __maybe_unused pb)
 
 #if IS_ENABLED(CONFIG_FCOE)
 	/* FCoE traffic class uses FCOE jumbo frames */
-	if ((dev->features & NETIF_F_FCOE_MTU) &&
+	if ((dev->features & dev->fcoe_mtu) &&
 	    (tc < IXGBE_FCOE_JUMBO_FRAME_SIZE) &&
 	    (pb == netdev_get_prio_tc_map(dev, adapter->fcoe.up)))
 		tc = IXGBE_FCOE_JUMBO_FRAME_SIZE;
@@ -14310,7 +14310,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #ifndef HAVE_NETDEV_OPS_FCOE_ENABLE
 			ixgbe_fcoe_ddp_enable(adapter);
 			adapter->flags |= IXGBE_FLAG_FCOE_ENABLED;
-			netdev->features |= NETIF_F_FCOE_MTU;
+			netdev->features |= netdev->fcoe_mtu;
 #endif /* HAVE_NETDEV_OPS_FCOE_ENABLE */
 		}
 
@@ -14320,7 +14320,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #ifdef HAVE_NETDEV_VLAN_FEATURES
 		netdev->vlan_features |= NETIF_F_FSO |
 					 NETIF_F_FCOE_CRC |
-					 NETIF_F_FCOE_MTU;
+					 netdev->fcoe_mtu;
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 	}
 #endif /* NETIF_F_FSO */
