@@ -73,7 +73,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"6.0.5" \
+#define DRV_VERSION	"6.0.6" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"

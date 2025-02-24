@@ -147,9 +147,12 @@
 	57ae  Ethernet Controller E610 Backplane
 	57af  Ethernet Controller E610 SFP
 	57b0  Ethernet Controller E610 10GBASE T
+		8086 0001  Ethernet Network Adapter E610-XT4
+		8086 0002  Ethernet Network Adapter E610-XT2
 		8086 0003  Ethernet Network Adapter E610-XT4 for OCP 3.0
 		8086 0004  Ethernet Network Adapter E610-XT2 for OCP 3.0
 	57b1  Ethernet Controller E610 2.5GBASE T
 		8086 0000  Ethernet Converged Network Adapter E610
+		8086 0002  Ethernet Network Adapter E610-IT4
 		8086 0003  Ethernet Network Adapter E610-IT4 for OCP 3.0
 	57b2  Ethernet Controller E610 SGMII
