@@ -892,7 +892,7 @@ int ixgbe_fcoe_enable(struct net_device *netdev)
 
 	/* enable FCoE and notify stack */
 	adapter->flags |= IXGBE_FLAG_FCOE_ENABLED;
-	netdev->features |= NETIF_F_FCOE_MTU;
+	netdev->features |= netdev->fcoe_mtu;
 	netdev_features_change(netdev);
 
 	/* release existing queues and reallocate them */
@@ -932,7 +932,7 @@ int ixgbe_fcoe_disable(struct net_device *netdev)
 
 	/* disable FCoE and notify stack */
 	adapter->flags &= ~IXGBE_FLAG_FCOE_ENABLED;
-	netdev->features &= ~NETIF_F_FCOE_MTU;
+	netdev->features &= ~netdev->fcoe_mtu;
 
 	netdev_features_change(netdev);
 

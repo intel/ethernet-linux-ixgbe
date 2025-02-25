@@ -353,7 +353,7 @@ static u8 ixgbe_dcbnl_set_all(struct net_device *netdev)
 #endif
 
 #if IS_ENABLED(CONFIG_FCOE)
-		if (adapter->netdev->features & NETIF_F_FCOE_MTU)
+		if (adapter->netdev->features & netdev->fcoe_mtu)
 			max_frame = max(max_frame, IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif
 
