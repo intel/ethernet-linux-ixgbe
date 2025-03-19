@@ -10,7 +10,15 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 #include <linux/highmem.h>
+#include <linux/version.h>
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
+static inline void linkmode_and(unsigned long *dst, const unsigned long *a,
+	const unsigned long *b)
+{
+    bitmap_and(dst, a, b, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+#endif
 
 #ifdef SIOCETHTOOL
 #include <asm/uaccess.h>
