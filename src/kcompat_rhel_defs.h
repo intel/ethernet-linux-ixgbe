@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_RHEL_DEFS_H_
@@ -40,7 +40,6 @@
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,5))
 #else /* >= 7.5 */
-#define HAVE_TCF_EXTS_TO_LIST
 #define HAVE_FLOW_DISSECTOR_KEY_IP
 #endif /* 7.5 */
 
@@ -66,11 +65,9 @@
 /*****************************************************************************/
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,0))
 #else /* >= 8.0 */
-#undef HAVE_TCF_EXTS_TO_LIST
 #undef HAVE_ETHTOOL_NEW_100G_BITS
 #define HAVE_NDO_OFFLOAD_STATS
 #undef HAVE_RHEL7_EXTENDED_OFFLOAD_STATS
-#define HAVE_TCF_EXTS_FOR_EACH_ACTION
 #endif /* 8.0 */
 
 /*****************************************************************************/
@@ -81,9 +78,6 @@
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
 #undef NEED_INDIRECT_CALL_WRAPPER_MACROS
 #define HAVE_INDIRECT_CALL_WRAPPER_HEADER
-#define HAVE_GRETAP_TYPE
-#define HAVE_GENEVE_TYPE
-#define HAVE_VXLAN_TYPE
 #define HAVE_LINKMODE
 #endif /* 8.1 */
 

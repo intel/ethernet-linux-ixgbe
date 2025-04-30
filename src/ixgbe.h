@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _IXGBE_H_
@@ -21,9 +21,11 @@
 #define IXGBE_DCA
 #include <linux/dca.h>
 #endif
+#include <linux/ptp_classify.h>
 #include "ixgbe_dcb.h"
 
 #include "kcompat.h"
+#include "kcompat_kthread.h"
 
 #ifdef HAVE_XDP_BUFF_RXQ
 #include <net/xdp.h>
@@ -80,7 +82,6 @@
 #define IXGBE_MIN_NUM_DESCRIPTORS	64
 
 #define IXGBE_ETH_P_LLDP		0x88CC
-
 
 /* flow control */
 #define IXGBE_MIN_FCRTL			0x40
@@ -190,12 +191,10 @@ enum ixgbe_tx_flags {
 	IXGBE_TX_FLAGS_HW_VLAN	= 0x01,
 	IXGBE_TX_FLAGS_TSO	= 0x02,
 	IXGBE_TX_FLAGS_TSTAMP	= 0x04,
-
 	/* olinfo flags */
 	IXGBE_TX_FLAGS_CC	= 0x08,
 	IXGBE_TX_FLAGS_IPV4	= 0x10,
 	IXGBE_TX_FLAGS_CSUM	= 0x20,
-
 	/* software defined flags */
 	IXGBE_TX_FLAGS_SW_VLAN	= 0x40,
 	IXGBE_TX_FLAGS_FCOE	= 0x80,
@@ -426,7 +425,6 @@ enum ixgbe_ring_state_t {
 	clear_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
 #define netdev_ring(ring) (ring->netdev)
 #define ring_queue_index(ring) (ring->queue_index)
-
 
 struct ixgbe_ring {
 	struct ixgbe_ring *next;	/* pointer to next ring in q_vector */
@@ -836,7 +834,6 @@ struct ixgbe_therm_proc_data {
 #define MAX_MSIX_Q_VECTORS	IXGBE_MAX_MSIX_Q_VECTORS_82599
 #define MAX_MSIX_COUNT		IXGBE_MAX_MSIX_VECTORS_82599
 
-
 #define MIN_MSIX_Q_VECTORS	1
 #define MIN_MSIX_COUNT		(MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
 
@@ -863,6 +860,24 @@ enum ixgbe_state_t {
 	__IXGBE_STATE_T_NUM /* Must be last */
 };
 
+#if defined(HAVE_PTP_1588_CLOCK)
+struct ixgbe_ptp_e600 {
+	bool ptp_by_phy_ena : 1;
+	bool onestep_ena : 1;
+	bool vlan_ena : 1;
+	atomic_t vlan_change;
+	atomic_t reinit_phy_tod;
+	u16 ptp_seq_id;
+	u16 max_drift_threshold;
+	u64 cached_phc_time;
+	struct ptp_pin_desc pin_config[1];
+#ifndef HAVE_PTP_CANCEL_WORKER_SYNC
+	struct kthread_worker *ptp_kworker;
+	struct kthread_delayed_work ptp_aux_work;
+#endif /* !HAVE_PTP_CANCEL_WORKER_SYNC */
+};
+
+#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 /* board specific private data structure */
 struct ixgbe_adapter {
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
@@ -1106,6 +1121,7 @@ struct ixgbe_adapter {
 	u32 tx_hwtstamp_skipped;
 	u32 rx_hwtstamp_cleared;
 	void (*ptp_setup_sdp) (struct ixgbe_adapter *);
+	struct ixgbe_ptp_e600 ptp;
 #endif /* HAVE_PTP_1588_CLOCK */
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
@@ -1404,12 +1420,29 @@ int ixgbe_find_vlvf_entry(struct ixgbe_hw *hw, u32 vlan);
 #ifdef HAVE_PTP_1588_CLOCK
 #ifdef IXGBE_SYSFS
 #endif /* IXGBE_SYSFS */
+int ixgbe_ptp_fw_intr_e600(struct ixgbe_adapter *adapter);
+void ixgbe_ptp_rx_phytstamp_e600(struct ixgbe_q_vector *q_vector,
+				 struct sk_buff *skb, unsigned int ptp_class);
 void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_tx_hang(struct ixgbe_adapter *adapter);
+void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work);
+void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter);
+static inline void ixgbe_ptp_eicr_timesync(struct ixgbe_adapter *adapter) {
+	int err = -EINTR;
+
+	if (adapter->ptp.ptp_by_phy_ena)
+		err = ixgbe_ptp_fw_intr_e600(adapter);
+
+	if (err == -EINTR)
+		ixgbe_ptp_check_pps_event(adapter);
+	else if (err)
+		e_dbg(link, "PTP by PHY Tx TS err=%d\n", err);
+}
+
 void ixgbe_ptp_rx_pktstamp(struct ixgbe_q_vector *q_vector,
 				  struct sk_buff *skb);
 void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
@@ -1418,6 +1451,17 @@ static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
 					 union ixgbe_adv_rx_desc *rx_desc,
 					 struct sk_buff *skb)
 {
+	struct ixgbe_adapter *adapter = rx_ring->q_vector->adapter;
+	unsigned int ptp_class = PTP_CLASS_NONE;
+
+	if (unlikely(adapter->ptp.ptp_by_phy_ena))
+		ptp_class = ptp_classify_raw(skb);
+
+	if (unlikely(ptp_class != PTP_CLASS_NONE)) {
+		ixgbe_ptp_rx_phytstamp_e600(rx_ring->q_vector, skb, ptp_class);
+		return;
+	}
+
 	if (unlikely(ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_TSIP))) {
 		ixgbe_ptp_rx_pktstamp(rx_ring->q_vector, skb);
 		return;
@@ -1438,7 +1482,6 @@ int ixgbe_ptp_get_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
-void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter);
 #endif /* HAVE_PTP_1588_CLOCK */
 #ifdef CONFIG_PCI_IOV
 void ixgbe_sriov_reinit(struct ixgbe_adapter *adapter);

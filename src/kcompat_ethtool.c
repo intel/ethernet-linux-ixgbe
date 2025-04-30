@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /*
@@ -885,7 +885,6 @@ extern int _kc_generic_mii_ioctl(struct mii_if_info *mii_if,
                                  unsigned int *duplex_changed);
 #endif /* > 2.4.6 */
 
-
 struct _kc_pci_dev_ext {
 	struct pci_dev *dev;
 	void *pci_drvdata;
@@ -896,7 +895,6 @@ struct _kc_net_dev_ext {
 	struct net_device *dev;
 	unsigned int carrier;
 };
-
 
 /**************************************/
 /* mii support */

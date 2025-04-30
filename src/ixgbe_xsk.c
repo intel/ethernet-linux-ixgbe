@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -194,7 +194,6 @@ static int ixgbe_xsk_umem_enable(struct ixgbe_adapter *adapter,
 	    qid >= adapter->netdev->real_num_tx_queues)
 		return -EINVAL;
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
-
 
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 	reuseq = xsk_reuseq_prepare(adapter->rx_ring[0]->count);
@@ -1007,8 +1006,37 @@ out_xmit:
 }
 
 #ifdef HAVE_NDO_XSK_WAKEUP
+/**
+ * ixgbe_xsk_wakeup - Wake up an XDP socket queue for transmission
+ * @dev: Network device structure pointer
+ * @qid: Queue ID for the XDP socket
+ * @flags: Flags for the wakeup operation (unused)
+ *
+ * This function wakes up a specified XDP (eXpress Data Path) socket queue
+ * on the ixgbe network adapter to enable transmission. It checks the device
+ * state, the presence of an XDP program, and the validity of the queue ID.
+ * If the queue is valid and not scheduled, it rearms the interrupt for the
+ * queue to ensure it is ready for transmission.
+ *
+ * Return: 0 on success, or a negative error code on failure, such as
+ *         -ENETDOWN if the device is down or -ENXIO if the queue is invalid.
+ */
 int ixgbe_xsk_wakeup(struct net_device *dev, u32 qid, u32 __maybe_unused flags)
 #else
+/**
+ * ixgbe_xsk_async_xmit - Transmit XDP frames asynchronously on a queue
+ * @dev: Network device structure pointer
+ * @qid: Queue ID for the XDP transmission
+ *
+ * This function handles the asynchronous transmission of XDP (eXpress Data
+ * Path) frames on a specified queue of the ixgbe network adapter. It checks
+ * the device state, the presence of an XDP program, and the validity of the
+ * queue ID. If the queue is valid and not scheduled, it rearms the interrupt
+ * for the queue to ensure transmission.
+ *
+ * Return: 0 on success, or a negative error code on failure, such as
+ *         -ENETDOWN if the device is down or -ENXIO if the queue is invalid.
+ */
 int ixgbe_xsk_async_xmit(struct net_device *dev, u32 qid)
 #endif
 {

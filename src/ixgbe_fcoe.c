@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
-
 
 #if IS_ENABLED(CONFIG_FCOE)
 #if IS_ENABLED(CONFIG_DCB)
@@ -181,7 +180,6 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	}
 	ixgbe_fcoe_clear_ddp(ddp);
 
-
 	if (!fcoe->ddp_pool) {
 		e_warn(drv, "No ddp_pool resources allocated\n");
 		return 0;
@@ -345,18 +343,19 @@ out_noddp:
 }
 
 /**
- * ixgbe_fcoe_ddp_get - called to set up ddp context in initiator mode
- * @netdev: the corresponding net_device
- * @xid: the exchange id requesting ddp
- * @sgl: the scatter-gather list for this request
- * @sgc: the number of scatter-gather items
+ * ixgbe_fcoe_ddp_get - Set up DDP context in initiator mode
+ * @netdev: The corresponding network device
+ * @xid: The exchange ID requesting DDP
+ * @sgl: The scatter-gather list for this request
+ * @sgc: The number of scatter-gather items
  *
- * This is the implementation of net_device_ops.ndo_fcoe_ddp_setup
- * and is expected to be called from ULD, e.g., FCP layer of libfc
- * to set up ddp for the corresponding xid of the given sglist for
- * the corresponding I/O.
+ * This function implements the `ndo_fcoe_ddp_setup` operation for the
+ * ixgbe network adapter. It is called from the Upper Layer Driver (ULD),
+ * such as the FCP layer of libfc, to set up Direct Data Placement (DDP)
+ * for the specified exchange ID (xid) using the provided scatter-gather
+ * list (sgl) for the corresponding I/O operation.
  *
- * Returns : 1 for success and 0 for no ddp
+ * Return: 1 for success, or 0 if DDP is not set up.
  */
 int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 		       struct scatterlist *sgl, unsigned int sgc)
@@ -366,38 +365,43 @@ int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
 
 #ifdef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
 /**
- * ixgbe_fcoe_ddp_target - called to set up ddp context in target mode
- * @netdev: the corresponding net_device
- * @xid: the exchange id requesting ddp
- * @sgl: the scatter-gather list for this request
- * @sgc: the number of scatter-gather items
+ * ixgbe_fcoe_ddp_target - Set up DDP context in target mode
+ * @netdev: The corresponding network device
+ * @xid: The exchange ID requesting DDP
+ * @sgl: The scatter-gather list for this request
+ * @sgc: The number of scatter-gather items
  *
- * This is the implementation of net_device_ops.ndo_fcoe_ddp_target
- * and is expected to be called from ULD, e.g., FCP layer of libfc
- * to set up ddp for the corresponding xid of the given sglist for
- * the corresponding I/O. The DDP in target mode is a write I/O request
- * from the initiator.
+ * This function implements the `ndo_fcoe_ddp_target` operation for the
+ * ixgbe network adapter. It is called from the Upper Layer Driver (ULD),
+ * such as the FCP layer of libfc, to set up Direct Data Placement (DDP)
+ * for the specified exchange ID (xid) using the provided scatter-gather
+ * list (sgl) for the corresponding I/O operation. In target mode, DDP
+ * handles write I/O requests from the initiator.
  *
- * Returns : 1 for success and 0 for no ddp
+ * Return: 1 for success, or 0 if DDP is not set up.
  */
 int ixgbe_fcoe_ddp_target(struct net_device *netdev, u16 xid,
 			  struct scatterlist *sgl, unsigned int sgc)
 {
 	return ixgbe_fcoe_ddp_setup(netdev, xid, sgl, sgc, 1);
 }
-
 #endif /* HAVE_NETDEV_OPS_FCOE_DDP_TARGET */
+
 /**
- * ixgbe_fcoe_ddp - check ddp status and mark it done
- * @adapter: ixgbe adapter
- * @rx_desc: advanced rx descriptor
- * @skb: the skb holding the received data
+ * ixgbe_fcoe_ddp - Check DDP status and mark it done
+ * @adapter: ixgbe adapter structure
+ * @rx_desc: Advanced Rx descriptor
+ * @skb: The socket buffer holding the received data
  *
- * This checks ddp status.
+ * This function checks the Direct Data Placement (DDP) status for Fibre
+ * Channel over Ethernet (FCoE) frames and marks the DDP context as done.
+ * It verifies the DDP status, updates the length of DDPed data, and
+ * determines whether to pass the skb to the Upper Layer Driver (ULD). The
+ * function handles different FCoE statuses and errors, and returns the
+ * length of DDPed data if applicable.
  *
- * Returns : < 0 indicates an error or not a FCoE ddp, 0 indicates
- * not passing the skb to ULD, > 0 indicates is the length of data
- * being ddped.
+ * Return: < 0 indicates an error or not a FCoE DDP, 0 indicates not passing
+ *         the skb to ULD, > 0 indicates the length of data being DDPed.
  */
 int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		   union ixgbe_adv_rx_desc *rx_desc,
@@ -859,12 +863,18 @@ static void ixgbe_fcoe_ddp_disable(struct ixgbe_adapter *adapter)
 
 #ifdef HAVE_NETDEV_OPS_FCOE_ENABLE
 /**
- * ixgbe_fcoe_enable - turn on FCoE offload feature
- * @netdev: the corresponding netdev
+ * ixgbe_fcoe_enable - Turn on FCoE offload feature
+ * @netdev: The corresponding network device
  *
- * Turns on FCoE offload feature in 82599.
+ * This function enables the Fibre Channel over Ethernet (FCoE) offload
+ * feature on the ixgbe network adapter, specifically for the 82599 model.
+ * It increments the FCoE reference count, checks for FCoE capability, and
+ * ensures that FCoE is not already enabled. The function allocates memory
+ * for DDP pools, updates network device features, and reinitializes
+ * interrupt schemes. It returns an error if FCoE is not capable or already
+ * enabled.
  *
- * Returns : 0 indicates success or -EINVAL on failure
+ * Return: 0 on success, or -EINVAL on failure.
  */
 int ixgbe_fcoe_enable(struct net_device *netdev)
 {
@@ -892,7 +902,11 @@ int ixgbe_fcoe_enable(struct net_device *netdev)
 
 	/* enable FCoE and notify stack */
 	adapter->flags |= IXGBE_FLAG_FCOE_ENABLED;
+#ifdef HAVE_NETDEV_FCOE_MTU
+	netdev->fcoe_mtu = true;
+#else
 	netdev->features |= NETIF_F_FCOE_MTU;
+#endif
 	netdev_features_change(netdev);
 
 	/* release existing queues and reallocate them */
@@ -906,12 +920,18 @@ int ixgbe_fcoe_enable(struct net_device *netdev)
 }
 
 /**
- * ixgbe_fcoe_disable - turn off FCoE offload feature
- * @netdev: the corresponding netdev
+ * ixgbe_fcoe_disable - Turn off FCoE offload feature
+ * @netdev: The corresponding network device
  *
- * Turns off FCoE offload feature in 82599.
+ * This function disables the Fibre Channel over Ethernet (FCoE) offload
+ * feature on the ixgbe network adapter, specifically for the 82599 model.
+ * It decrements the reference count for FCoE, stops the network device if
+ * it is running, and frees per-CPU memory used for tracking DDP pools. The
+ * function also updates the network device's features and reinitializes
+ * interrupt schemes. It returns an error if FCoE is not enabled or if the
+ * reference count is not zero.
  *
- * Returns : 0 indicates success or -EINVAL on failure
+ * Return: 0 on success, or -EINVAL on failure.
  */
 int ixgbe_fcoe_disable(struct net_device *netdev)
 {
@@ -932,7 +952,11 @@ int ixgbe_fcoe_disable(struct net_device *netdev)
 
 	/* disable FCoE and notify stack */
 	adapter->flags &= ~IXGBE_FLAG_FCOE_ENABLED;
+#ifdef HAVE_NETDEV_FCOE_MTU
+	netdev->fcoe_mtu = false;
+#else
 	netdev->features &= ~NETIF_F_FCOE_MTU;
+#endif
 
 	netdev_features_change(netdev);
 
@@ -968,16 +992,19 @@ u8 ixgbe_fcoe_getapp(struct net_device *netdev)
 #endif /* CONFIG_DCB */
 #ifdef HAVE_NETDEV_OPS_FCOE_GETWWN
 /**
- * ixgbe_fcoe_get_wwn - get world wide name for the node or the port
- * @netdev : ixgbe adapter
- * @wwn : the world wide name
- * @type: the type of world wide name
+ * ixgbe_fcoe_get_wwn - Get World Wide Name (WWN) for the node or port
+ * @netdev: The ixgbe network device
+ * @wwn: Pointer to store the World Wide Name
+ * @type: The type of World Wide Name (node or port)
  *
- * Returns the node or port world wide name if both the prefix and the san
- * mac address are valid, then the wwn is formed based on the NAA-2 for
- * IEEE Extended name identifier (ref. to T10 FC-LS Spec., Sec. 15.3).
+ * This function retrieves the World Wide Name (WWN) for either the node or
+ * the port of the ixgbe network adapter. It checks if both the prefix and
+ * the SAN MAC address are valid, and then forms the WWN based on the NAA-2
+ * format for IEEE Extended name identifiers, as specified in the T10 FC-LS
+ * Specification, Section 15.3. The function returns an error if the prefix
+ * or SAN MAC address is invalid.
  *
- * Returns : 0 on success
+ * Return: 0 on success, or -EINVAL on failure.
  */
 int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type)
 {
@@ -1010,13 +1037,18 @@ int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type)
 	}
 	return rc;
 }
-
 #endif /* HAVE_NETDEV_OPS_FCOE_GETWWN */
+
 /**
- * ixgbe_fcoe_get_tc - get the current TC that fcoe is mapped to
- * @adapter: pointer to the device adapter structure
+ * ixgbe_fcoe_get_tc - Get the current Traffic Class (TC) for FCoE
+ * @adapter: Pointer to the device adapter structure
  *
- * Return : TC that FCoE is mapped to
+ * This function retrieves the current Traffic Class (TC) that Fibre Channel
+ * over Ethernet (FCoE) is mapped to for the ixgbe network adapter. It uses
+ * the priority-to-TC mapping of the network device to determine the TC
+ * associated with the FCoE user priority (UP).
+ *
+ * Return: The Traffic Class (TC) that FCoE is mapped to.
  */
 u8 ixgbe_fcoe_get_tc(struct ixgbe_adapter *adapter)
 {

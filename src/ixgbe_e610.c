@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_type.h"
@@ -281,6 +281,7 @@ s32 ixgbe_aci_send_cmd(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 			buf_cpy = (u8 *)ixgbe_malloc(hw, buf_size);
 			if (!buf_cpy)
 				return IXGBE_ERR_OUT_OF_MEM;
+			memcpy(buf_cpy, buf, buf_size);
 		}
 		memcpy(&desc_cpy, desc, sizeof(desc_cpy));
 	}
@@ -746,6 +747,9 @@ ixgbe_parse_common_caps(struct ixgbe_hw *hw, struct ixgbe_hw_common_caps *caps,
 			(phys_id & IXGBE_EXT_TOPO_DEV_IMG_PROG_EN) != 0;
 		break;
 	}
+	case IXGBE_ACI_CAPS_OROM_RECOVERY_UPDATE:
+		caps->orom_recovery_update = (number == 1);
+		break;
 
 	case IXGBE_ACI_CAPS_NEXT_CLUSTER_ID:
 		caps->next_cluster_id_support = (number == 1);
@@ -1780,12 +1784,14 @@ s32 ixgbe_set_ptp_by_phy(struct ixgbe_hw *hw, u8 ptp_request, u8 flags)
  * @hw: pointer to the HW struct
  * @ptp_config: timestamp mode config
  * @flags: timestamp mode flags
+ * @max_drift_thresh: maximal PHY clock drift threshold
  *
  * Get PTP by PHY using ACI command (0x0635).
  *
  * Return: 0 on success, negative error code otherwise
  */
-s32 ixgbe_get_ptp_by_phy(struct ixgbe_hw *hw, u8 *ptp_config, u8 *flags)
+s32 ixgbe_get_ptp_by_phy(struct ixgbe_hw *hw, u8 *ptp_config, u8 *flags,
+			 u16 *max_drift_thresh)
 {
 	struct ixgbe_aci_cmd_get_ptp_by_phy_resp *resp;
 	struct ixgbe_aci_desc desc;
@@ -1798,6 +1804,7 @@ s32 ixgbe_get_ptp_by_phy(struct ixgbe_hw *hw, u8 *ptp_config, u8 *flags)
 	if (!status) {
 		*ptp_config = resp->ptp_config;
 		*flags = resp->flags;
+		*max_drift_thresh = IXGBE_LE16_TO_CPU(resp->maxDriftThreshold);
 	}
 
 	return status;
@@ -2253,7 +2260,6 @@ void ixgbe_release_nvm(struct ixgbe_hw *hw)
 
 	ixgbe_release_res(hw, IXGBE_NVM_RES_ID);
 }
-
 
 /**
  * ixgbe_aci_read_nvm - read NVM

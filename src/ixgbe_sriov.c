@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include <linux/types.h>
@@ -111,7 +111,6 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 	/* Disable RSC when in SR-IOV mode */
 	adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
 				IXGBE_FLAG2_RSC_ENABLED);
-
 
 	for (i = 0; i < adapter->num_vfs; i++) {
 		/* enable spoof checking for all VFs */
@@ -404,6 +403,17 @@ static int ixgbe_pci_sriov_disable(struct pci_dev *dev)
 	return err;
 }
 
+/**
+ * ixgbe_pci_sriov_configure - Configure SR-IOV for the PCI device
+ * @dev: PCI device structure
+ * @num_vfs: Number of virtual functions (VFs) to configure
+ *
+ * This function configures Single Root I/O Virtualization (SR-IOV) for the
+ * specified PCI device. If `num_vfs` is zero, it disables SR-IOV. Otherwise,
+ * it enables SR-IOV with the specified number of VFs.
+ *
+ * Return: The number of VFs enabled on success, or a negative error code on failure.
+ */
 int ixgbe_pci_sriov_configure(struct pci_dev *dev, int num_vfs)
 {
 	if (num_vfs == 0)
@@ -534,7 +544,11 @@ static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf
 		s32 err = 0;
 
 #if IS_ENABLED(CONFIG_FCOE)
+#ifdef HAVE_NETDEV_FCOE_MTU
+		if (dev->fcoe_mtu)
+#else
 		if (dev->features & NETIF_F_FCOE_MTU)
+#endif
 			pf_max_frame = max_t(int, pf_max_frame,
 					     IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif /* CONFIG_FCOE */
@@ -1516,6 +1530,18 @@ void ixgbe_set_all_vfs(struct ixgbe_adapter *adapter)
 }
 
 #ifdef HAVE_NDO_SET_VF_TRUST
+/**
+ * ixgbe_ndo_set_vf_trust - Set trust status for a virtual function (VF)
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @setting: Boolean value to set the VF as trusted (true) or not trusted (false)
+ *
+ * This function sets the trust status for a specified virtual function (VF) on
+ * the network device. If the trust status changes, the VF is reset to reconfigure
+ * its features. The function logs the new trust status of the VF.
+ *
+ * Return: 0 on success, or -EINVAL if the VF index is out of range.
+ */
 int ixgbe_ndo_set_vf_trust(struct net_device *netdev, int vf, bool setting)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -1537,9 +1563,25 @@ int ixgbe_ndo_set_vf_trust(struct net_device *netdev, int vf, bool setting)
 
 	return 0;
 }
+#endif /* HAVE_NDO_SET_VF_TRUST */
 
-#endif
 #ifdef IFLA_VF_MAX
+/**
+ * ixgbe_ndo_set_vf_mac - Set MAC address for a virtual function (VF)
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @mac: Pointer to the MAC address to be set
+ *
+ * This function sets or removes the MAC address for a specified virtual
+ * function (VF) on the network device. It validates the MAC address and
+ * updates the VF configuration. If a valid MAC address is provided, it sets
+ * the MAC address and marks it as set by the PF. If a zero MAC address is
+ * provided, it removes the existing MAC address. The function logs relevant
+ * messages and warns if the PF device is down.
+ *
+ * Return: 0 on success, -EINVAL if the VF index is out of range or the MAC
+ *         address is invalid, or a negative error code on failure.
+ */
 int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -1643,12 +1685,29 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	return err;
 }
 
+/**
+ * ixgbe_ndo_set_vf_vlan - Set VLAN configuration for a virtual function (VF)
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @vlan: VLAN ID to be set
+ * @qos: Quality of Service (QoS) priority
+ * @vlan_proto: (Optional) VLAN protocol, typically ETH_P_8021Q
+ *
+ * This function sets the VLAN configuration for a specified virtual function
+ * (VF) on the network device. It validates the VLAN ID and QoS values, and
+ * ensures the VLAN protocol is supported. If a VLAN is already set, it is
+ * disabled before setting the new configuration. The function handles both
+ * enabling and disabling of port VLANs for the VF.
+ *
+ * Return: 0 on success, -EINVAL if the VF index, VLAN ID, or QoS is invalid,
+ *         or -EPROTONOSUPPORT if the VLAN protocol is unsupported.
+ */
 #ifdef IFLA_VF_VLAN_INFO_MAX
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan,
 			  u8 qos, __be16 vlan_proto)
-#else
+#else /* IFLA_VF_VLAN_INFO_MAX */
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
-#endif
+#endif /* IFLA_VF_VLAN_INFO_MAX */
 {
 	int err = 0;
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -1683,7 +1742,6 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
 	return err;
 }
-
 
 static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {
@@ -1773,6 +1831,22 @@ void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)
 	}
 }
 
+/**
+ * ixgbe_ndo_set_vf_bw - Set bandwidth limit for a virtual function (VF)
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @min_tx_rate: Minimum transmit rate (unused)
+ * @max_tx_rate: Maximum transmit rate in Mbps
+ *
+ * This function sets the maximum bandwidth limit for a specified virtual
+ * function (VF) on the network device. It verifies that the VF is active,
+ * the link is up, and the link speed is 10 Gbps. The function ensures that
+ * the specified rate is within valid limits and updates the hardware
+ * configuration accordingly.
+ *
+ * Return: 0 on success, -EINVAL if the VF index is out of range or the rate
+ *         is invalid, or -EOPNOTSUPP if rate limiting is not supported.
+ */
 #ifdef HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev,
 			int vf,
@@ -1811,9 +1885,22 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int max_tx_rate)
 
 	return 0;
 }
-
 #endif /* IFLA_VF_MAX */
+
 #if IS_ENABLED(CONFIG_PCI_IOV)
+/**
+ * ixgbe_ndo_set_vf_spoofchk - Enable or disable spoof checking for a VF
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @setting: Boolean value to enable (true) or disable (false) spoof checking
+ *
+ * This function enables or disables MAC and VLAN spoof checking for a specified
+ * virtual function (VF) on the network device. It updates the VF's spoof check
+ * setting and configures the hardware accordingly. For certain hardware, it
+ * also configures Ethertype anti-spoofing for LLDP and FC.
+ *
+ * Return: 0 on success, or -EINVAL if the VF index is out of range.
+ */
 int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -1846,9 +1933,9 @@ int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting)
 
 		hw->mac.ops.set_ethertype_anti_spoofing(hw, setting, vf);
 	}
+
 	return 0;
 }
-
 #endif /* CONFIG_PCI_IOV */
 
 /**
@@ -1888,7 +1975,11 @@ static void ixgbe_set_vf_rx_tx(struct ixgbe_adapter *adapter, int vf)
 		int pf_max_frame = dev->mtu + ETH_HLEN;
 
 #if IS_ENABLED(CONFIG_FCOE)
+#ifdef HAVE_NETDEV_FCOE_MTU
+		if (dev->fcoe_mtu)
+#else
 		if (dev->features & NETIF_F_FCOE_MTU)
+#endif
 			pf_max_frame = max_t(int, pf_max_frame,
 					     IXGBE_FCOE_JUMBO_FRAME_SIZE);
 #endif /* CONFIG_FCOE */
@@ -1988,6 +2079,19 @@ out:
 
 #ifdef IFLA_VF_MAX
 #ifdef HAVE_NDO_SET_VF_RSS_QUERY_EN
+/**
+ * ixgbe_ndo_set_vf_rss_query_en - Enable or disable RSS query for a VF
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @setting: Boolean value to enable (true) or disable (false) RSS query
+ *
+ * This function enables or disables the Receive Side Scaling (RSS) query
+ * capability for a specified virtual function (VF) on the network device.
+ * The operation is supported only for 82599 and X540 devices.
+ *
+ * Return: 0 on success, -EINVAL if the VF index is out of range, or
+ *         -EOPNOTSUPP if the operation is not supported on the device.
+ */
 int ixgbe_ndo_set_vf_rss_query_en(struct net_device *netdev, int vf,
 				  bool setting)
 {
@@ -2007,8 +2111,21 @@ int ixgbe_ndo_set_vf_rss_query_en(struct net_device *netdev, int vf,
 
 	return 0;
 }
-
 #endif
+
+/**
+ * ixgbe_ndo_get_vf_config - Retrieve configuration for a virtual function (VF)
+ * @netdev: Network device structure
+ * @vf: VF index
+ * @ivi: Pointer to ifla_vf_info structure to be filled with VF configuration
+ *
+ * This function retrieves the configuration for a specified virtual function
+ * (VF) on the network device. It populates the `ifla_vf_info` structure with
+ * details such as the VF's MAC address, VLAN, QoS, and other attributes. The
+ * function supports additional parameters based on kernel capabilities.
+ *
+ * Return: 0 on success, or -EINVAL if the VF index is out of range.
+ */
 int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 			    int vf, struct ifla_vf_info *ivi)
 {

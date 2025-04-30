@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_H_
@@ -11,6 +11,10 @@
 #endif
 
 #include "kcompat_gcc.h"
+
+#ifndef HAVE_XARRAY_API
+#include "kcompat_xarray.h"
+#endif /* !HAVE_XARRAY_API */
 
 #include <linux/io.h>
 #include <linux/delay.h>
@@ -37,6 +41,11 @@
 #include <linux/types.h>
 #include <linux/udp.h>
 #include <linux/vmalloc.h>
+#ifdef HAVE_LINUX_REFCOUNT_TYPES_HEADER
+#include <linux/refcount_types.h>
+#elif defined(HAVE_LINUX_REFCOUNT_HEADER)
+#include <linux/refcount.h>
+#endif /* HAVE_LINUX_REFCOUNT_TYPES_HEADER */
 
 #ifndef IEEE_8021QAZ_APP_SEL_DSCP
 #define IEEE_8021QAZ_APP_SEL_DSCP	5
@@ -293,26 +302,67 @@ struct msix_entry {
 #define IS_ALIGNED(x,a)         (((x) % ((typeof(x))(a))) == 0)
 #endif
 
-#ifdef IS_ENABLED
-#undef IS_ENABLED
-#undef __ARG_PLACEHOLDER_1
-#undef config_enabled
-#undef _config_enabled
-#undef __config_enabled
-#undef ___config_enabled
-#endif
-
 #define __ARG_PLACEHOLDER_1 0,
-#define config_enabled(cfg) _config_enabled(cfg)
-#ifdef __CHECKER__
-/* cppcheck-suppress preprocessorErrorDirective */
-#endif /* __CHECKER__ */
-#define _config_enabled(value) __config_enabled(__ARG_PLACEHOLDER_##value)
-#define __config_enabled(arg1_or_junk) ___config_enabled(arg1_or_junk 1, 0)
-#define ___config_enabled(__ignored, val, ...) val
+#define __take_second_arg(__ignored, val, ...) val
 
-#define IS_ENABLED(option) \
-	(config_enabled(option) || config_enabled(option##_MODULE))
+/*
+ * The use of "&&" / "||" is limited in certain expressions.
+ * The following enable to calculate "and" / "or" with macro expansion only.
+ */
+#define __and(x, y)			___and(x, y)
+#define ___and(x, y)			____and(__ARG_PLACEHOLDER_##x, y)
+#define ____and(arg1_or_junk, y)	__take_second_arg(arg1_or_junk y, 0)
+
+#define __or(x, y)			___or(x, y)
+#define ___or(x, y)			____or(__ARG_PLACEHOLDER_##x, y)
+#define ____or(arg1_or_junk, y)		__take_second_arg(arg1_or_junk 1, y)
+
+/*
+ * Helper macros to use CONFIG_ options in C/CPP expressions. Note that
+ * these only work with boolean and tristate options.
+ */
+
+/*
+ * Getting something that works in C and CPP for an arg that may or may
+ * not be defined is tricky.  Here, if we have "#define CONFIG_BOOGER 1"
+ * we match on the placeholder define, insert the "0," for arg1 and generate
+ * the triplet (0, 1, 0).  Then the last step cherry picks the 2nd arg (a one).
+ * When CONFIG_BOOGER is not defined, we generate a (... 1, 0) pair, and when
+ * the last step cherry picks the 2nd arg, we get a zero.
+ */
+#define __is_defined(x)			___is_defined(x)
+#define ___is_defined(val)		____is_defined(__ARG_PLACEHOLDER_##val)
+#define ____is_defined(arg1_or_junk)	__take_second_arg(arg1_or_junk 1, 0)
+
+/*
+ * IS_BUILTIN(CONFIG_FOO) evaluates to 1 if CONFIG_FOO is set to 'y', 0
+ * otherwise. For boolean options, this is equivalent to
+ * IS_ENABLED(CONFIG_FOO).
+ */
+#define IS_BUILTIN(option) __is_defined(option)
+
+/*
+ * IS_MODULE(CONFIG_FOO) evaluates to 1 if CONFIG_FOO is set to 'm', 0
+ * otherwise.  CONFIG_FOO=m results in "#define CONFIG_FOO_MODULE 1" in
+ * autoconf.h.
+ */
+#define IS_MODULE(option) __is_defined(option##_MODULE)
+
+/*
+ * IS_REACHABLE(CONFIG_FOO) evaluates to 1 if the currently compiled
+ * code can call a function defined in code compiled based on CONFIG_FOO.
+ * This is similar to IS_ENABLED(), but returns false when invoked from
+ * built-in code when CONFIG_FOO is set to 'm'.
+ */
+#define IS_REACHABLE(option) __or(IS_BUILTIN(option), \
+				__and(IS_MODULE(option), __is_defined(MODULE)))
+
+/*
+ * IS_ENABLED(CONFIG_FOO) evaluates to 1 if CONFIG_FOO is set to 'y' or 'm',
+ * 0 otherwise.  Note that CONFIG_FOO=y results in "#define CONFIG_FOO 1" in
+ * autoconf.h, while CONFIG_FOO=m results in "#define CONFIG_FOO_MODULE 1".
+ */
+#define IS_ENABLED(option) __or(IS_BUILTIN(option), IS_MODULE(option))
 
 #if !defined(NETIF_F_HW_VLAN_TX) && !defined(NETIF_F_HW_VLAN_CTAG_TX)
 struct _kc_vlan_ethhdr {
@@ -4580,7 +4630,6 @@ int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
 
 #define DECLARE_HASHTABLE(name, bits)                                   	\
 	struct hlist_head name[1 << (bits)]
-
 #define HASH_SIZE(name) (ARRAY_SIZE(name))
 #define HASH_BITS(name) ilog2(HASH_SIZE(name))
 
@@ -4923,33 +4972,6 @@ static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
 	__kc__vlan_hwaccel_put_tag(skb, vlan_tci)
 #endif
 
-#ifdef HAVE_FDB_OPS
-#if defined(HAVE_NDO_FDB_ADD_NLATTR)
-int __kc_ndo_dflt_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			  struct net_device *dev,
-			  const unsigned char *addr, u16 flags);
-#elif defined(USE_CONST_DEV_UC_CHAR)
-int __kc_ndo_dflt_fdb_add(struct ndmsg *ndm, struct net_device *dev,
-			  const unsigned char *addr, u16 flags);
-#else
-int __kc_ndo_dflt_fdb_add(struct ndmsg *ndm, struct net_device *dev,
-			  unsigned char *addr, u16 flags);
-#endif /* HAVE_NDO_FDB_ADD_NLATTR */
-#if defined(HAVE_FDB_DEL_NLATTR)
-int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
-			  struct net_device *dev,
-			  const unsigned char *addr);
-#elif defined(USE_CONST_DEV_UC_CHAR)
-int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct net_device *dev,
-			  const unsigned char *addr);
-#else
-int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct net_device *dev,
-			  unsigned char *addr);
-#endif /* HAVE_FDB_DEL_NLATTR */
-#define ndo_dflt_fdb_add __kc_ndo_dflt_fdb_add
-#define ndo_dflt_fdb_del __kc_ndo_dflt_fdb_del
-#endif /* HAVE_FDB_OPS */
-
 #ifndef PCI_DEVID
 #define PCI_DEVID(bus, devfn)  ((((u16)(bus)) << 8) | (devfn))
 #endif
@@ -5005,7 +5027,6 @@ of_get_mac_address(struct device_node __always_unused *np)
 #define HAVE_UDP_ENC_RX_OFFLOAD
 #endif /* RHEL >= 7.4 */
 #else  /* RHEL >= 8.0 */
-#define HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
 #define NO_NETDEV_BPF_PROG_ATTACHED
 #define HAVE_NDO_SELECT_QUEUE_SB_DEV
 #endif /* RHEL >= 8.0 */
@@ -6075,7 +6096,6 @@ int _kc_kstrtobool(const char *s, bool *res);
 #define HAVE_ETHTOOL_25G_BITS
 #define HAVE_ETHTOOL_50G_BITS
 #define HAVE_ETHTOOL_100G_BITS
-#define HAVE_TCF_MIRRED_REDIRECT
 #endif /* 4.7.0 */
 
 /*****************************************************************************/
@@ -6235,7 +6255,6 @@ static inline bool _kc_napi_complete_done2(struct napi_struct *napi,
  * it means napi_poll is invoked in busy_poll context
  */
 #define HAVE_NAPI_STATE_IN_BUSY_POLL
-#define HAVE_TCF_MIRRED_EGRESS_REDIRECT
 #endif /* 4.10.0 */
 
 /*****************************************************************************/
@@ -6320,10 +6339,6 @@ static inline void _kc_dev_consume_skb_any(struct sk_buff *skb)
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,13,0))
-#if ((SLE_VERSION_CODE && (SLE_VERSION_CODE > SLE_VERSION(12,3,0))) || \
-     (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5)))
-#define HAVE_TCF_EXTS_HAS_ACTION
-#endif
 #define  PCI_EXP_LNKCAP_SLS_8_0GB 0x00000003 /* LNKCAP2 SLS Vector bit 2 */
 #if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,4,0)))
 #define HAVE_PCI_ERROR_HANDLER_RESET_PREPARE
@@ -6354,7 +6369,6 @@ static inline bool uuid_equal(const uuid_t *u1, const uuid_t *u2)
 #else /* > 4.13 */
 #define HAVE_METADATA_PORT_INFO
 #define HAVE_HWTSTAMP_FILTER_NTP_ALL
-#define HAVE_NDO_SETUP_TC_CHAIN_INDEX
 #define HAVE_PCI_ERROR_HANDLER_RESET_PREPARE
 #endif /* 4.13.0 */
 
@@ -6366,14 +6380,6 @@ static inline bool uuid_equal(const uuid_t *u1, const uuid_t *u2)
 	__clear_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, (ptr)->link_modes.name)
 #endif
 #endif /* ETHTOOL_GLINKSETTINGS */
-#if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,4,0)))
-#define HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
-#endif
-
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5)))
-#define HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
-#define HAVE_RHEL7_NETDEV_OPS_EXT_NDO_SETUP_TC
-#endif
 
 #define TIMER_DATA_TYPE		unsigned long
 #define TIMER_FUNC_TYPE		void (*)(TIMER_DATA_TYPE)
@@ -6403,8 +6409,6 @@ struct _kc_bpf_prog {
 #endif /* DIV_ROUND_DOWN_ULL */
 #else /* > 4.14 */
 #define HAVE_XDP_SUPPORT
-#define HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV
-#define HAVE_TCF_EXTS_HAS_ACTION
 #endif /* 4.14.0 */
 
 /*****************************************************************************/
@@ -6523,7 +6527,6 @@ const char *_kc_phy_speed_to_str(int speed);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
 #if ((RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6))) || \
      (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0))))
-#define HAVE_TCF_BLOCK
 #else /* RHEL >= 7.6 || SLES >= 15.1 */
 #endif /* !(RHEL >= 7.6) && !(SLES >= 15.1) */
 void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
@@ -6531,7 +6534,6 @@ void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 #define ethtool_intersect_link_masks _kc_ethtool_intersect_link_masks
 #else /* >= 4.15 */
 #define HAVE_XDP_BUFF_DATA_META
-#define HAVE_TCF_BLOCK
 #endif /* 4.15.0 */
 
 /*****************************************************************************/
@@ -6591,7 +6593,6 @@ static inline unsigned long _kc_array_index_mask_nospec(unsigned long index,
 #else /* >= 4.16 */
 #include <linux/nospec.h>
 #define HAVE_TC_FLOWER_OFFLOAD_COMMON_EXTACK
-#define HAVE_TCF_MIRRED_DEV
 #define HAVE_VF_STATS_DROPPED
 #endif /* 4.16.0 */
 
@@ -6641,9 +6642,7 @@ void _kc_pcie_print_link_status(struct pci_dev *dev);
 #define HAVE_NETPOLL_CONTROLLER
 #define REQUIRE_PCI_CLEANUP_AER_ERROR_STATUS
 #if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,1,0)))
-#define HAVE_TCF_MIRRED_DEV
 #define HAVE_NDO_SELECT_QUEUE_SB_DEV
-#define HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
 #endif
 
 static inline void __kc_metadata_dst_free(void *md_dst)
@@ -6653,7 +6652,6 @@ static inline void __kc_metadata_dst_free(void *md_dst)
 
 #define metadata_dst_free(md_dst) __kc_metadata_dst_free(md_dst)
 #else /* >= 4.19.0 */
-#define HAVE_TCF_BLOCK_CB_REGISTER_EXTACK
 #define NO_NETDEV_BPF_PROG_ATTACHED
 #define HAVE_NDO_SELECT_QUEUE_SB_DEV
 #define HAVE_NETDEV_SB_DEV
@@ -6699,8 +6697,6 @@ _kc_dev_change_flags(struct net_device *netdev, unsigned int flags,
 
 #define dev_change_flags _kc_dev_change_flags
 #endif /* !(RHEL_RELEASE_CODE && RHEL > RHEL(8,0)) */
-#if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))
-#endif /* RHEL 8.2 */
 #else /* >= 5.0.0 */
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
 #endif /* 5.0.0 */
@@ -6708,14 +6704,12 @@ _kc_dev_change_flags(struct net_device *netdev, unsigned int flags,
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0))
 #if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
-#define HAVE_TC_FLOW_RULE_INFRASTRUCTURE
 #define HAVE_DEVLINK_INFO_GET
 #define HAVE_DEVLINK_FLASH_UPDATE
 #endif /* RHEL < 8.1 */
 #else /* >= 5.1.0 */
 #define NO_XDP_QUERY_XSK_UMEM
 #define HAVE_AF_XDP_NETDEV_UMEM
-#define HAVE_TC_FLOW_RULE_INFRASTRUCTURE
 #define HAVE_DEVLINK_INFO_GET
 #define HAVE_DEVLINK_FLASH_UPDATE
 #endif /* 5.1.0 */
@@ -6745,32 +6739,7 @@ _kc_dev_change_flags(struct net_device *netdev, unsigned int flags,
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
 #if (!(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2)))
-#define FLOW_CLS_REPLACE TC_CLSFLOWER_REPLACE
-#define FLOW_CLS_DESTROY TC_CLSFLOWER_DESTROY
-#define FLOW_CLS_STATS TC_CLSFLOWER_STATS
-#define FLOW_CLS_TMPLT_CREATE TC_CLSFLOWER_TMPLT_CREATE
-#define FLOW_CLS_TMPLT_DESTROY TC_CLSFLOWER_TMPLT_DESTROY
-#define FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS \
-		TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS
-#define FLOW_BLOCK_BIND TC_BLOCK_BIND
-#define FLOW_BLOCK_UNBIND TC_BLOCK_UNBIND
-
-#ifdef HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
-#include <net/pkt_cls.h>
-
-int _kc_flow_block_cb_setup_simple(struct flow_block_offload *f,
-				   struct list_head *driver_list,
-				   tc_setup_cb_t *cb,
-				   void *cb_ident, void *cb_priv,
-				   bool ingress_only);
-
-#define flow_block_cb_setup_simple(f, driver_list, cb, cb_ident, cb_priv, \
-				   ingress_only) \
-	_kc_flow_block_cb_setup_simple(f, driver_list, cb, cb_ident, cb_priv, \
-				       ingress_only)
-#endif /* HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO */
 #else /* RHEL >= 8.2 */
-#define HAVE_FLOW_BLOCK_API
 #define HAVE_DEVLINK_PORT_ATTR_PCI_VF
 #endif /* RHEL >= 8.2 */
 
@@ -6785,7 +6754,6 @@ int _kc_flow_block_cb_setup_simple(struct flow_block_offload *f,
 #define HAVE_XSK_UMEM_HAS_ADDRS
 #endif /* SLE < 15.3 */
 #endif /* < 5.8.0*/
-#define HAVE_FLOW_BLOCK_API
 #define HAVE_DEVLINK_PORT_ATTR_PCI_VF
 #if IS_ENABLED(CONFIG_DIMLIB)
 #define HAVE_CONFIG_DIMLIB
@@ -6859,22 +6827,9 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev);
 #define HAVE_XDP_BUFF_FRAME_SZ
 #endif
 #else /* >= 5.8.0 */
-#define HAVE_TC_FLOW_INDIR_DEV
-#define HAVE_TC_FLOW_INDIR_BLOCK_CLEANUP
 #define HAVE_XDP_BUFF_FRAME_SZ
 #define HAVE_MEM_TYPE_XSK_BUFF_POOL
 #endif /* 5.8.0 */
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,3)))
-#define HAVE_TC_FLOW_INDIR_DEV
-#endif
-#if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,3,0)))
-#define HAVE_TC_FLOW_INDIR_DEV
-#endif /* SLE_VERSION_CODE && SLE_VERSION_CODE >= SLES15SP3 */
-
-/*****************************************************************************/
-#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4)))
-#define HAVE_TC_FLOW_INDIR_BLOCK_CLEANUP
-#endif /* (RHEL >= 8.4) */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,9,0))

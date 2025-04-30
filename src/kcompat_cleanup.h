@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /* SPDX-License-Identifier: GPL-2.0 */
@@ -120,7 +120,6 @@ const volatile void * __must_check_fn(const volatile void *val)
 
 #define return_ptr(p)	return no_free_ptr(p)
 
-
 /*
  * DEFINE_CLASS(name, type, exit, init, init_args...):
  *	helper to define the destructor and constructor for a type.
@@ -161,7 +160,6 @@ static inline class_##_name##_t class_##_name##ext##_constructor(_init_args) \
 #define CLASS(_name, var)						\
 	class_##_name##_t var __cleanup(class_##_name##_destructor) =	\
 		class_##_name##_constructor
-
 /*
  * DEFINE_GUARD(name, type, lock, unlock):
  *	trivial wrapper around DEFINE_CLASS() above specifically
@@ -216,7 +214,6 @@ static inline class_##_name##_t class_##_name##ext##_constructor(_init_args) \
 	     *done = NULL; !done; done = (void *)1) \
 		if (!__guard_ptr(_name)(&scope)) _fail; \
 		else
-
 /*
  * Additional helper macros for generating lock guards with types, either for
  * locks that don't have a native type (eg. RCU, preempt) or those that need a
@@ -252,7 +249,6 @@ static inline void *class_##_name##_lock_ptr(class_##_name##_t *_T)	\
 {									\
 	return _T->lock;						\
 }
-
 
 #define __DEFINE_LOCK_GUARD_1(_name, _type, _lock)			\
 static inline class_##_name##_t class_##_name##_constructor(_type *l)	\
@@ -373,5 +369,9 @@ DEFINE_LOCK_GUARD_1(write_lock_irqsave, rwlock_t,
 #include <linux/rcupdate.h>
 
 DEFINE_LOCK_GUARD_0(rcu, rcu_read_lock(), rcu_read_unlock())
+
+#include <linux/devlink.h>
+
+DEFINE_GUARD(devl, struct devlink *, devl_lock(_T), devl_unlock(_T));
 
 #endif /* _KCOMPAT_CLENAUP_H_ */

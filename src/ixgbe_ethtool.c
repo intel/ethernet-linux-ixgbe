@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /* ethtool support for ixgbe */
@@ -10,7 +10,6 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 #include <linux/highmem.h>
-
 
 #ifdef SIOCETHTOOL
 #include <asm/uaccess.h>
@@ -197,7 +196,6 @@ static const char ixgbe_priv_flags_strings[][ETH_GSTRING_LEN] = {
 
 #define ixgbe_isbackplane(type)  ((type == ixgbe_media_type_backplane)? true : false)
 
-
 #ifdef ETHTOOL_GLINKSETTINGS
 static void ixgbe_set_supported_10gtypes(struct ixgbe_hw *hw,
 					 struct ethtool_link_ksettings *cmd)
@@ -265,6 +263,18 @@ static void ixgbe_set_advertising_10gtypes(struct ixgbe_hw *hw,
 	}
 }
 
+/**
+ * ixgbe_get_link_ksettings - Retrieve link settings for the network device
+ * @netdev: Network device structure
+ * @cmd: Pointer to ethtool_link_ksettings structure to be filled with link settings
+ *
+ * This function populates the `ethtool_link_ksettings` structure with the
+ * supported and advertised link modes, port type, and speed for the specified
+ * network device. It considers the device's capabilities, PHY type, and
+ * current link status to determine the appropriate settings.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_get_link_ksettings(struct net_device *netdev,
 				    struct ethtool_link_ksettings *cmd)
 {
@@ -539,6 +549,18 @@ static __u32 ixgbe_backplane_type(struct ixgbe_hw *hw)
 	return mode;
 }
 
+/**
+ * ixgbe_get_settings - Retrieve link settings for the network device
+ * @netdev: Network device structure
+ * @ecmd: Pointer to ethtool_cmd structure to be filled with link settings
+ *
+ * This function populates the `ethtool_cmd` structure with the supported and
+ * advertised link modes, port type, speed, and duplex settings for the specified
+ * network device. It considers the device's capabilities, PHY type, and current
+ * link status to determine the appropriate settings.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_get_settings(struct net_device *netdev,
 			      struct ethtool_cmd *ecmd)
 {
@@ -735,6 +757,19 @@ static int ixgbe_get_settings(struct net_device *netdev,
 #endif /* !ETHTOOL_GLINKSETTINGS */
 
 #ifdef ETHTOOL_GLINKSETTINGS
+/**
+ * ixgbe_set_link_ksettings - Set link settings for the network device
+ * @netdev: Network device structure
+ * @cmd: Pointer to ethtool_link_ksettings structure with desired link settings
+ *
+ * This function configures the link settings for the specified network device
+ * based on the provided `ethtool_link_ksettings` structure. It validates the
+ * requested settings, updates the advertised link speeds, and restarts
+ * auto-negotiation if necessary. The function supports both copper and
+ * multispeed fiber media types.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_set_link_ksettings(struct net_device *netdev,
 				    const struct ethtool_link_ksettings *cmd)
 {
@@ -815,6 +850,19 @@ static int ixgbe_set_link_ksettings(struct net_device *netdev,
 	return err;
 }
 #else
+/**
+ * ixgbe_set_settings - Set link settings for the network device
+ * @netdev: Network device structure
+ * @ecmd: Pointer to ethtool_cmd structure with desired link settings
+ *
+ * This function configures the link settings for the specified network device
+ * based on the provided `ethtool_cmd` structure. It validates the requested
+ * settings, updates the advertised link speeds, and restarts auto-negotiation
+ * if necessary. The function supports both copper and multispeed fiber media
+ * types, but does not support duplex forcing.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_set_settings(struct net_device *netdev,
 			      struct ethtool_cmd *ecmd)
 {
@@ -882,6 +930,16 @@ static int ixgbe_set_settings(struct net_device *netdev,
 }
 #endif /* !ETHTOOL_GLINKSETTINGS */
 
+/**
+ * ixgbe_get_pauseparam - Retrieve pause parameters for the network device
+ * @netdev: Network device structure
+ * @pause: Pointer to ethtool_pauseparam structure to be filled with pause settings
+ *
+ * This function populates the `ethtool_pauseparam` structure with the current
+ * pause frame settings for the specified network device. It sets the receive
+ * and transmit pause parameters based on the device's current flow control mode
+ * and indicates whether autonegotiation of flow control is enabled.
+ */
 static void ixgbe_get_pauseparam(struct net_device *netdev,
 				 struct ethtool_pauseparam *pause)
 {
@@ -907,33 +965,40 @@ static void ixgbe_get_pauseparam(struct net_device *netdev,
 	}
 }
 
-static int ixgbe_set_pauseparam(struct net_device *netdev,
-				struct ethtool_pauseparam *pause)
+/**
+ * ixgbe_set_pauseparam_E610 - Set pause parameters for E610 hardware
+ * @netdev: Network device structure
+ * @pause: Pointer to ethtool_pauseparam structure with desired pause settings
+ *
+ * This function configures the pause frame settings for E610 hardware based on
+ * the provided `ethtool_pauseparam` structure. It validates the settings,
+ * updates the flow control mode, and applies changes if necessary. The function
+ * does not support disabling autonegotiation for flow control.
+ *
+ * Return: 0 on success, or -EOPNOTSUPP if the configuration is not supported.
+ */
+static int ixgbe_set_pauseparam_E610(struct net_device *netdev,
+				     struct ethtool_pauseparam *pause)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_fc_info fc = hw->fc;
 
-	/* 82598 does no support link flow control with DCB enabled */
-	if ((hw->mac.type == ixgbe_mac_82598EB) &&
-	    (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
-		return -EINVAL;
-
-	if ((hw->mac.type == ixgbe_mac_E610) &&
-	    (pause->autoneg == AUTONEG_DISABLE)) {
-		netdev_info(netdev, "Cannot disable autonegotiation for that device.\n");
+	if (pause->autoneg == AUTONEG_DISABLE) {
+		netdev_info(netdev,
+			"Cannot disable autonegotiation for this device.\n");
 		return -EOPNOTSUPP;
 	}
 
 	/* some devices do not support autoneg of flow control */
 	if ((pause->autoneg == AUTONEG_ENABLE) &&
 	    !ixgbe_device_supports_autoneg_fc(hw))
-	    return -EINVAL;
+		return -EOPNOTSUPP;
 
 	fc.disable_fc_autoneg = (pause->autoneg != AUTONEG_ENABLE);
 
-	if ((pause->rx_pause && pause->tx_pause) ||
-	    (pause->autoneg && hw->mac.type != ixgbe_mac_E610))
+	if (pause->rx_pause && pause->tx_pause)
 		fc.requested_mode = ixgbe_fc_full;
 	else if (pause->rx_pause)
 		fc.requested_mode = ixgbe_fc_rx_pause;
@@ -954,18 +1019,98 @@ static int ixgbe_set_pauseparam(struct net_device *netdev,
 	return 0;
 }
 
+/**
+ * ixgbe_set_pauseparam - Set pause frame parameters for the network device
+ * @netdev: Network device structure
+ * @pause: Pointer to ethtool_pauseparam structure with desired pause settings
+ *
+ * This function configures the pause frame settings for the specified network
+ * device based on the provided `ethtool_pauseparam` structure. It validates
+ * the settings, updates the flow control mode, and applies changes if necessary.
+ * The function does not support enabling autonegotiation of flow control on
+ * certain devices or when DCB is enabled on 82598 hardware.
+ *
+ * Return: 0 on success, or -EINVAL if the configuration is not supported.
+ */
+static int ixgbe_set_pauseparam(struct net_device *netdev,
+				struct ethtool_pauseparam *pause)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_fc_info fc = hw->fc;
+
+	/* 82598 does no support link flow control with DCB enabled */
+	if ((hw->mac.type == ixgbe_mac_82598EB) &&
+	    (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+		return -EINVAL;
+
+	/* some devices do not support autoneg of flow control */
+	if ((pause->autoneg == AUTONEG_ENABLE) &&
+	    !ixgbe_device_supports_autoneg_fc(hw))
+	    return -EINVAL;
+
+	fc.disable_fc_autoneg = (pause->autoneg != AUTONEG_ENABLE);
+
+	if ((pause->rx_pause && pause->tx_pause) || pause->autoneg)
+		fc.requested_mode = ixgbe_fc_full;
+	else if (pause->rx_pause)
+		fc.requested_mode = ixgbe_fc_rx_pause;
+	else if (pause->tx_pause)
+		fc.requested_mode = ixgbe_fc_tx_pause;
+	else
+		fc.requested_mode = ixgbe_fc_none;
+
+	/* if the thing changed then we'll update and use new autoneg */
+	if (memcmp(&fc, &hw->fc, sizeof(struct ixgbe_fc_info))) {
+		hw->fc = fc;
+		if (netif_running(netdev))
+			ixgbe_reinit_locked(adapter);
+		else
+			ixgbe_reset(adapter);
+	}
+
+	return 0;
+}
+
+/**
+ * ixgbe_get_msglevel - Retrieve the message level for the network device
+ * @netdev: Network device structure
+ *
+ * This function returns the current message level for the specified network
+ * device, which controls the verbosity of the driver's logging output.
+ *
+ * Return: The current message level.
+ */
 static u32 ixgbe_get_msglevel(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	return adapter->msg_enable;
 }
 
+/**
+ * ixgbe_set_msglevel - Set the message level for the network device
+ * @netdev: Network device structure
+ * @data: New message level to be set
+ *
+ * This function sets the message level for the specified network device,
+ * which controls the verbosity of the driver's logging output.
+ */
 static void ixgbe_set_msglevel(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	adapter->msg_enable = data;
 }
 
+/**
+ * ixgbe_get_regs_len - Get the length of the hardware registers data
+ * @netdev: Network device structure (unused)
+ *
+ * This function returns the total length, in bytes, of the hardware registers
+ * data for the network device. The length is defined by the constant
+ * `IXGBE_REGS_LEN` multiplied by the size of a 32-bit integer.
+ *
+ * Return: The length of the hardware registers data in bytes.
+ */
 static int ixgbe_get_regs_len(struct net_device __always_unused *netdev)
 {
 #define IXGBE_REGS_LEN  1145
@@ -974,7 +1119,17 @@ static int ixgbe_get_regs_len(struct net_device __always_unused *netdev)
 
 #define IXGBE_GET_STAT(_A_, _R_)	(_A_->stats._R_)
 
-
+/**
+ * ixgbe_get_regs - Retrieve hardware registers for the network device
+ * @netdev: Network device structure
+ * @regs: Pointer to ethtool_regs structure to be filled with register info
+ * @p: Buffer to store the retrieved register values
+ *
+ * This function populates the provided buffer with the current values of
+ * various hardware registers for the specified network device. It organizes
+ * the registers into categories such as general, NVM, interrupt, flow control,
+ * and more, and fills the `ethtool_regs` structure with version information.
+ */
 static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 			   void *p)
 {
@@ -1343,12 +1498,38 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 
 }
 
+/**
+ * ixgbe_get_eeprom_len_E610 - Get EEPROM length for E610 hardware
+ * @netdev: Network device structure
+ *
+ * This function returns the length of the EEPROM for E610 hardware by
+ * calculating the total size in bytes based on the word size.
+ *
+ * Return: The EEPROM length in bytes.
+ */
+static int ixgbe_get_eeprom_len_E610(struct net_device *netdev)
+{
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
+
+	return adapter->hw.eeprom.word_size * 2;
+}
+
+/**
+ * ixgbe_get_eeprom_len - Get EEPROM length for the network device
+ * @netdev: Network device structure
+ *
+ * This function returns the length of the EEPROM for the specified network
+ * device. If `IXGBE_NVMUPD_SUPPORT` is defined, it returns the length of the
+ * PCI resource. Otherwise, it calculates the EEPROM size in bytes based on
+ * the word size.
+ *
+ * Return: The EEPROM length in bytes.
+ */
 static int ixgbe_get_eeprom_len(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
-		return adapter->hw.eeprom.word_size * 2;
 	return pci_resource_len(adapter->pdev, 0);
 }
 
@@ -1507,6 +1688,19 @@ static int ixgbe_nvmupd_command(struct ixgbe_hw *hw,
 	return ret_val;
 }
 
+/**
+ * ixgbe_get_eeprom - Retrieve EEPROM data for the network device
+ * @netdev: Network device structure
+ * @eeprom: Pointer to ethtool_eeprom structure specifying the EEPROM section
+ * @bytes: Buffer to store the retrieved EEPROM data
+ *
+ * This function retrieves a specified section of the EEPROM data for the
+ * network device. It calculates the range of EEPROM words to read based on
+ * the offset and length provided in the `eeprom` structure. The function
+ * supports both standard EEPROM access and, if enabled, NVM update commands.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_get_eeprom(struct net_device *netdev,
 			    struct ethtool_eeprom *eeprom, u8 *bytes)
 {
@@ -1553,6 +1747,19 @@ static int ixgbe_get_eeprom(struct net_device *netdev,
 	return ret_val;
 }
 
+/**
+ * ixgbe_set_eeprom - Write data to the EEPROM of the network device
+ * @netdev: Network device structure
+ * @eeprom: Pointer to ethtool_eeprom structure specifying the EEPROM section
+ * @bytes: Buffer containing the data to be written to the EEPROM
+ *
+ * This function writes the specified data to the EEPROM of the network device.
+ * It handles read-modify-write operations for unaligned offsets and updates
+ * the EEPROM checksum after writing. The function supports both standard
+ * EEPROM access and, if enabled, NVM update commands.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_set_eeprom(struct net_device *netdev,
 			    struct ethtool_eeprom *eeprom, u8 *bytes)
 {
@@ -1634,6 +1841,14 @@ err:
 }
 
 #if defined(HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT)
+/**
+ * ixgbe_refresh_fw_version - Refresh the firmware version for the adapter
+ * @adapter: Pointer to the ixgbe adapter structure
+ *
+ * This function refreshes the firmware version information for the specified
+ * adapter. It initializes the NVM (Non-Volatile Memory) and updates the
+ * firmware version specifically for E610 hardware.
+ */
 static void ixgbe_refresh_fw_version(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -1643,15 +1858,19 @@ static void ixgbe_refresh_fw_version(struct ixgbe_adapter *adapter)
 }
 #endif
 
+/**
+ * ixgbe_get_drvinfo - Provide driver information for the network device
+ * @netdev: Network device structure
+ * @drvinfo: Pointer to ethtool_drvinfo to be filled with driver info
+ *
+ * This function fills the `ethtool_drvinfo` structure with the driver name,
+ * version, firmware version, and bus information for the specified network
+ * device. It uses `strscpy` for safe string copying.
+ */
 static void ixgbe_get_drvinfo(struct net_device *netdev,
 			      struct ethtool_drvinfo *drvinfo)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-
-#if defined(HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT)
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
-		ixgbe_refresh_fw_version(adapter);
-#endif
 
 	strscpy(drvinfo->driver, ixgbe_driver_name,
 		sizeof(drvinfo->driver));
@@ -1668,7 +1887,39 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 #endif
 }
 
+/**
+ * ixgbe_get_drvinfo_E610 - Provide driver info for E610 hardware
+ * @netdev: Network device structure
+ * @drvinfo: Pointer to ethtool_drvinfo to be filled with driver info
+ *
+ * This function updates the firmware version for E610 hardware, if supported,
+ * and then calls `ixgbe_get_drvinfo` to fill the `ethtool_drvinfo` structure
+ * with driver information.
+ */
+static void ixgbe_get_drvinfo_E610(struct net_device *netdev,
+				   struct ethtool_drvinfo *drvinfo)
+{
+#ifdef HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
+
+	ixgbe_refresh_fw_version(adapter);
+#endif
+	ixgbe_get_drvinfo(netdev, drvinfo);
+}
+
 #ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+/**
+ * ixgbe_get_ringparam - Retrieve ring parameters for the network device
+ * @netdev: Network device structure
+ * @ring: Pointer to ethtool_ringparam structure to be filled with ring parameters
+ * @ker: (Optional) Kernel-specific ring parameters (unused)
+ * @extack: (Optional) Netlink extended acknowledgment structure (unused)
+ *
+ * This function populates the `ethtool_ringparam` structure with the current
+ * and maximum ring parameters for the specified network device, including
+ * receive and transmit ring sizes.
+ */
 static void
 ixgbe_get_ringparam(struct net_device *netdev,
 		    struct ethtool_ringparam *ring,
@@ -1692,6 +1943,20 @@ static void ixgbe_get_ringparam(struct net_device *netdev,
 }
 
 #ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+/**
+ * ixgbe_set_ringparam - Set ring parameters for the network device
+ * @netdev: Network device structure
+ * @ring: Pointer to ethtool_ringparam structure with desired ring settings
+ * @ker: (Optional) Kernel-specific ring parameters (unused)
+ * @extack: (Optional) Netlink extended acknowledgment structure (unused)
+ *
+ * This function configures the ring parameters for the specified network device
+ * based on the provided `ethtool_ringparam` structure. It validates the settings,
+ * updates the ring sizes, and reallocates resources if necessary. The function
+ * handles both transmit and receive rings, and supports XDP if enabled.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int
 ixgbe_set_ringparam(struct net_device *netdev,
 		    struct ethtool_ringparam *ring,
@@ -1846,7 +2111,6 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 			}
 		}
 
-
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			ixgbe_free_rx_resources(adapter->rx_ring[i]);
 
@@ -1866,12 +2130,34 @@ clear_reset:
 }
 
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
+/**
+ * ixgbe_get_stats_count - Get the number of statistics available
+ * @netdev: Network device structure
+ *
+ * This function returns the total number of statistics available for the
+ * specified network device. The count is defined by the constant
+ * `IXGBE_STATS_LEN`.
+ *
+ * Return: The number of available statistics.
+ */
 static int ixgbe_get_stats_count(struct net_device *netdev)
 {
 	return IXGBE_STATS_LEN;
 }
 
 #else /* HAVE_ETHTOOL_GET_SSET_COUNT */
+/**
+ * ixgbe_get_sset_count - Get the number of strings in a specified set
+ * @netdev: Network device structure
+ * @sset: String set identifier
+ *
+ * This function returns the number of strings in the specified string set for
+ * the network device. It supports test, statistics, and private flags string
+ * sets. If the string set is not supported, it returns an error.
+ *
+ * Return: The number of strings in the specified set, or -EOPNOTSUPP if the set
+ *         is not supported.
+ */
 static int ixgbe_get_sset_count(struct net_device *netdev, int sset)
 {
 #ifdef HAVE_TX_MQ
@@ -1891,8 +2177,19 @@ static int ixgbe_get_sset_count(struct net_device *netdev, int sset)
 		return -EOPNOTSUPP;
 	}
 }
-
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
+
+/**
+ * ixgbe_get_ethtool_stats - Retrieve ethtool statistics for the network device
+ * @netdev: Network device structure
+ * @stats: Unused ethtool_stats structure
+ * @data: Buffer to store the retrieved statistics
+ *
+ * This function populates the provided `data` buffer with various statistics
+ * for the network device, including network, global, and per-queue statistics.
+ * It updates the adapter's statistics and iterates over transmit and receive
+ * queues to gather packet and byte counts, among other metrics.
+ */
 static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 				    struct ethtool_stats __always_unused *stats, u64 *data)
 {
@@ -2010,6 +2307,17 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 	}
 }
 
+/**
+ * ixgbe_get_strings - Retrieve string set for the network device
+ * @netdev: Network device structure
+ * @stringset: Identifier for the string set to retrieve
+ * @data: Buffer to store the retrieved strings
+ *
+ * This function populates the provided buffer with strings corresponding to
+ * the specified string set for the network device. It supports test strings,
+ * statistics strings, and private flags strings, depending on the string set
+ * identifier.
+ */
 static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 			      u8 *data)
 {
@@ -2202,7 +2510,6 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 	{ IXGBE_MTA(0), 128, TABLE32_TEST, 0xFFFFFFFF, 0xFFFFFFFF },
 	{ .reg = 0 }
 };
-
 
 static bool reg_pattern_test(struct ixgbe_adapter *adapter, u64 *data, int reg,
 			     u32 mask, u32 write)
@@ -2597,7 +2904,6 @@ static int ixgbe_setup_loopback_test(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 reg_data;
 
-
 	/* Setup MAC loopback */
 	reg_data = IXGBE_READ_REG(hw, IXGBE_HLREG0);
 	reg_data |= IXGBE_HLREG0_LPBK;
@@ -2875,12 +3181,53 @@ out:
 }
 
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
+/**
+ * ixgbe_diag_test_count - Get the number of diagnostic tests available
+ * @netdev: Network device structure (unused)
+ *
+ * This function returns the number of diagnostic tests available for the
+ * network device. The `netdev` parameter is marked as unused, indicating that
+ * it is not utilized within the function. The function simply returns a
+ * constant value, `IXGBE_TEST_LEN`, which represents the number of diagnostic
+ * tests that can be performed on the device.
+ *
+ * Return: The number of diagnostic tests available, as defined by
+ *         `IXGBE_TEST_LEN`.
+ */
 static int ixgbe_diag_test_count(struct net_device __always_unused *netdev)
 {
 	return IXGBE_TEST_LEN;
 }
-
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
+
+/**
+ * ixgbe_diag_test - Perform diagnostic tests on the network device
+ * @netdev: Network device structure
+ * @eth_test: Ethtool test structure containing test flags
+ * @data: Array to store the results of the diagnostic tests
+ *
+ * This function performs a series of diagnostic tests on the specified network
+ * device. It supports both offline and online tests, depending on the flags set
+ * in the `eth_test` structure. The function checks if the device is in a
+ * removable state and blocks the test if the adapter is removed.
+ *
+ * For offline tests, the function performs the following diagnostics:
+ * - Link test
+ * - Register test
+ * - EEPROM test
+ * - Interrupt test
+ * - MAC loopback test (skipped if SR-IOV or VMDq is enabled)
+ *
+ * The function handles the device state appropriately, closing and resetting
+ * the device as needed during offline tests. It also ensures that the device
+ * returns to its previous state after testing.
+ *
+ * For online tests, only the link test is performed, and other tests are
+ * skipped with default pass results.
+ *
+ * The results of each test are stored in the `data` array, and the function
+ * sets the `ETH_TEST_FL_FAILED` flag in `eth_test` if any test fails.
+ */
 static void ixgbe_diag_test(struct net_device *netdev,
 			    struct ethtool_test *eth_test, u64 *data)
 {
@@ -3008,6 +3355,16 @@ static int ixgbe_wol_exclusion(struct ixgbe_adapter *adapter,
 	return retval;
 }
 
+/**
+ * ixgbe_get_wol - Retrieve Wake-on-LAN settings for the network device
+ * @netdev: Network device structure
+ * @wol: Pointer to ethtool_wolinfo structure to be filled with WoL settings
+ *
+ * This function populates the `ethtool_wolinfo` structure with the supported
+ * and enabled Wake-on-LAN (WoL) options for the specified network device. It
+ * checks for WoL exclusions and device wakeup capability before setting the
+ * enabled options.
+ */
 static void ixgbe_get_wol(struct net_device *netdev,
 			  struct ethtool_wolinfo *wol)
 {
@@ -3031,6 +3388,18 @@ static void ixgbe_get_wol(struct net_device *netdev,
 		wol->wolopts |= WAKE_MAGIC;
 }
 
+/**
+ * ixgbe_set_wol - Set Wake-on-LAN settings for the network device
+ * @netdev: Network device structure
+ * @wol: Pointer to ethtool_wolinfo structure containing desired WoL settings
+ *
+ * This function sets the Wake-on-LAN (WoL) options for the specified network
+ * device based on the provided `ethtool_wolinfo` structure. It checks for
+ * unsupported WoL options and exclusions before updating the device's WoL
+ * configuration and enabling or disabling device wakeup.
+ *
+ * Return: 0 on success, or -EOPNOTSUPP if unsupported options are specified.
+ */
 static int ixgbe_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -3061,6 +3430,84 @@ static int ixgbe_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
 	return 0;
 }
 
+/**
+ * ixgbe_set_wol_acpi - Set ACPI Wake-on-LAN settings for the network device
+ * @netdev: Network device structure
+ * @wol: Pointer to ethtool_wolinfo structure containing desired WoL settings
+ *
+ * This function configures the ACPI Wake-on-LAN (WoL) options for the specified
+ * network device based on the provided `ethtool_wolinfo` structure. It disables
+ * APM wakeup, updates the device's WoL configuration, and enables or disables
+ * device wakeup. Unsupported WoL options and exclusions are checked before
+ * applying the settings.
+ *
+ * Return: 0 on success, or -EOPNOTSUPP if unsupported options are specified.
+ */
+static int ixgbe_set_wol_acpi(struct net_device *netdev,
+			      struct ethtool_wolinfo *wol)
+{
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 grc;
+
+	if (ixgbe_wol_exclusion(adapter, wol))
+		return wol->wolopts ? -EOPNOTSUPP : 0;
+
+	/* disable APM wakeup */
+	grc = IXGBE_READ_REG(hw, IXGBE_GRC_X550EM_a);
+	grc &= ~IXGBE_GRC_APME;
+	IXGBE_WRITE_REG(hw, IXGBE_GRC_X550EM_a, grc);
+
+	IXGBE_WRITE_REG(hw, IXGBE_WUFC, 0);
+
+	adapter->wol = 0;
+	if (wol->wolopts & WAKE_UCAST)
+		adapter->wol |= IXGBE_WUFC_EX;
+	if (wol->wolopts & WAKE_MCAST)
+		adapter->wol |= IXGBE_WUFC_MC;
+	if (wol->wolopts & WAKE_BCAST)
+		adapter->wol |= IXGBE_WUFC_BC;
+
+	IXGBE_WRITE_REG(hw, IXGBE_WUC, IXGBE_WUC_PME_EN);
+	IXGBE_WRITE_REG(hw, IXGBE_WUFC, adapter->wol);
+
+	hw->wol_enabled = !!(adapter->wol);
+
+	device_set_wakeup_enable(ixgbe_pf_to_dev(adapter), adapter->wol);
+
+	return 0;
+}
+
+/**
+ * ixgbe_set_wol_E610 - Set Wake-on-LAN settings for E610 hardware
+ * @netdev: Network device structure
+ * @wol: Pointer to ethtool_wolinfo structure containing desired WoL settings
+ *
+ * This function sets the Wake-on-LAN (WoL) options for E610 hardware. It
+ * delegates to `ixgbe_set_wol_acpi` if unicast, multicast, or broadcast WoL
+ * options are specified, otherwise it uses `ixgbe_set_wol`.
+ *
+ * Return: 0 on success, or a negative error code if unsupported options are specified.
+ */
+static int ixgbe_set_wol_E610(struct net_device *netdev,
+			      struct ethtool_wolinfo *wol)
+{
+	if (wol->wolopts & (WAKE_UCAST | WAKE_MCAST | WAKE_BCAST))
+		return ixgbe_set_wol_acpi(netdev, wol);
+	else
+		return ixgbe_set_wol(netdev, wol);
+}
+
+/**
+ * ixgbe_nway_reset - Perform a N-Way reset on the network device
+ * @netdev: Network device structure
+ *
+ * This function performs a N-Way reset on the specified network device. If the
+ * network interface is running, it reinitializes the adapter to apply the reset.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_nway_reset(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -3072,9 +3519,22 @@ static int ixgbe_nway_reset(struct net_device *netdev)
 }
 
 #ifdef HAVE_ETHTOOL_SET_PHYS_ID
-static int ixgbe_set_phys_id_E610(struct ixgbe_adapter *adapter,
+/**
+ * ixgbe_set_phys_id_E610 - Control the physical identification LED for E610 hardware
+ * @netdev: Network device structure
+ * @state: Desired state for the LED (active or inactive)
+ *
+ * This function controls the physical identification LED for E610 hardware
+ * based on the specified state. It turns the LED on or off to help identify
+ * the physical location of the network device.
+ *
+ * Return: 0 on success, -EIO if an error occurs, or -EOPNOTSUPP if the state is unsupported.
+ */
+static int ixgbe_set_phys_id_E610(struct net_device *netdev,
 				  enum ethtool_phys_id_state state)
 {
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
 	bool led_active;
 	int err;
 
@@ -3086,7 +3546,7 @@ static int ixgbe_set_phys_id_E610(struct ixgbe_adapter *adapter,
 		led_active = false;
 		break;
 	default:
-		return -EINVAL;
+		return -EOPNOTSUPP;
 	}
 
 	err = ixgbe_aci_set_port_id_led(&adapter->hw, !led_active);
@@ -3096,14 +3556,23 @@ static int ixgbe_set_phys_id_E610(struct ixgbe_adapter *adapter,
 	return err;
 }
 
+/**
+ * ixgbe_set_phys_id - Control the physical identification LED for the network device
+ * @netdev: Network device structure
+ * @state: Desired state for the LED (active, on, off, or inactive)
+ *
+ * This function controls the physical identification LED for the network device
+ * based on the specified state. It can turn the LED on or off, activate it for
+ * identification, or restore its previous settings.
+ *
+ * Return: 0 on success, 2 if the LED is activated for identification, -EINVAL if
+ *         an error occurs, or -EOPNOTSUPP if LED operations are not supported.
+ */
 static int ixgbe_set_phys_id(struct net_device *netdev,
 			     enum ethtool_phys_id_state state)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
-
-	if (hw->mac.type == ixgbe_mac_E610)
-		return ixgbe_set_phys_id_E610(adapter, state);
 
 	if (!hw->mac.ops.led_on || !hw->mac.ops.led_off)
 		return -EOPNOTSUPP;
@@ -3132,6 +3601,19 @@ static int ixgbe_set_phys_id(struct net_device *netdev,
 	return 0;
 }
 #else
+/**
+ * ixgbe_phys_id - Identify the physical location of the network device
+ * @netdev: Network device structure
+ * @data: Duration in seconds to blink the LED for identification
+ *
+ * This function blinks the LED on the network device to help identify its
+ * physical location. It uses the device's LED on and off operations to blink
+ * the LED for the specified duration. If the duration is not specified or
+ * exceeds 300 seconds, it defaults to 300 seconds. The function restores the
+ * original LED settings after blinking.
+ *
+ * Return: 0 on success, or a negative error code if LED operations are not supported.
+ */
 static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -3161,6 +3643,21 @@ static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 }
 #endif /* HAVE_ETHTOOL_SET_PHYS_ID */
 
+/**
+ * ixgbe_get_coalesce - Retrieve interrupt coalescing settings for the network device
+ * @netdev: Network device structure
+ * @ec: Pointer to the ethtool_coalesce structure to be filled with coalescing info
+ * @kernel_coal: (Optional) Pointer to kernel-specific coalescing settings (unused)
+ * @extack: (Optional) Pointer to netlink extended acknowledgment structure (unused)
+ *
+ * This function retrieves the interrupt coalescing settings for the specified
+ * network device and populates the provided `ethtool_coalesce` structure with
+ * the relevant information. It reports the maximum number of coalesced frames
+ * for transmit interrupts and the coalescing time for receive and transmit
+ * interrupts based on the device's configuration.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_get_coalesce(struct net_device *netdev,
 #ifdef HAVE_ETHTOOL_COALESCE_EXTACK
 			      struct ethtool_coalesce *ec,
@@ -3223,6 +3720,21 @@ static bool ixgbe_update_rsc(struct ixgbe_adapter *adapter)
 	return false;
 }
 
+/**
+ * ixgbe_set_coalesce - Configure interrupt coalescing settings
+ * @netdev: Network device structure
+ * @ec: Pointer to ethtool_coalesce structure with desired coalescing settings
+ * @kernel_coal: (Optional) Kernel-specific coalescing settings (unused)
+ * @extack: (Optional) Netlink extended acknowledgment structure (unused)
+ *
+ * This function sets the interrupt coalescing parameters for the specified
+ * network device based on the provided `ethtool_coalesce` structure. It
+ * validates the settings, updates the adapter's configuration, and applies
+ * changes to the interrupt throttle rate (ITR) settings. If necessary, it
+ * triggers a device reset to apply the changes.
+ *
+ * Return: 0 on success, or -EINVAL if the configuration is invalid.
+ */
 static int ixgbe_set_coalesce(struct net_device *netdev,
 #ifdef HAVE_ETHTOOL_COALESCE_EXTACK
 			      struct ethtool_coalesce *ec,
@@ -3326,11 +3838,32 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 }
 
 #ifndef HAVE_NDO_SET_FEATURES
+/**
+ * ixgbe_get_rx_csum - Check if RX checksum offload is enabled
+ * @netdev: Network device structure
+ *
+ * This function returns a boolean value indicating whether receive checksum
+ * offload is enabled for the specified network device.
+ *
+ * Return: 1 if RX checksum offload is enabled, 0 otherwise.
+ */
 static u32 ixgbe_get_rx_csum(struct net_device *netdev)
 {
 	return !!(netdev->features & NETIF_F_RXCSUM);
 }
 
+/**
+ * ixgbe_set_rx_csum - Enable or disable RX checksum offload
+ * @netdev: Network device structure
+ * @data: Boolean value to enable (non-zero) or disable (zero) RX checksum offload
+ *
+ * This function sets the receive checksum offload feature for the specified
+ * network device. It also adjusts related features such as LRO (Large Receive
+ * Offload) and RSC (Receive Side Coalescing) based on the RX checksum setting.
+ * If necessary, it triggers a device reset to apply changes.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -3373,6 +3906,18 @@ static int ixgbe_set_rx_csum(struct net_device *netdev, u32 data)
 	return 0;
 }
 
+/**
+ * ixgbe_set_tx_csum - Enable or disable TX checksum offload
+ * @netdev: Network device structure
+ * @data: Boolean value to enable (non-zero) or disable (zero) TX checksum offload
+ *
+ * This function sets the transmit checksum offload feature for the specified
+ * network device. It updates the device's features to enable or disable checksum
+ * offload for IP, IPv6, SCTP, and UDP tunnels, depending on the hardware type
+ * and capabilities.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -3412,6 +3957,18 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 }
 
 #ifdef NETIF_F_TSO
+/**
+ * ixgbe_set_tso - Enable or disable TCP Segmentation Offload (TSO)
+ * @netdev: Network device structure
+ * @data: Boolean value to enable (non-zero) or disable (zero) TSO
+ *
+ * This function sets the TCP Segmentation Offload (TSO) feature for the
+ * specified network device. It updates the device's features to enable or
+ * disable TSO, and if VLANs are present and TSO is being disabled, it also
+ * disables TSO on all associated VLAN devices.
+ *
+ * Return: 0 on success.
+ */
 static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 {
 #ifdef NETIF_F_TSO6
@@ -3446,13 +4003,24 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 	}
 
 tso_out:
-
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 	return 0;
 }
-
 #endif /* NETIF_F_TSO */
+
 #ifdef ETHTOOL_GFLAGS
+/**
+ * ixgbe_set_flags - Set device flags for the network device
+ * @netdev: Network device structure
+ * @data: New flags to be set
+ *
+ * This function sets various device flags for the specified network device
+ * based on the provided `data`. It validates the flags against supported
+ * options and updates the device's configuration accordingly. If necessary,
+ * it triggers a device reset to apply changes.
+ *
+ * Return: 0 on success, or a negative error code if the configuration is invalid.
+ */
 static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -3729,6 +4297,19 @@ static int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
 	return 0;
 }
 
+/**
+ * ixgbe_get_rxnfc - Retrieve RX network flow classification settings
+ * @dev: Network device structure
+ * @cmd: Pointer to ethtool_rxnfc structure specifying the command and data
+ * @rule_locs: Buffer to store rule locations (optional, type depends on kernel)
+ *
+ * This function handles various ethtool commands related to RX network flow
+ * classification for the specified network device. It supports commands to
+ * get the number of RX rings, flow director rule count, specific flow director
+ * rules, all flow director rules, and RSS hash options.
+ *
+ * Return: 0 on success, or a negative error code if the command is not supported.
+ */
 static int ixgbe_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
 #ifdef HAVE_ETHTOOL_GET_RXNFC_VOID_RULE_LOCS
 			   void *rule_locs)
@@ -4082,10 +4663,17 @@ static int ixgbe_del_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 }
 
 #ifdef ETHTOOL_SRXNTUPLE
-/*
- * We need to keep this around for kernels 2.6.33 - 2.6.39 in order to avoid
- * a null pointer dereference as it was assumend if the NETIF_F_NTUPLE flag
- * was defined that this function was present.
+/**
+ * ixgbe_set_rx_ntuple - Stub function for setting RX n-tuple filters
+ * @dev: Network device structure (unused)
+ * @cmd: RX n-tuple command structure (unused)
+ *
+ * This function is a stub for setting RX n-tuple filters and always returns
+ * -EOPNOTSUPP. It is retained for compatibility with older kernel versions
+ * (2.6.33 - 2.6.39) to prevent null pointer dereferences when the
+ * NETIF_F_NTUPLE flag is defined.
+ *
+ * Return: -EOPNOTSUPP, indicating the operation is not supported.
  */
 static int ixgbe_set_rx_ntuple(struct net_device __always_unused *dev,
 			       struct ethtool_rx_ntuple __always_unused *cmd)
@@ -4210,6 +4798,17 @@ static int ixgbe_set_rss_hash_opt(struct ixgbe_adapter *adapter,
 	return 0;
 }
 
+/**
+ * ixgbe_set_rxnfc - Configure RX network flow classification
+ * @dev: Network device structure
+ * @cmd: Pointer to ethtool_rxnfc structure specifying the command and data
+ *
+ * This function handles various ethtool commands related to RX network flow
+ * classification for the specified network device. It supports adding and
+ * deleting flow director entries and setting RSS hash options.
+ *
+ * Return: 0 on success, or -EOPNOTSUPP if the command is not supported.
+ */
 static int ixgbe_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
@@ -4233,6 +4832,17 @@ static int ixgbe_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 }
 
 #if defined(ETHTOOL_GRSSH) && defined(ETHTOOL_SRSSH)
+/**
+ * ixgbe_rss_indir_tbl_max - Get the maximum size of the RSS indirection table
+ * @adapter: Pointer to the ixgbe adapter structure
+ *
+ * This function returns the maximum size of the Receive Side Scaling (RSS)
+ * indirection table for the specified adapter. The size depends on the
+ * hardware type, with older models supporting up to 16 entries and newer
+ * models (X550 and above) supporting up to 64 entries.
+ *
+ * Return: The maximum number of entries in the RSS indirection table.
+ */
 static int ixgbe_rss_indir_tbl_max(struct ixgbe_adapter *adapter)
 {
 	if (adapter->hw.mac.type < ixgbe_mac_X550)
@@ -4241,11 +4851,30 @@ static int ixgbe_rss_indir_tbl_max(struct ixgbe_adapter *adapter)
 		return 64;
 }
 
+/**
+ * ixgbe_get_rxfh_key_size - Get the size of the RX flow hash key
+ * @netdev: Network device structure
+ *
+ * This function returns the size of the receive flow hash key for the specified
+ * network device. The key size is defined by the constant `IXGBE_RSS_KEY_SIZE`.
+ *
+ * Return: The size of the RX flow hash key.
+ */
 static u32 ixgbe_get_rxfh_key_size(struct net_device *netdev)
 {
 	return IXGBE_RSS_KEY_SIZE;
 }
 
+/**
+ * ixgbe_rss_indir_size - Get the size of the RSS indirection table
+ * @netdev: Network device structure
+ *
+ * This function returns the size of the Receive Side Scaling (RSS) indirection
+ * table for the specified network device. The size is determined by the number
+ * of entries in the indirection table.
+ *
+ * Return: The size of the RSS indirection table.
+ */
 static u32 ixgbe_rss_indir_size(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -4253,6 +4882,15 @@ static u32 ixgbe_rss_indir_size(struct net_device *netdev)
 	return ixgbe_rss_indir_tbl_entries(adapter);
 }
 
+/**
+ * ixgbe_get_reta - Retrieve the RSS indirection table
+ * @adapter: Pointer to the ixgbe adapter structure
+ * @indir: Buffer to store the retrieved indirection table entries
+ *
+ * This function populates the provided buffer with the current entries of the
+ * Receive Side Scaling (RSS) indirection table for the specified adapter. It
+ * considers the RSS mask and adjusts for SR-IOV if enabled.
+ */
 static void ixgbe_get_reta(struct ixgbe_adapter *adapter, u32 *indir)
 {
 	int i, reta_size = ixgbe_rss_indir_tbl_entries(adapter);
@@ -4265,6 +4903,21 @@ static void ixgbe_get_reta(struct ixgbe_adapter *adapter, u32 *indir)
 		indir[i] = adapter->rss_indir_tbl[i] & rss_m;
 }
 
+/**
+ * ixgbe_get_rxfh - Retrieve RX flow hash configuration
+ * @netdev: Network device structure
+ * @rxfh: (Optional) Pointer to ethtool_rxfh_param structure for RX flow hash
+ * @indir: (Optional) Buffer to store the indirection table
+ * @key: (Optional) Buffer to store the RSS key
+ * @hfunc: (Optional) Buffer to store the hash function
+ *
+ * This function retrieves the RX flow hash configuration for the specified
+ * network device. It populates the indirection table, RSS key, and hash
+ * function based on the device's current settings. The function supports
+ * different parameter configurations based on kernel capabilities.
+ *
+ * Return: 0 on success.
+ */
 #ifdef HAVE_RXFH_HASHFUNC
 #ifdef HAVE_ETHTOOL_RXFH_PARAM
 static int ixgbe_get_rxfh(struct net_device *netdev,
@@ -4303,6 +4956,22 @@ static int ixgbe_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key)
 
 #ifdef HAVE_RXFH_HASHFUNC
 #ifdef HAVE_ETHTOOL_RXFH_PARAM
+/**
+ * ixgbe_set_rxfh - Set RX flow hash configuration
+ * @netdev: Network device structure
+ * @rxfh: (Optional) Pointer to ethtool_rxfh_param structure for RX flow hash
+ * @extack: (Optional) Netlink extended acknowledgment structure (unused)
+ * @indir: (Optional) Indirection table
+ * @key: (Optional) RSS key
+ * @hfunc: (Optional) Hash function (unused)
+ *
+ * This function sets the RX flow hash configuration for the specified network
+ * device. It updates the indirection table and RSS key based on the provided
+ * parameters. The function supports different parameter configurations based
+ * on kernel capabilities.
+ *
+ * Return: 0 on success, or -EINVAL if the configuration is invalid.
+ */
 static int ixgbe_set_rxfh(struct net_device *netdev,
 			  struct ethtool_rxfh_param *rxfh,
 			  struct netlink_ext_ack *extack)
@@ -4365,6 +5034,18 @@ static int ixgbe_set_rxfh(struct net_device *netdev, const u32 *indir,
 }
 #endif /* ETHTOOL_GRSSH && ETHTOOL_SRSSH */
 
+/**
+ * ixgbe_get_ts_info - Retrieve timestamping capabilities for the network device
+ * @dev: Network device structure
+ * @info: Pointer to ethtool_ts_info or kernel_ethtool_ts_info structure
+ *
+ * This function populates the provided structure with the timestamping
+ * capabilities of the network device. It sets the supported receive filters,
+ * timestamping modes, and PTP hardware clock index based on the device's
+ * hardware type and capabilities.
+ *
+ * Return: 0 on success, or a negative error code if the operation is not supported.
+ */
 #ifdef HAVE_ETHTOOL_GET_TS_INFO
 #ifdef HAVE_ETHTOOL_KERNEL_TS_INFO
 static int ixgbe_get_ts_info(struct net_device *dev,
@@ -4466,6 +5147,21 @@ static unsigned int ixgbe_max_channels(struct ixgbe_adapter *adapter)
 	return max_combined;
 }
 
+/**
+ * ixgbe_get_channels - Retrieve channel configuration for the network device
+ * @dev: Network device structure
+ * @ch: Pointer to the ethtool_channels structure to be filled with channel info
+ *
+ * This function retrieves the channel configuration for the specified network
+ * device and populates the provided `ethtool_channels` structure with the
+ * relevant information. It reports the maximum number of combined channels,
+ * the number of other channels, and the current count of combined channels
+ * based on the device's configuration.
+ *
+ * The function is used to provide information about the device's channel
+ * capabilities and current configuration, which can be useful for network
+ * management and optimization.
+ */
 static void ixgbe_get_channels(struct net_device *dev,
 			       struct ethtool_channels *ch)
 {
@@ -4503,6 +5199,19 @@ static void ixgbe_get_channels(struct net_device *dev,
 	ch->combined_count = adapter->ring_feature[RING_F_FDIR].indices;
 }
 
+/**
+ * ixgbe_set_channels - Configure the number of channels for the network device
+ * @dev: Network device structure
+ * @ch: Pointer to ethtool_channels structure containing desired channel configuration
+ *
+ * This function sets the number of combined channels for the specified network
+ * device based on the provided `ethtool_channels` structure. It verifies that
+ * the requested configuration does not exceed hardware limits and that separate
+ * RX and TX vectors are not requested. The function updates the adapter's
+ * feature limits and adjusts RSS and FCoE limits as necessary.
+ *
+ * Return: 0 on success, or -EINVAL if the configuration is invalid.
+ */
 static int ixgbe_set_channels(struct net_device *dev,
 			      struct ethtool_channels *ch)
 {
@@ -4543,6 +5252,18 @@ static int ixgbe_set_channels(struct net_device *dev,
 #endif /* ETHTOOL_SCHANNELS */
 
 #ifdef ETHTOOL_GMODULEINFO
+/**
+ * ixgbe_get_module_info - Retrieve module information
+ * @dev: Network device structure
+ * @modinfo: Pointer to ethtool_modinfo structure to be filled with module info
+ *
+ * This function retrieves information about the network module (e.g., SFP) for
+ * the specified network device. It checks if the module supports SFF-8472 and
+ * determines the EEPROM length and type. If the module requires an unsupported
+ * addressing mode, it logs an error and defaults to SFF-8079.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_get_module_info(struct net_device *dev,
 				       struct ethtool_modinfo *modinfo)
 {
@@ -4584,6 +5305,19 @@ static int ixgbe_get_module_info(struct net_device *dev,
 	return 0;
 }
 
+/**
+ * ixgbe_get_module_eeprom - Retrieve module EEPROM data
+ * @dev: Network device structure
+ * @ee: Pointer to ethtool_eeprom structure specifying the EEPROM section
+ * @data: Buffer to store the retrieved EEPROM data
+ *
+ * This function reads EEPROM data from a network module (e.g., SFP) for the
+ * specified network device. It supports reading both standard and extended
+ * EEPROM data, depending on the offset. The function checks if the device is
+ * busy with SFP initialization and returns an error if so.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_get_module_eeprom(struct net_device *dev,
 					 struct ethtool_eeprom *ee,
 					 u8 *data)
@@ -4623,23 +5357,23 @@ static const struct {
 	ixgbe_link_speed mac_speed;
 	u32 link_mode;
 } ixgbe_ls_map[] = {
-	{ IXGBE_LINK_SPEED_10_FULL, SUPPORTED_10baseT_Full },
-	{ IXGBE_LINK_SPEED_100_FULL, SUPPORTED_100baseT_Full },
-	{ IXGBE_LINK_SPEED_1GB_FULL, SUPPORTED_1000baseT_Full },
-	{ IXGBE_LINK_SPEED_2_5GB_FULL, SUPPORTED_2500baseX_Full },
-	{ IXGBE_LINK_SPEED_10GB_FULL, SUPPORTED_10000baseT_Full },
+	{ IXGBE_LINK_SPEED_10_FULL, ETHTOOL_LINK_MODE_10baseT_Full_BIT },
+	{ IXGBE_LINK_SPEED_100_FULL, ETHTOOL_LINK_MODE_100baseT_Full_BIT },
+	{ IXGBE_LINK_SPEED_1GB_FULL, ETHTOOL_LINK_MODE_1000baseT_Full_BIT },
+	{ IXGBE_LINK_SPEED_2_5GB_FULL, ETHTOOL_LINK_MODE_2500baseT_Full_BIT },
+	{ IXGBE_LINK_SPEED_10GB_FULL, ETHTOOL_LINK_MODE_10000baseT_Full_BIT },
 };
 
 static const struct {
 	u32 lp_advertised;
 	u32 link_mode;
 } ixgbe_lp_map[] = {
-	{ FW_PHY_ACT_UD_2_100M_TX_EEE, SUPPORTED_100baseT_Full },
-	{ FW_PHY_ACT_UD_2_1G_T_EEE, SUPPORTED_1000baseT_Full },
-	{ FW_PHY_ACT_UD_2_10G_T_EEE, SUPPORTED_10000baseT_Full },
-	{ FW_PHY_ACT_UD_2_1G_KX_EEE, SUPPORTED_1000baseKX_Full },
-	{ FW_PHY_ACT_UD_2_10G_KX4_EEE, SUPPORTED_10000baseKX4_Full },
-	{ FW_PHY_ACT_UD_2_10G_KR_EEE, SUPPORTED_10000baseKR_Full},
+	{ FW_PHY_ACT_UD_2_100M_TX_EEE, ETHTOOL_LINK_MODE_100baseT_Full_BIT },
+	{ FW_PHY_ACT_UD_2_1G_T_EEE, ETHTOOL_LINK_MODE_1000baseT_Full_BIT },
+	{ FW_PHY_ACT_UD_2_10G_T_EEE, ETHTOOL_LINK_MODE_10000baseT_Full_BIT },
+	{ FW_PHY_ACT_UD_2_1G_KX_EEE, ETHTOOL_LINK_MODE_1000baseKX_Full_BIT },
+	{ FW_PHY_ACT_UD_2_10G_KX4_EEE, ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT },
+	{ FW_PHY_ACT_UD_2_10G_KR_EEE, ETHTOOL_LINK_MODE_10000baseKR_Full_BIT},
 };
 
 static int
@@ -4683,6 +5417,7 @@ ixgbe_get_keee_fw(struct ixgbe_adapter *adapter, struct ethtool_keee *kedata)
 
 	return 0;
 }
+#ifdef HAVE_ETHTOOL_KEEE
 static const struct {
 	__le16 eee_cap_bit;
 	u32 mac_speed;
@@ -4696,17 +5431,22 @@ static const struct {
 };
 
 /**
- * ixgbe_get_keee_fw_E610 - get EEE data
- * @adapter: pointer to the device adapter structure
- * @kedata: pointer to eee data.
+ * ixgbe_get_keee_E610 - Retrieve EEE settings for E610 hardware
+ * @netdev: Network device structure
+ * @kedata: Pointer to ethtool_keee structure to be filled with EEE settings
  *
- * Get the current FW EEE settings.
+ * This function retrieves Energy Efficient Ethernet (EEE) settings for E610
+ * hardware. It populates the `kedata` structure with supported, advertised,
+ * and link partner advertised EEE capabilities. It also checks if EEE is
+ * active and enabled, and sets the LPI (Low Power Idle) timer if applicable.
  *
- * Return: the exit code of the operation.
+ * Return: 0 on success, or a negative error code on failure.
  */
 static s32
-ixgbe_get_keee_fw_E610(struct ixgbe_adapter *adapter, struct ethtool_keee *kedata)
+ixgbe_get_keee_E610(struct net_device *netdev, struct ethtool_keee *kedata)
 {
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
 	struct ixgbe_aci_cmd_get_phy_caps_data pcaps;
 	struct ixgbe_hw *hw = &adapter->hw;
 	u16 eee_cap, i;
@@ -4755,7 +5495,20 @@ ixgbe_get_keee_fw_E610(struct ixgbe_adapter *adapter, struct ethtool_keee *kedat
 
 	return 0;
 }
+#endif /* HAVE_ETHTOOL_KEEE */
 
+/**
+ * ixgbe_get_keee - Retrieve EEE settings for the network device
+ * @netdev: Network device structure
+ * @kedata: Pointer to ethtool_keee structure to be filled with EEE settings
+ *
+ * This function retrieves Energy Efficient Ethernet (EEE) settings for the
+ * specified network device. It checks if EEE is supported and, if so, populates
+ * the `kedata` structure with supported, advertised, and active EEE capabilities.
+ * If the device uses firmware-based EEE, it delegates to `ixgbe_get_keee_fw`.
+ *
+ * Return: 0 on success, or -EOPNOTSUPP if EEE is not supported.
+ */
 static int ixgbe_get_keee(struct net_device *netdev, struct ethtool_keee *kedata)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -4768,8 +5521,6 @@ static int ixgbe_get_keee(struct net_device *netdev, struct ethtool_keee *kedata
 		return -EOPNOTSUPP;
 
 	if (hw->phy.eee_speeds_supported && hw->phy.type == ixgbe_phy_fw) {
-		if (hw->mac.type == ixgbe_mac_E610)
-			return ixgbe_get_keee_fw_E610(adapter, kedata);
 		return ixgbe_get_keee_fw(adapter, kedata);
 	}
 
@@ -4780,6 +5531,18 @@ static int ixgbe_get_keee(struct net_device *netdev, struct ethtool_keee *kedata
 
 #define IXGBE_LINK_MODE_MASK	0xFFFFFFFF
 
+/**
+ * ixgbe_get_eee - Retrieve Energy Efficient Ethernet (EEE) settings
+ * @netdev: Network device structure
+ * @edata: Pointer to ethtool_eee structure to be filled with EEE settings
+ *
+ * This function retrieves the Energy Efficient Ethernet (EEE) settings for the
+ * specified network device. It converts the EEE settings to a kernel-specific
+ * format, calls `ixgbe_get_keee` to get the settings, and then converts them
+ * back. It also applies a workaround for kernels with limited link mode support.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
 {
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
@@ -4801,53 +5564,124 @@ static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
 #endif /* ETHTOOL_GEEE */
 
 #ifdef ETHTOOL_SEEE
-static int ixgbe_set_keee(struct net_device *netdev, struct ethtool_keee *kedata)
+static int ixgbe_validate_keee(struct net_device *netdev,
+			       struct ethtool_keee *keee_requested,
+			       struct ethtool_keee *keee_stored)
 {
-	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	struct ixgbe_mac_info *mac = &adapter->hw.mac;
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct ethtool_keee keee_data; /* structure storing current eee settings */
-	s32 ret_val;
+	int ret_val;
 
 	if (!(hw->mac.ops.setup_eee &&
 	    (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)))
 		return -EOPNOTSUPP;
 
-	memset(&keee_data, 0, sizeof(struct ethtool_keee));
+	memset(keee_stored, 0, sizeof(*keee_stored));
 
-	ret_val = ixgbe_get_keee(netdev, &keee_data);
+	ret_val = ixgbe_get_keee(netdev, keee_stored);
 	if (ret_val)
 		return ret_val;
 
-	if (keee_data.tx_lpi_enabled != kedata->tx_lpi_enabled) {
+	if (keee_stored->tx_lpi_enabled != keee_requested->tx_lpi_enabled) {
 		e_dev_err("Setting EEE tx-lpi is not supported\n");
 		return -EINVAL;
 	}
 
-	if (keee_data.tx_lpi_timer != kedata->tx_lpi_timer) {
+	if (keee_stored->tx_lpi_timer != keee_requested->tx_lpi_timer) {
 		e_dev_err("Setting EEE Tx LPI timer is not supported\n");
 		return -EINVAL;
 	}
 
-	if (keee_data.advertised != kedata->advertised) {
+	if (keee_stored->advertised != keee_requested->advertised) {
 		e_dev_err("Setting EEE advertised speeds is not supported\n");
 		return -EINVAL;
 	}
 
-	if (keee_data.eee_enabled == kedata->eee_enabled)
-		return 0;
+	if (keee_stored->eee_enabled == keee_requested->eee_enabled)
+		return -EALREADY;
 
-	if (hw->mac.type == ixgbe_mac_E610) {
-		if (!keee_data.eee_enabled)
-			hw->phy.eee_speeds_advertised = 0;
+	return 0;
 
-		ret_val = mac->ops.setup_eee(hw, kedata->eee_enabled);
-		if (ret_val) {
-			e_dev_err("Setting EEE  %s failed.\n",
-				  (kedata->eee_enabled ? "on" : "off"));
-			return ret_val;
-		}
+}
+
+#ifdef HAVE_ETHTOOL_KEEE
+/**
+ * ixgbe_set_keee_E610 - Configure EEE settings for E610 hardware
+ * @netdev: Network device structure
+ * @kedata: Pointer to ethtool_keee structure with desired EEE settings
+ *
+ * This function sets the Energy Efficient Ethernet (EEE) parameters for E610
+ * hardware based on the provided `ethtool_keee` structure. It validates the
+ * settings, updates the adapter's configuration, and applies the changes. If
+ * necessary, it reinitializes or resets the device to apply the new settings.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+static int ixgbe_set_keee_E610(struct net_device *netdev,
+			       struct ethtool_keee *kedata)
+{
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ethtool_keee keee_data;
+	s32 ret_val;
+
+	ret_val = ixgbe_validate_keee(netdev, kedata, &keee_data);
+	if (ret_val)
+		return ret_val;
+
+	if (!keee_data.eee_enabled)
+		hw->phy.eee_speeds_advertised = 0;
+
+	ret_val = hw->mac.ops.setup_eee(hw, kedata->eee_enabled);
+	if (ret_val) {
+		e_dev_err("Setting EEE  %s failed.\n",
+			  (kedata->eee_enabled ? "on" : "off"));
+		return ret_val;
 	}
+
+	if (kedata->eee_enabled) {
+		adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
+		hw->phy.eee_speeds_advertised =
+					   hw->phy.eee_speeds_supported;
+	} else {
+		adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
+		hw->phy.eee_speeds_advertised = 0;
+	}
+
+	if (netif_running(netdev))
+		ixgbe_reinit_locked(adapter);
+	else
+		ixgbe_reset(adapter);
+
+	return 0;
+}
+#endif /* HAVE_ETHTOOL_KEEE */
+
+/**
+ * ixgbe_set_keee - Configure EEE settings for the network device
+ * @netdev: Network device structure
+ * @kedata: Pointer to ethtool_keee structure with desired EEE settings
+ *
+ * This function sets the Energy Efficient Ethernet (EEE) parameters for the
+ * specified network device based on the provided `ethtool_keee` structure. It
+ * validates the settings, updates the adapter's configuration, and applies the
+ * changes. If necessary, it reinitializes or resets the device to apply the new
+ * settings.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+static int ixgbe_set_keee(struct net_device *netdev, struct ethtool_keee *kedata)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ethtool_keee keee_data;
+	s32 ret_val;
+
+	ret_val = ixgbe_validate_keee(netdev, kedata, &keee_data);
+	if (ret_val)
+		return ret_val;
 
 	if (kedata->eee_enabled) {
 		adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
@@ -4868,6 +5702,19 @@ static int ixgbe_set_keee(struct net_device *netdev, struct ethtool_keee *kedata
 }
 
 #ifndef HAVE_ETHTOOL_KEEE
+/**
+ * ixgbe_set_eee - Configure Energy Efficient Ethernet (EEE) settings
+ * @netdev: Network device structure
+ * @edata: Pointer to ethtool_eee structure with desired EEE settings
+ *
+ * This function sets the Energy Efficient Ethernet (EEE) parameters for the
+ * specified network device based on the provided `ethtool_eee` structure. It
+ * converts the EEE settings to a kernel-specific format, applies the settings,
+ * and then converts them back. It includes a workaround for kernels with
+ * limited link mode support.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 {
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
@@ -4890,15 +5737,16 @@ static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
 
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 /**
- * ixgbe_get_priv_flags - report device private flags
- * @netdev: network interface device structure
+ * ixgbe_get_priv_flags - Report device private flags
+ * @netdev: Network interface device structure
  *
- * The get string set count and the string set should be matched for each
- * flag returned.  Add new strings for each flag to the ixgbe_priv_flags_strings
- * array.
+ * This function retrieves the private flags for the ixgbe network adapter.
+ * It checks the adapter's configuration and sets the corresponding flags in
+ * a bitmap. The function ensures that the flags returned match the string
+ * set count and the string set in the `ixgbe_priv_flags_strings` array.
  *
- * Returns a u32 bitmap of flags.
- **/
+ * Return: A u32 bitmap of private flags.
+ */
 static u32 ixgbe_get_priv_flags(struct net_device *netdev)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -4918,10 +5766,20 @@ static u32 ixgbe_get_priv_flags(struct net_device *netdev)
 }
 
 /**
- * ixgbe_set_priv_flags - set private flags
- * @netdev: network interface device structure
- * @priv_flags: bit flags to be set
- **/
+ * ixgbe_set_priv_flags - Set private flags for the network device
+ * @netdev: Network interface device structure
+ * @priv_flags: Bit flags to be set
+ *
+ * This function sets the private flags for the ixgbe network adapter based
+ * on the provided bit flags. It allows control over features such as Flow
+ * Director ATR (Application Targeted Routing) and legacy receive mode. The
+ * function checks for compatibility and constraints before setting the
+ * flags, and performs necessary resets or reinitializations if the flags
+ * change. It returns an error if the requested flags are not supported or
+ * cannot be enabled due to current configuration.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 static int ixgbe_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -5098,6 +5956,116 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */
 };
 
+static struct ethtool_ops ixgbe_ethtool_ops_E610 = {
+#ifdef ETHTOOL_GLINKSETTINGS
+	.get_link_ksettings	= ixgbe_get_link_ksettings,
+	.set_link_ksettings	= ixgbe_set_link_ksettings,
+#else
+	.get_settings		= ixgbe_get_settings,
+	.set_settings		= ixgbe_set_settings,
+#endif
+	.get_drvinfo		= ixgbe_get_drvinfo_E610,
+	.get_regs_len		= ixgbe_get_regs_len,
+	.get_regs		= ixgbe_get_regs,
+	.get_wol		= ixgbe_get_wol,
+	.set_wol		= ixgbe_set_wol_E610,
+	.nway_reset		= ixgbe_nway_reset,
+	.get_link		= ethtool_op_get_link,
+	.get_eeprom_len		= ixgbe_get_eeprom_len_E610,
+	.get_eeprom		= ixgbe_get_eeprom,
+	.set_eeprom		= ixgbe_set_eeprom,
+	.get_ringparam		= ixgbe_get_ringparam,
+	.set_ringparam		= ixgbe_set_ringparam,
+	.get_pauseparam		= ixgbe_get_pauseparam,
+	.set_pauseparam		= ixgbe_set_pauseparam_E610,
+	.get_msglevel		= ixgbe_get_msglevel,
+	.set_msglevel		= ixgbe_set_msglevel,
+#ifndef HAVE_ETHTOOL_GET_SSET_COUNT
+	.self_test_count	= ixgbe_diag_test_count,
+#endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
+	.self_test		= ixgbe_diag_test,
+	.get_strings		= ixgbe_get_strings,
+#ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
+	.set_phys_id		= ixgbe_set_phys_id_E610,
+#else
+	.phys_id		= ixgbe_phys_id,
+#endif /* HAVE_ETHTOOL_SET_PHYS_ID */
+#endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */
+#ifndef HAVE_ETHTOOL_GET_SSET_COUNT
+	.get_stats_count	= ixgbe_get_stats_count,
+#else /* HAVE_ETHTOOL_GET_SSET_COUNT */
+	.get_sset_count		= ixgbe_get_sset_count,
+	.get_priv_flags		= ixgbe_get_priv_flags,
+	.set_priv_flags		= ixgbe_set_priv_flags,
+#endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
+	.get_ethtool_stats      = ixgbe_get_ethtool_stats,
+#ifdef HAVE_ETHTOOL_GET_PERM_ADDR
+	.get_perm_addr		= ethtool_op_get_perm_addr,
+#endif
+	.get_coalesce		= ixgbe_get_coalesce,
+	.set_coalesce		= ixgbe_set_coalesce,
+#ifdef ETHTOOL_COALESCE_USECS
+	.supported_coalesce_params = ETHTOOL_COALESCE_USECS,
+#endif
+#ifndef HAVE_NDO_SET_FEATURES
+	.get_rx_csum		= ixgbe_get_rx_csum,
+	.set_rx_csum		= ixgbe_set_rx_csum,
+	.get_tx_csum		= ethtool_op_get_tx_csum,
+	.set_tx_csum		= ixgbe_set_tx_csum,
+	.get_sg			= ethtool_op_get_sg,
+	.set_sg			= ethtool_op_set_sg,
+#ifdef NETIF_F_TSO
+	.get_tso		= ethtool_op_get_tso,
+	.set_tso		= ixgbe_set_tso,
+#endif
+#ifdef ETHTOOL_GFLAGS
+	.get_flags		= ethtool_op_get_flags,
+	.set_flags		= ixgbe_set_flags,
+#endif
+#endif /* HAVE_NDO_SET_FEATURES */
+#ifdef ETHTOOL_GRXRINGS
+	.get_rxnfc		= ixgbe_get_rxnfc,
+	.set_rxnfc		= ixgbe_set_rxnfc,
+#ifdef ETHTOOL_SRXNTUPLE
+	.set_rx_ntuple		= ixgbe_set_rx_ntuple,
+#endif
+#endif /* ETHTOOL_GRXRINGS */
+#ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#ifdef ETHTOOL_GEEE
+#ifdef HAVE_ETHTOOL_KEEE
+	.get_eee                = ixgbe_get_keee_E610,
+#else
+	.get_eee                = ixgbe_get_eee,
+#endif /* HAVE_ETHTOOL_KEEE */
+#endif /* ETHTOOL_GEEE */
+#ifdef ETHTOOL_SEEE
+#ifdef HAVE_ETHTOOL_KEEE
+	.set_eee                = ixgbe_set_keee_E610,
+#else
+	.set_eee                = ixgbe_set_eee,
+#endif /* HAVE_ETHTOOL_KEEE */
+#endif /* ETHTOOL_SEEE */
+#ifdef ETHTOOL_SCHANNELS
+	.get_channels		= ixgbe_get_channels,
+	.set_channels		= ixgbe_set_channels,
+#endif
+#ifdef ETHTOOL_GMODULEINFO
+	.get_module_info	= ixgbe_get_module_info,
+	.get_module_eeprom	= ixgbe_get_module_eeprom,
+#endif
+#ifdef HAVE_ETHTOOL_GET_TS_INFO
+	.get_ts_info		= ixgbe_get_ts_info,
+#endif
+#if defined(ETHTOOL_GRSSH) && defined(ETHTOOL_SRSSH)
+	.get_rxfh_indir_size	= ixgbe_rss_indir_size,
+	.get_rxfh_key_size	= ixgbe_get_rxfh_key_size,
+	.get_rxfh		= ixgbe_get_rxfh,
+	.set_rxfh		= ixgbe_set_rxfh,
+#endif /* ETHTOOL_GRSSH && ETHTOOL_SRSSH */
+#endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */
+};
+
 #ifdef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
 static const struct ethtool_ops_ext ixgbe_ethtool_ops_ext = {
 	.size			= sizeof(struct ethtool_ops_ext),
@@ -5126,10 +6094,26 @@ static const struct ethtool_ops_ext ixgbe_ethtool_ops_ext = {
 #endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */
 void ixgbe_set_ethtool_ops(struct net_device *netdev)
 {
+	struct ixgbe_adapter *adapter =
+			netdev_priv(netdev);
 #ifndef ETHTOOL_OPS_COMPAT
-	netdev->ethtool_ops = &ixgbe_ethtool_ops;
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_E610:
+		netdev->ethtool_ops = &ixgbe_ethtool_ops_E610;
+		break;
+	default:
+		netdev->ethtool_ops = &ixgbe_ethtool_ops;
+		break;
+	}
 #else
-	SET_ETHTOOL_OPS(netdev, &ixgbe_ethtool_ops);
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_E610:
+		SET_ETHTOOL_OPS(netdev, &ixgbe_ethtool_ops_E610);
+		break;
+	default:
+		SET_ETHTOOL_OPS(netdev, &ixgbe_ethtool_ops);
+		break;
+	}
 #endif
 
 #ifdef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -184,12 +184,20 @@ static ssize_t ixgbe_debugfs_parse_cmd_line(const char __user *src, size_t len,
 }
 
 /**
- * ixgbe_dbg_reg_ops_read - read for reg_ops datum
- * @filp: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
- **/
+ * ixgbe_dbg_reg_ops_read - Read reg_ops data for debugging
+ * @filp: The opened file
+ * @buffer: Buffer where the data is written for the user to read
+ * @count: Size of the user's buffer
+ * @ppos: File position offset
+ *
+ * This function reads the reg_ops data for debugging purposes from the
+ * ixgbe network adapter. It formats the data into a string and writes it to
+ * the user's buffer. The function does not allow partial reads and returns
+ * an error if the user's buffer is too small to hold the data.
+ *
+ * Return: Number of bytes read on success, or a negative error code on
+ *         failure.
+ */
 static ssize_t ixgbe_dbg_reg_ops_read(struct file *filp, char __user *buffer,
 				    size_t count, loff_t *ppos)
 {
@@ -219,12 +227,22 @@ static ssize_t ixgbe_dbg_reg_ops_read(struct file *filp, char __user *buffer,
 }
 
 /**
- * ixgbe_dbg_reg_ops_write - write into reg_ops datum
- * @filp: the opened file
- * @buffer: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
- **/
+ * ixgbe_dbg_reg_ops_write - Write data to reg_ops for debugging
+ * @filp: The opened file
+ * @buffer: Buffer containing the user's data
+ * @count: Length of the user's data
+ * @ppos: File position offset
+ *
+ * This function writes user-provided data to the reg_ops buffer for
+ * debugging purposes. It processes specific commands, such as "read" and
+ * "write", to perform register operations on the ixgbe network adapter. The
+ * function does not allow partial writes and returns an error if the data
+ * exceeds the buffer size. If an unknown command is received, it logs
+ * available commands.
+ *
+ * Return: Number of bytes written on success, or a negative error code on
+ *         failure.
+ */
 static ssize_t ixgbe_dbg_reg_ops_write(struct file *filp,
 				     const char __user *buffer,
 				     size_t count, loff_t *ppos)
@@ -290,12 +308,20 @@ static const struct file_operations ixgbe_dbg_reg_ops_fops = {
 static char ixgbe_dbg_netdev_ops_buf[256] = "";
 
 /**
- * ixgbe_dbg_netdev_ops_read - read for netdev_ops datum
- * @filp: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
- **/
+ * ixgbe_dbg_netdev_ops_read - Read netdev_ops data for debugging
+ * @filp: The opened file
+ * @buffer: Buffer where the data is written for the user to read
+ * @count: Size of the user's buffer
+ * @ppos: File position offset
+ *
+ * This function reads the netdev_ops data for debugging purposes from the
+ * ixgbe network adapter. It formats the data into a string and writes it to
+ * the user's buffer. The function does not allow partial reads and returns
+ * an error if the user's buffer is too small to hold the data.
+ *
+ * Return: Number of bytes read on success, or a negative error code on
+ *         failure.
+ */
 static ssize_t ixgbe_dbg_netdev_ops_read(struct file *filp,
 					 char __user *buffer,
 					 size_t count, loff_t *ppos)
@@ -326,12 +352,21 @@ static ssize_t ixgbe_dbg_netdev_ops_read(struct file *filp,
 }
 
 /**
- * ixgbe_dbg_netdev_ops_write - write into netdev_ops datum
- * @filp: the opened file
- * @buffer: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
- **/
+ * ixgbe_dbg_netdev_ops_write - Write data to netdev_ops for debugging
+ * @filp: The opened file
+ * @buffer: Buffer containing the user's data
+ * @count: Length of the user's data
+ * @ppos: File position offset
+ *
+ * This function writes user-provided data to the netdev_ops buffer for
+ * debugging purposes. It processes specific commands, such as "tx_timeout",
+ * to trigger corresponding network device operations. The function does not
+ * allow partial writes and returns an error if the data exceeds the buffer
+ * size. If an unknown command is received, it logs available commands.
+ *
+ * Return: Number of bytes written on success, or a negative error code on
+ *         failure.
+ */
 static ssize_t ixgbe_dbg_netdev_ops_write(struct file *filp,
 					  const char __user *buffer,
 					  size_t count, loff_t *ppos)
@@ -710,11 +745,21 @@ static const struct file_operations ixgbe_debugfs_enable_fops = {
 };
 
 /**
- * ixgbe_debugfs_data_read - read from 'data' file
- * @file: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
+ * ixgbe_debugfs_data_read - Read data from the 'data' debugfs file
+ * @file: The opened file
+ * @buffer: Buffer where the data is written for the user to read
+ * @count: Size of the user's buffer
+ * @ppos: File position offset
+ *
+ * This function reads firmware log data from the 'data' debugfs file for
+ * the ixgbe network adapter. It checks if the firmware supports logging and
+ * if there is data available in the log ring. The function copies available
+ * log data to the user's buffer, handling partial reads and errors
+ * gracefully. It updates the file position and returns the number of bytes
+ * copied.
+ *
+ * Return: Number of bytes read on success, or a negative error code if
+ *         unsupported.
  */
 static ssize_t ixgbe_debugfs_data_read(struct file *file, char __user *buffer,
 				       size_t count, loff_t *ppos)
@@ -763,11 +808,21 @@ static ssize_t ixgbe_debugfs_data_read(struct file *file, char __user *buffer,
 }
 
 /**
- * ixgbe_debugfs_data_write - write into 'data' file
- * @file: the opened file
- * @buf: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
+ * ixgbe_debugfs_data_write - Write data to the 'data' debugfs file
+ * @file: The opened file
+ * @buf: Buffer containing the user's data
+ * @count: Length of the user's data
+ * @ppos: File position offset
+ *
+ * This function writes user-provided data to the 'data' debugfs file for
+ * the ixgbe network adapter. It processes commands related to firmware log
+ * management, such as clearing the log if the firmware log is not running.
+ * The function does not allow partial writes and returns an error if the
+ * command is invalid or unsupported. It ensures that all input is consumed
+ * or an error is returned.
+ *
+ * Return: Number of bytes written on success, or a negative error code on
+ *         failure.
  */
 static ssize_t ixgbe_debugfs_data_write(struct file *file, const char __user *buf, size_t count,
 					loff_t *ppos)
@@ -830,11 +885,19 @@ static const struct file_operations ixgbe_debugfs_data_fops = {
 };
 
 /**
- * ixgbe_debugfs_nr_buffs_read - read from 'nr_buffs' file
- * @file: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
+ * ixgbe_debugfs_nr_buffs_read - Read from the 'nr_buffs' debugfs file
+ * @file: The opened file
+ * @buffer: Buffer where the data is written for the user to read
+ * @count: Size of the user's buffer
+ * @ppos: File position offset
+ *
+ * This function reads the number of buffers from the 'nr_buffs' debugfs
+ * file for the ixgbe network adapter. It checks if the firmware supports
+ * logging and formats the buffer size into a string for the user to read.
+ * The function returns an error if the firmware does not support logging.
+ *
+ * Return: Number of bytes read on success, or a negative error code if
+ *         unsupported.
  */
 static ssize_t ixgbe_debugfs_nr_buffs_read(struct file *file,
 					   char __user *buffer, size_t count,
@@ -858,11 +921,21 @@ static ssize_t ixgbe_debugfs_nr_buffs_read(struct file *file,
 }
 
 /**
- * ixgbe_debugfs_nr_buffs_write - write into 'nr_buffs' file
- * @file: the opened file
- * @buf: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
+ * ixgbe_debugfs_nr_buffs_write - Write data to the 'nr_buffs' debugfs file
+ * @file: The opened file
+ * @buf: Buffer containing the user's data
+ * @count: Length of the user's data
+ * @ppos: File position offset
+ *
+ * This function writes user-provided data to the 'nr_buffs' debugfs file for
+ * the ixgbe network adapter. It processes commands to set the number of
+ * buffers for firmware logging, ensuring the value is within bounds and a
+ * power of two. The function does not allow partial writes and returns an
+ * error if the command is invalid or if firmware logging is active. It
+ * ensures that all input is consumed or an error is returned.
+ *
+ * Return: Number of bytes written on success, or a negative error code on
+ *         failure.
  */
 static ssize_t ixgbe_debugfs_nr_buffs_write(struct file *file, const char __user *buf,
 					    size_t count, loff_t *ppos)
@@ -942,11 +1015,20 @@ static const struct file_operations ixgbe_debugfs_nr_buffs_fops = {
 };
 
 /**
- * ixgbe_debugfs_module_read - read from 'module' file
- * @file: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
+ * ixgbe_debugfs_module_read - Read from the 'module' debugfs file
+ * @file: The opened file
+ * @buffer: Buffer where the data is written for the user to read
+ * @count: Size of the user's buffer
+ * @ppos: File position offset
+ *
+ * This function reads firmware module configuration data from the 'module'
+ * debugfs file for the ixgbe network adapter. It checks if the firmware
+ * supports logging and allocates memory to store the configuration data.
+ * The function writes the data to the user's buffer and returns an error if
+ * the buffer is too small or if memory allocation fails.
+ *
+ * Return: Number of bytes read on success, or a negative error code on
+ *         failure.
  */
 static ssize_t ixgbe_debugfs_module_read(struct file *file, char __user *buffer,
 					 size_t count, loff_t *ppos)
@@ -980,11 +1062,21 @@ static ssize_t ixgbe_debugfs_module_read(struct file *file, char __user *buffer,
 }
 
 /**
- * ixgbe_debugfs_module_write - write into 'module' file
- * @file: the opened file
- * @buf: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
+ * ixgbe_debugfs_module_write - Write data to the 'module' debugfs file
+ * @file: The opened file
+ * @buf: Buffer containing the user's data
+ * @count: Length of the user's data
+ * @ppos: File position offset
+ *
+ * This function writes user-provided data to the 'module' debugfs file for
+ * the ixgbe network adapter. It processes commands to set the log level for
+ * specific firmware modules, ensuring the module and log level are valid.
+ * The function does not allow partial writes and returns an error if the
+ * command is invalid or unsupported. It ensures that all input is consumed
+ * or an error is returned.
+ *
+ * Return: Number of bytes written on success, or a negative error code on
+ *         failure.
  */
 static ssize_t ixgbe_debugfs_module_write(struct file *file, const char __user *buf,
 					  size_t count, loff_t *ppos)
@@ -1075,11 +1167,19 @@ static const struct file_operations ixgbe_dbg_module_fops = {
 };
 
 /**
- * ixgbe_debugfs_resolution_read - read from 'resolution' file
- * @file: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
+ * ixgbe_debugfs_resolution_read - Read from the 'resolution' debugfs file
+ * @file: The opened file
+ * @buffer: Buffer where the data is written for the user to read
+ * @count: Size of the user's buffer
+ * @ppos: File position offset
+ *
+ * This function reads the log resolution from the 'resolution' debugfs file
+ * for the ixgbe network adapter. It checks if the firmware supports logging
+ * and formats the log resolution into a string for the user to read. The
+ * function returns an error if the firmware does not support logging.
+ *
+ * Return: Number of bytes read on success, or a negative error code if
+ *         unsupported.
  */
 static ssize_t ixgbe_debugfs_resolution_read(struct file *file,
 					     char __user *buffer, size_t count,
@@ -1104,11 +1204,21 @@ static ssize_t ixgbe_debugfs_resolution_read(struct file *file,
 }
 
 /**
- * ixgbe_debugfs_resolution_write - write into 'resolution' file
- * @file: the opened file
- * @buf: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
+ * ixgbe_debugfs_resolution_write - Write data to the 'resolution' debugfs file
+ * @file: The opened file
+ * @buf: Buffer containing the user's data
+ * @count: Length of the user's data
+ * @ppos: File position offset
+ *
+ * This function writes user-provided data to the 'resolution' debugfs file
+ * for the ixgbe network adapter. It processes commands to set the firmware
+ * log resolution, ensuring the value is within valid bounds. The function
+ * does not allow partial writes and returns an error if the command is
+ * invalid or unsupported. It ensures that all input is consumed or an error
+ * is returned.
+ *
+ * Return: Number of bytes written on success, or a negative error code on
+ *         failure.
  */
 static ssize_t
 ixgbe_debugfs_resolution_write(struct file *file, const char __user *buf,
@@ -1180,8 +1290,14 @@ static const struct file_operations ixgbe_dbg_resolution_fops = {
 };
 
 /**
- * ixgbe_dbg_adapter_init - setup the debugfs directory for the adapter
- * @adapter: the adapter that is starting up
+ * ixgbe_dbg_adapter_init - Set up the debugfs directory for the adapter
+ * @adapter: The adapter that is starting up
+ *
+ * This function initializes the debugfs directory structure for the given
+ * ixgbe network adapter. It creates various debugfs entries for monitoring
+ * and controlling the adapter, including firmware logs, module settings,
+ * and register operations. The function handles errors in creating these
+ * entries and cleans up if any creation fails.
  */
 void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter)
 {
@@ -1281,9 +1397,15 @@ create_failed:
 }
 
 /**
- * ixgbe_dbg_adapter_exit - clear out the adapter's debugfs entries
- * @adapter: board private structure
- **/
+ * ixgbe_dbg_adapter_exit - Clear the adapter's debugfs entries
+ * @adapter: Board private structure
+ *
+ * This function removes the debugfs entries associated with the given ixgbe
+ * network adapter. It recursively deletes the debugfs directory and frees
+ * any allocated memory for cluster blocks. This ensures that all debugfs
+ * resources are properly cleaned up when the adapter is being shut down or
+ * removed.
+ */
 void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter)
 {
 	if (adapter->ixgbe_dbg_adapter_pf)
@@ -1295,8 +1417,13 @@ void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter)
 }
 
 /**
- * ixgbe_dbg_init - create root directory for debugfs entries
- **/
+ * ixgbe_dbg_init - Create root directory for debugfs entries
+ *
+ * This function initializes the root directory for debugfs entries related
+ * to the ixgbe network driver. It creates a directory named after the
+ * driver, which serves as the root for all subsequent debugfs entries. If
+ * the directory creation fails, an error message is logged.
+ */
 void ixgbe_dbg_init(void)
 {
 	ixgbe_dbg_root = debugfs_create_dir(ixgbe_driver_name, NULL);
@@ -1305,8 +1432,13 @@ void ixgbe_dbg_init(void)
 }
 
 /**
- * ixgbe_dbg_exit - clean out the driver's debugfs entries
- **/
+ * ixgbe_dbg_exit - Clean out the driver's debugfs entries
+ *
+ * This function removes the root directory and all associated debugfs
+ * entries for the ixgbe network driver. It ensures that all debugfs
+ * resources are properly cleaned up when the driver is being unloaded or
+ * shut down.
+ */
 void ixgbe_dbg_exit(void)
 {
 	debugfs_remove_recursive(ixgbe_dbg_root);

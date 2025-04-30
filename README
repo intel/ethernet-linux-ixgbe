@@ -1,7 +1,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ******************************************************************
 
-February 13, 2025
+April 03, 2025
 
 
 Contents
@@ -1787,6 +1787,19 @@ this driver. Use the following command to get a definitive list of PTP
 capabilities supported by the device:
 
    ethtool -T <ethX>
+
+
+PTP packet timestamping
+-----------------------
+
+Precision Time Protocol uses packet Tx/Rx timestamping to measure
+delays and synchronize time between the leader and the follower
+clocks. Basic HW timestamping is done on the MAC layer. Due to HW
+configuration and PTP timing constraints, on link speeds lower than
+2.5G or for one-step PTP Tx timestamping operation PHY timestamping is
+used instead. This is more precise method of timestamping and is
+completely transparent to end user. For packets other than PTP ones,
+HW timestamping is done on the MAC layer regardless of speed.
 
 
 Tunnel/Overlay Stateless Offloads

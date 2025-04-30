@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_common.h"
@@ -2638,7 +2638,6 @@ s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw)
 	mflcn_reg |= IXGBE_MFLCN_DPF;
 	IXGBE_WRITE_REG(hw, IXGBE_MFLCN, mflcn_reg);
 	IXGBE_WRITE_REG(hw, IXGBE_FCCFG, fccfg_reg);
-
 
 	/* Set up and enable Rx high/low water mark thresholds, enable XON. */
 	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {

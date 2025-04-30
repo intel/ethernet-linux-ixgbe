@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _IXGBE_TYPE_E610_H_
@@ -443,21 +443,16 @@ enum ixgbe_aci_opc {
 	ixgbe_aci_opc_get_ver				= 0x0001,
 	ixgbe_aci_opc_driver_ver			= 0x0002,
 	ixgbe_aci_opc_get_exp_err			= 0x0005,
-
 	/* resource ownership */
 	ixgbe_aci_opc_req_res				= 0x0008,
 	ixgbe_aci_opc_release_res			= 0x0009,
-
 	/* device/function capabilities */
 	ixgbe_aci_opc_list_func_caps			= 0x000A,
 	ixgbe_aci_opc_list_dev_caps			= 0x000B,
-
 	/* safe disable of RXEN */
 	ixgbe_aci_opc_disable_rxen			= 0x000C,
-
 	/* FW events */
 	ixgbe_aci_opc_get_fw_event			= 0x0014,
-
 	/* PHY commands */
 	ixgbe_aci_opc_get_phy_caps			= 0x0600,
 	ixgbe_aci_opc_set_phy_cfg			= 0x0601,
@@ -484,7 +479,6 @@ enum ixgbe_aci_opc {
 	ixgbe_aci_opc_sff_eeprom			= 0x06EE,
 	ixgbe_aci_opc_prog_topo_dev_nvm			= 0x06F2,
 	ixgbe_aci_opc_read_topo_dev_nvm			= 0x06F3,
-
 	/* NVM commands */
 	ixgbe_aci_opc_nvm_read				= 0x0701,
 	ixgbe_aci_opc_nvm_erase				= 0x0702,
@@ -499,7 +493,6 @@ enum ixgbe_aci_opc {
 	ixgbe_aci_opc_nvm_pkg_data			= 0x070A,
 	ixgbe_aci_opc_nvm_pass_component_tbl		= 0x070B,
 	ixgbe_aci_opc_nvm_sanitization			= 0x070C,
-
 	/* Alternate Structure Commands */
 	ixgbe_aci_opc_write_alt_direct			= 0x0900,
 	ixgbe_aci_opc_write_alt_indirect		= 0x0901,
@@ -507,18 +500,14 @@ enum ixgbe_aci_opc {
 	ixgbe_aci_opc_read_alt_indirect			= 0x0903,
 	ixgbe_aci_opc_done_alt_write			= 0x0904,
 	ixgbe_aci_opc_clear_port_alt_write		= 0x0906,
-
 	ixgbe_aci_opc_temp_tca_event			= 0x0C94,
-
 	/* debug commands */
 	ixgbe_aci_opc_debug_dump_internals		= 0xFF08,
-
 	/* SystemDiagnostic commands */
 	ixgbe_aci_opc_set_health_status_config		= 0xFF20,
 	ixgbe_aci_opc_get_supported_health_status_codes	= 0xFF21,
 	ixgbe_aci_opc_get_health_status			= 0xFF22,
 	ixgbe_aci_opc_clear_health_status		= 0xFF23,
-
 	/* FW Logging Commands */
 	ixgbe_aci_opc_fw_logs_config			= 0xFF30,
 	ixgbe_aci_opc_fw_logs_register			= 0xFF31,
@@ -709,6 +698,7 @@ struct ixgbe_aci_cmd_list_caps_elem {
 #define IXGBE_ACI_CAPS_EXT_TOPO_DEV_IMG1		0x0082
 #define IXGBE_ACI_CAPS_EXT_TOPO_DEV_IMG2		0x0083
 #define IXGBE_ACI_CAPS_EXT_TOPO_DEV_IMG3		0x0084
+#define IXGBE_ACI_CAPS_OROM_RECOVERY_UPDATE		0x0090
 #define IXGBE_ACI_CAPS_NEXT_CLUSTER_ID			0x0096
 #ifndef NO_PTP_SUPPORT
 #define IXGBE_ACI_CAPS_PTP_BY_PHY			0x0097
@@ -2328,6 +2318,8 @@ struct ixgbe_hw_common_caps {
 #define IXGBE_EXT_TOPO_DEV_IMG_LOAD_EN	BIT(0)
 	bool ext_topo_dev_img_prog_en[IXGBE_EXT_TOPO_DEV_IMG_COUNT];
 #define IXGBE_EXT_TOPO_DEV_IMG_PROG_EN	BIT(1)
+	/* Support for OROM update in Recovery Mode. */
+	bool orom_recovery_update;
 	bool next_cluster_id_support;
 #ifndef NO_PTP_SUPPORT
 	bool ptp_by_phy_support;
@@ -2357,7 +2349,6 @@ enum ixgbe_time_ref_freq {
 	IXGBE_TIME_REF_FREQ_153_600	= 3,
 	IXGBE_TIME_REF_FREQ_156_250	= 4,
 	IXGBE_TIME_REF_FREQ_245_760	= 5,
-
 	NUM_IXGBE_TIME_REF_FREQ
 };
 

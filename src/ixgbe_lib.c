@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -263,7 +263,6 @@ static bool ixgbe_cache_ring_vmdq(struct ixgbe_adapter *adapter)
 		adapter->tx_ring[i]->reg_idx = reg_idx;
 #endif /* CONFIG_FCOE */
 
-
 	return true;
 }
 
@@ -375,7 +374,6 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550EM_a:
 		fallthrough;
 	case ixgbe_mac_E610:
-
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 
@@ -566,7 +564,6 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 	if (!(adapter->flags & IXGBE_FLAG_VMDQ_ENABLED))
 		return false;
 
-
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_82598EB:
 		vmdq_i = min_t(u16, vmdq_i, 16);
@@ -588,7 +585,6 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550EM_a:
 		fallthrough;
 	case ixgbe_mac_E610:
-
 		/* Add starting offset to total pool count */
 		vmdq_i += adapter->ring_feature[RING_F_VMDQ].offset;
 

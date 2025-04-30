@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 1999 - 2025 Intel Corporation
 
@@ -60,7 +60,6 @@ function filter-out-bad-files() {
 
 # "Whitespace only"
 WB='[ \t\n]'
-
 # Helpers below print the thing that is looked for, for further grep'ping/etc.
 # That simplifies process of excluding comments or spares us state machine impl.
 #
@@ -229,28 +228,23 @@ function gen() {
 	case "$kind" in
 	string)
 		local actual_str expect_str equals_kw missing_fmt found_fmt
-
 		test $# -ge 3 || die 22 "$src_line: too few arguments, $orig_args_cnt given, at least 6 needed"
-
 		actual_str="$1"
 		equals_kw="$2"
 		expect_str="$3"
 		shift 3
-
 		if [ -z ${UNIFDEF_MODE:+1} ]; then
-			found_fmt="#define %s\n"
+			found_fmt="#define %s 1\n"
 			missing_fmt=""
 		else
 			found_fmt="-D%s\n"
 			missing_fmt="-U%s\n"
 		fi
-
 		if [ "${actual_str}" = "${expect_str}" ]; then
 			printf -- "$found_fmt" "$define"
 		else
 			printf -- "$missing_fmt" "$define"
 		fi
-
 		return
 	;;
 	fun|enum|struct|macro|typedef)
@@ -300,7 +294,6 @@ function gen() {
 	esac
 	[ "$in_kw" != in ] && die 26 "$src_line: 'in' keyword expected, '$in_kw' given"
 	test $# -ge 1 || die 27 "$src_line: too few arguments, at least one filename expected"
-
 	local first_decl=
 	if [ "$kind" = method ]; then
 		first_decl="$(find-struct-decl "$name" "$@")" || exit 40
@@ -312,7 +305,6 @@ function gen() {
 		# avoid losing stdin provided to gen() due to redirection (<<<)
 		first_decl="$(cat -)"
 	fi
-
 	local unifdef
 	unifdef=${UNIFDEF_MODE:+1}
 
@@ -326,11 +318,9 @@ function gen() {
 			#
 			# eg: "foo" -> "\bfoo\b"
 			#     "struct foo *" -> "\bstruct foo *"
-
 			# Note that mawk does not support "\b", so we have our
 			# own approximation, NI
 			NI = "[^A-Za-z0-9_]" # "Not an Indentifier"
-
 			if (!match(pattern, NI "$"))
 				pattern = pattern "(" NI "|$)"
 			pattern = "(^|" NI ")" pattern
@@ -342,7 +332,7 @@ function gen() {
 				found_fmt="-D%s\n"
 				missing_fmt="-U%s\n"
 			} else {
-				found_fmt="#define %s\n"
+				found_fmt="#define %s 1\n"
 				missing_fmt=""
 			}
 
@@ -361,7 +351,6 @@ function gen() {
 function check() {
 	# Always run check in unifdef mode
 	local UNIFDEF_MODE=1
-
 	[[ "$(gen CHECK if "$@")" = "-DCHECK" ]]
 }
 
@@ -393,19 +382,15 @@ function find_config_file() {
 	local -a CSP
 	local file
 	local diagmsgs=/dev/stderr
-
 	[ -n "${QUIET_COMPAT-}" ] && diagmsgs=/dev/null
-
 	if ! [ -d "${KSRC-}" ]; then
 		return
 	fi
-
 	CSP=(
 		"$KSRC/include/generated/autoconf.h"
 		"$KSRC/include/linux/autoconf.h"
-		"$KSRC/.config"
-	)
-
+		"$KSRC/.config")
+	
 	for file in "${CSP[@]}"; do
 		if [ -f $file ]; then
 			echo >&"$diagmsgs" "using CONFIG_FILE=$file"

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _IXGBE_E610_H_
@@ -50,7 +50,8 @@ s32 ixgbe_configure_lse(struct ixgbe_hw *hw, bool activate, u16 mask);
 
 #ifndef NO_PTP_SUPPORT
 s32 ixgbe_set_ptp_by_phy(struct ixgbe_hw *hw, u8 ptp_request, u8 flags);
-s32 ixgbe_get_ptp_by_phy(struct ixgbe_hw *hw, u8 *ptp_config, u8 *flags);
+s32 ixgbe_get_ptp_by_phy(struct ixgbe_hw *hw, u8 *ptp_config, u8 *flags,
+			 u16 *max_drift_thresh);
 #endif /* !NO_PTP_SUPPORT */
 
 s32 ixgbe_aci_get_netlist_node(struct ixgbe_hw *hw,

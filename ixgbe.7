@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "IXGBE" "7" "February 13, 2025" "" "Linux ixgbe README"
+.TH "IXGBE" "7" "April 03, 2025" "" "Linux ixgbe README"
 .SH NAME
 ixgbe \- ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 .SS Contents
@@ -2557,6 +2557,16 @@ ethtool \-T <ethX>
 .fi
 .UNINDENT
 .UNINDENT
+.SS PTP packet timestamping
+.sp
+Precision Time Protocol uses packet Tx/Rx timestamping to measure delays and
+synchronize time between the leader and the follower clocks.
+Basic HW timestamping is done on the MAC layer. Due to HW configuration and PTP
+timing constraints, on link speeds lower than 2.5G or for one\-step PTP Tx
+timestamping operation PHY timestamping is used instead. This is more precise
+method of timestamping and is completely transparent to end user.
+For packets other than PTP ones, HW timestamping is done on the MAC layer
+regardless of speed.
 .SS Tunnel/Overlay Stateless Offloads
 .sp
 Supported tunnels and overlays include VXLAN, GENEVE, and others depending on

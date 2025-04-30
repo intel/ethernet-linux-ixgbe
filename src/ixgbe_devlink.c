@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -388,7 +388,6 @@ static const struct ixgbe_devlink_version {
 		ixgbe_info_fw_api),
 	running("fw.mgmt.build",
 		ixgbe_info_fw_build),
-
 	running("fw.mgmt.srev", ixgbe_info_fw_srev),
 	stored("fw.mgmt.srev",
 	       ixgbe_info_pending_fw_srev, ixgbe_info_fw_srev),
@@ -413,15 +412,19 @@ static const struct ixgbe_devlink_version {
 };
 
 /**
- * ixgbe_devlink_info_get - .info_get devlink handler
- * @devlink: devlink instance structure
- * @req: the devlink info request
- * @extack: extended netdev ack structure
+ * ixgbe_devlink_info_get - Devlink handler for retrieving device info
+ * @devlink: Devlink instance structure
+ * @req: The devlink info request
+ * @extack: Extended netdev ack structure
  *
- * Callback for the devlink .info_get operation. Reports information about the
- * device.
+ * This function serves as a callback for the devlink .info_get operation,
+ * providing detailed information about the ixgbe network adapter. It
+ * discovers device capabilities, retrieves version information, and reports
+ * it through the devlink interface. The function handles errors in
+ * retrieving data and sets appropriate error messages in the extack
+ * structure.
  *
- * Return: 0 on success or an error code on failure.
+ * Return: 0 on success, or an error code on failure.
  */
 static int ixgbe_devlink_info_get(struct devlink *devlink,
 				  struct devlink_info_req *req,
@@ -915,8 +918,8 @@ static int ixgbe_devlink_reload_empr_start(struct devlink *devlink,
 
 	if (adapter->fw_emp_reset_disabled) {
 		NL_SET_ERR_MSG_MOD(extack,
-				   "EMP reset is not available. To activate firmware, a reboot or power cycle is needed\n"
-				   );
+				   "EMP reset is not available. To activate firmware, a reboot or power cycle is needed\n")
+				   ;
 		return -ECANCELED;
 	}
 
@@ -928,8 +931,8 @@ static int ixgbe_devlink_reload_empr_start(struct devlink *devlink,
 			"Failed to trigger EMP device reset to reload firmware, err %d\n",
 			status);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Failed to trigger EMP device reset to reload firmware"
-				   );
+				   "Failed to trigger EMP device reset to reload firmware")
+				   ;
 		return -EIO;
 	}
 
@@ -937,17 +940,20 @@ static int ixgbe_devlink_reload_empr_start(struct devlink *devlink,
 }
 
 /**
- * ixgbe_devlink_reload_empr_finish - finishes EMP reset
- * @devlink: pointer to the devlink instance
- * @action: the action to perform.
- * @limit: limits on what reload should do
- * @actions_performed: actions performed
- * @extack: netlink extended ACK structure
+ * ixgbe_devlink_reload_empr_finish - Complete EMP reset process
+ * @devlink: Pointer to the devlink instance
+ * @action: The action to perform
+ * @limit: Limits on what reload should do
+ * @actions_performed: Actions performed
+ * @extack: Netlink extended ACK structure
  *
- * Finishes the EMP reset and waits when the device and driver
- * finish the reset and rebuild process.
+ * This function completes the EMP reset process for the ixgbe network
+ * adapter. It updates the actions performed to indicate firmware activation
+ * and waits for the device and driver to finish the reset and rebuild
+ * process. The function currently includes a temporary 10-second wait to
+ * ensure completion.
  *
- * Return: always returns 0.
+ * Return: Always returns 0, what means success.
  */
 static int ixgbe_devlink_reload_empr_finish(struct devlink *devlink,
 					    enum devlink_reload_action action,
@@ -962,7 +968,6 @@ static int ixgbe_devlink_reload_empr_finish(struct devlink *devlink,
 	return 0;
 }
 #endif /* HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT */
-
 
 static const struct devlink_ops ixgbe_devlink_ops = {
 #ifdef HAVE_DEVLINK_FLASH_UPDATE_PARAMS

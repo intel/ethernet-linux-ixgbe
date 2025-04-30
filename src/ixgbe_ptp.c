@@ -1,8 +1,10 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+ /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
+#include "ixgbe_ptp_e600.h"
 #include <linux/ptp_classify.h>
+#include <linux/bitfield.h>
 
 /*
  * The 82599 and the X540 do not have true 64bit nanosecond scale
@@ -135,7 +137,6 @@
  * proper mult and shift to convert the cycles into nanoseconds of time.
  */
 #define IXGBE_X550_BASE_PERIOD 0xC80000000ULL
-#define IXGBE_E610_BASE_PERIOD 0x333333334ULL
 #define INCVALUE_MASK	0x7FFFFFFF
 #define ISGN		0x80000000
 #define MAX_TIMADJ	0x7FFFFFFF
@@ -412,8 +413,6 @@ static void ixgbe_ptp_convert_to_hwtstamp(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
-	case ixgbe_mac_E610:
 		/* Upper 32 bits represent billions of cycles, lower 32 bits
 		 * represent cycles. However, we use timespec64_to_ns for the
 		 * correct math even though the units haven't been corrected
@@ -424,6 +423,10 @@ static void ixgbe_ptp_convert_to_hwtstamp(struct ixgbe_adapter *adapter,
 
 		timestamp = timespec64_to_ns(&systime);
 		break;
+	case ixgbe_mac_E610:
+		ns = (timestamp >> 32) * NSEC_PER_SEC + (timestamp & U32_MAX);
+		hwtstamp->hwtstamp = ns_to_ktime(ns);
+		return;
 	default:
 		break;
 	}
@@ -521,12 +524,8 @@ static int ixgbe_ptp_adjfine_X550(struct ptp_clock_info *ptp, long scaled_ppm)
 	bool neg_adj;
 	u64 rate;
 	u32 inca;
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
-		neg_adj = diff_by_scaled_ppm(IXGBE_E610_BASE_PERIOD,
-					     scaled_ppm, &rate);
-	else
-		neg_adj = diff_by_scaled_ppm(IXGBE_X550_BASE_PERIOD,
-					     scaled_ppm, &rate);
+
+	neg_adj = diff_by_scaled_ppm(IXGBE_X550_BASE_PERIOD, scaled_ppm, &rate);
 
 	/* warn if rate is too large */
 	if (rate >= INCVALUE_MASK)
@@ -616,8 +615,6 @@ static int ixgbe_ptp_gettimex(struct ptp_clock_info *ptp,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
-	case ixgbe_mac_E610:
 		/* Upper 32 bits represent billions of cycles, lower 32 bits
 		 * represent cycles. However, we use timespec64_to_ns for the
 		 * correct math even though the units haven't been corrected
@@ -672,8 +669,8 @@ static int __maybe_unused ixgbe_ptp_gettime(struct ptp_clock_info *ptp,
 static int ixgbe_ptp_settime(struct ptp_clock_info *ptp,
 			     const struct timespec64 *ts)
 {
-	struct ixgbe_adapter *adapter =
-		container_of(ptp, struct ixgbe_adapter, ptp_caps);
+	struct ixgbe_adapter *adapter = container_of(ptp, struct ixgbe_adapter,
+						     ptp_caps);
 	unsigned long flags;
 	u64 ns = timespec64_to_ns(ts);
 
@@ -684,6 +681,7 @@ static int ixgbe_ptp_settime(struct ptp_clock_info *ptp,
 
 	if (adapter->ptp_setup_sdp)
 		adapter->ptp_setup_sdp(adapter);
+
 	return 0;
 }
 
@@ -931,7 +929,7 @@ static void ixgbe_ptp_tx_hwtstamp(struct ixgbe_adapter *adapter)
  * timestamp has been taken for the current skb. It is necessary, because the
  * descriptor's "done" bit does not correlate with the timestamp event.
  */
-static void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work)
+void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work)
 {
 	struct ixgbe_adapter *adapter = container_of(work, struct ixgbe_adapter,
 						     ptp_tx_work);
@@ -1089,6 +1087,7 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 	switch (config->tx_type) {
 	case HWTSTAMP_TX_OFF:
 		tsync_tx_ctl = 0;
+		fallthrough;
 	case HWTSTAMP_TX_ON:
 		break;
 	default:
@@ -1172,8 +1171,6 @@ static int ixgbe_ptp_set_timestamp_mode(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
-	case ixgbe_mac_E610:
 		/* enable timestamping all packets only if at least some
 		 * packets were requested. Otherwise, play nice and disable
 		 * timestamping
@@ -1242,7 +1239,10 @@ int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr)
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
 
-	err = ixgbe_ptp_set_timestamp_mode(adapter, &config);
+	if (adapter->hw.mac.type == ixgbe_mac_E610)
+		err = ixgbe_ptp_set_timestamp_mode_e600(adapter, &config);
+	else
+		err = ixgbe_ptp_set_timestamp_mode(adapter, &config);
 	if (err)
 		return err;
 
@@ -1338,8 +1338,6 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 		fallthrough;
 	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X550:
-		fallthrough;
-	case ixgbe_mac_E610:
 		cc.read = ixgbe_ptp_read_X550;
 
 		/* enable SYSTIME counter */
@@ -1353,6 +1351,7 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_EIMS_TIMESYNC);
 
 		IXGBE_WRITE_FLUSH(hw);
+
 		break;
 	case ixgbe_mac_X540:
 		cc.read = ixgbe_ptp_read_82599;
@@ -1506,8 +1505,6 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
-	case ixgbe_mac_E610:
 		snprintf(adapter->ptp_caps.name, 16, "%s", netdev->name);
 		adapter->ptp_caps.owner = THIS_MODULE;
 		adapter->ptp_caps.max_adj = 30000000;
@@ -1624,6 +1621,11 @@ void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter)
  */
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter)
 {
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		ixgbe_ptp_release_e600(adapter);
+		return;
+	}
+
 	/* first, suspend PTP activity */
 	ixgbe_ptp_suspend(adapter);
 
