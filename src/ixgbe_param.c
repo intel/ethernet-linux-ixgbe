@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include <linux/types.h>
@@ -117,6 +117,7 @@ IXGBE_PARAM(DCA, "Disable or enable Direct Cache Access, 0=disabled, "
 
 IXGBE_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues, "
 	    "default 0=number of cpus");
+
 
 /* VMDQ - Virtual Machine Device Queues (VMDQ)
  *
@@ -326,6 +327,7 @@ IXGBE_PARAM(dmac_watchdog,
 IXGBE_PARAM(vxlan_rx,
 	    "VXLAN receive checksum offload (0,1), default 1 = Enable");
 
+
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
@@ -481,6 +483,7 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 		bd = IXGBE_MAX_NIC;
 #endif
 	}
+
 
 	{ /* Interrupt Mode */
 		unsigned int int_mode;

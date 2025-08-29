@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_x550.h"
@@ -609,6 +609,7 @@ s32 ixgbe_init_ops_X550EM(struct ixgbe_hw *hw)
 	/* X550EM bus type is internal*/
 	hw->bus.type = ixgbe_bus_type_internal;
 	mac->ops.get_bus_info = ixgbe_get_bus_info_X550em;
+
 
 	mac->ops.get_media_type = ixgbe_get_media_type_X550em;
 	mac->ops.setup_sfp = ixgbe_setup_sfp_modules_X550em;
@@ -3229,6 +3230,7 @@ s32 ixgbe_write_ee_hostif_buffer_X550(struct ixgbe_hw *hw,
 
 	hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_EEP_SM);
 out:
+
 	return status;
 }
 

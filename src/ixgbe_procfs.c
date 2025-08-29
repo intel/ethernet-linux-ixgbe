@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -666,6 +666,7 @@ static int ixgbe_therm_location(char *page, char __always_unused **start,
 	return snprintf(page, count, "%d\n", therm_data->sensor_data->location);
 }
 
+
 static int ixgbe_therm_maxopthresh(char *page, char __always_unused **start,
 				   off_t __always_unused off, int count,
 				   int __always_unused *eof, void *data)
@@ -679,6 +680,7 @@ static int ixgbe_therm_maxopthresh(char *page, char __always_unused **start,
 	return snprintf(page, count, "%d\n",
 			therm_data->sensor_data->max_op_thresh);
 }
+
 
 static int ixgbe_therm_cautionthresh(char *page, char __always_unused **start,
 				     off_t __always_unused off, int count,
@@ -711,6 +713,7 @@ static int ixgbe_therm_temp(char *page, char __always_unused **start,
 
 	return snprintf(page, count, "%d\n", therm_data->sensor_data->temp);
 }
+
 
 struct ixgbe_proc_type {
 	char name[32];

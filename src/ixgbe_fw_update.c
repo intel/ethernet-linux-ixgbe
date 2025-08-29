@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include <linux/uuid.h>
@@ -147,16 +147,14 @@ static int ixgbe_check_component_response(struct ixgbe_adapter *adapter,
 			"Component comparison stamp for %s is identical to the running image\n",
 			component);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Component comparison stamp is identical to running image")
-				   ;
+				   "Component comparison stamp is identical to running image");
 		break;
 	case IXGBE_ACI_NVM_PASS_COMP_STAMP_LOWER:
 		dev_err(dev,
 			"Component comparison stamp for %s is lower than the running image\n",
 			component);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Component comparison stamp is lower than running image")
-				   ;
+				   "Component comparison stamp is lower than running image");
 		break;
 	case IXGBE_ACI_NVM_PASS_COMP_INVALID_STAMP_CODE:
 		dev_err(dev,
@@ -199,23 +197,20 @@ static int ixgbe_check_component_response(struct ixgbe_adapter *adapter,
 			"Component version for %s is identical to the running image\n",
 			component);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Component version is identical to running image")
-				   ;
+				   "Component version is identical to running image");
 		break;
 	case IXGBE_ACI_NVM_PASS_COMP_VER_STR_LOWER_CODE:
 		dev_err(dev,
 			"Component version for %s is lower than the running image\n",
 			component);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Component version is lower than the running image")
-				   ;
+				   "Component version is lower than the running image");
 		break;
 	default:
 		dev_err(dev, "Unexpected response code 0x02%x for %s\n",
 			code, component);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Received unexpected response code from firmware")
-				   ;
+				   "Received unexpected response code from firmware");
 		break;
 	}
 
@@ -263,8 +258,7 @@ static int ixgbe_send_component_table(struct pldmfw *context,
 			"Unable to update due to a firmware component with unknown ID %u\n",
 			component->identifier);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Unable to update due to unknown firmware component")
-				   ;
+				   "Unable to update due to unknown firmware component");
 		return -EOPNOTSUPP;
 	}
 
@@ -297,8 +291,7 @@ static int ixgbe_send_component_table(struct pldmfw *context,
 			"Failed to transfer component table to firmware, err %d\n",
 			status);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Failed to transfer component table to firmware")
-				   ;
+				   "Failed to transfer component table to firmware");
 		return -EIO;
 	}
 
@@ -548,8 +541,7 @@ static int ixgbe_switch_flash_banks(struct ixgbe_adapter *adapter,
 		} else {
 			*emp_reset_available = IXGBE_ACI_NVM_EMPR_ENA;
 			dev_dbg(dev,
-				"Firmware does not support restricting EMP reset availability\n")
-				;
+				"Firmware does not support restricting EMP reset availability\n");
 		}
 	}
 
@@ -661,8 +653,7 @@ static int ixgbe_finalize_update(struct pldmfw *context)
 	if (priv->reset_level == IXGBE_ACI_NVM_EMPR_FLAG &&
 	    !priv->emp_reset_available) {
 		dev_dbg(dev,
-			"Firmware indicated EMP reset as sufficient, but EMP reset is disabled\n")
-			;
+			"Firmware indicated EMP reset as sufficient, but EMP reset is disabled\n");
 		priv->reset_level = IXGBE_ACI_NVM_PERST_FLAG;
 	}
 
@@ -728,8 +719,7 @@ int ixgbe_get_pending_updates(struct ixgbe_adapter *adapter, u8 *pending,
 	status = ixgbe_discover_dev_caps(hw, dev_caps);
 	if (status) {
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Unable to read device capabilities")
-				   ;
+				   "Unable to read device capabilities");
 		ixgbe_free(hw, dev_caps);
 		return -EIO;
 	}
@@ -750,8 +740,7 @@ int ixgbe_get_pending_updates(struct ixgbe_adapter *adapter, u8 *pending,
 
 	if (dev_caps->common_cap.nvm_update_pending_netlist) {
 		dev_info(dev,
-			 "The fw.netlist flash component has a pending update\n")
-			 ;
+			 "The fw.netlist flash component has a pending update\n");
 		*pending |= IXGBE_ACI_NVM_ACTIV_SEL_NETLIST;
 	}
 
@@ -893,8 +882,7 @@ int ixgbe_flash_pldm_image(struct devlink *devlink,
 	if (!hw->dev_caps.common_cap.nvm_unified_update &&
 	    !ixgbe_fw_recovery_mode(hw)) {
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Current firmware does not support unified update")
-				   ;
+				   "Current firmware does not support unified update");
 		return -EOPNOTSUPP;
 	}
 
@@ -941,8 +929,7 @@ int ixgbe_flash_pldm_image(struct devlink *devlink,
 		dev_err(dev,
 			"Firmware image has no record matching this device\n");
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Firmware image has no record matching this device")
-				   ;
+				   "Firmware image has no record matching this device");
 	} else if (err) {
 		/* Do not set a generic extended ACK message here. A more
 		 * specific message may already have been set by one of our

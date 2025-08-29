@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_H_
@@ -10,6 +10,7 @@
 #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
 #endif
 
+#include "kcompat_generated_defs.h"
 #include "kcompat_gcc.h"
 
 #ifndef HAVE_XARRAY_API
@@ -4630,6 +4631,7 @@ int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
 
 #define DECLARE_HASHTABLE(name, bits)                                   	\
 	struct hlist_head name[1 << (bits)]
+
 #define HASH_SIZE(name) (ARRAY_SIZE(name))
 #define HASH_BITS(name) ilog2(HASH_SIZE(name))
 
@@ -5116,11 +5118,6 @@ static inline struct pci_dev *pci_upstream_bridge(struct pci_dev *dev)
 	list_entry((pos)->member.prev, typeof(*(pos)), member)
 #endif
 
-#if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,6,20) )
-#define devm_kcalloc(dev, cnt, size, flags) \
-	devm_kzalloc(dev, (cnt) * (size), flags)
-#endif /* > 2.6.20 */
-
 #if (!(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,2)))
 #define list_last_entry(ptr, type, member) list_entry((ptr)->prev, type, member)
 #endif
@@ -5300,9 +5297,6 @@ static inline __u32 skb_get_hash_raw(const struct sk_buff *skb)
 #define u64_stats_fetch_retry_irq u64_stats_fetch_retry_bh
 #endif
 
-char *_kc_devm_kstrdup(struct device *dev, const char *s, gfp_t gfp);
-#define devm_kstrdup(dev, s, gfp) _kc_devm_kstrdup(dev, s, gfp)
-
 #else /* >= 3.15.0 */
 #define HAVE_NET_GET_RANDOM_ONCE
 #define HAVE_PTP_1588_CLOCK_PINS
@@ -5407,10 +5401,6 @@ static inline void __kc_dev_mc_unsync(struct net_device __maybe_unused *dev,
 #define NETIF_F_GSO_UDP_TUNNEL_CSUM 0
 #define SKB_GSO_UDP_TUNNEL_CSUM 0
 #endif
-void *__kc_devm_kmemdup(struct device *dev, const void *src, size_t len,
-			gfp_t gfp);
-#define devm_kmemdup __kc_devm_kmemdup
-
 #else
 #if ( ( LINUX_VERSION_CODE < KERNEL_VERSION(4,13,0) ) && \
       ! ( SLE_VERSION_CODE && ( SLE_VERSION_CODE >= SLE_VERSION(12,4,0)) ) )

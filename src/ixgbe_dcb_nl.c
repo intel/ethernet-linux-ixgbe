@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -1166,6 +1166,7 @@ static int ixgbe_dcbnl_ieee_setpfc(struct net_device *dev,
 
 	prio_tc = adapter->ixgbe_ieee_ets->prio_tc;
 	memcpy(adapter->ixgbe_ieee_pfc, pfc, sizeof(*adapter->ixgbe_ieee_pfc));
+
 
 	/* Enable link flow control parameters if PFC is disabled */
 	if (pfc->pfc_en)

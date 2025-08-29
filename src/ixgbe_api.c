@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_api.h"
@@ -753,6 +753,7 @@ s32 ixgbe_init_eeprom_params(struct ixgbe_hw *hw)
 	return ixgbe_call_func(hw, hw->eeprom.ops.init_params, (hw),
 			       IXGBE_NOT_IMPLEMENTED);
 }
+
 
 /**
  * ixgbe_write_eeprom - Write word to EEPROM

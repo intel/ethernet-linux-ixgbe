@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /* SPDX-License-Identifier: GPL-2.0 OR MIT */
@@ -205,6 +205,7 @@ static inline bool __must_check __must_check_overflow(bool overflow)
 	(__b < (typeof(__b))-1  && (__a > __tmin/__b || __a < __tmax/__b)) || \
 	(__b == (typeof(__b))-1 && __a == __tmin);			\
 })
+
 
 #define check_add_overflow(a, b, d)					\
 	__builtin_choose_expr(_kc_is_signed_type(typeof(a)),		\
@@ -456,6 +457,7 @@ static inline size_t __must_check size_sub(size_t minuend, size_t subtrahend)
 		type obj;							\
 	} name##_u initializer;							\
 	type *name = (type *)&name##_u
+
 /**
  * DEFINE_RAW_FLEX() - Define an on-stack instance of structure with a trailing
  * flexible array member, when it does not have a __counted_by annotation.

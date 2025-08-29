@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_IMPL_H_
@@ -120,6 +120,73 @@ static inline bool __netdev_tx_sent_queue(struct netdev_queue *dev_queue,
 	return true;
 }
 #endif /* NEED_NETDEV_TX_SENT_QUEUE */
+
+/*HAVE_NETIF_SUBQUEUE_MAYBE_STOP
+ *
+ * netif_subqueue_maybe_stop was added in kernel 6.3 upstream commit
+ * c91c46de6bbc ("net: provide macros for commonly copied lockless queue
+ * stop/wake code")
+ */
+#ifndef HAVE_NETIF_SUBQUEUE_MAYBE_STOP
+#define netif_txq_try_stop(txq, get_desc, start_thrs)			\
+	({								\
+		int _res;						\
+									\
+		netif_tx_stop_queue(txq);				\
+		/* Producer index and stop bit must be visible		\
+		 * to consumer before we recheck.			\
+		 * Pairs with a barrier in __netif_txq_completed_wake(). \
+		 */							\
+		smp_mb__after_atomic();					\
+									\
+		/* We need to check again in a case another		\
+		 * CPU has just made room available.			\
+		 */							\
+		_res = 0;						\
+		if (unlikely(get_desc >= start_thrs)) {			\
+			netif_tx_start_queue(txq);			\
+			_res = -1;					\
+		}							\
+		_res;							\
+	})
+
+/**
+ * netif_txq_maybe_stop() - locklessly stop a Tx queue, if needed
+ * @txq:	struct netdev_queue to stop/start
+ * @get_desc:	get current number of free descriptors (see requirements below!)
+ * @stop_thrs:	minimal number of available descriptors for queue to be left
+ *		enabled
+ * @start_thrs:	minimal number of descriptors to re-enable the queue, can be
+ *		equal to @stop_thrs or higher to avoid frequent waking
+ *
+ * All arguments may be evaluated multiple times, beware of side effects.
+ * @get_desc must be a formula or a function call, it must always
+ * return up-to-date information when evaluated!
+ * Expected to be used from ndo_start_xmit, see the comment on top of the file.
+ *
+ * Returns:
+ *	 0 if the queue was stopped
+ *	 1 if the queue was left enabled
+ *	-1 if the queue was re-enabled (raced with waking)
+ */
+#define netif_txq_maybe_stop(txq, get_desc, stop_thrs, start_thrs)	\
+	({								\
+		int _res;						\
+									\
+		_res = 1;						\
+		if (unlikely(get_desc < stop_thrs))			\
+			_res = netif_txq_try_stop(txq, get_desc, start_thrs); \
+		_res;							\
+	})
+
+#define netif_subqueue_maybe_stop(dev, idx, get_desc, stop_thrs, start_thrs) \
+	({								\
+		struct netdev_queue *txq;				\
+									\
+		txq = netdev_get_tx_queue(dev, idx);			\
+		netif_txq_maybe_stop(txq, get_desc, stop_thrs, start_thrs); \
+	})
+#endif /* !HAVE_NETIF_SUBQUEUE_MAYBE_STOP */
 
 /* NEED_NET_PREFETCH
  *
@@ -1563,6 +1630,7 @@ again:
  * This allows core driver code to simply call eth_get_headlen with all
  * 3 parameters, and have kcompat automatically drop it depending on what
  * the kernel supports.
+
  * For kernels older than 3.18, eth_get_headlen didn't exist.
  */
 
@@ -1725,7 +1793,7 @@ int _kc_pci_iov_vf_id(struct pci_dev *dev);
 u64 mul_u64_u64_div_u64(u64 a, u64 mul, u64 div);
 #endif /* NEED_MUL_U64_U64_DIV_U64 */
 
-/* NEED_ROUNDUP_U64 and NEED_DIV_U64_ROUND_UP
+/* NEED_ROUNDUP_U64 and NEED_DIV_U64_ROUND_UP and NEED_DIV_U64_ROUND_CLOSEST
  *
  * roundup_u64 and DIV_U64_FOUND_UP were introduced by commit 1d4ce389da2b
  * ("ice: add and use roundup_u64 instead of open coding equivalent"). They
@@ -1743,12 +1811,12 @@ static inline u64 roundup_u64(u64 x, u32 y)
 }
 #endif /* NEED_ROUNDUP_U64 */
 
-#ifndef HAVE_LINKMODE
-static inline void linkmode_set_bit(int nr, volatile unsigned long *addr)
-{
-	__set_bit(nr, addr);
-}
+#ifdef NEED_DIV_U64_ROUND_CLOSEST
+#define DIV_U64_ROUND_CLOSEST(dividend, divisor)	\
+	({ u32 _tmp = (divisor); div_u64((u64)(dividend) + _tmp / 2, _tmp); })
+#endif /* NEED_DIV_U64_ROUND_CLOSEST */
 
+#ifdef NEED_LINKMODE_ZERO
 static inline void linkmode_zero(unsigned long *dst)
 {
 	bitmap_zero(dst, __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -1759,11 +1827,68 @@ static inline void linkmode_copy(unsigned long *dst, const unsigned long *src)
 	bitmap_copy(dst, src, __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
 
+static inline void linkmode_and(unsigned long *dst, const unsigned long *a,
+				const unsigned long *b)
+{
+	bitmap_and(dst, a, b, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static inline void linkmode_or(unsigned long *dst, const unsigned long *a,
+				const unsigned long *b)
+{
+	bitmap_or(dst, a, b, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
 static inline bool linkmode_empty(const unsigned long *src)
 {
 	return bitmap_empty(src, __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
-#endif /* !HAVE_LINKMODE */
+
+static inline int linkmode_andnot(unsigned long *dst, const unsigned long *src1,
+				  const unsigned long *src2)
+{
+	return bitmap_andnot(dst, src1, src2,  __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static inline void linkmode_set_bit(int nr, volatile unsigned long *addr)
+{
+	__set_bit(nr, addr);
+}
+
+static inline void linkmode_clear_bit(int nr, volatile unsigned long *addr)
+{
+	__clear_bit(nr, addr);
+}
+
+static inline void linkmode_change_bit(int nr, volatile unsigned long *addr)
+{
+	__change_bit(nr, addr);
+}
+
+static inline int linkmode_test_bit(int nr, volatile unsigned long *addr)
+{
+	return test_bit(nr, addr);
+}
+
+static inline int linkmode_equal(const unsigned long *src1,
+				 const unsigned long *src2)
+{
+	return bitmap_equal(src1, src2, __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+#else /* !NEED_LINKMODE_ZERO */
+#include <linux/linkmode.h>
+#endif /* NEED_LINKMODE_ZERO */
+
+#ifdef NEED_LINKMODE_SET_BIT_ARRAY
+static inline void linkmode_set_bit_array(const int *array, int array_size,
+					  unsigned long *addr)
+{
+	int i;
+
+	for (i = 0; i < array_size; i++)
+		linkmode_set_bit(array[i], addr);
+}
+#endif /* NEED_LINKMODE_SET_BIT_ARRAY */
 
 #ifdef NEED_ETHTOOL_LINK_MODE_BIT_INDICES
 /* Link mode bit indices */
@@ -1818,9 +1943,11 @@ enum ethtool_link_mode_bit_indices {
 	ETHTOOL_LINK_MODE_10000baseER_Full_BIT	= 46,
 	ETHTOOL_LINK_MODE_2500baseT_Full_BIT	= 47,
 	ETHTOOL_LINK_MODE_5000baseT_Full_BIT	= 48,
+
 	ETHTOOL_LINK_MODE_FEC_NONE_BIT	= 49,
 	ETHTOOL_LINK_MODE_FEC_RS_BIT	= 50,
 	ETHTOOL_LINK_MODE_FEC_BASER_BIT	= 51,
+
 	__ETHTOOL_LINK_MODE_LAST
 	  = ETHTOOL_LINK_MODE_FEC_BASER_BIT,
 #else
@@ -2568,6 +2695,38 @@ static inline void _kc_devm_kfree(struct device *dev, const void *p)
 #define devm_kzalloc(dev, size, flags) kzalloc(size, flags)
 #endif /* NEED_DEVM_KZALLOC */
 
+#ifdef NEED_DEVM_KCALLOC
+/* NEED_DEVM_KCALLOC
+ *
+ * Since commit 64c862a839a8 ("devres: add kernel standard devm_k.alloc
+ * functions"), the kernel has provided several devres variants of the
+ * standard allocation functions.
+ */
+#define devm_kcalloc(dev, cnt, size, flags) \
+	devm_kzalloc(dev, array_size((cnt), (size)), flags)
+#endif /* NEED_DEVM_KCALLOC */
+
+#ifdef NEED_DEVM_KSTRDUP
+/* NEED_DEVM_KSTRDUP
+ *
+ * devm_kstrdup was introduced upstream by commit e31108cad3de ("devres:
+ * introduce API "devm_kstrdup"").
+ */
+char *_kc_devm_kstrdup(struct device *dev, const char *s, gfp_t gfp);
+#define devm_kstrdup(dev, s, gfp) _kc_devm_kstrdup(dev, s, gfp)
+#endif /* NEED_DEVM_KSTRDUP */
+
+#ifdef NEED_DEVM_KMEMDUP
+/* NEED_DEVM_KMEMDUP
+ *
+ * devm_kmemdup was introduced upstream by commit 3046365bb470 ("devres:
+ * introduce API "devm_kmemdup").
+ */
+void *_kc_devm_kmemdup(struct device *dev, const void *src, size_t len,
+		       gfp_t gfp);
+#define devm_kmemdup _kc_devm_kmemdup
+#endif /* NEED_DEVM_KMEMDUP */
+
 /* NEED_DIFF_BY_SCALED_PPM
  *
  * diff_by_scaled_ppm and adjust_by_scaled_ppm were introduced in
@@ -2689,6 +2848,7 @@ void pci_disable_ptm(struct pci_dev *dev);
  * pcie_flr() was added in the past, but wasn't generally available until 4.12
  * commit a60a2b73ba69 (4.12) made this function available as an extern
  * commit 91295d79d658 (4.17) made this function return int instead of void
+
  * This declares/defines the function for kernels missing it or needing a
  * retval in linux/pci.h
  */
@@ -2964,6 +3124,7 @@ enum netdev_xdp_act {
 	NETDEV_XDP_ACT_HW_OFFLOAD = 16,
 	NETDEV_XDP_ACT_RX_SG = 32,
 	NETDEV_XDP_ACT_NDO_XMIT_SG = 64,
+
 	NETDEV_XDP_ACT_MASK = 127,
 };
 
@@ -3232,6 +3393,7 @@ enum dpll_lock_status_error {
 	DPLL_LOCK_STATUS_ERROR_UNDEFINED,
 	DPLL_LOCK_STATUS_ERROR_MEDIA_DOWN,
 	DPLL_LOCK_STATUS_ERROR_FRACTIONAL_FREQUENCY_OFFSET_TOO_HIGH,
+
 	/* private: */
 	__DPLL_LOCK_STATUS_ERROR_MAX,
 	DPLL_LOCK_STATUS_ERROR_MAX = (__DPLL_LOCK_STATUS_ERROR_MAX - 1)
@@ -3424,4 +3586,27 @@ static inline const char *str_yes_no(bool v)
 		atomic_t refs;
 	} refcount_t;
 #endif /* HAVE_LINUX_REFCOUNT_TYPES_HEADER && HAVE_LINUX_REFCOUNT_HEADER */
+
+#ifdef NEED_TIMER_DELETE
+#define timer_delete del_timer
+#define timer_delete_sync del_timer_sync
+#endif /* NEED_TIMER_DELETE */
+
+/* Since commit 3652117f8548 ("eventfd: simplify eventfd_signal()") the
+ * eventfd_signal() function only takes a single argument. The second
+ * argument was only ever passed as 1.
+ */
+#ifdef NEED_EVENTFD_SIGNAL_NO_COUNTER
+static inline
+void _kc_eventfd_signal(struct eventfd_ctx *ctx)
+{
+	eventfd_signal(ctx, 1);
+}
+#define eventfd_signal(ctx) _kc_eventfd_signal(ctx)
+#endif /* NEED_EVENTFD_SIGNAL_NO_COUNTER */
+
+#ifdef NEED_TIMER_CONTAINER_OF
+#define timer_container_of(var, callback_timer, timer_fieldname) \
+	from_timer(var, callback_timer, timer_fieldname)
+#endif /* NEED_TIMER_CONTAINER_OF */
 #endif /* _KCOMPAT_IMPL_H_ */

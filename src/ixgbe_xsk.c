@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -194,6 +194,7 @@ static int ixgbe_xsk_umem_enable(struct ixgbe_adapter *adapter,
 	    qid >= adapter->netdev->real_num_tx_queues)
 		return -EINVAL;
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
+
 
 #ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
 	reuseq = xsk_reuseq_prepare(adapter->rx_ring[0]->count);

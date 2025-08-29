@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_type.h"
@@ -28,6 +28,55 @@ void ixgbe_init_aci(struct ixgbe_hw *hw)
 void ixgbe_shutdown_aci(struct ixgbe_hw *hw)
 {
 	ixgbe_destroy_lock(&hw->aci.lock);
+}
+
+#define IXGBE_ACI_DEBUG_PREFIX	"ixgbe "
+#define ixgbe_aci_debug_array(hw, rowsize, buf, len) \
+	print_hex_dump_debug(IXGBE_ACI_DEBUG_PREFIX, DUMP_PREFIX_OFFSET, \
+			     rowsize, 1, buf, len, false)
+
+/**
+ * ixgbe_aci_debug - dump the ACI data with the descriptor contents.
+ * @hw: pointer to the hardware structure
+ * @desc: pointer to control queue descriptor
+ * @buf: pointer to command buffer
+ * @buf_len: max length of buf
+ *
+ * Debug function for dumping logs about ACI command with descriptor contents.
+ */
+void ixgbe_aci_debug(struct ixgbe_hw *hw, void *desc, void *buf, u16 buf_len)
+{
+	struct ixgbe_aci_desc *aci_desc = (struct ixgbe_aci_desc *)desc;
+	u16 datalen, flags;
+
+	if (!hw || !desc)
+		return;
+
+	datalen = IXGBE_LE16_TO_CPU(aci_desc->datalen);
+	flags = IXGBE_LE16_TO_CPU(aci_desc->flags);
+
+	hw_dbg(hw, "CQ CMD: opcode 0x%04X, flags 0x%04X, datalen 0x%04X, retval 0x%04X\n",
+		  IXGBE_LE16_TO_CPU(aci_desc->opcode), flags, datalen,
+		  IXGBE_LE16_TO_CPU(aci_desc->retval));
+	hw_dbg(hw, "\tcookie (h,l) 0x%08X 0x%08X\n",
+		  IXGBE_LE32_TO_CPU(aci_desc->cookie_high),
+		  IXGBE_LE32_TO_CPU(aci_desc->cookie_low));
+	hw_dbg(hw, "\tparam (0,1)  0x%08X 0x%08X\n",
+		  IXGBE_LE32_TO_CPU(aci_desc->params.generic.param0),
+		  IXGBE_LE32_TO_CPU(aci_desc->params.generic.param1));
+	hw_dbg(hw, "\taddr (h,l)   0x%08X 0x%08X\n",
+		  IXGBE_LE32_TO_CPU(aci_desc->params.generic.addr_high),
+		  IXGBE_LE32_TO_CPU(aci_desc->params.generic.addr_low));
+
+	/* Dump buffer if 1) one exists and 2) is either a response indicated
+	 * by the DD and/or CMP flag set or a command with the RD flag set.
+	 */
+	if (buf && aci_desc->datalen != 0 &&
+	    (flags & (IXGBE_ACI_FLAG_DD | IXGBE_ACI_FLAG_CMP) ||
+	     flags & IXGBE_ACI_FLAG_RD)) {
+		hw_dbg(hw, "Buffer:\n");
+		ixgbe_aci_debug_array(hw, 16, (u8 *)buf, min(buf_len, datalen));
+	}
 }
 
 /**
@@ -93,10 +142,12 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		/* It's necessary to check if mechanism is enabled */
 		hicr = IXGBE_READ_REG(hw, PF_HICR);
 		if (!(hicr & PF_HICR_EN)) {
+			hw_dbg(hw, "CSR mechanism is not enabled\n");
 			status = IXGBE_ERR_ACI_DISABLED;
 			break;
 		}
 		if (hicr & PF_HICR_C) {
+			hw_dbg(hw, "CSR mechanism is busy\n");
 			hw->aci.last_status = IXGBE_ACI_RC_EBUSY;
 			status = IXGBE_ERR_ACI_BUSY;
 			break;
@@ -104,6 +155,7 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		opcode = desc->opcode;
 
 		if (buf_size > IXGBE_ACI_MAX_BUFFER_SIZE) {
+			hw_dbg(hw, "buf_size is too big\n");
 			status = IXGBE_ERR_PARAM;
 			break;
 		}
@@ -116,6 +168,7 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 			if ((buf && buf_size == 0) ||
 			    (buf == NULL && buf_size)) {
 				status = IXGBE_ERR_PARAM;
+				hw_dbg(hw, "Error: Invalid argument buf or buf_size\n");
 				break;
 			}
 			if (buf && buf_size)
@@ -154,6 +207,8 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 				}
 			}
 		}
+
+		ixgbe_aci_debug(hw, (void *)desc, tmp_buf, (u16)tmp_buf_size);
 
 		/* Descriptor is written to specific registers */
 		for (i = 0; i < IXGBE_ACI_DESC_SIZE_IN_DWORDS; i++)
@@ -194,6 +249,7 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 				raw_desc[i] = IXGBE_READ_REG(hw, PF_HIDA(i));
 				raw_desc[i] = IXGBE_CPU_TO_LE32(raw_desc[i]);
 			}
+			ixgbe_aci_debug(hw, (void *)raw_desc, NULL, 0);
 		}
 
 		/* Read async Admin Command response */
@@ -202,13 +258,18 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 				raw_desc[i] = IXGBE_READ_REG(hw, PF_HIDA_2(i));
 				raw_desc[i] = IXGBE_CPU_TO_LE32(raw_desc[i]);
 			}
+			ixgbe_aci_debug(hw, (void *)raw_desc, NULL, 0);
 		}
 
 		/* Handle timeout and invalid state of HICR register */
 		if (hicr & PF_HICR_C) {
+			hw_dbg(hw, "Error: Admin Command 0x%X command timeout\n",
+				  desc->opcode);
 			status = IXGBE_ERR_ACI_TIMEOUT;
 			break;
 		} else if (!(hicr & PF_HICR_SV) && !(hicr & PF_HICR_EV)) {
+			hw_dbg(hw, "Error: Admin Command 0x%X invalid state of HICR register\n",
+				  desc->opcode);
 			status = IXGBE_ERR_ACI_ERROR;
 			break;
 		}
@@ -220,11 +281,14 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		 */
 		if (desc->opcode != opcode &&
 		    opcode != IXGBE_CPU_TO_LE16(ixgbe_aci_opc_get_fw_event)) {
+			hw_dbg(hw, "Error: Admin Command failed because of bad opcode was returned\n");
 			status = IXGBE_ERR_ACI_ERROR;
 			break;
 		}
 
 		if (desc->retval != IXGBE_ACI_RC_OK) {
+			hw_dbg(hw, "Error: Admin Command failed with error %x\n",
+				  desc->retval);
 			hw->aci.last_status = (enum ixgbe_aci_err)desc->retval;
 			status = IXGBE_ERR_ACI_ERROR;
 			break;
@@ -238,6 +302,8 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 				tmp_buf[i] = IXGBE_CPU_TO_LE32(tmp_buf[i]);
 			}
 			memcpy(buf, tmp_buf, buf_size);
+			ixgbe_aci_debug(hw, (void *)raw_desc, tmp_buf,
+					(u16)tmp_buf_size);
 		}
 	} while (0);
 
@@ -758,9 +824,14 @@ ixgbe_parse_common_caps(struct ixgbe_hw *hw, struct ixgbe_hw_common_caps *caps,
 		break;
 #ifndef NO_PTP_SUPPORT
 	case IXGBE_ACI_CAPS_PTP_BY_PHY:
-		caps->ptp_by_phy_support = 0;
-		hw_dbg(hw, "%s: ptp_by_phy_support = %d\n", prefix,
-			  caps->ptp_by_phy_support);
+		caps->ptp_by_phy_support =
+			(number & IXGBE_ACI_CAPS_PTP_BY_PHY_SUPP) ? true :
+								    false;
+		caps->ptp_by_phy_ll =
+			(number & IXGBE_ACI_CAPS_PTP_BY_PHY_LL) ? true : false;
+		hw_dbg(hw, "%s: ptp_by_phy_support = %d, low_latency = %d\n",
+			  prefix, caps->ptp_by_phy_support,
+			  caps->ptp_by_phy_ll);
 		break;
 #endif /* !NO_PTP_SUPPORT */
 	default:
@@ -2261,6 +2332,7 @@ void ixgbe_release_nvm(struct ixgbe_hw *hw)
 	ixgbe_release_res(hw, IXGBE_NVM_RES_ID);
 }
 
+
 /**
  * ixgbe_aci_read_nvm - read NVM
  * @hw: pointer to the HW struct
@@ -2663,6 +2735,36 @@ static s32 ixgbe_read_nvm_module(struct ixgbe_hw *hw,
 }
 
 /**
+ * ixgbe_read_orom_module - Read from the active Option ROM module
+ * @hw: pointer to the HW structure
+ * @bank: whether to read from active or inactive OROM module
+ * @offset: offset into the OROM module to read, in words
+ * @data: storage for returned word value
+ *
+ * Read the specified word from the active Option ROM module of the flash.
+ * Note that unlike the NVM module, the CSS data is stored at the end of the
+ * module instead of at the beginning.
+ *
+ * Return: the exit code of the operation.
+ */
+static s32 ixgbe_read_orom_module(struct ixgbe_hw *hw,
+				  enum ixgbe_bank_select bank,
+				  u32 offset, u16 *data)
+{
+	__le16 data_local;
+	s32 status;
+
+	status = ixgbe_read_flash_module(hw, bank, E610_SR_1ST_OROM_BANK_PTR,
+					 offset * sizeof(u16),
+					 (u8 *)&data_local,
+					 sizeof(u16));
+	if (!status)
+		*data = IXGBE_LE16_TO_CPU(data_local);
+
+	return status;
+}
+
+/**
  * ixgbe_get_nvm_css_hdr_len - Read the CSS header length from the
  * NVM CSS header
  * @hw: pointer to the HW struct
@@ -2873,6 +2975,167 @@ static s32 ixgbe_get_nvm_srev(struct ixgbe_hw *hw,
 	*srev = srev_h << 16 | srev_l;
 
 	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_get_orom_civd_data - Get the combo version information from Option ROM
+ * @hw: pointer to the HW struct
+ * @bank: whether to read from the active or inactive flash module
+ * @civd: storage for the Option ROM CIVD data.
+ *
+ * Searches through the Option ROM flash contents to locate the CIVD data for
+ * the image.
+ *
+ * Return: the exit code of the operation.
+ */
+static s32
+ixgbe_get_orom_civd_data(struct ixgbe_hw *hw, enum ixgbe_bank_select bank,
+			 struct ixgbe_orom_civd_info *civd)
+{
+	struct ixgbe_orom_civd_info tmp;
+	s32 status;
+	u32 offset;
+
+	/* The CIVD section is located in the Option ROM aligned to 512 bytes.
+	 * The first 4 bytes must contain the ASCII characters "$CIV".
+	 * A simple modulo 256 sum of all of the bytes of the structure must
+	 * equal 0.
+	 */
+	for (offset = 0; (offset + 512) <= hw->flash.banks.orom_size;
+	     offset += 512) {
+		u8 sum = 0, i;
+
+		status = ixgbe_read_flash_module(hw, bank,
+						 E610_SR_1ST_OROM_BANK_PTR,
+						 offset,
+						 (u8 *)&tmp, sizeof(tmp));
+		if (status) {
+			return status;
+		}
+
+		/* Skip forward until we find a matching signature */
+		if (memcmp("$CIV", tmp.signature, sizeof(tmp.signature)) != 0)
+			continue;
+
+		/* Verify that the simple checksum is zero */
+		for (i = 0; i < sizeof(tmp); i++)
+			sum += ((u8 *)&tmp)[i];
+
+		if (sum) {
+			return IXGBE_ERR_NVM;
+		}
+
+		*civd = tmp;
+		return IXGBE_SUCCESS;
+	}
+
+	return IXGBE_ERR_NVM;
+}
+
+/**
+ * ixgbe_get_orom_srev - Read the security revision from the OROM CSS header
+ * @hw: pointer to the HW struct
+ * @bank: whether to read from active or inactive flash module
+ * @srev: storage for security revision
+ *
+ * Read the security revision out of the CSS header of the active OROM module
+ * bank.
+ *
+ * Return: the exit code of the operation.
+ */
+static s32 ixgbe_get_orom_srev(struct ixgbe_hw *hw,
+			       enum ixgbe_bank_select bank,
+			       u32 *srev)
+{
+	u32 orom_size_word = hw->flash.banks.orom_size / 2;
+	u32 css_start, hdr_len;
+	u16 srev_l, srev_h;
+	s32 status;
+
+	status = ixgbe_get_nvm_css_hdr_len(hw, bank, &hdr_len);
+	if (status)
+		return status;
+
+	if (orom_size_word < hdr_len) {
+		return IXGBE_ERR_CONFIG;
+	}
+
+	/* calculate how far into the Option ROM the CSS header starts. Note
+	 * that ixgbe_read_orom_module takes a word offset
+	 */
+	css_start = orom_size_word - hdr_len;
+	status = ixgbe_read_orom_module(hw, bank,
+					css_start + IXGBE_NVM_CSS_SREV_L,
+					&srev_l);
+	if (status)
+		return status;
+
+	status = ixgbe_read_orom_module(hw, bank,
+					css_start + IXGBE_NVM_CSS_SREV_H,
+					&srev_h);
+	if (status)
+		return status;
+
+	*srev = srev_h << 16 | srev_l;
+
+	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_get_orom_ver_info - Read Option ROM version information
+ * @hw: pointer to the HW struct
+ * @bank: whether to read from the active or inactive flash module
+ * @orom: pointer to Option ROM info structure
+ *
+ * Read Option ROM version and security revision from the Option ROM flash
+ * section.
+ *
+ * Return: the exit code of the operation.
+ */
+static s32 ixgbe_get_orom_ver_info(struct ixgbe_hw *hw,
+				   enum ixgbe_bank_select bank,
+				   struct ixgbe_orom_info *orom)
+{
+	struct ixgbe_orom_civd_info civd;
+	u32 combo_ver;
+	s32 status;
+
+	status = ixgbe_get_orom_civd_data(hw, bank, &civd);
+	if (status) {
+		return status;
+	}
+
+	combo_ver = IXGBE_LE32_TO_CPU(civd.combo_ver);
+
+	orom->major = (u8)((combo_ver & IXGBE_OROM_VER_MASK) >>
+		      IXGBE_OROM_VER_SHIFT);
+	orom->patch = (u8)(combo_ver & IXGBE_OROM_VER_PATCH_MASK);
+	orom->build = (u16)((combo_ver & IXGBE_OROM_VER_BUILD_MASK) >>
+		      IXGBE_OROM_VER_BUILD_SHIFT);
+
+	status = ixgbe_get_orom_srev(hw, bank, &orom->srev);
+	if (status) {
+		return status;
+	}
+
+	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_get_inactive_orom_ver - Read Option ROM version from the inactive bank
+ * @hw: pointer to the HW structure
+ * @orom: storage for Option ROM version information
+ *
+ * Reads the Option ROM version and security revision data for the inactive
+ * section of flash. Used to access version data for a pending update that has
+ * not yet been activated.
+ *
+ * Return: the exit code of the operation.
+ */
+s32 ixgbe_get_inactive_orom_ver(struct ixgbe_hw *hw,
+				struct ixgbe_orom_info *orom)
+{
+	return ixgbe_get_orom_ver_info(hw, IXGBE_INACTIVE_FLASH_BANK, orom);
 }
 
 /**
@@ -3291,6 +3554,8 @@ s32 ixgbe_init_nvm(struct ixgbe_hw *hw)
 	if (status) {
 		return status;
 	}
+	status = ixgbe_get_orom_ver_info(hw, IXGBE_ACTIVE_FLASH_BANK,
+					 &flash->orom);
 
 	/* read the netlist version information */
 	status = ixgbe_get_netlist_info(hw, IXGBE_ACTIVE_FLASH_BANK,
@@ -5222,6 +5487,16 @@ s32 ixgbe_identify_phy_E610(struct ixgbe_hw *hw)
 	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_1G_SGMII    ||
 	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_1G_USXGMII)
 		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_1GB_FULL;
+	if (pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_2500BASE_T   ||
+	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_2500BASE_X   ||
+	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_2500BASE_KX  ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_2500M_SGMII ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_2500M_USXGMII)
+		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_2_5GB_FULL;
+	if (pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_5GBASE_T  ||
+	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_5GBASE_KR ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_5G_USXGMII)
+		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_5GB_FULL;
 	if (pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_10GBASE_T       ||
 	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_10G_SFI_DA      ||
 	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_10GBASE_SR      ||
@@ -5232,31 +5507,9 @@ s32 ixgbe_identify_phy_E610(struct ixgbe_hw *hw)
 	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_10G_USXGMII)
 		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_10GB_FULL;
 
-	/* 2.5 and 5 Gbps link speeds must be excluded from the
-	 * auto-negotiation set used during driver initialization due to
-	 * compatibility issues with certain switches. Those issues do not
-	 * exist in case of E610 2.5G SKU device (0x57b1).
-	 * Refer to DCR-2721, DCR-4474 and DCR-4580 for details.
-	 */
-	if (!hw->phy.autoneg_advertised &&
-	    hw->device_id != IXGBE_DEV_ID_E610_2_5G_T)
+	/* Initialize autoneg speeds */
+	if (!hw->phy.autoneg_advertised)
 		hw->phy.autoneg_advertised = hw->phy.speeds_supported;
-
-	if (pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_2500BASE_T   ||
-	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_2500BASE_X   ||
-	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_2500BASE_KX  ||
-	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_2500M_SGMII ||
-	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_2500M_USXGMII)
-		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_2_5GB_FULL;
-
-	if (!hw->phy.autoneg_advertised &&
-	    hw->device_id == IXGBE_DEV_ID_E610_2_5G_T)
-		hw->phy.autoneg_advertised = hw->phy.speeds_supported;
-
-	if (pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_5GBASE_T  ||
-	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_5GBASE_KR ||
-	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_5G_USXGMII)
-		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_5GB_FULL;
 
 	/* Set PHY ID */
 	memcpy(&hw->phy.id, pcaps.phy_id_oui, sizeof(u32));

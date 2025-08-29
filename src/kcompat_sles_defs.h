@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_SLES_DEFS_H_
@@ -117,7 +117,6 @@
 #define HAVE_NDO_SELECT_QUEUE_SB_DEV
 #undef NEED_TC_SETUP_QDISC_MQPRIO
 #undef NEED_TC_CLS_CAN_OFFLOAD_AND_CHAIN0
-#define HAVE_LINKMODE
 #endif /* 4.12.14-115 */
 
 /*****************************************************************************/

@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /* ethtool support for ixgbe */
@@ -10,6 +10,7 @@
 #include <linux/ethtool.h>
 #include <linux/vmalloc.h>
 #include <linux/highmem.h>
+
 
 #ifdef SIOCETHTOOL
 #include <asm/uaccess.h>
@@ -195,6 +196,7 @@ static const char ixgbe_priv_flags_strings[][ETH_GSTRING_LEN] = {
 #define ADVERTISED_MASK_10G (SUPPORTED_10000baseT_Full | SUPPORTED_10000baseKX4_Full | SUPPORTED_10000baseKR_Full)
 
 #define ixgbe_isbackplane(type)  ((type == ixgbe_media_type_backplane)? true : false)
+
 
 #ifdef ETHTOOL_GLINKSETTINGS
 static void ixgbe_set_supported_10gtypes(struct ixgbe_hw *hw,
@@ -984,6 +986,7 @@ static int ixgbe_set_pauseparam_E610(struct net_device *netdev,
 			netdev_priv(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_fc_info fc = hw->fc;
+
 
 	if (pause->autoneg == AUTONEG_DISABLE) {
 		netdev_info(netdev,
@@ -1840,24 +1843,6 @@ err:
 	return ret_val;
 }
 
-#if defined(HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT)
-/**
- * ixgbe_refresh_fw_version - Refresh the firmware version for the adapter
- * @adapter: Pointer to the ixgbe adapter structure
- *
- * This function refreshes the firmware version information for the specified
- * adapter. It initializes the NVM (Non-Volatile Memory) and updates the
- * firmware version specifically for E610 hardware.
- */
-static void ixgbe_refresh_fw_version(struct ixgbe_adapter *adapter)
-{
-	struct ixgbe_hw *hw = &adapter->hw;
-
-	ixgbe_init_nvm(hw);
-	ixgbe_set_fw_version_E610(adapter);
-}
-#endif
-
 /**
  * ixgbe_get_drvinfo - Provide driver information for the network device
  * @netdev: Network device structure
@@ -1885,27 +1870,6 @@ static void ixgbe_get_drvinfo(struct net_device *netdev,
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 	drvinfo->n_priv_flags = IXGBE_PRIV_FLAGS_STR_LEN;
 #endif
-}
-
-/**
- * ixgbe_get_drvinfo_E610 - Provide driver info for E610 hardware
- * @netdev: Network device structure
- * @drvinfo: Pointer to ethtool_drvinfo to be filled with driver info
- *
- * This function updates the firmware version for E610 hardware, if supported,
- * and then calls `ixgbe_get_drvinfo` to fill the `ethtool_drvinfo` structure
- * with driver information.
- */
-static void ixgbe_get_drvinfo_E610(struct net_device *netdev,
-				   struct ethtool_drvinfo *drvinfo)
-{
-#ifdef HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT
-	struct ixgbe_adapter *adapter =
-			netdev_priv(netdev);
-
-	ixgbe_refresh_fw_version(adapter);
-#endif
-	ixgbe_get_drvinfo(netdev, drvinfo);
 }
 
 #ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
@@ -2110,6 +2074,7 @@ static int ixgbe_set_ringparam(struct net_device *netdev,
 				goto err_setup;
 			}
 		}
+
 
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			ixgbe_free_rx_resources(adapter->rx_ring[i]);
@@ -2511,6 +2476,7 @@ static struct ixgbe_reg_test reg_test_82598[] = {
 	{ .reg = 0 }
 };
 
+
 static bool reg_pattern_test(struct ixgbe_adapter *adapter, u64 *data, int reg,
 			     u32 mask, u32 write)
 {
@@ -2903,6 +2869,7 @@ static int ixgbe_setup_loopback_test(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 reg_data;
+
 
 	/* Setup MAC loopback */
 	reg_data = IXGBE_READ_REG(hw, IXGBE_HLREG0);
@@ -4003,6 +3970,7 @@ static int ixgbe_set_tso(struct net_device *netdev, u32 data)
 	}
 
 tso_out:
+
 #endif /* HAVE_NETDEV_VLAN_FEATURES */
 	return 0;
 }
@@ -5964,7 +5932,7 @@ static struct ethtool_ops ixgbe_ethtool_ops_E610 = {
 	.get_settings		= ixgbe_get_settings,
 	.set_settings		= ixgbe_set_settings,
 #endif
-	.get_drvinfo		= ixgbe_get_drvinfo_E610,
+	.get_drvinfo		= ixgbe_get_drvinfo,
 	.get_regs_len		= ixgbe_get_regs_len,
 	.get_regs		= ixgbe_get_regs,
 	.get_wol		= ixgbe_get_wol,

@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _IXGBE_TYPE_H_
@@ -2122,6 +2122,7 @@ enum {
 #define IXGBE_ESDP_SDP0_NATIVE	0x00010000 /* SDP0 IO mode */
 #define IXGBE_ESDP_SDP1_NATIVE	0x00020000 /* SDP1 IO mode */
 
+
 /* LEDCTL Bit Masks */
 #define IXGBE_LED_IVRT_BASE		0x00000040
 #define IXGBE_LED_BLINK_BASE		0x00000080
@@ -4228,6 +4229,7 @@ struct ixgbe_hw {
 
 #define ixgbe_call_func(hw, func, params, error) \
 		(func != NULL) ? func params : error
+
 /* Error Codes */
 #define IXGBE_SUCCESS				0
 #define IXGBE_ERR_EEPROM			-1

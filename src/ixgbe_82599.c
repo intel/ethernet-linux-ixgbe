@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_type.h"
@@ -387,6 +387,7 @@ s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
 	u32 autoc = 0;
 
 	DEBUGFUNC("ixgbe_get_link_capabilities_82599");
+
 
 	/* Check if 1G SFP module. */
 	if (hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0 ||
@@ -2532,6 +2533,7 @@ STATIC s32 ixgbe_read_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
 	status = ixgbe_read_i2c_byte_generic(hw, byte_offset, dev_addr, data);
 
 release_i2c_access:
+
 	if (hw->phy.qsfp_shared_i2c_bus == TRUE) {
 		/* Release I2C bus ownership. */
 		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);
@@ -2589,6 +2591,7 @@ STATIC s32 ixgbe_write_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
 	status = ixgbe_write_i2c_byte_generic(hw, byte_offset, dev_addr, data);
 
 release_i2c_access:
+
 	if (hw->phy.qsfp_shared_i2c_bus == TRUE) {
 		/* Release I2C bus ownership. */
 		esdp = IXGBE_READ_REG(hw, IXGBE_ESDP);

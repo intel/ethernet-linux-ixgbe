@@ -1,4 +1,4 @@
- # SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 1999 - 2025 Intel Corporation
 
 ifneq ($(KERNELRELEASE),)
@@ -8,6 +8,7 @@ ifneq ($(KERNELRELEASE),)
 #
 
 obj-$(CONFIG_IXGBE) += ixgbe.o
+
 define ixgbe-y
 	ixgbe_main.o
 	ixgbe_api.o
@@ -34,25 +35,34 @@ endef
 ixgbe-y := $(strip ${ixgbe-y})
 
 ixgbe-${CONFIG_DCB} += ixgbe_dcb_nl.o
+
 ixgbe-${CONFIG_DEBUG_FS} += ixgbe_debugfs.o
+
 ixgbe-${CONFIG_FCOE:m=y} += ixgbe_fcoe.o
+
 ixgbe-$(CONFIG_PTP_1588_CLOCK:m=y) += ixgbe_ptp.o
 ixgbe-$(CONFIG_PTP_1588_CLOCK:m=y) += ixgbe_ptp_e600.o
+
 ixgbe-${CONFIG_SYSFS} += ixgbe_sysfs.o
+
 # Use kcompat pldmfw.c if kernel does not provide CONFIG_PLDMFW
 ifndef CONFIG_PLDMFW
 ixgbe-y += kcompat_pldmfw.o
 endif
+
 ixgbe-y += kcompat.o
+
 else	# ifneq($(KERNELRELEASE),)
 # normal makefile
 
 DRIVER := ixgbe
+
 ifeq (,$(wildcard common.mk))
   $(error Cannot find common.mk build rules)
 else
   include common.mk
 endif
+
 # Check that kernel version is at least 2.6.0, since we don't support 2.4.x
 # kernels with the ixgbe driver. We can't use minimum_kver_check since SLES 10
 # SP4's Make has a bug which causes $(eval) inside an ifeq conditional to error
@@ -62,6 +72,7 @@ ifeq (0,$(shell [ ${KVER_CODE} -lt $(call get_kvercode,2,6,0) ]; echo "$?"))
   $(warning *** Aborting the build.)
   $(error This driver is not supported on kernel versions older than 2.6.0)
 endif
+
 ######################
 # Kernel Build Macro #
 ######################
@@ -87,6 +98,7 @@ define cmd_initramfs
 -@$(call cmd_initrd)
 endef
 endif
+
 ###############
 # Build rules #
 ###############
@@ -118,14 +130,17 @@ ccc: clean
 # Build manfiles
 manfile:
 	@gzip -c ../${DRIVER}.${MANSECTION} > ${DRIVER}.${MANSECTION}.gz
+
 # Clean the module subdirectories
 clean:
 	@+$(call devkernelbuild,clean)
 	@-rm -rf *.${MANSECTION}.gz *.ko
+
 # Install the modules and manpage
 mandocs_install: manfile
 	@echo "Copying manpages..."
 	@install -D -m 644 ${DRIVER}.${MANSECTION}.gz ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz
+
 # Install kernel module files. This target is called by the RPM specfile
 # when generating binary RPMs, and is not expected to modify files outside
 # of the build root. Thus, it must not update initramfs, or run depmod.
@@ -196,5 +211,7 @@ help:
 	@echo '  INSTALL_MOD_DIR     - Use module directory other than updates/drivers/net/ethernet/intel/${DRIVER}'
 	@echo ' Other variables may be available for tuning make process, see'
 	@echo ' Kernel Kbuild documentation for more information'
+
 .PHONY: default noisy clean manfile silent sparse ccc install uninstall help
+
 endif	# ifneq($(KERNELRELEASE),)

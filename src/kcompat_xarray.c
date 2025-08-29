@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 // SPDX-License-Identifier: GPL-2.0+
@@ -31,6 +31,33 @@ struct kmem_cache;
 struct rcu_head;
 
 struct kmem_cache *radix_tree_node_cachep;
+static atomic_t kc_init_done = ATOMIC_INIT(0);
+static DEFINE_SPINLOCK(kc_radix_tree_init_lock);
+
+static void radix_tree_node_ctor(void *arg)
+{
+        struct radix_tree_node *node = arg;
+
+        memset(node, 0, sizeof(*node));
+        INIT_LIST_HEAD(&node->private_list);
+}
+
+static void kc_xarray_global_init(void)
+{
+	if (likely(atomic_read(&kc_init_done)))
+		return;
+	spin_lock(&kc_radix_tree_init_lock);
+	if (atomic_read(&kc_init_done))
+		goto out;
+	radix_tree_node_cachep = kmem_cache_create("kc_radix_tree_node",
+                        sizeof(struct radix_tree_node), 0,
+                        SLAB_PANIC | SLAB_RECLAIM_ACCOUNT,
+                        radix_tree_node_ctor);
+	atomic_set_release(&kc_init_done, 1);
+out:
+	spin_unlock(&kc_radix_tree_init_lock);
+}
+
 static void radix_tree_node_rcu_free(struct rcu_head *head)
 {
 	struct radix_tree_node *node =
@@ -47,6 +74,7 @@ static void radix_tree_node_rcu_free(struct rcu_head *head)
 
 	kmem_cache_free(radix_tree_node_cachep, node);
 }
+
 
 /*
  * Coding conventions in this file:
@@ -685,6 +713,8 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 	struct xa_node *node = xas->xa_node;
 	int shift;
 	unsigned int order = xas->xa_shift;
+
+	kc_xarray_global_init();
 
 	if (xas_top(node)) {
 		entry = xa_head_locked(xa);

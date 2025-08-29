@@ -1,4 +1,4 @@
- # SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 1999 - 2025 Intel Corporation
 
 #
@@ -44,6 +44,7 @@ DRIVER_UPPERCASE := $(shell echo ${DRIVER} | tr "[:lower:]" "[:upper:]")
 ifeq (,${BUILD_KERNEL})
 BUILD_KERNEL=$(shell uname -r)
 endif
+
 # Kernel Search Path
 # All the places we look for kernel source
 KSP :=  /lib/modules/${BUILD_KERNEL}/source \
@@ -54,6 +55,7 @@ KSP :=  /lib/modules/${BUILD_KERNEL}/source \
         /usr/src/linux \
         /usr/src/kernels/${BUILD_KERNEL} \
         /usr/src/kernels
+
 # prune the list down to only values that exist and have an include/linux
 # sub-directory. We can't use include/config because some older kernels don't
 # have this.
@@ -64,6 +66,7 @@ KSP := $(foreach dir, ${KSP}, ${test_dir})
 ifeq (,${KSRC})
   KSRC := $(firstword ${KSP})
 endif
+
 ifeq (,${KSRC})
   $(warning *** Kernel header files not in any of the expected locations.)
   $(warning *** Install the appropriate kernel development package, e.g.)
@@ -75,8 +78,10 @@ else
   KOBJ :=  ${KSRC}
 endif
 endif
+
 SCRIPT_PATH := ${KSRC}/scripts
 info_signed_modules =
+
 ifeq (,${SCRIPT_PATH})
   info_signed_modules += echo "*** Could not find sign-file script. Cannot sign driver." ;
 else
@@ -96,16 +101,19 @@ else
   sign_driver =
 endif
 endif
+
 # Version file Search Path
 VSP :=  ${KOBJ}/include/generated/utsrelease.h \
         ${KOBJ}/include/linux/utsrelease.h \
         ${KOBJ}/include/linux/version.h \
         ${KOBJ}/include/generated/uapi/linux/version.h \
         /boot/vmlinuz.version.h
+
 # Config file Search Path
 CSP :=  ${KOBJ}/include/generated/autoconf.h \
         ${KOBJ}/include/linux/autoconf.h \
         /boot/vmlinuz.autoconf.h
+
 # System.map Search Path (for depmod)
 MSP := ${KSRC}/System.map \
        /usr/lib/debug/boot/System.map-${BUILD_KERNEL} \
@@ -117,28 +125,36 @@ VSP := $(foreach file, ${VSP}, $(call test_file,${file}))
 CSP := $(foreach file, ${CSP}, $(call test_file,${file}))
 MSP := $(foreach file, ${MSP}, $(call test_file,${file}))
 
+
 # and use the first valid entry in the Search Paths
 ifeq (,${VERSION_FILE})
   VERSION_FILE := $(firstword ${VSP})
 endif
+
 ifeq (,${CONFIG_FILE})
   CONFIG_FILE := $(firstword ${CSP})
 endif
+
 ifeq (,${SYSTEM_MAP_FILE})
   SYSTEM_MAP_FILE := $(firstword ${MSP})
 endif
+
 ifeq (,$(wildcard ${VERSION_FILE}))
   $(error Linux kernel source not configured - missing version header file)
 endif
+
 ifeq (,$(wildcard ${CONFIG_FILE}))
   $(error Linux kernel source not configured - missing autoconf.h)
 endif
+
 ifeq (,$(wildcard ${SYSTEM_MAP_FILE}))
   $(warning Missing System.map file - depmod will not check for missing symbols during module installation)
 endif
+
 ifneq ($(words $(subst :, ,$(CURDIR))), 1)
   $(error Sources directory '$(CURDIR)' cannot contain spaces nor colons. Rename directory or move sources to another path)
 endif
+
 ########################
 # Extract config value #
 ########################
@@ -169,6 +185,7 @@ CONFIG_MODULE_SIG_KEY := $(call get_config_value,CONFIG_MODULE_SIG_KEY)
 
 SIG_KEY_SP := ${KOBJ}/${CONFIG_MODULE_SIG_KEY} \
               ${KOBJ}/certs/signing_key.pem
+
 SIG_KEY_FILE := $(firstword $(foreach file, ${SIG_KEY_SP}, $(call test_file,${file})))
 
 # print a warning if the kernel configuration attempts to sign modules but
@@ -191,6 +208,7 @@ ifeq (${CONFIG_MODULE_SIG_FORCE},1)
 endif # CONFIG_MODULE_SIG_FORCE
 DISABLE_MODULE_SIGNING := Yes
 endif
+
 #######################
 # Linux Version Setup #
 #######################
@@ -206,12 +224,14 @@ endif
 ifneq (${LINUX_VERSION},)
   LINUX_VERSION_CODE=$(call get_kvercode,$(call get_kver,${LINUX_VERSION},1),$(call get_kver,${LINUX_VERSION},2),$(call get_kver,${LINUX_VERSION},3))
 endif
+
 # Honor LINUX_VERSION_CODE
 ifneq (${LINUX_VERSION_CODE},)
   $(warning Forcing target kernel to build with LINUX_VERSION_CODE of ${LINUX_VERSION_CODE}$(if ${LINUX_VERSION}, from LINUX_VERSION=${LINUX_VERSION}). Do this at your own risk.)
   KVER_CODE := ${LINUX_VERSION_CODE}
   EXTRA_CFLAGS += -DLINUX_VERSION_CODE=${LINUX_VERSION_CODE}
 endif
+
 # Determine SLE_KERNEL_REVISION for SuSE SLE >= 11 (needed by kcompat)
 # This assumes SuSE will continue setting CONFIG_LOCALVERSION to the string
 # appended to the stable kernel version on which their kernel is based with
@@ -251,6 +271,7 @@ else
 endif
 endif
 endif
+
 EXTRA_CFLAGS += ${CFLAGS_EXTRA}
 
 # get the kernel version - we use this to find the correct install path
@@ -263,10 +284,12 @@ ifneq (,$(wildcard /lib/modules/${KVER}/build))
     KOBJ=/lib/modules/${KVER}/build
   endif
 endif
+
 ifeq (${KVER_CODE},)
   KVER_CODE := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM ${VSP} 2> /dev/null |\
                  grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
 endif
+
 # minimum_kver_check
 #
 # helper function to provide uniform output for different drivers to abort the
@@ -305,6 +328,7 @@ $(if $(shell \
 ################
 
 MANSECTION = 7
+
 ifeq (,${MANDIR})
   # find the best place to install the man page
   MANPATH := $(shell (manpath 2>/dev/null || echo $MANPATH) | sed 's/:/ /g')
@@ -325,6 +349,7 @@ ifeq (,${MANDIR})
   # fallback to /usr/man
   MANDIR := /usr/man
 endif
+
 ####################
 # CCFLAGS variable #
 ####################
@@ -335,6 +360,7 @@ CCFLAGS_VAR := EXTRA_CFLAGS
 else
 CCFLAGS_VAR := ccflags-y
 endif
+
 #################
 # KBUILD_OUTPUT #
 #################
@@ -343,6 +369,7 @@ endif
 ifneq ($(call readlink,${KSRC}),$(call readlink,${KOBJ}))
 export KBUILD_OUTPUT ?= ${KOBJ}
 endif
+
 ############################
 # Module Install Directory #
 ############################
@@ -364,9 +391,11 @@ CHECK_AUX_BUS ?= ../scripts/check_aux_bus
 ifneq ($(call test_file,${CHECK_AUX_BUS}),)
 NEED_AUX_BUS := $(shell ${CHECK_AUX_BUS} --ksrc="${KSRC}" --build-kernel="${BUILD_KERNEL}" >/dev/null 2>&1; echo $$?)
 endif # check_aux_bus exists
+
 # The out-of-tree auxiliary module we ship should be moved into this
 # directory as part of installation.
 export INSTALL_AUX_DIR ?= updates/drivers/net/ethernet/intel/auxiliary
+
 # If we're installing auxiliary bus out-of-tree, the following steps are
 # necessary to ensure the relevant files get put in place.
 AUX_BUS_HEADERS ?= linux/auxiliary_bus.h auxiliary_compat.h kcompat_generated_defs.h
@@ -382,6 +411,7 @@ endef
 else
 auxiliary_post_install =
 endif
+
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_uninstall
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
@@ -393,6 +423,7 @@ endef
 else
 auxiliary_post_uninstall =
 endif
+
 ifeq (${NEED_AUX_BUS},2)
 EXTRA_CFLAGS += -DUSE_INTEL_AUX_BUS
 endif

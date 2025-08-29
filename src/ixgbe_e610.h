@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _IXGBE_E610_H_
@@ -8,6 +8,8 @@
 
 void ixgbe_init_aci(struct ixgbe_hw *hw);
 void ixgbe_shutdown_aci(struct ixgbe_hw *hw);
+
+void ixgbe_aci_debug(struct ixgbe_hw *hw, void *desc, void *buf, u16 buf_len);
 
 s32 ixgbe_aci_send_cmd(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		       void *buf, u16 buf_size);
@@ -105,6 +107,7 @@ s32 ixgbe_nvm_write_activate(struct ixgbe_hw *hw, u16 cmd_flags,
 
 s32 ixgbe_get_nvm_minsrevs(struct ixgbe_hw *hw, struct ixgbe_minsrev_info *minsrevs);
 s32 ixgbe_update_nvm_minsrevs(struct ixgbe_hw *hw, struct ixgbe_minsrev_info *minsrevs);
+s32 ixgbe_get_inactive_orom_ver(struct ixgbe_hw *hw, struct ixgbe_orom_info *orom);
 s32 ixgbe_get_inactive_nvm_ver(struct ixgbe_hw *hw, struct ixgbe_nvm_info *nvm);
 s32 ixgbe_get_active_nvm_ver(struct ixgbe_hw *hw, struct ixgbe_nvm_info *nvm);
 s32 ixgbe_get_inactive_netlist_ver(struct ixgbe_hw *hw, struct ixgbe_netlist_info *netlist);

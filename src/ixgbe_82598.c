@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_type.h"
@@ -740,6 +740,7 @@ STATIC s32 ixgbe_setup_mac_link_82598(struct ixgbe_hw *hw,
 
 	return status;
 }
+
 
 /**
  * ixgbe_setup_copper_link_82598 - Set the PHY autoneg advertised field

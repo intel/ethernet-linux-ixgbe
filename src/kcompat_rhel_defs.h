@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_RHEL_DEFS_H_
@@ -78,7 +78,6 @@
 #undef NEED_IDA_ALLOC_MIN_MAX_RANGE_FREE
 #undef NEED_INDIRECT_CALL_WRAPPER_MACROS
 #define HAVE_INDIRECT_CALL_WRAPPER_HEADER
-#define HAVE_LINKMODE
 #endif /* 8.1 */
 
 /*****************************************************************************/

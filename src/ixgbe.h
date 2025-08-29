@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _IXGBE_H_
@@ -82,6 +82,7 @@
 #define IXGBE_MIN_NUM_DESCRIPTORS	64
 
 #define IXGBE_ETH_P_LLDP		0x88CC
+
 
 /* flow control */
 #define IXGBE_MIN_FCRTL			0x40
@@ -191,10 +192,12 @@ enum ixgbe_tx_flags {
 	IXGBE_TX_FLAGS_HW_VLAN	= 0x01,
 	IXGBE_TX_FLAGS_TSO	= 0x02,
 	IXGBE_TX_FLAGS_TSTAMP	= 0x04,
+
 	/* olinfo flags */
 	IXGBE_TX_FLAGS_CC	= 0x08,
 	IXGBE_TX_FLAGS_IPV4	= 0x10,
 	IXGBE_TX_FLAGS_CSUM	= 0x20,
+
 	/* software defined flags */
 	IXGBE_TX_FLAGS_SW_VLAN	= 0x40,
 	IXGBE_TX_FLAGS_FCOE	= 0x80,
@@ -426,6 +429,7 @@ enum ixgbe_ring_state_t {
 #define netdev_ring(ring) (ring->netdev)
 #define ring_queue_index(ring) (ring->queue_index)
 
+
 struct ixgbe_ring {
 	struct ixgbe_ring *next;	/* pointer to next ring in q_vector */
 	struct ixgbe_q_vector *q_vector; /* backpointer to host q_vector */
@@ -644,6 +648,11 @@ struct ixgbe_q_vector {
 #ifdef HAVE_NDO_BUSY_POLL
 	atomic_t state;
 #endif  /* HAVE_NDO_BUSY_POLL */
+#if defined(HAVE_PTP_1588_CLOCK)
+	struct list_head ptp_skbs_e600;
+	spinlock_t ptp_skbs_lock_e600; /* Protects ptp_skbs_e600 access. */
+	bool ptp_hold_rx_skb : 1;
+#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 
 	/* for dynamic allocation of rings associated with this q_vector */
 	struct ixgbe_ring ring[0] ____cacheline_internodealigned_in_smp;
@@ -834,6 +843,7 @@ struct ixgbe_therm_proc_data {
 #define MAX_MSIX_Q_VECTORS	IXGBE_MAX_MSIX_Q_VECTORS_82599
 #define MAX_MSIX_COUNT		IXGBE_MAX_MSIX_VECTORS_82599
 
+
 #define MIN_MSIX_Q_VECTORS	1
 #define MIN_MSIX_COUNT		(MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
 
@@ -861,16 +871,38 @@ enum ixgbe_state_t {
 };
 
 #if defined(HAVE_PTP_1588_CLOCK)
+/** struct ixgbe_rx_phy_ts_skb_e610 - tracker for E610 PHY Rx timestamps or Rx
+ *				      PTP skbs
+ *
+ * This structure contains data for tracking Rx PTP packets. It's used either
+ * for a single Rx PTP skb or for a single Rx timestamp from the PHY.
+ *
+ * @list: list member structure
+ * @ns: Rx timestamp in nanoseconds
+ * @skb: Rx PTP skb
+ * @acquired: time when TS/skb was acquired in jiffies
+ * @seq_id: Rx TS/skb sequence ID
+ */
+struct ixgbe_rx_phy_ts_skb_e610 {
+	struct list_head list;
+	union {
+		u64 ns;
+		struct sk_buff *skb;
+	};
+	unsigned long acquired;
+	u16 seq_id;
+};
+
 struct ixgbe_ptp_e600 {
 	bool ptp_by_phy_ena : 1;
-	bool onestep_ena : 1;
 	bool vlan_ena : 1;
 	atomic_t vlan_change;
 	atomic_t reinit_phy_tod;
 	u16 ptp_seq_id;
 	u16 max_drift_threshold;
-	u64 cached_phc_time;
 	struct ptp_pin_desc pin_config[1];
+	struct list_head rx_tstamps;
+	spinlock_t rx_tstamps_lock; /* Protects rx_tstamps access. */
 #ifndef HAVE_PTP_CANCEL_WORKER_SYNC
 	struct kthread_worker *ptp_kworker;
 	struct kthread_delayed_work ptp_aux_work;
@@ -1451,18 +1483,19 @@ static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
 					 union ixgbe_adv_rx_desc *rx_desc,
 					 struct sk_buff *skb)
 {
-	struct ixgbe_adapter *adapter = rx_ring->q_vector->adapter;
-	unsigned int ptp_class = PTP_CLASS_NONE;
-
-	if (unlikely(adapter->ptp.ptp_by_phy_ena))
-		ptp_class = ptp_classify_raw(skb);
-
-	if (unlikely(ptp_class != PTP_CLASS_NONE)) {
-		ixgbe_ptp_rx_phytstamp_e600(rx_ring->q_vector, skb, ptp_class);
-		return;
-	}
-
 	if (unlikely(ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_TSIP))) {
+		struct ixgbe_adapter *adapter = rx_ring->q_vector->adapter;
+		unsigned int ptp_class = PTP_CLASS_NONE;
+
+		if (unlikely(adapter->ptp.ptp_by_phy_ena))
+			ptp_class = ptp_classify_raw(skb);
+
+		if (unlikely(ptp_class != PTP_CLASS_NONE)) {
+			ixgbe_ptp_rx_phytstamp_e600(rx_ring->q_vector, skb,
+						    ptp_class);
+			return;
+		}
+
 		ixgbe_ptp_rx_pktstamp(rx_ring->q_vector, skb);
 		return;
 	}
@@ -1497,6 +1530,6 @@ bool ixgbe_fwlog_ring_empty(struct ixgbe_fwlog_ring *rings);
 void ixgbe_fwlog_ring_increment(u16 *item, u16 size);
 void ixgbe_fwlog_realloc_rings(struct ixgbe_hw *hw, int ring_size);
 s32 ixgbe_fwlog_init(struct ixgbe_hw *hw);
-void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter);
+int ixgbe_refresh_fw_version(struct ixgbe_adapter *adapter);
 
 #endif /* _IXGBE_H_ */

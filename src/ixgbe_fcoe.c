@@ -1,7 +1,8 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
+
 
 #if IS_ENABLED(CONFIG_FCOE)
 #if IS_ENABLED(CONFIG_DCB)
@@ -179,6 +180,7 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 		return 0;
 	}
 	ixgbe_fcoe_clear_ddp(ddp);
+
 
 	if (!fcoe->ddp_pool) {
 		e_warn(drv, "No ddp_pool resources allocated\n");

@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #ifndef _KCOMPAT_STD_DEFS_H_
@@ -101,12 +101,6 @@
 #define HAVE_TC_ETF_QOPT_OFFLOAD
 #define HAVE_FLOW_DISSECTOR_KEY_ENC_IP
 #endif /* 4,19,0 */
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0))
-#else /* >= 4.20.0 */
-#define HAVE_LINKMODE
-#endif /* 4.20.0 */
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0))

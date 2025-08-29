@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /* SPDX-License-Identifier: BSD-3-Clause
@@ -437,30 +437,30 @@ void unpack_fields_u16(const void *pbuf, size_t pbuflen, void *ustruct,
 	({ \
 		CHECK_PACKED_FIELDS(fields); \
 		CHECK_PACKED_FIELDS_SIZE((fields), (pbuflen)); \
-		__builtin_choose_expr(__builtin_types_compatible_p(typeof(fields), const struct packed_field_u8 *), \
+		__builtin_choose_expr(__builtin_types_compatible_p(typeof(*fields), struct packed_field_u8), \
 				      pack_fields_u8((pbuf), (pbuflen), (ustruct), \
 						     (const struct packed_field_u8 *)(fields), \
 						     ARRAY_SIZE(fields), (quirks)), \
-		__builtin_choose_expr(__builtin_types_compatible_p(typeof(fields), const struct packed_field_u16 *), \
+		__builtin_choose_expr(__builtin_types_compatible_p(typeof(*fields), struct packed_field_u16), \
 				      pack_fields_u16((pbuf), (pbuflen), (ustruct), \
 						      (const struct packed_field_u16 *)(fields), \
 						      ARRAY_SIZE(fields), (quirks)), \
-		(void)0)); \
+		({ BUILD_BUG_ON_MSG(1, "pack_fields called with an unrecognized fields array type."); (void)0; }))); \
 	})
 
 #define unpack_fields(pbuf, pbuflen, ustruct, fields, quirks) \
 	({ \
 		CHECK_PACKED_FIELDS(fields); \
 		CHECK_PACKED_FIELDS_SIZE((fields), (pbuflen)); \
-		__builtin_choose_expr(__builtin_types_compatible_p(typeof(fields), const struct packed_field_u8 *), \
+		__builtin_choose_expr(__builtin_types_compatible_p(typeof(*fields), struct packed_field_u8), \
 				      unpack_fields_u8((pbuf), (pbuflen), (ustruct), \
 						       (const struct packed_field_u8 *)(fields), \
 						       ARRAY_SIZE(fields), (quirks)), \
-		__builtin_choose_expr(__builtin_types_compatible_p(typeof(fields), const struct packed_field_u16 *), \
+		__builtin_choose_expr(__builtin_types_compatible_p(typeof(*fields), struct packed_field_u16), \
 				      unpack_fields_u16((pbuf), (pbuflen), (ustruct), \
 							(const struct packed_field_u16 *)(fields), \
 							ARRAY_SIZE(fields), (quirks)), \
-		(void)0)); \
+		({ BUILD_BUG_ON_MSG(1, "unpack_fields called with an unrecognized fields array type."); (void)0; }))); \
 	})
 
 #endif

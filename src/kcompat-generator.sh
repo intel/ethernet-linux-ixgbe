@@ -1,8 +1,9 @@
- #!/bin/bash
+#!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 1999 - 2025 Intel Corporation
 
 set -Eeuo pipefail
+
 # This file generates HAVE_ and NEED_ defines for current kernel
 # (or KSRC if provided).
 #
@@ -30,13 +31,16 @@ export LC_ALL=C
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 ORIG_CWD="$(pwd)"
 trap 'rc=$?; echo >&2 "$(realpath "$ORIG_CWD/${BASH_SOURCE[0]}"):$LINENO: failed with rc: $rc"' ERR
+
 # shellcheck source=kcompat-lib.sh
 source "$SCRIPT_DIR"/kcompat-lib.sh
+
 ARCH=$(uname -m)
 IS_ARM=
 if [ "$ARCH" == aarch64 ]; then
 	IS_ARM=1
 fi
+
 # DO NOT break gen calls below (via \), to make our compat code more grep-able,
 # keep them also grouped, first by feature (like DEVLINK), then by .h filename
 # finally, keep them sorted within a group (sort by flag name)
@@ -53,6 +57,7 @@ function gen-aux() {
 		HAVE_AUX_INT_REMOVE=1
 	fi
 	gen HAVE_AUXILIARY_DRIVER_INT_REMOVE if string "$HAVE_AUX_INT_REMOVE" equals 1
+
 	# generate HAVE_AUXILIARY_DEVICE_ID only for cases when it's disabled in .config
 	HAVE_AUX_DEV_ID=0
 	if ! config_has CONFIG_AUXILIARY_BUS && check struct auxiliary_device_id in "$mh" ; then
@@ -74,10 +79,6 @@ function gen-device() {
 	dph='include/linux/dev_printk.h'
 	gen NEED_BUS_FIND_DEVICE_CONST_DATA if fun bus_find_device lacks 'const void \\*data' in "$dh"
 	gen NEED_DEV_LEVEL_ONCE if macro dev_level_once absent in "$dh" "$dph"
-	gen NEED_DEVM_KASPRINTF if fun devm_kasprintf absent in "$dh"
-	gen NEED_DEVM_KFREE if fun devm_kfree absent in "$dh"
-	gen NEED_DEVM_KVASPRINTF if fun devm_kvasprintf absent in "$dh"
-	gen NEED_DEVM_KZALLOC if fun devm_kzalloc absent in "$dh"
 }
 
 function gen-devlink() {
@@ -132,8 +133,21 @@ function gen-devlink() {
 	gen NEED_DEVL_REGION_CREATE if fun devl_region_create absent in "$dh"
 	gen NEED_DEVL_REGISTER if fun devl_register absent in "$dh"
 	gen NEED_DEVL_RESOURCE_REGISTER if fun devl_resource_register absent in "$dh"
+
 	gen HAVE_DEVLINK_PORT_FLAVOUR_PCI_SF if enum devlink_port_flavour matches DEVLINK_PORT_FLAVOUR_PCI_SF in include/uapi/linux/devlink.h
 	gen HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT if enum devlink_reload_action matches DEVLINK_RELOAD_ACTION_FW_ACTIVATE in include/uapi/linux/devlink.h
+}
+
+function gen-devres() {
+	dh='include/linux/device.h'
+	ddrh='include/linux/device/devres.h'
+	gen NEED_DEVM_KASPRINTF if fun devm_kasprintf absent in "$dh" "$ddrh"
+	gen NEED_DEVM_KCALLOC if fun devm_kcalloc absent in "$dh" "$ddrh"
+	gen NEED_DEVM_KFREE if fun devm_kfree absent in "$dh" "$ddrh"
+	gen NEED_DEVM_KMEMDUP if fun devm_kmemdup absent in "$dh" "$ddrh"
+	gen NEED_DEVM_KSTRDUP if fun devm_kstrdup absent in "$dh" "$ddrh"
+	gen NEED_DEVM_KVASPRINTF if fun devm_kvasprintf absent in "$dh" "$ddrh"
+	gen NEED_DEVM_KZALLOC if fun devm_kzalloc absent in "$dh" "$ddrh"
 }
 
 function gen-dma() {
@@ -158,12 +172,20 @@ function gen-ethtool() {
 	gen HAVE_ETHTOOL_GET_FEC_STATS_OPS if struct ethtool_ops matches '\\*get_fec_stats' in "$eth"
 	gen HAVE_ETHTOOL_KEEE if struct ethtool_keee in "$eth"
 	gen HAVE_ETHTOOL_KERNEL_TS_INFO if struct kernel_ethtool_ts_info in "$eth"
+	gen HAVE_ETHTOOL_LINK_EXT_STATS if struct ethtool_ops matches '\\*get_link_ext_stats' in "$eth"
 	gen HAVE_ETHTOOL_PUTS if fun ethtool_puts in "$eth"
 	gen HAVE_ETHTOOL_RXFH_PARAM if struct ethtool_rxfh_param in "$eth"
 	gen NEED_ETHTOOL_SPRINTF if fun ethtool_sprintf absent in "$eth"
 	gen HAVE_ETHTOOL_FLOW_RSS if macro FLOW_RSS in "$ueth"
 	gen HAVE_ETHTOOL_LINK_MODE_FEC_NONE_BIT if enum ethtool_link_mode_bit_indices matches ETHTOOL_LINK_MODE_FEC_NONE_BIT in "$ueth"
 	gen NEED_ETHTOOL_LINK_MODE_BIT_INDICES if enum ethtool_link_mode_bit_indices absent in "$ueth"
+}
+
+function gen-exported-symbols() {
+	# The Module.symvers is a generated file that is found in the object
+	# directory, not the source directory.
+	symvers="${KOBJ}/Module.symvers"
+	gen HAVE_EXPORTED_IRQ_SET_AFFINITY if symbol irq_set_affinity matches vmlinux in "$symvers"
 }
 
 function gen-filter() {
@@ -180,11 +202,16 @@ function gen-flow-dissector() {
 	pch='include/net/pkt_cls.h'
 	sgh='include/net/sch_generic.h'
 	tmh='include/net/tc_act/tc_mirred.h'
+
 	gen HAVE_FLOW_DISSECTOR_KEY_PPPOE if enum flow_dissector_key_id matches FLOW_DISSECTOR_KEY_PPPOE in "$fdh" "$fkh"
+	gen HAVE_FLOW_DISSECTOR_ICMP_ID if enum flow_dissector_key_icmp matches id in "$fdh"
+
 	gen HAVE_FLOW_BLOCK_API if fun flow_block_cb_priv in "$foh"
+
 	# following HAVE ... CVLAN flag is mistakenly named after an enum key,
 	# but guards code around function call that was introduced later
 	gen HAVE_FLOW_DISSECTOR_KEY_CVLAN if fun flow_rule_match_cvlan in "$foh"
+	gen HAVE_FLOW_MATCH_ICMP if struct flow_match_icmp in "$foh"
 	gen HAVE_TC_FLOW_INDIR_BLOCK_CLEANUP if fun flow_indr_dev_unregister matches 'void \\(\\*release\\)\\(void \\*cb_priv\\)'  in "$foh"
 	gen HAVE_TC_FLOW_INDIR_DEV if fun flow_indr_dev_register in "$foh"
 	gen HAVE_TC_FLOW_RULE_INFRASTRUCTURE if struct flow_action in "$foh"
@@ -193,14 +220,17 @@ function gen-flow-dissector() {
 	gen NEED_FLOW_BLOCK_CB_SETUP_SIMPLE if fun flow_block_cb_setup_simple absent in "$foh"
 	gen NEED_FLOW_CLS_OFFLOAD if struct flow_cls_offload absent in "$foh"
 	gen NEED_FLOW_MATCH if struct flow_match absent in "$foh"
+
 	gen HAVE_TCF_BLOCK_CB_REGISTER_EXTACK if fun tcf_block_cb_register matches 'struct netlink_ext_ack \\*extack' in "$pch"
 	gen HAVE_TCF_EXTS_FOR_EACH_ACTION if macro tcf_exts_for_each_action in "$pch"
 	gen HAVE_TCF_EXTS_HAS_ACTION if fun tcf_exts_has_actions in "$pch"
 	gen HAVE_TCF_EXTS_TO_LIST if fun tcf_exts_to_list in "$pch"
+
 	gen HAVE_TCF_BLOCK if fun '(tcf_block_cb_register|flow_block_cb_setup_simple)' in "$foh" "$pch"
 	gen HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO if typedef '(tc_setup_cb_t|flow_setup_cb_t)' in "$aah" "$foh" "$sgh"
 	gen HAVE_TC_INDIR_BLOCK if fun '(flow_indr_dev_register|tc_indr_block_cb_register|flow_indr_block_cb_register)' in "$foh" "$pch"
 	gen HAVE_TC_SETUP_CLSFLOWER if struct '(tc_cls_flower_offload|flow_cls_offload)' in "$foh" "$pch"
+
 	# Some drivers check HAVE_TCF_MIRRED_DEV and
 	# HAVE_TCF_MIRRED_EGRESS_REDIRECT directly, so we need to keep both
 	# the NEED_ and HAVE_ variants.
@@ -221,37 +251,46 @@ function gen-gnss() {
 	gh='include/linux/gnss.h'
 	th='include/uapi/linux/types.h'
 	fh='include/linux/fs.h'
+
 	gen HAVE_CDEV_DEVICE if fun cdev_device_add in "$cdh"
 	gen HAVE_DEV_UEVENT_CONST if method dev_uevent of class matches '(const|RH_KABI_CONST) struct device' in "$clh" "$dh"
+	gen HAVE_NO_LLSEEK if fun no_llseek in "$fh"
 	gen HAVE_STREAM_OPEN if fun stream_open in "$fh"
+
 	NEED_CLASS_CREATE=0
 	if check fun class_create matches 'owner' in "$clh" "$dh" ||
 	   check macro class_create matches 'owner' in "$clh" "$dh" ; then
 		NEED_CLASS_CREATE=1
 	fi
 	gen NEED_CLASS_CREATE_WITHOUT_OWNER if string "$NEED_CLASS_CREATE" equals 1
+
 	HAVE_GNSS_MODULE=0
 	if ! config_has CONFIG_SUSE_KERNEL && check struct gnss_device in "$gh" ; then
 		HAVE_GNSS_MODULE=1
 	fi
 	gen HAVE_GNSS_MODULE if string "$HAVE_GNSS_MODULE" equals 1
+
 	gen HAVE_POLL_T if typedef __poll_t in "$th"
 }
 
 function gen-mdev() {
 	mdevh='include/linux/mdev.h'
+
 	gen HAVE_DEV_IN_MDEV_API if method probe of mdev_driver matches 'struct device \\*' in "$mdevh"
 	gen HAVE_KOBJ_IN_MDEV_PARENT_OPS_CREATE if method create of mdev_parent_ops matches 'struct kobject \\*' in "$mdevh"
 }
 
 function gen-mdio() {
 	mdioh='include/linux/mdio.h'
+
 	gen HAVE_MII_EEE_CAP1_MOD_LINKMODE if fun mii_eee_cap1_mod_linkmode_t in "$mdioh"
 }
 
 function gen-mm() {
 	slabh='include/linux/slab.h'
+
 	gen NEED_KREALLOC_ARRAY if fun krealloc_array absent in "$slabh"
+
 	HAVE_KMEM_CACHE_ALLOC_LRU=0
 	check macro kmem_cache_alloc_lru in "$slabh" && HAVE_KMEM_CACHE_ALLOC_LRU=1
 	check  fun  kmem_cache_alloc_lru in "$slabh" && HAVE_KMEM_CACHE_ALLOC_LRU=1
@@ -289,6 +328,7 @@ function gen-netif() {
 	gen HAVE_GENEVE_TYPE if fun netif_is_geneve in include/net/geneve.h
 	gen HAVE_GRETAP_TYPE if fun netif_is_gretap in include/net/gre.h
 	gen HAVE_GTP_SUPPORT if fun netif_is_gtp in include/net/gtp.h
+	gen HAVE_NETIF_SUBQUEUE_MAYBE_STOP if macro netif_subqueue_maybe_stop in include/net/netdev_queues.h
 	gen HAVE_VXLAN_TYPE if fun netif_is_vxlan in include/net/vxlan.h
 }
 
@@ -319,6 +359,7 @@ function gen-pci() {
 function gen-ptp() {
 	classifyh='include/linux/ptp_classify.h'
 	clockh='include/linux/ptp_clock_kernel.h'
+	timekeepingh='include/linux/timekeeping.h'
 	uapih='include/uapi/linux/ptp_clock.h'
 	gen HAVE_PTP_CSID_X86_ART if enum clocksource_ids matches CSID_X86_ART in include/linux/clocksource_ids.h
 	gen NEED_PTP_CLASSIFY_RAW if fun ptp_classify_raw absent in "$classifyh"
@@ -331,11 +372,14 @@ function gen-ptp() {
 	gen HAVE_PTP_FIND_PIN_UNLOCKED if fun ptp_find_pin_unlocked in "$clockh"
 	gen NEED_DIFF_BY_SCALED_PPM if fun diff_by_scaled_ppm absent in "$clockh"
 	gen NEED_PTP_SYSTEM_TIMESTAMP if fun ptp_read_system_prets absent in "$clockh"
+	gen HAVE_PTP_SYS_COUNTERVAL_CSID if struct system_counterval_t matches clocksource_ids in "$timekeepingh"
 	gen HAVE_PTP_TX_ONESTEP_P2P if enum hwtstamp_tx_types matches HWTSTAMP_TX_ONESTEP_P2P in include/uapi/linux/net_tstamp.h
 	gen HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL if macro PTP_SYS_OFFSET_EXTENDED in "$uapih"
+
 	# aarch64 requires additional function to enable cross timestamping
 	if config_has CONFIG_ARM64 &&
-	   check fun arch_timer_wrap_counter in include/clocksource/arm_arch_timer.h ; then
+	   (check fun arch_timer_wrap_counter in include/clocksource/arm_arch_timer.h ||
+	    check struct system_counterval_t matches clocksource_ids in "$timekeepingh") ; then
 		HAVE_CROSS_TSTAMP=1
 	elif config_has CONFIG_X86 &&
 	     (check fun convert_art_ns_to_tsc in arch/x86/include/asm/tsc.h ||
@@ -356,6 +400,10 @@ function gen-stddef() {
 	gen NEED___STRUCT_GROUP if macro __struct_group absent in "$ustddef"
 }
 
+function gen-vdcm() {
+	gen NEED_EVENTFD_SIGNAL_NO_COUNTER if fun eventfd_signal matches '__u64 n' in include/linux/eventfd.h
+}
+
 function gen-vfio() {
 	# PASID_SUPPORT depends on multiple different functions existing
 	PASID_SUPPORT=0
@@ -364,6 +412,7 @@ function gen-vfio() {
 		PASID_SUPPORT=1
 	fi
 	gen HAVE_PASID_SUPPORT if string "${PASID_SUPPORT}" equals 1
+
 	gen HAVE_VFIO_FREE_DEV if fun vfio_free_device in include/linux/vfio.h
 	gen HAVE_LMV1_SUPPORT if macro VFIO_REGION_TYPE_MIGRATION in include/uapi/linux/vfio.h
 }
@@ -404,7 +453,11 @@ function gen-other() {
 	gen NEED_DECLARE_STATIC_KEY_FALSE if macro DECLARE_STATIC_KEY_FALSE absent in include/linux/jump_label.h include/linux/jump_label_type.h
 	gen NEED_LOWER_16_BITS if macro lower_16_bits absent in include/linux/kernel.h
 	gen NEED_UPPER_16_BITS if macro upper_16_bits absent in include/linux/kernel.h
+	gen HAVE_LINKMODE if fun linkmode_zero in include/linux/linkmode.h
+	gen NEED_LINKMODE_SET_BIT_ARRAY if fun linkmode_set_bit_array absent in include/linux/linkmode.h
+	gen NEED_LINKMODE_ZERO if fun linkmode_zero absent in include/linux/linkmode.h
 	gen NEED_LIST_COUNT_NODES if fun list_count_nodes absent in include/linux/list.h
+
 	# On aarch64 RHEL systems, mul_u64_u64_div_u64 appears to be declared
 	# in math64 header, but is not provided by kernel
 	# so on these systems, set it to need anyway.
@@ -413,6 +466,8 @@ function gen-other() {
 		NEED_MUL_U64=1
 	fi
 	gen NEED_MUL_U64_U64_DIV_U64 if string "${NEED_MUL_U64}" equals 1
+
+	gen NEED_DIV_U64_ROUND_CLOSEST if macro DIV_U64_ROUND_CLOSEST absent in include/linux/math64.h
 	gen NEED_DIV_U64_ROUND_UP if macro DIV_U64_ROUND_UP absent in include/linux/math64.h
 	gen NEED_ROUNDUP_U64 if fun roundup_u64 absent in include/linux/math64.h
 	gen HAVE_MDEV_GET_DRVDATA if fun mdev_get_drvdata in include/linux/mdev.h
@@ -437,6 +492,8 @@ function gen-other() {
 	gen NEED_STR_ENABLED_DISABLED if fun str_enabled_disabled absent in include/linux/string_choices.h include/linux/string_helpers.h
 	gen HAVE_STRING_HELPERS_H if enum string_size_units in include/linux/string_helpers.h
 	gen NEED_SYSFS_EMIT if fun sysfs_emit absent in include/linux/sysfs.h
+	gen NEED_TIMER_CONTAINER_OF if macro timer_container_of absent in include/linux/timer.h
+	gen NEED_TIMER_DELETE if fun timer_delete absent in include/linux/timer.h
 	gen HAVE_TRACE_ENABLED_SUPPORT if implementation of macro __DECLARE_TRACE matches 'trace_##name##_enabled' in include/linux/tracepoint.h
 	gen HAVE_TTY_OP_WRITE_SIZE_T if method write of tty_operations matches size_t in include/linux/tty_driver.h
 	gen HAVE_U64_STATS_FETCH_BEGIN_IRQ if fun u64_stats_fetch_begin_irq in "$ush"
@@ -447,19 +504,23 @@ function gen-other() {
 	gen HAVE_TC_FLOWER_ENC if enum flow_dissector_key_id matches FLOW_DISSECTOR_KEY_ENC_CONTROL in include/net/flow_dissector.h
 	gen HAVE_TC_FLOWER_VLAN_IN_TAGS if enum flow_dissector_key_id matches FLOW_DISSECTOR_KEY_VLANID in include/net/flow_dissector.h
 	gen HAVE_NET_RPS_H if macro RPS_NO_FILTER in include/net/rps.h
+	gen HAVE_UDP_TUNNEL_NIC_INFO_MAY_SLEEP if enum udp_tunnel_nic_info_flags matches UDP_TUNNEL_NIC_INFO_MAY_SLEEP in include/net/udp_tunnel.h
 	gen NEED_XDP_CONVERT_BUFF_TO_FRAME if fun xdp_convert_buff_to_frame absent in include/net/xdp.h
 	gen NEED_XSK_BUFF_DMA_SYNC_FOR_CPU_NO_POOL if fun xsk_buff_dma_sync_for_cpu matches 'struct xsk_buff_pool' in include/net/xdp_sock_drv.h
 	gen HAVE_ASSIGN_STR_2_PARAMS if macro __assign_str matches src in include/trace/stages/stage6_event_callback.h include/trace/trace_events.h include/trace/ftrace.h
+
 	HAVE_LINUX_UNALIGNED=0
 	if [ -n "$(filter-out-bad-files include/linux/unaligned.h)" ]; then
 		HAVE_LINUX_UNALIGNED=1
 	fi
 	gen HAVE_LINUX_UNALIGNED_HEADER if string "${HAVE_LINUX_UNALIGNED}" equals 1
+
 	HAVE_LINUX_BITS=0
 	if [ -n "$(filter-out-bad-files include/linux/bits.h)" ]; then
 		HAVE_LINUX_BITS=1
 	fi
 	gen HAVE_LINUX_BITS_HEADER if string "${HAVE_LINUX_BITS}" equals 1
+
 	HAVE_LINUX_REFCOUNT_TYPES=0
 	if [ -n "$(filter-out-bad-files include/linux/refcount_types.h)" ]; then
 		HAVE_LINUX_REFCOUNT_TYPES=1
@@ -481,9 +542,11 @@ function gen-all() {
 	gen-aux
 	gen-bitfield
 	gen-device
+	gen-devres
 	gen-dma
 	gen-dpll
 	gen-ethtool
+	gen-exported-symbols
 	gen-filter
 	gen-flow-dissector
 	gen-gnss
@@ -495,6 +558,7 @@ function gen-all() {
 	gen-pci
 	gen-ptp
 	gen-stddef
+	gen-vdcm
 	gen-vfio
 	gen-other
 }
@@ -504,14 +568,22 @@ function main() {
 		echo >&2 "env KSRC=${KSRC-} does not exist or is not a directory"
 		exit 11
 	fi
+
+	# Assume KOBJ is the same as KSRC if not set.
+	if [ -z "${KOBJ-}" ]; then
+		KOBJ="${KSRC-}"
+	fi
+
 	# we need some flags from .config or (autoconf.h), try to find it
-	if [ -z ${CONFIG_FILE-} ]; then
+	if [ -z "${CONFIG_FILE-}" ]; then
 		find_config_file
+
 		if [ -z ${CONFIG_FILE-} ]; then
-			echo >&2 "unable to locate a config file at KSRC=${KSRC}. please set CONFIG_FILE to the kernel configuration file."
+			echo >&2 "unable to locate a config file at KOBJ=${KOBJ}. please set CONFIG_FILE to the kernel configuration file."
 			exit 10
 		fi
 	fi
+
 	if [ ! -f "${CONFIG_FILE-}" ]; then
 		echo >&2 ".config passed in by env CONFIG_FILE=${CONFIG_FILE} does not exist or is not a file"
 		exit 9
@@ -520,19 +592,24 @@ function main() {
 
 	# check if caller (like our makefile) wants to redirect output to file
 	if [ -n "${OUT-}" ]; then
+
 		# in case OUT exists, we don't want to overwrite it, instead
 		# write to a temporary copy.
 		if [ -s "${OUT}" ]; then
 			TMP_OUT="$(mktemp "${OUT}.XXX")"
 			trap "rm -f '${TMP_OUT}'" EXIT
+
 			REAL_OUT="${OUT}"
 			OUT="${TMP_OUT}"
 		fi
+
 		exec > "$OUT"
 		# all stdout goes to OUT since now
 		echo "/* Autogenerated for KSRC=${KSRC-} via $(basename "$0") */"
 	fi
+
 	cd "${KSRC}"
+
 	# check if KSRC was ok/if we are in proper place to look for headers
 	if [ -z "$(filter-out-bad-files include/linux/kernel.h)" ]; then
 		echo >&2 "seems that there are no kernel includes placed in KSRC=${KSRC}
@@ -540,16 +617,21 @@ function main() {
 		ls -l >&2
 		exit 8
 	fi
+
 	if [ -z ${UNIFDEF_MODE-} ]; then
 		echo "#ifndef _KCOMPAT_GENERATED_DEFS_H_"
 		echo "#define _KCOMPAT_GENERATED_DEFS_H_"
 	fi
+
 	gen-all
+
 	if [ -z ${UNIFDEF_MODE-} ]; then
 		echo "#endif /* _KCOMPAT_GENERATED_DEFS_H_ */"
 	fi
+
 	if [ -n "${OUT-}" ]; then
 		cd "$ORIG_CWD"
+
 		# Compare and see if anything changed. This avoids updating
 		# mtime of the file.
 		if [ -n "${REAL_OUT-}" ]; then
@@ -559,9 +641,11 @@ function main() {
 				# cleanup TMP_OUT
 				exit 0
 			fi
+
 			mv -f "${TMP_OUT}" "${REAL_OUT}"
 			OUT="${REAL_OUT}"
 		fi
+
 		# dump output, will be visible in CI
 		if [ -n "${JUST_UNIT_TESTING-}${QUIET_COMPAT-}" ]; then
 			return
@@ -571,6 +655,7 @@ function main() {
 }
 
 main
+
 # Coding style:
 # - rely on `set -e` handling as much as possible, so:
 #  - do not use <(bash process substitution) - it breaks error handling;

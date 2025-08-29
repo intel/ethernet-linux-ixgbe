@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe.h"
@@ -388,6 +388,7 @@ static const struct ixgbe_devlink_version {
 		ixgbe_info_fw_api),
 	running("fw.mgmt.build",
 		ixgbe_info_fw_build),
+
 	running("fw.mgmt.srev", ixgbe_info_fw_srev),
 	stored("fw.mgmt.srev",
 	       ixgbe_info_pending_fw_srev, ixgbe_info_fw_srev),
@@ -456,6 +457,18 @@ static int ixgbe_devlink_info_get(struct devlink *devlink,
 				   "Unable to discover device capabilities");
 		err = -EIO;
 		goto out_free_ctx;
+	}
+	if (ctx->dev_caps.common_cap.nvm_update_pending_orom) {
+		status = ixgbe_get_inactive_orom_ver(hw, &ctx->pending_orom);
+		if (status) {
+			dev_dbg(dev,
+				"Unable to read inactive Option ROM version data, status %d aq_err %d\n",
+				status, hw->aci.last_status);
+
+			/* disable display of pending Option ROM */
+			ctx->dev_caps.common_cap.nvm_update_pending_orom =
+				false;
+		}
 	}
 
 	if (ctx->dev_caps.common_cap.nvm_update_pending_nvm) {
@@ -918,8 +931,7 @@ static int ixgbe_devlink_reload_empr_start(struct devlink *devlink,
 
 	if (adapter->fw_emp_reset_disabled) {
 		NL_SET_ERR_MSG_MOD(extack,
-				   "EMP reset is not available. To activate firmware, a reboot or power cycle is needed\n")
-				   ;
+				   "EMP reset is not available. To activate firmware, a reboot or power cycle is needed\n");
 		return -ECANCELED;
 	}
 
@@ -931,13 +943,17 @@ static int ixgbe_devlink_reload_empr_start(struct devlink *devlink,
 			"Failed to trigger EMP device reset to reload firmware, err %d\n",
 			status);
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Failed to trigger EMP device reset to reload firmware")
-				   ;
+				   "Failed to trigger EMP device reset to reload firmware");
 		return -EIO;
 	}
 
 	return 0;
 }
+
+/* Wait for 10 sec with 0.5 sec tic. EMPR takes no less than half of a sec */
+#define IXGBE_DEVLINK_RELOAD_TICK_L	400000
+#define IXGBE_DEVLINK_RELOAD_TICK_H	500000
+#define IXGBE_DEVLINK_RELOAD_TIMEOUT	20
 
 /**
  * ixgbe_devlink_reload_empr_finish - Complete EMP reset process
@@ -961,13 +977,32 @@ static int ixgbe_devlink_reload_empr_finish(struct devlink *devlink,
 					    u32 *actions_performed,
 					    struct netlink_ext_ack *extack)
 {
+	struct ixgbe_adapter *adapter =
+		*(struct ixgbe_adapter **)devlink_priv(devlink);
+	struct ixgbe_hw *hw = &adapter->hw;
+	int i = 0;
+	u32 fwsm;
+
+	do {
+		if (i++ >= IXGBE_DEVLINK_RELOAD_TIMEOUT)
+			return -ETIME;
+
+		/* Just right away after triggering EMP reset the FWSM register
+		 * may be not cleared yet, so begin the loop with the delay
+		 * in order to not check the not updated register.
+		 */
+		usleep_range(IXGBE_DEVLINK_RELOAD_TICK_L,
+			     IXGBE_DEVLINK_RELOAD_TICK_H);
+		fwsm = IXGBE_READ_REG(hw, IXGBE_FWSM_BY_MAC(hw));
+
+	} while (!(fwsm & IXGBE_FWSM_FW_VAL_BIT));
+
 	*actions_performed = BIT(DEVLINK_RELOAD_ACTION_FW_ACTIVATE);
 
-	msleep(10000);
-
-	return 0;
+	return ixgbe_refresh_fw_version(adapter);
 }
 #endif /* HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT */
+
 
 static const struct devlink_ops ixgbe_devlink_ops = {
 #ifdef HAVE_DEVLINK_FLASH_UPDATE_PARAMS

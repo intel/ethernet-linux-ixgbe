@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 /******************************************************************************
@@ -29,7 +29,6 @@
 
 #include <linux/if_bridge.h>
 #include "ixgbe.h"
-#include "kcompat_sigil.h"
 #include "kcompat_generated_defs.h"
 #ifdef HAVE_XDP_SUPPORT
 #include <linux/bpf.h>
@@ -56,6 +55,7 @@
 #include <net/tc_act/tc_mirred.h>
 #endif /* NETIF_F_HW_TC */
 
+
 #include "ixgbe_devlink.h"
 #include "ixgbe_dcb_82599.h"
 #include "ixgbe_sriov.h"
@@ -77,7 +77,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"6.1.6" \
+#define DRV_VERSION	"6.2.5" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -1800,6 +1800,8 @@ void ixgbe_process_skb_fields(struct ixgbe_ring *rx_ring,
 #ifdef HAVE_PTP_1588_CLOCK
 	if (unlikely(flags & IXGBE_FLAG_RX_HWTSTAMP_ENABLED))
 		ixgbe_ptp_rx_hwtstamp(rx_ring, rx_desc, skb);
+	else
+		rx_ring->q_vector->ptp_hold_rx_skb = false;
 
 #endif
 	ixgbe_rx_vlan(rx_ring, rx_desc, skb);
@@ -2332,7 +2334,7 @@ static struct sk_buff *ixgbe_build_skb(struct ixgbe_ring *rx_ring,
 #endif
 
 	/* build an skb around the page buffer */
-	skb = build_skb(xdp->data_hard_start, truesize);
+	skb = napi_build_skb(xdp->data_hard_start, truesize);
 	if (unlikely(!skb))
 		return NULL;
 
@@ -2630,10 +2632,21 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		}
 #endif /* CONFIG_FCOE */
 
+#if defined(HAVE_PTP_1588_CLOCK)
+		if (likely(!q_vector->ptp_hold_rx_skb)) {
+			ixgbe_rx_skb(q_vector, rx_ring, rx_desc, skb);
+
+			/* update budget accounting */
+			total_rx_packets++;
+		} else {
+			q_vector->ptp_hold_rx_skb = false;
+		}
+#else /* !(HAVE_PTP_1588_CLOCK && LINKVILLE_HW) */
 		ixgbe_rx_skb(q_vector, rx_ring, rx_desc, skb);
 
 		/* update budget accounting */
 		total_rx_packets++;
+#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 	}
 
 	if (xdp_xmit & IXGBE_XDP_REDIR)
@@ -3969,6 +3982,7 @@ static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 	/* skip the flush */
 }
 
+
 /**
  * ixgbe_irq_enable - Enable default interrupt generation settings
  * @adapter: board private structure
@@ -4200,6 +4214,12 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 		return budget;
 #endif
 
+#if defined(HAVE_PTP_1588_CLOCK)
+	work_done += ixgbe_ptp_rx_complete_skb_e600(q_vector, &budget);
+	if (budget <= 0)
+		return budget;
+
+#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 	/* attempt to distribute budget to each queue fairly, but don't allow
 	 * the budget to go below 1 because we'll exit polling */
 	if (q_vector->rx.count > 1)
@@ -4356,6 +4376,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 	case ixgbe_mac_X550EM_a:
 		fallthrough;
 	case ixgbe_mac_E610:
+
 		if (eicr & IXGBE_EICR_ECC) {
 			e_info(link, "Received unrecoverable ECC Err,"
 			       "initiating reset.\n");
@@ -4986,6 +5007,7 @@ static void ixgbe_setup_vfreta(struct ixgbe_adapter *adapter)
 
 	ixgbe_store_vfreta(adapter);
 }
+
 
 static void ixgbe_setup_mrqc(struct ixgbe_adapter *adapter)
 {
@@ -5923,7 +5945,7 @@ void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter)
 		}
 #if defined(HAVE_PTP_1588_CLOCK)
 		if (hw->mac.type == ixgbe_mac_E610 &&
-		    hw->dev_caps.common_cap.ptp_by_phy_support)
+		    hw->dev_caps.common_cap.ptp_by_phy_ll)
 			ixgbe_ptp_cfg_phy_vlan_e600(adapter, true);
 #endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 		break;
@@ -5966,7 +5988,7 @@ void ixgbe_vlan_strip_enable(struct ixgbe_adapter *adapter)
 		}
 #if defined(HAVE_PTP_1588_CLOCK)
 		if (hw->mac.type == ixgbe_mac_E610 &&
-		    hw->dev_caps.common_cap.ptp_by_phy_support)
+		    hw->dev_caps.common_cap.ptp_by_phy_ll)
 			ixgbe_ptp_cfg_phy_vlan_e600(adapter, false);
 #endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 		break;
@@ -6392,6 +6414,7 @@ static void ixgbe_flush_sw_mac_table(struct ixgbe_adapter *adapter)
 
 	ixgbe_sync_mac_table(adapter);
 }
+
 
 int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter,
 			 const u8 *addr, u16 pool)
@@ -7074,6 +7097,7 @@ static void ixgbe_pbthresh_setup(struct ixgbe_adapter *adapter)
 
 	if (!num_tc)
 		num_tc = 1;
+
 
 	for (i = 0; i < num_tc; i++) {
 		hw->fc.high_water[i] = ixgbe_hpbthresh(adapter, i);
@@ -8415,6 +8439,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	netif_carrier_off(netdev);
 	netif_tx_disable(netdev);
 
+
 	/* Disable Rx */
 	ixgbe_disable_rx_queue(adapter);
 
@@ -8840,6 +8865,7 @@ static int ixgbe_setup_all_tx_resources(struct ixgbe_adapter *adapter)
 	int i, j = 0, err = 0;
 
 	for (i = 0; i < adapter->num_tx_queues; i++) {
+
 
 		err = ixgbe_setup_tx_resources(adapter->tx_ring[i]);
 		if (!err)
@@ -9345,6 +9371,7 @@ static int ixgbe_resume(struct pci_dev *pdev)
 	err = ixgbe_init_interrupt_scheme(adapter);
 	if (!err && netif_running(netdev))
 		err = ixgbe_open(netdev);
+
 
 	if (!err)
 		netif_device_attach(netdev);
@@ -10241,13 +10268,6 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 #ifdef HAVE_PTP_1588_CLOCK
 	adapter->last_rx_ptp_check = jiffies;
 
-	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state)) {
-		if (hw->mac.type == ixgbe_mac_E610)
-			ixgbe_ptp_link_up_e600(adapter);
-		else
-			ixgbe_ptp_start_cyclecounter(adapter);
-	}
-
 #endif
 	/*
 	 * Only continue if link was previously down in running state.
@@ -10265,6 +10285,12 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	if (test_bit(__IXGBE_DOWN, adapter->state) || netif_carrier_ok(netdev))
 		return;
 
+#if defined(HAVE_PTP_1588_CLOCK)
+	if (hw->mac.type == ixgbe_mac_E610 &&
+	    test_bit(__IXGBE_PTP_RUNNING, adapter->state))
+		ixgbe_ptp_link_up_e600(adapter);
+
+#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 	switch (link_speed) {
 	case IXGBE_LINK_SPEED_10GB_FULL:
 		speed_str = "10 Gbps";
@@ -10294,6 +10320,13 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	       (flow_tx ? "TX" : "None"))));
 
 	netif_carrier_on(netdev);
+#ifdef HAVE_PTP_1588_CLOCK
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state)) {
+		if (hw->mac.type != ixgbe_mac_E610)
+			ixgbe_ptp_start_cyclecounter(adapter);
+	}
+
+#endif /* HAVE_PTP_1588_CLOCK */
 #ifdef IFLA_VF_MAX
 	ixgbe_check_vf_rate_limit(adapter);
 #endif /* IFLA_VF_MAX */
@@ -13405,10 +13438,17 @@ ixgbe_gso_check(struct sk_buff *skb, __always_unused struct net_device *dev)
 static int
 ixgbe_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		  struct net_device *dev, const unsigned char *addr,
-		  $_(HAVE_NDO_FDB_ADD_VID, u16 vid)
+#ifdef HAVE_NDO_FDB_ADD_VID
+		  u16 vid,
+#endif
 		  u16 flags
-		  _$(HAVE_NDO_FDB_ADD_NOTIFIED, bool *notified)
-		  _$(HAVE_NDO_FDB_ADD_EXTACK, struct netlink_ext_ack __always_unused *extack))
+#ifdef HAVE_NDO_FDB_ADD_NOTIFIED
+		  , bool *notified
+#endif
+#ifdef HAVE_NDO_FDB_ADD_EXTACK
+		  , struct netlink_ext_ack __always_unused *extack
+#endif
+)
 {
 	/* guarantee we can provide a unique filter for the unicast address */
 	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr)) {
@@ -13420,7 +13460,9 @@ ixgbe_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 	}
 
 	return ndo_dflt_fdb_add(ndm, tb, dev, addr,
-				$_(HAVE_NDO_FDB_ADD_VID, vid)
+#ifdef HAVE_NDO_FDB_ADD_VID
+				vid,
+#endif
 				flags);
 }
 
@@ -14173,7 +14215,7 @@ bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
  * format to display. The FW version is taken from the EEPROM/NVM.
  *
  */
-void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter)
+static void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_orom_info *orom = &adapter->hw.flash.orom;
 	struct ixgbe_nvm_info *nvm = &adapter->hw.flash.nvm;
@@ -14181,6 +14223,28 @@ void ixgbe_set_fw_version_E610(struct ixgbe_adapter *adapter)
 	snprintf(adapter->eeprom_id, sizeof(adapter->eeprom_id),
 		 "%x.%02x 0x%x %d.%d.%d", nvm->major, nvm->minor,
 		 nvm->eetrack, orom->major, orom->build, orom->patch);
+}
+
+/**
+ * ixgbe_refresh_fw_version - Refresh the firmware version for the adapter
+ * @adapter: Pointer to the ixgbe adapter structure
+ *
+ * This function refreshes the firmware version information for the specified
+ * adapter. It initializes the NVM (Non-Volatile Memory) and updates the
+ * firmware version specifically for E610 hardware.
+ */
+int ixgbe_refresh_fw_version(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	int err;
+
+	err = ixgbe_init_nvm(hw);
+	if (err)
+		return err;
+
+	ixgbe_set_fw_version_E610(adapter);
+
+	return 0;
 }
 
 /**
@@ -14344,7 +14408,8 @@ static int ixgbe_recovery_probe(struct ixgbe_adapter *adapter)
 		ixgbe_devlink_register(adapter);
 		devlink_registered = true;
 	}
-
+#else /* HAVE_DEVLINK_PARAMS_PUBLISH */
+	ixgbe_devlink_register(adapter);
 #endif /* HAVE_DEVLINK_PARAMS_PUBLISH */
 	err = ixgbe_devlink_register_params(adapter);
 	if (err)
@@ -14554,8 +14619,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	if (mac_type == ixgbe_mac_E610) {
 		u32 status;
 
-		e_info(probe, "OROM signature reading is temporarily skipped due to lack of support from fw side");
-
 		ixgbe_init_aci(hw);
 
 		status = ixgbe_init_nvm(&adapter->hw);
@@ -14663,8 +14726,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 			   pci_domain_nr(pdev->bus),
 			   pdev->bus->number,
 			   PCI_SLOT(pdev->devfn),
-			   PCI_FUNC(pdev->devfn))
-			   ;
+			   PCI_FUNC(pdev->devfn));
 	}
 
 #endif
@@ -15206,6 +15268,7 @@ err_sw_init:
 	if (mac_type == ixgbe_mac_E610)
 		devlink_free(adapter->devlink);
 err_alloc_devlink:
+
 err_ioremap:
 	disable_dev = !test_and_set_bit(__IXGBE_DISABLED, adapter->state);
 	free_netdev(netdev);

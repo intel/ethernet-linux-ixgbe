@@ -1,4 +1,4 @@
- /* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
 #include "ixgbe_type.h"
@@ -290,6 +290,7 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 		if (map[i] > max_tc)
 			max_tc = map[i];
 	}
+
 
 	/* Configure PFC Tx thresholds per TC */
 	for (i = 0; i <= max_tc; i++) {
