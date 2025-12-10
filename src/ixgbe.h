@@ -4,6 +4,10 @@
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
 
+#include "kcompat.h"
+#include "kcompat_kthread.h"
+
+#include <net/tcp.h>
 #include <net/ip.h>
 
 #include <linux/pci.h>
@@ -23,9 +27,6 @@
 #endif
 #include <linux/ptp_classify.h>
 #include "ixgbe_dcb.h"
-
-#include "kcompat.h"
-#include "kcompat_kthread.h"
 
 #ifdef HAVE_XDP_BUFF_RXQ
 #include <net/xdp.h>
@@ -55,7 +56,6 @@
 #endif /* CONFIG_NET_DEVLINK */
 
 #include "ixgbe_e610.h"
-
 #include "ixgbe_common.h"
 
 #define DPRINTK(nlevel, klevel, fmt, args...) \
@@ -71,6 +71,9 @@
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
 #endif
+
+/* Features advertised by PF driver */
+#define IXGBE_SUPPORTED_FEATURES	0
 
 /* TX/RX descriptor defines */
 #define IXGBE_DEFAULT_TXD		512
@@ -648,11 +651,11 @@ struct ixgbe_q_vector {
 #ifdef HAVE_NDO_BUSY_POLL
 	atomic_t state;
 #endif  /* HAVE_NDO_BUSY_POLL */
-#if defined(HAVE_PTP_1588_CLOCK)
+#ifdef HAVE_PTP_1588_CLOCK
 	struct list_head ptp_skbs_e600;
 	spinlock_t ptp_skbs_lock_e600; /* Protects ptp_skbs_e600 access. */
 	bool ptp_hold_rx_skb : 1;
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 
 	/* for dynamic allocation of rings associated with this q_vector */
 	struct ixgbe_ring ring[0] ____cacheline_internodealigned_in_smp;
@@ -870,7 +873,7 @@ enum ixgbe_state_t {
 	__IXGBE_STATE_T_NUM /* Must be last */
 };
 
-#if defined(HAVE_PTP_1588_CLOCK)
+#ifdef HAVE_PTP_1588_CLOCK
 /** struct ixgbe_rx_phy_ts_skb_e610 - tracker for E610 PHY Rx timestamps or Rx
  *				      PTP skbs
  *
@@ -908,8 +911,18 @@ struct ixgbe_ptp_e600 {
 	struct kthread_delayed_work ptp_aux_work;
 #endif /* !HAVE_PTP_CANCEL_WORKER_SYNC */
 };
+#endif /* HAVE_PTP_1588_CLOCK */
+enum ixgbe_eee_state {
+	IXGBE_EEE_DISABLED,	/* EEE explicitly disabled by user */
+	IXGBE_EEE_ENABLED,	/* EEE enabled under condition that link
+				 * requirements are met; for E610 it's the
+				 * default state.
+				 */
+	IXGBE_EEE_FORCED_DOWN,	/* EEE disabled by link conditions, try to
+				 * restore when possible
+				 */
+};
 
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
 /* board specific private data structure */
 struct ixgbe_adapter {
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
@@ -925,7 +938,7 @@ struct ixgbe_adapter {
 	struct pci_dev *pdev;
 
 	DECLARE_BITMAP(state, __IXGBE_STATE_T_NUM);
-
+	enum ixgbe_eee_state eee_state;
 	/* Some features need tri-state capability,
 	 * thus the additional *_CAPABLE flags.
 	 */
@@ -999,7 +1012,6 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_FW_ASYNC_EVENT              BIT(12)
 #define IXGBE_FLAG2_MOD_POWER_UNSUPPORTED	BIT(13)
 #define IXGBE_FLAG2_EEE_CAPABLE			(u32)(1 << 14)
-#define IXGBE_FLAG2_EEE_ENABLED			(u32)(1 << 15)
 #define IXGBE_FLAG2_UDP_TUN_REREG_NEEDED	(u32)(1 << 16)
 #define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
 #define IXGBE_FLAG2_VLAN_PROMISC		(u32)(1 << 18)
@@ -1262,8 +1274,6 @@ static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		return IXGBE_MAX_RSS_INDICES_X550;
-		break;
 	case ixgbe_mac_E610:
 		return IXGBE_MAX_RSS_INDICES_X550;
 	default:
@@ -1431,7 +1441,7 @@ s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
 #endif /* HAVE_DCBNL_IEEE */
 #endif /* CONFIG_DCB */
 
-u32 ixgbe_pf_fwlog_update_modules(struct ixgbe_adapter *adapter, u8 log_level,
+int ixgbe_pf_fwlog_update_modules(struct ixgbe_adapter *adapter, u8 log_level,
 				  unsigned long events);
 bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			 u16 subdevice_id);
@@ -1442,6 +1452,8 @@ int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter,
 				const u8 *addr, u16 queue);
 int ixgbe_available_rars(struct ixgbe_adapter *adapter, u16 pool);
 void ixgbe_update_pf_promisc_vlvf(struct ixgbe_adapter *adapter, u32 vid);
+bool ixgbe_check_link_for_eee_e610(struct ixgbe_adapter *adapter,
+				   bool print_msg);
 #ifndef HAVE_VLAN_RX_REGISTER
 void ixgbe_vlan_mode(struct net_device *, u32);
 #else

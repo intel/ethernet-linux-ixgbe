@@ -1338,10 +1338,11 @@ static int ixgbe_devlink_sram_snapshot(struct devlink *devlink,
 				       u8 **data)
 {
 	struct ixgbe_adapter *adapter;
-	u32 sram_size, status;
 	struct ixgbe_hw *hw;
 	struct device *dev;
+	u32 sram_size;
 	u8 *sram_data;
+	int status;
 
 	adapter = *(struct ixgbe_adapter **)devlink_priv(devlink);
 	dev = ixgbe_pf_to_dev(adapter);

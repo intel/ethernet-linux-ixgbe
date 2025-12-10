@@ -3836,6 +3836,8 @@ struct ixgbe_hw_stats {
 	u64 mlfc;
 	u64 mrfc;
 	u64 rlec;
+	u64 tlpic;
+	u64 rlpic;
 	u64 lxontxc;
 	u64 lxonrxc;
 	u64 lxofftxc;
@@ -4111,7 +4113,7 @@ struct ixgbe_eeprom_info {
 	struct ixgbe_eeprom_operations ops;
 	enum ixgbe_eeprom_type type;
 	u32 semaphore_delay;
-	u16 word_size;
+	u32 word_size;
 	u16 address_bits;
 	u16 word_page_size;
 	u16 ctrl_word_3;

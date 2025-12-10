@@ -512,7 +512,7 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 
 		/* Skip pointer section if length is invalid. */
 		if (length == 0xFFFF || length == 0 ||
-		    (pointer + length) >= hw->eeprom.word_size)
+		    (u32)length > hw->eeprom.word_size - (u32)pointer)
 			continue;
 
 		for (j = pointer + 1; j <= pointer + length; j++) {

@@ -100,6 +100,7 @@ enum ixgbe_pfvf_api_rev {
 	ixgbe_mbox_api_14,	/* API version 1.4, linux/freebsd VF driver */
 	ixgbe_mbox_api_15,	/* API version 1.5, linux/freebsd VF driver */
 	ixgbe_mbox_api_16,	/* API version 1.6, linux/freebsd VF driver */
+	ixgbe_mbox_api_17,	/* API version 1.7, linux/freebsd VF driver */
 	/* This value should always be last */
 	ixgbe_mbox_api_unknown,	/* indicates that API version is not known */
 };
@@ -126,6 +127,16 @@ enum ixgbe_pfvf_api_rev {
 
 /* mailbox API, version 1.6 VF requests */
 #define IXGBE_VF_GET_PF_LINK_STATE 0x11 /* get status of the link on PF */
+
+/* mailbox API, version 1.7 VF requests */
+#define IXGBE_VF_FEATURES_NEGOTIATE	0x12 /* get features supported by PF */
+
+/* Negotiable features */
+#define IXGBEVF_PF_SUP_IPSEC            BIT(0)
+#define IXGBEVF_PF_SUP_ESX_MBX          BIT(1)
+
+/* Features supported by IXGBE driver */
+#define IXGBEVF_SUPPORTED_FEATURES      IXGBEVF_PF_SUP_ESX_MBX
 
 /* mode choices for IXGBE_VF_UPDATE_XCAST_MODE */
 enum ixgbevf_xcast_modes {

@@ -272,6 +272,7 @@ endif
 endif
 endif
 
+EXTRA_CFLAGS += -std=gnu11
 EXTRA_CFLAGS += ${CFLAGS_EXTRA}
 
 # get the kernel version - we use this to find the correct install path

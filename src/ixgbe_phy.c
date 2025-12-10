@@ -392,7 +392,7 @@ bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr)
  **/
 s32 ixgbe_get_phy_id(struct ixgbe_hw *hw)
 {
-	u32 status;
+	s32 status;
 	u16 phy_id_high = 0;
 	u16 phy_id_low = 0;
 
@@ -799,8 +799,8 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE,
 			     &autoneg_reg);
 
-	if ((hw->mac.type == ixgbe_mac_X550) ||
-	    (hw->mac.type == ixgbe_mac_E610)) {
+	if (hw->mac.type == ixgbe_mac_X550 ||
+	    ixgbe_is_mac_E6xx(hw->mac.type)) {
 		/* Set or unset auto-negotiation 5G advertisement */
 		autoneg_reg &= ~IXGBE_MII_5GBASE_T_ADVERTISE;
 		if ((hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_5GB_FULL) &&
@@ -2635,7 +2635,7 @@ out:
  */
 s32 ixgbe_set_copper_phy_power(struct ixgbe_hw *hw, bool on)
 {
-	u32 status;
+	s32 status;
 	u16 reg;
 
 	if (!on && ixgbe_mng_present(hw))

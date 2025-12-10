@@ -1381,10 +1381,10 @@ void ixgbe_set_fdir_drop_queue_82599(struct ixgbe_hw *hw, u8 dropqueue)
 
 	/* Set drop queue */
 	fdirctrl |= (dropqueue << IXGBE_FDIRCTRL_DROP_Q_SHIFT);
-	if ((hw->mac.type == ixgbe_mac_X550) ||
-	    (hw->mac.type == ixgbe_mac_X550EM_x) ||
-	    (hw->mac.type == ixgbe_mac_X550EM_a) ||
-	    (hw->mac.type == ixgbe_mac_E610))
+	if (hw->mac.type == ixgbe_mac_X550 ||
+	    hw->mac.type == ixgbe_mac_X550EM_x ||
+	    hw->mac.type == ixgbe_mac_X550EM_a ||
+	    ixgbe_is_mac_E6xx(hw->mac.type))
 		fdirctrl |= IXGBE_FDIRCTRL_DROP_NO_MATCH;
 
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRCMD,
@@ -1963,73 +1963,6 @@ s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
 	}
 
 	return IXGBE_SUCCESS;
-}
-
-/**
- * ixgbe_fdir_add_perfect_filter_82599 - Adds a perfect filter
- * @hw: pointer to hardware structure
- * @input: input bitstream
- * @input_mask: mask for the input bitstream
- * @soft_id: software index for the filters
- * @queue: queue index to direct traffic to
- * @cloud_mode: unused
- *
- * Note that the caller to this function must lock before calling, since the
- * hardware writes must be protected from one another.
- **/
-s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
-					union ixgbe_atr_input *input,
-					union ixgbe_atr_input *input_mask,
-					u16 soft_id, u8 queue, bool cloud_mode)
-{
-	s32 err = IXGBE_ERR_CONFIG;
-	UNREFERENCED_1PARAMETER(cloud_mode);
-
-	DEBUGFUNC("ixgbe_fdir_add_perfect_filter_82599");
-
-	/*
-	 * Check flow_type formatting, and bail out before we touch the hardware
-	 * if there's a configuration issue
-	 */
-	switch (input->formatted.flow_type) {
-	case IXGBE_ATR_FLOW_TYPE_IPV4:
-	case IXGBE_ATR_FLOW_TYPE_TUNNELED_IPV4:
-		input_mask->formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK;
-		if (input->formatted.dst_port || input->formatted.src_port) {
-			hw_dbg(hw, " Error on src/dst port\n");
-			return IXGBE_ERR_CONFIG;
-		}
-		break;
-	case IXGBE_ATR_FLOW_TYPE_SCTPV4:
-	case IXGBE_ATR_FLOW_TYPE_TUNNELED_SCTPV4:
-		if (input->formatted.dst_port || input->formatted.src_port) {
-			hw_dbg(hw, " Error on src/dst port\n");
-			return IXGBE_ERR_CONFIG;
-		}
-		fallthrough;
-	case IXGBE_ATR_FLOW_TYPE_TCPV4:
-	case IXGBE_ATR_FLOW_TYPE_TUNNELED_TCPV4:
-	case IXGBE_ATR_FLOW_TYPE_UDPV4:
-	case IXGBE_ATR_FLOW_TYPE_TUNNELED_UDPV4:
-		input_mask->formatted.flow_type = IXGBE_ATR_L4TYPE_IPV6_MASK |
-						  IXGBE_ATR_L4TYPE_MASK;
-		break;
-	default:
-		hw_dbg(hw, " Error on flow type input\n");
-		return err;
-	}
-
-	/* program input mask into the HW */
-	err = ixgbe_fdir_set_input_mask_82599(hw, input_mask, cloud_mode);
-	if (err)
-		return err;
-
-	/* apply mask and compute/store hash */
-	ixgbe_atr_compute_perfect_hash_82599(input, input_mask);
-
-	/* program filters to filter memory */
-	return ixgbe_fdir_write_perfect_filter_82599(hw, input,
-						     soft_id, queue, cloud_mode);
 }
 
 /**

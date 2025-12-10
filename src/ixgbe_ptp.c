@@ -324,7 +324,11 @@ static void ixgbe_ptp_setup_sdp_X550(struct ixgbe_adapter *adapter)
  * result of SYSTIME is 32bits of "billions of cycles" and 32 bits of
  * "cycles", rather than seconds and nanoseconds.
  */
+#ifdef HAVE_NON_CONST_CYCLECOUNTER
+static u64 ixgbe_ptp_read_X550(struct cyclecounter *cc)
+#else
 static u64 ixgbe_ptp_read_X550(const struct cyclecounter *cc)
+#endif
 {
 	struct ixgbe_adapter *adapter =
 		container_of(cc, struct ixgbe_adapter, hw_cc);
@@ -361,7 +365,11 @@ static u64 ixgbe_ptp_read_X550(const struct cyclecounter *cc)
  * cyclecounter structure used to construct a ns counter from the
  * arbitrary fixed point registers
  */
+#ifdef HAVE_NON_CONST_CYCLECOUNTER
+static u64 ixgbe_ptp_read_82599(struct cyclecounter *cc)
+#else
 static u64 ixgbe_ptp_read_82599(const struct cyclecounter *cc)
+#endif
 {
 	struct ixgbe_adapter *adapter =
 		container_of(cc, struct ixgbe_adapter, hw_cc);
@@ -1236,7 +1244,7 @@ int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr)
 	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
 		return -EFAULT;
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		err = ixgbe_ptp_set_timestamp_mode_e600(adapter, &config);
 	else
 		err = ixgbe_ptp_set_timestamp_mode(adapter, &config);
@@ -1618,7 +1626,7 @@ void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter)
  */
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter)
 {
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 		ixgbe_ptp_release_e600(adapter);
 		return;
 	}

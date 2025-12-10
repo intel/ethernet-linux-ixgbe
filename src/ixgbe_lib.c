@@ -54,7 +54,6 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		/* start at VMDq register offset for SR-IOV enabled setups */
 		reg_idx = vmdq->offset * __ALIGN_MASK(1, ~vmdq->mask);
@@ -134,7 +133,6 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		if (num_tcs > 4) {
 			/*
@@ -373,7 +371,6 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 
 		/* Add starting offset to total pool count */
@@ -586,7 +583,6 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 
 		/* Add starting offset to total pool count */
@@ -1101,12 +1097,12 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		ring++;
 	}
 
-#if defined(HAVE_PTP_1588_CLOCK)
+#ifdef HAVE_PTP_1588_CLOCK
 	/* Init PTP structures. */
 	INIT_LIST_HEAD(&q_vector->ptp_skbs_e600);
 	spin_lock_init(&q_vector->ptp_skbs_lock_e600);
 
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 	return 0;
 }
 
@@ -1130,9 +1126,6 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 		else
 			adapter->tx_ring[ring->queue_index] = NULL;
 	}
-
-	if (static_key_enabled((struct static_key *)&ixgbe_xdp_locking_key))
-		static_branch_dec(&ixgbe_xdp_locking_key);
 
 	ixgbe_for_each_ring(ring, q_vector->rx)
 		adapter->rx_ring[ring->queue_index] = NULL;

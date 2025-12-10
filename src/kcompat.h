@@ -10,8 +10,44 @@
 #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
 #endif
 
+#ifdef __LINUX_COMPILER_H
+#error "kcompat.h must be included prior to kernel headers"
+#endif
+
+#ifndef GCC_VERSION
+#define GCC_VERSION (__GNUC__ * 10000           \
+		     + __GNUC_MINOR__ * 100     \
+		     + __GNUC_PATCHLEVEL__)
+#endif /* GCC_VERSION */
+
+/* as GCC_VERSION yields 40201 for any modern clang (checked on clang 7 & 13)
+ * we want other means to add workarounds for "old GCC" */
+#ifdef __clang__
+#define GCC_IS_BELOW(x) 0
+#else
+#define GCC_IS_BELOW(x) (GCC_VERSION < (x))
+#endif
+
+/*
+ * upstream commit 4eb6bd55cfb2 ("compiler.h: drop fallback overflow checkers")
+ * removed bunch of code for builitin overflow fallback implementations, that
+ * we need for gcc prior to 5.1
+ */
+#if !GCC_IS_BELOW(50100)
+#ifndef COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW
+#define COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW   1
+#endif
+#endif /* GCC_VERSION >= 50100 */
+
+/* Headers that must be before the rest, as they build like-current kerrnel
+ * infra for all other COMPAT and CORE code.
+ */
 #include "kcompat_generated_defs.h"
+#include "kcompat_overflow.h"
 #include "kcompat_gcc.h"
+/* end of must-be-really-first headers */
+
+#include "kcompat_cleanup.h"
 
 #ifndef HAVE_XARRAY_API
 #include "kcompat_xarray.h"
@@ -755,6 +791,16 @@ struct _kc_ethtool_pauseparam {
 
 #ifndef ETHTOOL_BUSINFO_LEN
 #define ETHTOOL_BUSINFO_LEN	32
+#endif
+
+#if defined(HAVE_ETHTOOL_SUPPORTED_RING_PARAMS) && !defined(NEED_ETHTOOL_RING_USE_TCP_DATA_SPLIT)
+/**
+ * enum _kc_ethtool_supported_ring_param - indicator caps for setting ring params
+ * @ETHTOOL_RING_USE_TCP_DATA_SPLIT: capture for setting tcp_data_split
+ */
+enum _kc_ethtool_supported_ring_param {
+	ETHTOOL_RING_USE_TCP_DATA_SPLIT	= BIT(5),
+};
 #endif
 
 #ifndef WAKE_FILTER

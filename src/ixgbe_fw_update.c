@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
+#include "ixgbe.h"
+
 #include <linux/uuid.h>
 #include <linux/crc32.h>
 #if IS_ENABLED(CONFIG_PLDMFW)
@@ -9,7 +11,6 @@
 #include "kcompat_pldmfw.h"
 #endif
 
-#include "ixgbe.h"
 #include "ixgbe_fw_update.h"
 
 struct ixgbe_fwu_priv {

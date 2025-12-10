@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
+#include "ixgbe.h"
+
 #include <linux/ptp_classify.h>
 #include <linux/bitfield.h>
-#include "ixgbe.h"
 #include "ixgbe_ptp_e600.h"
 
 #define IXGBE_E600_CC_SHIFT		31
@@ -23,7 +24,11 @@ static const struct ptp_pin_desc e600_pin_cfg[] = {
  *
  * Return: PHC nanosecond time.
  */
+#ifdef HAVE_NON_CONST_CYCLECOUNTER
+static u64 ixgbe_ptp_read_phc_e600(struct cyclecounter *cc)
+#else
 static u64 ixgbe_ptp_read_phc_e600(const struct cyclecounter *cc)
+#endif
 {
 	struct ixgbe_adapter *adapter =
 		container_of(cc, struct ixgbe_adapter, hw_cc);
@@ -223,7 +228,7 @@ static int ixgbe_ptp_setup_sdp_e600(struct ixgbe_adapter *adapter,
 	err = ixgbe_ptp_gettime_e600(&adapter->ptp_caps, &ts);
 	if (err)
 		return err;
-	clk = timespec64_to_ns(&ts) + NSEC_PER_MSEC * 100;
+	clk = (u64)timespec64_to_ns(&ts) + NSEC_PER_MSEC * 100;
 #ifdef PTP_PEROUT_PHASE
 	if (rq->flags & PTP_PEROUT_PHASE || start <= clk)
 #else /* !PTP_PEROUT_PHASE */
