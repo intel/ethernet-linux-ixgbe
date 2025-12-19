@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "IXGBE" "7" "July 24, 2025" "" "Linux ixgbe README"
+.TH "IXGBE" "7" "November 13, 2025" "" "Linux ixgbe README"
 .SH NAME
 ixgbe \- ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 .SS Contents
@@ -119,7 +119,7 @@ Wake on LAN
 .sp
 See the \(dqIntel(R) Ethernet Adapters and Devices User Guide\(dq for additional
 information on features. It is available on the Intel website at
-\fI\%https://cdrdv2.intel.com/v1/dl/getContent/705831\fP\&.
+\X'tty: link https://cdrdv2.intel.com/v1/dl/getContent/705831'\fI\%https://cdrdv2.intel.com/v1/dl/getContent/705831\fP\X'tty: link'\&.
 .SH IDENTIFYING YOUR ADAPTER
 .sp
 The driver is compatible with devices based on the following:
@@ -144,7 +144,7 @@ Intel(R) Ethernet Controller E610
 .sp
 For information on how to identify your adapter, and for the latest Intel
 network drivers, refer to the Intel Support website at
-\fI\%https://www.intel.com/support\fP\&.
+\X'tty: link https://www.intel.com/support'\fI\%https://www.intel.com/support\fP\X'tty: link'\&.
 .SS SFP+ Devices with Pluggable Optics
 .SS 82599\-Based Adapters
 .sp
@@ -1243,7 +1243,7 @@ disables its Tx/Rx queues until a VF driver reset occurs.
 The driver utilizes the ethtool interface for driver configuration and
 diagnostics, as well as displaying statistical information. The latest ethtool
 version is required for this functionality. Download it at
-\fI\%https://kernel.org/pub/software/network/ethtool/\fP\&.
+\X'tty: link https://kernel.org/pub/software/network/ethtool/'\fI\%https://kernel.org/pub/software/network/ethtool/\fP\X'tty: link'\&.
 .SS Configuring the Driver on Different Distributions
 .sp
 Configuring a network driver to load properly when the system is started is
@@ -2088,7 +2088,7 @@ In software\-based DCBX mode, you can configure DCB parameters using
 software LLDP/DCBX agents that interface with the Linux kernel\(aqs DCB
 Netlink API. We recommend using OpenLLDP as the DCBX agent when running
 in software mode. For more information, see the OpenLLDP man pages and
-\fI\%https://github.com/intel/openlldp\fP\&.
+\X'tty: link https://github.com/intel/openlldp'\fI\%https://github.com/intel/openlldp\fP\X'tty: link'\&.
 .UNINDENT
 .UNINDENT
 .SS Configuring VLAN Tagging on SR\-IOV Enabled Adapter Ports
@@ -2268,7 +2268,7 @@ ethtool <ethX>
 .sp
 WoL is configured through the ethtool utility. If your Linux distribution does
 not include ethtool, download and install it from the following website:
-\fI\%https://kernel.org/pub/software/network/ethtool/\fP\&.
+\X'tty: link https://kernel.org/pub/software/network/ethtool/'\fI\%https://kernel.org/pub/software/network/ethtool/\fP\X'tty: link'\&.
 .sp
 For instructions on enabling WoL with ethtool, refer to the website listed
 above.
@@ -2937,14 +2937,14 @@ make CFLAGS_EXTRA=\-DIXGBE_DISABLE_8021P_SUPPORT
 .SH SUPPORT
 .sp
 For general information, go to the Intel support website at
-\fI\%https://www.intel.com/support/\fP
+\X'tty: link https://www.intel.com/support/'\fI\%https://www.intel.com/support/\fP\X'tty: link'
 .sp
 or the Intel Ethernet Linux project hosted by GitHub at
-\fI\%https://github.com/intel/ethernet\-linux\-ixgbe\fP
+\X'tty: link https://github.com/intel/ethernet-linux-ixgbe'\fI\%https://github.com/intel/ethernet\-linux\-ixgbe\fP\X'tty: link'
 .sp
 If an issue is identified with the released source code on a supported kernel
 with a supported adapter, contact Intel Customer Support at
-\fI\%https://www.intel.com/content/www/us/en/support/products/36773/ethernet\-products.html\fP
+\X'tty: link https://www.intel.com/content/www/us/en/support/products/36773/ethernet-products.html'\fI\%https://www.intel.com/content/www/us/en/support/products/36773/ethernet\-products.html\fP\X'tty: link'
 .SH LICENSE
 .sp
 This program is free software; you can redistribute it and/or modify it under

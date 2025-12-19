@@ -2,6 +2,9 @@
 # Copyright (C) 1999 - 2025 Intel Corporation
 
 ifneq ($(KERNELRELEASE),)
+src ?= .
+include $(src)/common.mk
+
 # kbuild part of makefile
 #
 # Makefile for the Intel(R) 10GbE PCI Express Linux Network Driver

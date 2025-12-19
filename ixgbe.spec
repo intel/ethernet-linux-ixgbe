@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 6.2.5
+Version: 6.2.6
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -58,9 +58,11 @@ make -C src
 %install
 make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install mandocs_install
 # Remove modules files that we do not want to include
-find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
+if [ -d %{buildroot}/lib/modules ]; then
+	find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
+fi
 cd %{buildroot}
-find lib -name "ixgbe.ko" -printf "/%p\n" \
+find . -name "ixgbe.ko" -printf "/%p\n" \
 	>%{_builddir}/%{name}-%{version}/file.list
 
 export _ksrc=%{_usrsrc}/kernels/%{kernel_ver}
@@ -71,10 +73,9 @@ cd %{buildroot}
 %{!?privkey: %define privkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.priv}
 %{!?pubkey: %define pubkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.der}
 %{!?_signfile: %define _signfile ${_ksrc}/scripts/sign-file}
-for module in `find . -type f -name *.ko`;
-do
-strip --strip-debug ${module}
-$(KSRC=${_ksrc} %{_signfile} sha512 %{privkey} %{pubkey} ${module} > /dev/null 2>&1)
+for module in `find . -type f -name \*.ko`; do
+	strip --strip-debug ${module}
+	KSRC=${_ksrc} %{_signfile} sha512 %{privkey} %{pubkey} ${module}
 done
 %endif
 
