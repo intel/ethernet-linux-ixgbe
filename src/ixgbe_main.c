@@ -8455,7 +8455,11 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	clear_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 	adapter->flags &= ~IXGBE_FLAG_NEED_LINK_UPDATE;
 
-	del_timer_sync(&adapter->service_timer);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,15,0)
+        timer_delete_sync(&adapter->service_timer);
+#else
+        del_timer_sync(&adapter->service_timer);
+#endif
 
 	if (adapter->num_vfs) {
 		/* Clear EITR Select mapping */
