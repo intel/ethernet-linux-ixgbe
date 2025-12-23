@@ -1309,7 +1309,7 @@ void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter)
 		return;
 	}
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 		adapter->ixgbe_dbg_adapter_fw =
 			debugfs_create_dir("fwlog", adapter->ixgbe_dbg_adapter_pf);
 		if (!adapter->ixgbe_dbg_adapter_fw) {

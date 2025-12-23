@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
+#include "ixgbe.h"
+
 #include <linux/types.h>
 #include <linux/module.h>
-
-#include "ixgbe.h"
 
 /* This is the only thing that needs to be changed to adjust the
  * maximum number of ports that the driver can manage.
@@ -1060,7 +1060,6 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 		switch (adapter->hw.mac.type) {
 		case ixgbe_mac_X540:
 		case ixgbe_mac_X550:
-			fallthrough;
 		case ixgbe_mac_E610:
 		case ixgbe_mac_82599EB: {
 			struct ixgbe_option opt = {
@@ -1170,7 +1169,6 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
-			fallthrough;
 		case ixgbe_mac_E610:
 			if (adapter->rx_itr_setting || adapter->tx_itr_setting)
 				break;
@@ -1233,7 +1231,6 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 #endif
 	}
-
 	{ /* MDD support */
 		struct ixgbe_option opt = {
 			.type = enable_option,
@@ -1246,7 +1243,6 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
-			fallthrough;
 		case ixgbe_mac_E610:
 #ifdef module_param_array
 			if (num_MDD > bd) {

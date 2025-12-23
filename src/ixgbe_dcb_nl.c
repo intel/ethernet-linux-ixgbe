@@ -186,7 +186,7 @@ out:
  * For certain MAC types, such as ixgbe_mac_82599EB and ixgbe_mac_X540, the
  * function also appends the SAN (Storage Area Network) address to the buffer.
  * This is conditional based on the hardware type and specific compile-time
- * flags (e.g., MAGNOLIA_PARK_HW, LINKVILLE_HW).
+ * flags (e.g. MAGNOLIA_PARK_HW).
  *
  * This function is useful for obtaining the original hardware address of the
  * device, which may be needed for various network configuration and management
@@ -207,7 +207,6 @@ static void ixgbe_dcbnl_get_perm_hw_addr(struct net_device *netdev,
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
-		fallthrough;
 	case ixgbe_mac_E610:
 		for (j = 0; j < netdev->addr_len; j++, i++)
 			perm_addr[i] = adapter->hw.mac.san_addr[j];

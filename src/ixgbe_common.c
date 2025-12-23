@@ -582,9 +582,19 @@ s32 ixgbe_clear_hw_cntrs_generic(struct ixgbe_hw *hw)
 
 	if (hw->mac.type == ixgbe_mac_X540 ||
 	    hw->mac.type == ixgbe_mac_X550 ||
-	    hw->mac.type == ixgbe_mac_E610) {
-		if (hw->phy.id == 0)
+	    ixgbe_is_mac_E6xx(hw->mac.type)) {
+		if (!hw->phy.id)
 			ixgbe_identify_phy(hw);
+		if (hw->mac.type < ixgbe_mac_E610) {
+			hw->phy.ops.read_reg(hw, IXGBE_PCRC8ECL,
+					     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+			hw->phy.ops.read_reg(hw, IXGBE_PCRC8ECH,
+					     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+			hw->phy.ops.read_reg(hw, IXGBE_LDPCECL,
+					     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+			hw->phy.ops.read_reg(hw, IXGBE_LDPCECH,
+					     IXGBE_MDIO_PCS_DEV_TYPE, &i);
+		}
 	}
 
 	return IXGBE_SUCCESS;
@@ -797,7 +807,7 @@ s32 ixgbe_get_bus_info_generic(struct ixgbe_hw *hw)
 	DEBUGFUNC("ixgbe_get_bus_info_generic");
 
 	/* Get the negotiated link width and speed from PCI config space */
-	link_status = IXGBE_READ_PCIE_WORD(hw, hw->mac.type == ixgbe_mac_E610 ?
+	link_status = IXGBE_READ_PCIE_WORD(hw, ixgbe_is_mac_E6xx(hw->mac.type) ?
 					   IXGBE_PCI_LINK_STATUS_E610 :
 					   IXGBE_PCI_LINK_STATUS);
 
@@ -1057,7 +1067,7 @@ s32 ixgbe_write_eeprom_buffer_bit_bang_generic(struct ixgbe_hw *hw, u16 offset,
 		goto out;
 	}
 
-	if (offset + words > hw->eeprom.word_size) {
+	if ((u32)words > hw->eeprom.word_size - (u32)offset) {
 		status = IXGBE_ERR_EEPROM;
 		goto out;
 	}
@@ -1224,7 +1234,7 @@ s32 ixgbe_read_eeprom_buffer_bit_bang_generic(struct ixgbe_hw *hw, u16 offset,
 		goto out;
 	}
 
-	if (offset + words > hw->eeprom.word_size) {
+	if ((u32)words > hw->eeprom.word_size - (u32)offset) {
 		status = IXGBE_ERR_EEPROM;
 		goto out;
 	}
@@ -4062,11 +4072,12 @@ s32 ixgbe_check_mac_link_generic(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 		*speed = IXGBE_LINK_SPEED_1GB_FULL;
 		break;
 	case IXGBE_LINKS_SPEED_100_82599:
-		*speed = IXGBE_LINK_SPEED_100_FULL;
-		if (hw->mac.type == ixgbe_mac_X550 || hw->mac.type == ixgbe_mac_E610) {
-			if (links_reg & IXGBE_LINKS_SPEED_NON_STD)
-				*speed = IXGBE_LINK_SPEED_5GB_FULL;
-		}
+		if (links_reg & IXGBE_LINKS_SPEED_NON_STD &&
+		    (hw->mac.type == ixgbe_mac_X550 ||
+		     ixgbe_is_mac_E6xx(hw->mac.type)))
+			*speed = IXGBE_LINK_SPEED_5GB_FULL;
+		else
+			*speed = IXGBE_LINK_SPEED_100_FULL;
 		break;
 	case IXGBE_LINKS_SPEED_10_X550EM_A:
 		*speed = IXGBE_LINK_SPEED_UNKNOWN;
@@ -4885,16 +4896,17 @@ void ixgbe_get_oem_prod_version(struct ixgbe_hw *hw,
 }
 
 /**
- * ixgbe_get_etk_id - Return Etrack ID from EEPROM
+ * ixgbe_get_etk_id() - Read ETK ID from NVM and store it into @nvm_ver
+ * @hw: device hardware handle
+ * @nvm_ver: output container; fills @etk_id field
  *
- * @hw: pointer to hardware structure
- * @nvm_ver: pointer to output structure
- *
- * word read errors will return 0xFFFF
- **/
+ * Reads two 16-bit words from NVM, determines the word order using
+ * NVM_ETK_VALID, and assembles the 32-bit ETK ID.
+ */
 void ixgbe_get_etk_id(struct ixgbe_hw *hw, struct ixgbe_nvm_version *nvm_ver)
 {
 	u16 etk_id_l, etk_id_h;
+	u32 lo, hi;
 
 	if (hw->eeprom.ops.read(hw, NVM_ETK_OFF_LOW, &etk_id_l))
 		etk_id_l = NVM_VER_INVALID;
@@ -4904,13 +4916,13 @@ void ixgbe_get_etk_id(struct ixgbe_hw *hw, struct ixgbe_nvm_version *nvm_ver)
 	/* The word order for the version format is determined by high order
 	 * word bit 15.
 	 */
-	if ((etk_id_h & NVM_ETK_VALID) == 0) {
-		nvm_ver->etk_id = etk_id_h;
-		nvm_ver->etk_id |= (etk_id_l << NVM_ETK_SHIFT);
-	} else {
-		nvm_ver->etk_id = etk_id_l;
-		nvm_ver->etk_id |= (etk_id_h << NVM_ETK_SHIFT);
-	}
+	lo = (etk_id_h & NVM_ETK_VALID) ? etk_id_l : etk_id_h;
+	hi = (etk_id_h & NVM_ETK_VALID) ? etk_id_h : etk_id_l;
+
+	/* Ensure LHS is u32 so shift occurs in unsigned 32-bit
+	 * to avoid implicit u16 -> int promotion by compiler.
+	 */
+	nvm_ver->etk_id = (hi << NVM_ETK_SHIFT) | lo;
 }
 
 /**

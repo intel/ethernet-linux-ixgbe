@@ -4,20 +4,6 @@
 #ifndef _KCOMPAT_GCC_H_
 #define _KCOMPAT_GCC_H_
 
-#ifndef GCC_VERSION
-#define GCC_VERSION (__GNUC__ * 10000		\
-		     + __GNUC_MINOR__ * 100	\
-		     + __GNUC_PATCHLEVEL__)
-#endif /* GCC_VERSION */
-
-/* as GCC_VERSION yields 40201 for any modern clang (checked on clang 7 & 13)
- * we want other means to add workarounds for "old GCC" */
-#ifdef __clang__
-#define GCC_IS_BELOW(x) 0
-#else
-#define GCC_IS_BELOW(x) (GCC_VERSION < (x))
-#endif
-
 #ifdef __has_attribute
 #if __has_attribute(__fallthrough__)
 # define fallthrough __attribute__((__fallthrough__))
@@ -27,19 +13,6 @@
 #else
 # define fallthrough do {} while (0)  /* fallthrough */
 #endif /* __has_attribute */
-
-/*
- * upstream commit 4eb6bd55cfb2 ("compiler.h: drop fallback overflow checkers")
- * removed bunch of code for builitin overflow fallback implementations, that
- * we need for gcc prior to 5.1
- */
-#if !GCC_IS_BELOW(50100)
-#ifndef COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW
-#define COMPILER_HAS_GENERIC_BUILTIN_OVERFLOW	1
-#endif
-#endif /* GCC_VERSION >= 50100 */
-
-#include "kcompat_overflow.h"
 
 /* Backport macros for controlling GCC diagnostics */
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0) )

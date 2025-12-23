@@ -1114,8 +1114,8 @@ void ixgbe_init_mbx_params_pf(struct ixgbe_hw *hw)
 	    hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
 	    hw->mac.type != ixgbe_mac_X550EM_a &&
-	    hw->mac.type != ixgbe_mac_E610 &&
-	    hw->mac.type != ixgbe_mac_X540)
+	    hw->mac.type != ixgbe_mac_X540 &&
+	    !ixgbe_is_mac_E6xx(hw->mac.type))
 		return;
 
 	/* Initialize common mailbox settings */
@@ -1157,8 +1157,8 @@ void ixgbe_upgrade_mbx_params_pf(struct ixgbe_hw *hw, u16 vf_id)
 	    hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
 	    hw->mac.type != ixgbe_mac_X550EM_a &&
-	    hw->mac.type != ixgbe_mac_E610 &&
-	    hw->mac.type != ixgbe_mac_X540)
+	    hw->mac.type != ixgbe_mac_X540 &&
+	    !ixgbe_is_mac_E6xx(hw->mac.type))
 		return;
 
 	mbx->timeout = IXGBE_VF_MBX_INIT_TIMEOUT;

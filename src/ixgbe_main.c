@@ -4,6 +4,8 @@
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
 ******************************************************************************/
+#include "ixgbe.h"
+
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/pci.h>
@@ -28,7 +30,6 @@
 #endif
 
 #include <linux/if_bridge.h>
-#include "ixgbe.h"
 #include "kcompat_generated_defs.h"
 #ifdef HAVE_XDP_SUPPORT
 #include <linux/bpf.h>
@@ -63,9 +64,9 @@
 #ifdef HAVE_TC_SETUP_CLSU32
 #include "ixgbe_model.h"
 #endif /* HAVE_TC_SETUP_CLSU32 */
-#if defined(HAVE_PTP_1588_CLOCK)
+#ifdef HAVE_PTP_1588_CLOCK
 #include "ixgbe_ptp_e600.h"
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 
 #define DRV_HW_PERF
 
@@ -77,7 +78,7 @@
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	"6.2.6" \
+#define DRV_VERSION	"6.3.4" \
 			DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 #define DRV_SUMMARY	"Intel(R) 10GbE PCI Express Linux Network Driver"
@@ -515,7 +516,6 @@ static void ixgbe_set_ivar(struct ixgbe_adapter *adapter, s8 direction,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		if (direction == -1) {
 			/* other causes */
@@ -556,7 +556,6 @@ void ixgbe_irq_rearm_queues(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		mask = (qmask & 0xFFFFFFFF);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS_EX(0), mask);
@@ -851,7 +850,7 @@ static void ixgbe_reset_vf_report(struct ixgbe_adapter *adapter, u16 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(hw->mac.type)) {
 		e_info(drv,
 			"Malicious Driver Detection tx hang detected on PF %d VF %d MAC: %pM mdd-disable-vf=on",
 			hw->bus.func, vf,
@@ -1076,7 +1075,7 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 	q_vector->tx.total_packets += total_packets;
 
 	if (check_for_tx_hang(tx_ring) && ixgbe_check_tx_hang(tx_ring)) {
-		if (adapter->hw.mac.type == ixgbe_mac_E610)
+		if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 			ixgbe_handle_mdd_event(adapter, tx_ring);
 		/* reset PF */
 		ixgbe_reset_pf_report(tx_ring, i);
@@ -2488,7 +2487,8 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 			       struct ixgbe_ring *rx_ring,
 			       int budget)
 {
-	unsigned int total_rx_bytes = 0, total_rx_packets = 0;
+	unsigned int total_rx_bytes = 0;
+	int total_rx_packets = 0;
 	struct ixgbe_adapter *adapter = q_vector->adapter;
 #if IS_ENABLED(CONFIG_FCOE)
 	int ddp_bytes;
@@ -2619,8 +2619,9 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 						mss &= ~511;
 				}
 				total_rx_bytes += ddp_bytes;
-				total_rx_packets += DIV_ROUND_UP(ddp_bytes,
-								 mss);
+				total_rx_packets += (mss >= TCP_MIN_MSS) ?
+					(int)DIV_ROUND_UP((u64)ddp_bytes, mss):
+					1U;
 			}
 			if (!ddp_bytes) {
 				dev_kfree_skb_any(skb);
@@ -2632,7 +2633,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		}
 #endif /* CONFIG_FCOE */
 
-#if defined(HAVE_PTP_1588_CLOCK)
+#ifdef HAVE_PTP_1588_CLOCK
 		if (likely(!q_vector->ptp_hold_rx_skb)) {
 			ixgbe_rx_skb(q_vector, rx_ring, rx_desc, skb);
 
@@ -2641,12 +2642,12 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		} else {
 			q_vector->ptp_hold_rx_skb = false;
 		}
-#else /* !(HAVE_PTP_1588_CLOCK && LINKVILLE_HW) */
+#else /* !HAVE_PTP_1588_CLOCK */
 		ixgbe_rx_skb(q_vector, rx_ring, rx_desc, skb);
 
 		/* update budget accounting */
 		total_rx_packets++;
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 	}
 
 	if (xdp_xmit & IXGBE_XDP_REDIR)
@@ -2685,7 +2686,8 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 			       struct ixgbe_ring *rx_ring,
 			       int budget)
 {
-	unsigned int total_rx_bytes = 0, total_rx_packets = 0;
+	unsigned int total_rx_bytes = 0;
+	int total_rx_packets = 0;
 #if IS_ENABLED(CONFIG_FCOE)
 	int ddp_bytes;
 	unsigned int mss = 0;
@@ -2793,8 +2795,9 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 						mss &= ~511;
 				}
 				total_rx_bytes += ddp_bytes;
-				total_rx_packets += DIV_ROUND_UP(ddp_bytes,
-								 mss);
+				total_rx_packets += (mss >= TCP_MIN_MSS) ?
+					(int)DIV_ROUND_UP((u64)ddp_bytes, mss):
+					1U;
 			}
 			if (!ddp_bytes) {
 				dev_kfree_skb_any(skb);
@@ -2914,7 +2917,6 @@ static void ixgbe_configure_msix(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		ixgbe_set_ivar(adapter, -1, 1, v_idx);
 		break;
@@ -2928,7 +2930,7 @@ static void ixgbe_configure_msix(struct ixgbe_adapter *adapter)
 	mask &= ~(IXGBE_EIMS_OTHER |
 		  IXGBE_EIMS_MAILBOX |
 		  IXGBE_EIMS_LSC);
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		mask &= ~IXGBE_EIMS_FW_EVENT;
 
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIAC, mask);
@@ -3122,8 +3124,10 @@ adjust_for_speed:
 	if ((itr & IXGBE_ITR_ADAPTIVE_LATENCY) && itr < ring_container->itr)
 		itr = ring_container->itr - IXGBE_ITR_ADAPTIVE_MIN_INC;
 clear_counts:
-	/* write back value */
-	ring_container->itr = itr;
+	/* write back value - clamp to prevent automatic ITR bit interference
+	 * and u8 field overflow.
+	 */
+	ring_container->itr = min_t(u16, itr, U8_MAX);
 
 	/* next update should occur within next jiffy */
 	ring_container->next_update = next_update + 1;
@@ -3157,7 +3161,6 @@ void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		/*
 		 * set the WDIS bit to not clear the timer bits and cause an
@@ -3271,7 +3274,6 @@ static void ixgbe_check_mng_event(struct ixgbe_adapter *adapter, u32 eicr)
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
-		fallthrough;
 	case ixgbe_mac_E610:
 		break;
 	case ixgbe_mac_X550EM_x:
@@ -3642,7 +3644,6 @@ static void ixgbe_check_overtemp_event(struct ixgbe_adapter *adapter, u32 eicr)
 		}
 		return;
 	case ixgbe_mac_X550:
-		fallthrough;
 	case ixgbe_mac_E610:
 	case ixgbe_mac_X540:
 		if (!(eicr & IXGBE_EICR_TS))
@@ -3857,7 +3858,7 @@ ixgbe_handle_link_status_event(struct ixgbe_adapter *adapter,
  */
 static void ixgbe_schedule_fw_event(struct ixgbe_adapter *adapter)
 {
-	if (adapter->hw.mac.type != ixgbe_mac_E610)
+	if (!ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		return;
 
 	if (!test_bit(__IXGBE_DOWN, adapter->state) &&
@@ -3909,7 +3910,7 @@ static void ixgbe_handle_fw_event(struct ixgbe_adapter *adapter)
 	bool pending = false;
 	s32 status;
 
-	if (adapter->hw.mac.type != ixgbe_mac_E610)
+	if (!ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		return;
 
 	if (adapter->flags2 & IXGBE_FLAG2_FW_ASYNC_EVENT)
@@ -3967,7 +3968,6 @@ static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		mask = (qmask & 0xFFFFFFFF);
 		if (mask)
@@ -4022,7 +4022,6 @@ static inline void ixgbe_irq_enable(struct ixgbe_adapter *adapter, bool queues,
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
-		fallthrough;
 	case ixgbe_mac_E610:
 		mask |= IXGBE_EIMS_FW_EVENT;
 		fallthrough;
@@ -4094,7 +4093,6 @@ static irqreturn_t ixgbe_msix_other(int __always_unused irq, void *data)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		if (hw->phy.type == ixgbe_phy_x550em_ext_t &&
 		    (eicr & IXGBE_EICR_GPI_SDP0_X540)) {
@@ -4214,12 +4212,12 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 		return budget;
 #endif
 
-#if defined(HAVE_PTP_1588_CLOCK)
+#ifdef HAVE_PTP_1588_CLOCK
 	work_done += ixgbe_ptp_rx_complete_skb_e600(q_vector, &budget);
 	if (budget <= 0)
 		return budget;
 
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 	/* attempt to distribute budget to each queue fairly, but don't allow
 	 * the budget to go below 1 because we'll exit polling */
 	if (q_vector->rx.count > 1)
@@ -4374,9 +4372,7 @@ static irqreturn_t ixgbe_intr(int __always_unused irq, void *data)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
-
 		if (eicr & IXGBE_EICR_ECC) {
 			e_info(link, "Received unrecoverable ECC Err,"
 			       "initiating reset.\n");
@@ -4479,7 +4475,6 @@ static inline void ixgbe_irq_disable(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, 0xFFFF0000);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC_EX(0), ~0);
@@ -5247,7 +5242,6 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 #if (PAGE_SIZE < 8192)
@@ -5417,7 +5411,6 @@ static void ixgbe_configure_virtualization(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		vmdctl = IXGBE_READ_REG(hw, IXGBE_VT_CTL);
 		vmdctl |= IXGBE_VT_CTL_VT_ENABLE;
@@ -5510,7 +5503,6 @@ static void ixgbe_set_rx_buffer_len(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		max_frame += IXGBE_TS_HDR_LEN;
 	default:
@@ -5625,7 +5617,6 @@ static void ixgbe_setup_rdrxctl(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		if (adapter->num_vfs)
 			rdrxctl |= IXGBE_RDRXCTL_PSP;
@@ -5933,7 +5924,6 @@ void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			struct ixgbe_ring *ring = adapter->rx_ring[i];
@@ -5943,11 +5933,11 @@ void ixgbe_vlan_strip_disable(struct ixgbe_adapter *adapter)
 			vlnctrl &= ~IXGBE_RXDCTL_VME;
 			IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(j), vlnctrl);
 		}
-#if defined(HAVE_PTP_1588_CLOCK)
-		if (hw->mac.type == ixgbe_mac_E610 &&
+#ifdef HAVE_PTP_1588_CLOCK
+		if (ixgbe_is_mac_E6xx(hw->mac.type) &&
 		    hw->dev_caps.common_cap.ptp_by_phy_ll)
 			ixgbe_ptp_cfg_phy_vlan_e600(adapter, true);
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 		break;
 	default:
 		break;
@@ -5976,7 +5966,6 @@ void ixgbe_vlan_strip_enable(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			struct ixgbe_ring *ring = adapter->rx_ring[i];
@@ -5986,11 +5975,11 @@ void ixgbe_vlan_strip_enable(struct ixgbe_adapter *adapter)
 			vlnctrl |= IXGBE_RXDCTL_VME;
 			IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(j), vlnctrl);
 		}
-#if defined(HAVE_PTP_1588_CLOCK)
-		if (hw->mac.type == ixgbe_mac_E610 &&
+#ifdef HAVE_PTP_1588_CLOCK
+		if (ixgbe_is_mac_E6xx(hw->mac.type) &&
 		    hw->dev_caps.common_cap.ptp_by_phy_ll)
 			ixgbe_ptp_cfg_phy_vlan_e600(adapter, false);
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 		break;
 	default:
 		break;
@@ -6931,8 +6920,9 @@ static void ixgbe_configure_lli(struct ixgbe_adapter *adapter)
 	if (adapter->hw.mac.type == ixgbe_mac_X550EM_a)
 		return;
 	/* LLI not supported on X550 and E610 */
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		return;
+
 	if (adapter->hw.mac.type != ixgbe_mac_82598EB) {
 		ixgbe_configure_lli_82599(adapter);
 		return;
@@ -7005,7 +6995,6 @@ static int ixgbe_hpbthresh(struct ixgbe_adapter *adapter, int pb)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		dv_id = IXGBE_DV_X540(link, tc);
 		break;
@@ -7073,7 +7062,6 @@ static int ixgbe_lpbthresh(struct ixgbe_adapter *adapter, int __maybe_unused pb)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		dv_id = IXGBE_LOW_DV_X540(tc);
 		break;
@@ -7285,6 +7273,11 @@ skip_free:
 #endif
 }
 
+static inline bool ixgbe_is_eee_enabled(struct ixgbe_adapter *adapter)
+{
+	return (adapter->eee_state == IXGBE_EEE_ENABLED);
+}
+
 static void ixgbe_configure(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -7323,7 +7316,7 @@ static void ixgbe_configure(struct ixgbe_adapter *adapter)
 	/* Enable EEE only when supported and enabled */
 	if (hw->mac.ops.setup_eee &&
 	    (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)) {
-		bool eee_enable = !!(adapter->flags2 & IXGBE_FLAG2_EEE_ENABLED);
+		bool eee_enable = ixgbe_is_eee_enabled(adapter);
 
 		hw->mac.ops.setup_eee(hw, eee_enable);
 	}
@@ -7443,7 +7436,7 @@ static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 			   IXGBE_ACI_LINK_EVENT_PHY_FW_LOAD_FAIL));
 	struct ixgbe_adapter *adapter = container_of(hw, struct ixgbe_adapter,
 						     hw);
-	u32 ret = IXGBE_ERR_LINK_SETUP;
+	int ret = IXGBE_ERR_LINK_SETUP;
 	bool autoneg, link_up = false;
 	u32 speed;
 
@@ -7465,7 +7458,7 @@ static int ixgbe_non_sfp_link_config(struct ixgbe_hw *hw)
 		goto link_cfg_out;
 
 	if (hw->mac.ops.setup_link) {
-		if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 			ret = ixgbe_enable_link_status_events(adapter, mask);
 			if (ret)
 				goto link_cfg_out;
@@ -7572,7 +7565,6 @@ static void ixgbe_setup_gpie(struct ixgbe_adapter *adapter)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
-			fallthrough;
 		case ixgbe_mac_E610:
 		default:
 			IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(0), 0xFFFFFFFF);
@@ -7929,7 +7921,6 @@ dma_engine_disable:
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		IXGBE_WRITE_REG(hw, IXGBE_DMATXCTL,
 				(IXGBE_READ_REG(hw, IXGBE_DMATXCTL) &
@@ -8087,13 +8078,13 @@ ixgbe_pf_fwlog_is_input_valid(struct ixgbe_adapter *adapter,
  *
  * Return: the exit code of the operation.
  */
-u32 ixgbe_pf_fwlog_update_modules(struct ixgbe_adapter *adapter, u8 log_level,
+int ixgbe_pf_fwlog_update_modules(struct ixgbe_adapter *adapter, u8 log_level,
 				  unsigned long events)
 {
 	struct ixgbe_fwlog_user_input user_input = { 0 };
 	u16 num_entries, module_id, max_bits, i = 0;
 	struct ixgbe_fwlog_module_entry *entries;
-	u32 status;
+	int status;
 
 	user_input.log_level = log_level;
 	user_input.events = events;
@@ -8282,7 +8273,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 
 #ifdef HAVE_PTP_1588_CLOCK
 	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state)) {
-		if (adapter->hw.mac.type == ixgbe_mac_E610)
+		if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 			ixgbe_ptp_reset_e600(adapter);
 		else
 			ixgbe_ptp_reset(adapter);
@@ -8455,7 +8446,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	clear_bit(__IXGBE_RESET_REQUESTED, adapter->state);
 	adapter->flags &= ~IXGBE_FLAG_NEED_LINK_UPDATE;
 
-	del_timer_sync(&adapter->service_timer);
+	timer_delete_sync(&adapter->service_timer);
 
 	if (adapter->num_vfs) {
 		/* Clear EITR Select mapping */
@@ -8484,7 +8475,7 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	ixgbe_clean_all_tx_rings(adapter);
 	ixgbe_clean_all_rx_rings(adapter);
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		ixgbe_disable_link_status_events(adapter);
 }
 
@@ -8508,11 +8499,11 @@ static inline void ixgbe_set_eee_capable(struct ixgbe_adapter *adapter)
 		adapter->flags2 |= IXGBE_FLAG2_EEE_CAPABLE;
 		if (!hw->phy.eee_speeds_advertised)
 			break;
-		adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
+		adapter->eee_state = IXGBE_EEE_ENABLED;
 		break;
 	default:
 		adapter->flags2 &= ~IXGBE_FLAG2_EEE_CAPABLE;
-		adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
+		adapter->eee_state = IXGBE_EEE_DISABLED;
 		break;
 	}
 }
@@ -8707,7 +8698,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_E610:
 		fwsm = IXGBE_READ_REG(hw, IXGBE_FWSM_X550EM_a);
 		if ((fwsm & IXGBE_FWSM_TS_ENABLED) &&
-		    (hw->mac.type == ixgbe_mac_E610))
+		     ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 			adapter->flags2 |= IXGBE_FLAG2_TEMP_SENSOR_CAPABLE;
 		adapter->flags2 &= ~IXGBE_FLAG2_FWLOG_CAPABLE;
 		hw->fwlog_support_ena = false;
@@ -8721,7 +8712,7 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		adapter->fcoe.up_set = 0;
 #endif /* CONFIG_DCB */
 #endif /* CONFIG_FCOE */
-		if (hw->mac.type == ixgbe_mac_E610) {
+		if (ixgbe_is_mac_E6xx(hw->mac.type)) {
 			adapter->flags2 |= IXGBE_FLAG2_FWLOG_CAPABLE;
 		}
 		fallthrough;
@@ -8755,7 +8746,6 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 		break;
 	case ixgbe_mac_X540:
 	case ixgbe_mac_X550:
-		fallthrough;
 	case ixgbe_mac_E610:
 		adapter->dcb_cfg.num_tcs.pg_tcs = 4;
 		adapter->dcb_cfg.num_tcs.pfc_tcs = 4;
@@ -8775,8 +8765,8 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	    hw->mac.type == ixgbe_mac_X550 ||
 	    hw->mac.type == ixgbe_mac_X550EM_x ||
 	    hw->mac.type == ixgbe_mac_X550EM_a ||
-	    hw->mac.type == ixgbe_mac_E610 ||
-	    hw->mac.type == ixgbe_mac_X540)
+	    hw->mac.type == ixgbe_mac_X540 ||
+	    ixgbe_is_mac_E6xx(hw->mac.type))
 		ixgbe_init_mbx_params_pf(hw);
 
 	/* default flow control settings */
@@ -8797,6 +8787,12 @@ static int ixgbe_sw_init(struct ixgbe_adapter *adapter)
 	adapter->tx_work_limit = IXGBE_DEFAULT_TX_WORK;
 
 	set_bit(__IXGBE_DOWN, adapter->state);
+
+#ifdef HAVE_XDP_SUPPORT
+	/* enable locking for XDP_TX if we have more CPUs than queues */
+	if (nr_cpu_ids > IXGBE_MAX_XDP_QS)
+		static_branch_enable(&ixgbe_xdp_locking_key);
+#endif
 out:
 	return err;
 }
@@ -9211,7 +9207,7 @@ int ixgbe_open(struct net_device *netdev)
 		goto err_set_queues;
 
 #ifdef HAVE_PTP_1588_CLOCK
-	if (adapter->hw.mac.type != ixgbe_mac_E610)
+	if (!ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		ixgbe_ptp_init(adapter);
 #endif /* HAVE_PTP_1588_CLOCK*/
 
@@ -9229,7 +9225,7 @@ int ixgbe_open(struct net_device *netdev)
 	vxlan_get_rx_port(netdev);
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD */
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD && HAVE_UDP_TUNNEL_NIC_INFO */
-	if (!(adapter->hw.mac.type == ixgbe_mac_E610))
+	if (!ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		goto out;
 
 	if (ixgbe_update_link_info(&adapter->hw))
@@ -9267,7 +9263,7 @@ err_setup_tx:
 static void ixgbe_close_suspend(struct ixgbe_adapter *adapter)
 {
 #ifdef HAVE_PTP_1588_CLOCK
-	if (adapter->hw.mac.type != ixgbe_mac_E610)
+	if (!ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		ixgbe_ptp_suspend(adapter);
 #endif
 
@@ -9301,7 +9297,7 @@ int ixgbe_close(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 #ifdef HAVE_PTP_1588_CLOCK
-	if (adapter->hw.mac.type != ixgbe_mac_E610)
+	if (!ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		ixgbe_ptp_stop(adapter);
 #endif
 
@@ -9335,7 +9331,7 @@ static int ixgbe_resume(struct pci_dev *pdev)
 {
 	struct ixgbe_adapter *adapter;
 	struct net_device *netdev;
-	u32 err;
+	int err;
 #ifndef USE_LEGACY_PM_SUPPORT
 	struct pci_dev *pdev = to_pci_dev(dev);
 #endif
@@ -9532,7 +9528,6 @@ static int __ixgbe_shutdown(struct pci_dev *pdev, bool *enable_wake)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		pci_wake_from_d3(pdev, !!wufc);
 		break;
@@ -9854,7 +9849,6 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
-			fallthrough;
 		case ixgbe_mac_E610:
 			hwstats->pxonrxc[i] +=
 				IXGBE_READ_REG(hw, IXGBE_PXONRXCNT(i));
@@ -9868,12 +9862,12 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	for (i = 0; i < 16; i++) {
 		hwstats->qptc[i] += IXGBE_READ_REG(hw, IXGBE_QPTC(i));
 		hwstats->qprc[i] += IXGBE_READ_REG(hw, IXGBE_QPRC(i));
-		if ((hw->mac.type == ixgbe_mac_82599EB) ||
-		    (hw->mac.type == ixgbe_mac_X550) ||
-		    (hw->mac.type == ixgbe_mac_X550EM_x) ||
-		    (hw->mac.type == ixgbe_mac_X550EM_a) ||
-		    (hw->mac.type == ixgbe_mac_E610) ||
-		    (hw->mac.type == ixgbe_mac_X540)) {
+		if (hw->mac.type == ixgbe_mac_82599EB ||
+		    hw->mac.type == ixgbe_mac_X550 ||
+		    hw->mac.type == ixgbe_mac_X550EM_x ||
+		    hw->mac.type == ixgbe_mac_X550EM_a ||
+		    hw->mac.type == ixgbe_mac_X540 ||
+		    ixgbe_is_mac_E6xx(hw->mac.type)) {
 			hwstats->qbtc[i] += IXGBE_READ_REG(hw, IXGBE_QBTC_L(i));
 			IXGBE_READ_REG(hw, IXGBE_QBTC_H(i)); /* to clear */
 			hwstats->qbrc[i] += IXGBE_READ_REG(hw, IXGBE_QBRC_L(i));
@@ -9899,7 +9893,6 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		/* OS2BMC stats are X540 only*/
 		hwstats->o2bgptc += IXGBE_READ_REG(hw, IXGBE_O2BGPTC);
@@ -10152,8 +10145,8 @@ static void ixgbe_watchdog_update_link(struct ixgbe_adapter *adapter)
 
 #endif
 	if (link_up && !((adapter->flags & IXGBE_FLAG_DCB_ENABLED) && pfc_en)) {
-		if ((hw->mac.type == ixgbe_mac_X550) ||
-		    (hw->mac.type == ixgbe_mac_E610))
+		if (hw->mac.type == ixgbe_mac_X550 ||
+		    ixgbe_is_mac_E6xx(hw->mac.type))
 			ixgbe_setup_fc(hw);
 		hw->mac.ops.fc_enable(hw);
 
@@ -10233,8 +10226,8 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	struct net_device *netdev = adapter->netdev;
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 link_speed = adapter->link_speed;
-	const char *speed_str;
 	bool flow_rx, flow_tx;
+	const char *speed_str;
 
 	adapter->flags2 &= ~IXGBE_FLAG2_SEARCH_FOR_SFP;
 
@@ -10249,7 +10242,6 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540: {
@@ -10286,11 +10278,11 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 		return;
 
 #if defined(HAVE_PTP_1588_CLOCK)
-	if (hw->mac.type == ixgbe_mac_E610 &&
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type) &&
 	    test_bit(__IXGBE_PTP_RUNNING, adapter->state))
 		ixgbe_ptp_link_up_e600(adapter);
 
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 	switch (link_speed) {
 	case IXGBE_LINK_SPEED_10GB_FULL:
 		speed_str = "10 Gbps";
@@ -10319,12 +10311,24 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 	       (flow_rx ? "RX" :
 	       (flow_tx ? "TX" : "None"))));
 
+	/* Check if link state change forces changing EEE state */
+	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+		if (ixgbe_is_eee_enabled(adapter) &&
+		    !(ixgbe_check_link_for_eee_e610(adapter, true))) {
+			hw->mac.ops.setup_eee(hw, false);
+			adapter->eee_state = IXGBE_EEE_FORCED_DOWN;
+		} else if (adapter->eee_state == IXGBE_EEE_FORCED_DOWN &&
+			   ixgbe_check_link_for_eee_e610(adapter, false)) {
+			hw->mac.ops.setup_eee(hw, true);
+			adapter->eee_state = IXGBE_EEE_ENABLED;
+		}
+	}
+
 	netif_carrier_on(netdev);
 #ifdef HAVE_PTP_1588_CLOCK
-	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state)) {
-		if (hw->mac.type != ixgbe_mac_E610)
-			ixgbe_ptp_start_cyclecounter(adapter);
-	}
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state) &&
+	    !ixgbe_is_mac_E6xx(hw->mac.type))
+		ixgbe_ptp_start_cyclecounter(adapter);
 
 #endif /* HAVE_PTP_1588_CLOCK */
 #ifdef IFLA_VF_MAX
@@ -10363,9 +10367,9 @@ static void ixgbe_watchdog_link_is_down(struct ixgbe_adapter *adapter)
 		adapter->flags2 |= IXGBE_FLAG2_SEARCH_FOR_SFP;
 
 #ifdef HAVE_PTP_1588_CLOCK
-	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state))
-		if (hw->mac.type != ixgbe_mac_E610)
-			ixgbe_ptp_start_cyclecounter(adapter);
+	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state) &&
+	    !ixgbe_is_mac_E6xx(hw->mac.type))
+		ixgbe_ptp_start_cyclecounter(adapter);
 
 #endif
 	e_info(drv, "NIC Link is Down\n");
@@ -10705,7 +10709,7 @@ static void ixgbe_sfp_link_config_subtask(struct ixgbe_adapter *adapter)
  **/
 static void ixgbe_service_timer(struct timer_list *t)
 {
-	struct ixgbe_adapter *adapter = from_timer(adapter, t, service_timer);
+	struct ixgbe_adapter *adapter = timer_container_of(adapter, t, service_timer);
 	unsigned long next_event_offset;
 
 	/* poll faster when waiting for link */
@@ -10792,22 +10796,20 @@ static bool ixgbe_check_fw_error(struct ixgbe_adapter *adapter)
 		return true;
 	}
 
-	if (hw->mac.type == ixgbe_mac_E610) {
-		if (ixgbe_fw_rollback_mode(hw)) {
-			struct ixgbe_nvm_info *nvm_info = &adapter->hw.flash.nvm;
-			char ver_buff[64] = "";
+	if (ixgbe_is_mac_E6xx(hw->mac.type) && ixgbe_fw_rollback_mode(hw)) {
+		struct ixgbe_nvm_info *nvm_info = &adapter->hw.flash.nvm;
+		char ver_buff[64] = "";
 
-			if (!ixgbe_get_fw_version(hw) && !ixgbe_get_nvm_ver(hw, nvm_info)) {
-				snprintf(ver_buff, sizeof(ver_buff),
-					 "Current version is NVM:%x.%02x 0x%x, FW:%d.%d. ",
-					 nvm_info->major, nvm_info->minor, nvm_info->eetrack,
-					 hw->fw_maj_ver, hw->fw_maj_ver);
-			}
-
-			dev_warn_once(ixgbe_pf_to_dev(adapter),
-				      "Firmware rollback mode detected. %sDevice may exhibit limited functionality. Refer to the Intel(R) Ethernet Adapters and Devices User Guide for details on firmware rollback mode.",
-				      ver_buff);
+		if (!ixgbe_get_fw_version(hw) && !ixgbe_get_nvm_ver(hw, nvm_info)) {
+			snprintf(ver_buff, sizeof(ver_buff),
+				 "Current version is NVM:%x.%02x 0x%x, FW:%d.%d. ",
+				 nvm_info->major, nvm_info->minor, nvm_info->eetrack,
+				 hw->fw_maj_ver, hw->fw_maj_ver);
 		}
+
+		dev_warn_once(ixgbe_pf_to_dev(adapter),
+			      "Firmware rollback mode detected. %sDevice may exhibit limited functionality. Refer to the Intel(R) Ethernet Adapters and Devices User Guide for details on firmware rollback mode.",
+			      ver_buff);
 	}
 	return false;
 }
@@ -10869,7 +10871,7 @@ static void ixgbe_service_task(struct work_struct *work)
 	}
 #endif /* HAVE_UDP_TUNNEL_NIC_INFO */
 #endif /* HAVE_UDP_ENC_RX_OFFLOAD || HAVE_VXLAN_RX_OFFLOAD */
-	if (hw->mac.type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(hw->mac.type))
 		ixgbe_check_media_subtask(adapter);
 	ixgbe_reset_subtask(adapter);
 	ixgbe_phy_interrupt_subtask(adapter);
@@ -10883,7 +10885,7 @@ static void ixgbe_service_task(struct work_struct *work)
 	ixgbe_check_hang_subtask(adapter);
 #ifdef HAVE_PTP_1588_CLOCK
 	if (test_bit(__IXGBE_PTP_RUNNING, adapter->state)) {
-		if (hw->mac.type != ixgbe_mac_E610)
+		if (!ixgbe_is_mac_E6xx(hw->mac.type))
 			ixgbe_ptp_overflow_check(adapter);
 		if (unlikely(adapter->flags & IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER))
 			ixgbe_ptp_rx_hang(adapter);
@@ -12248,11 +12250,12 @@ static void ixgbe_validate_rtr(struct ixgbe_adapter *adapter, u8 tc)
 	rsave = reg;
 
 	for (i = 0; i < IXGBE_DCB_MAX_TRAFFIC_CLASS; i++) {
-		u8 up2tc = reg >> (i * IXGBE_RTRUP2TC_UP_SHIFT);
+		u8 up2tc = IXGBE_RTRUP2TC_UP_MASK &
+			   (reg >> (i * IXGBE_RTRUP2TC_UP_SHIFT));
 
 		/* If up2tc is out of bounds default to zero */
 		if (up2tc > tc)
-			reg &= ~(0x7 << IXGBE_RTRUP2TC_UP_SHIFT);
+			reg &= ~(IXGBE_RTRUP2TC_UP_MASK << (i * IXGBE_RTRUP2TC_UP_SHIFT));
 	}
 
 	if (reg != rsave)
@@ -12540,12 +12543,12 @@ static int ixgbe_configure_clsu32(struct ixgbe_adapter *adapter,
 	u32 loc = cls->knode.handle & 0xfffff;
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_mat_field *field_ptr;
-	struct ixgbe_fdir_filter *input = NULL;
-	union ixgbe_atr_input *mask = NULL;
-	struct ixgbe_jump_table *jump = NULL;
+	struct ixgbe_fdir_filter *input;
+	struct ixgbe_jump_table *jump;
+	union ixgbe_atr_input *mask;
+	u32 uhtid, link_uhtid;
 	int i, err = -EINVAL;
 	u8 queue;
-	u32 uhtid, link_uhtid;
 
 	uhtid = TC_U32_USERHTID(cls->knode.handle);
 	link_uhtid = TC_U32_USERHTID(cls->knode.link_handle);
@@ -12612,25 +12615,20 @@ static int ixgbe_configure_clsu32(struct ixgbe_adapter *adapter,
 			return err;
 		}
 
+		jump = kzalloc(sizeof(*jump), GFP_KERNEL);
+		input = kzalloc(sizeof(*input), GFP_KERNEL);
+		mask = kzalloc(sizeof(*mask), GFP_KERNEL);
+		if (!jump || !input || !mask) {
+			err = -ENOMEM;
+			goto err_out;
+		}
+
 		for (i = 0; nexthdr[i].jump; i++) {
 			if (nexthdr[i].o != cls->knode.sel->offoff ||
 			    nexthdr[i].s != cls->knode.sel->offshift ||
 			    nexthdr[i].m != cls->knode.sel->offmask)
-				return err;
+				goto err_out;
 
-			jump = kzalloc(sizeof(*jump), GFP_KERNEL);
-			if (!jump)
-				return -ENOMEM;
-			input = kzalloc(sizeof(*input), GFP_KERNEL);
-			if (!input) {
-				err = -ENOMEM;
-				goto free_jump;
-			}
-			mask = kzalloc(sizeof(*mask), GFP_KERNEL);
-			if (!mask) {
-				err = -ENOMEM;
-				goto free_input;
-			}
 			jump->input = input;
 			jump->mask = mask;
 			jump->link_hdl = cls->knode.handle;
@@ -12640,20 +12638,24 @@ static int ixgbe_configure_clsu32(struct ixgbe_adapter *adapter,
 			if (!err) {
 				jump->mat = nexthdr[i].jump;
 				adapter->jump_tables[link_uhtid] = jump;
+				/* Ownership transferred, clear local pointers */
+				jump = NULL;
+				input = NULL;
+				mask = NULL;
+				err = 0;
 				break;
 			}
 		}
 
-		return 0;
+		goto err_out;
 	}
 
+	jump = NULL; /* save one allocation call */
 	input = kzalloc(sizeof(*input), GFP_KERNEL);
-	if (!input)
-		return -ENOMEM;
 	mask = kzalloc(sizeof(*mask), GFP_KERNEL);
-	if (!mask) {
+	if (!input || !mask) {
 		err = -ENOMEM;
-		goto free_input;
+		goto err_out;
 	}
 
 	if ((uhtid != 0x800) && (adapter->jump_tables[uhtid])) {
@@ -12706,22 +12708,25 @@ static int ixgbe_configure_clsu32(struct ixgbe_adapter *adapter,
 	err = ixgbe_fdir_write_perfect_filter_82599(hw, &input->filter,
 						    input->sw_idx, queue,
 						    adapter->cloud_mode);
-	if (!err)
+	if (!err) {
 		ixgbe_update_ethtool_fdir_entry(adapter, input, input->sw_idx);
+		/* Ownership of input transferred to ethtool, clear local pointer */
+		input = NULL;
+	}
 	spin_unlock(&adapter->fdir_perfect_lock);
 
 	if ((uhtid != 0x800) && (adapter->jump_tables[uhtid]))
 		set_bit(loc - 1, (adapter->jump_tables[uhtid])->child_loc_map);
 
 	kfree(mask);
+	kfree(input);
 	return err;
+
 err_out_w_lock:
 	spin_unlock(&adapter->fdir_perfect_lock);
 err_out:
 	kfree(mask);
-free_input:
 	kfree(input);
-free_jump:
 	kfree(jump);
 	return err;
 }
@@ -13693,9 +13698,6 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 			return -EINVAL;
 	}
 
-	if (nr_cpu_ids > IXGBE_MAX_XDP_QS)
-		static_branch_inc(&ixgbe_xdp_locking_key);
-
 	old_prog = xchg(&adapter->xdp_prog, prog);
 	need_reset = (!!prog != !!old_prog);
 
@@ -13707,6 +13709,8 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 			rcu_assign_pointer(adapter->xdp_prog, old_prog);
 			return -EINVAL;
 		}
+		if (!prog)
+			xdp_features_clear_redirect_target(dev);
 	} else {
 		for (i = 0; i < adapter->num_rx_queues; i++)
 			xchg(&adapter->rx_ring[i]->xdp_prog, adapter->xdp_prog);
@@ -13715,11 +13719,11 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 	if (old_prog)
 		bpf_prog_put(old_prog);
 
+	if (need_reset && prog) {
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
-	/* Kick start the NAPI context if there is an AF_XDP socket open
-	 * on that queue id. This so that receiving will start.
-	 */
-	if (need_reset && prog)
+		/* Kick start the NAPI context if there is an AF_XDP socket open
+		 * on that queue id. This so that receiving will start.
+		 */
 		for (i = 0; i < adapter->num_rx_queues; i++)
 			if (adapter->xdp_ring[i]->xsk_pool)
 #ifdef HAVE_NDO_XSK_WAKEUP
@@ -13728,8 +13732,10 @@ static int ixgbe_xdp_setup(struct net_device *dev, struct bpf_prog *prog)
 #else
 				(void)ixgbe_xsk_async_xmit(adapter->netdev, i);
 #endif
-
 #endif
+		xdp_features_set_redirect_target(dev, true);
+	}
+
 	return 0;
 }
 
@@ -14262,7 +14268,7 @@ static void ixgbe_set_fw_version(struct ixgbe_adapter *adapter)
 	u16 offset = 0;
 	u32 etrack_id;
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 		ixgbe_set_fw_version_E610(adapter);
 		return;
 	}
@@ -14304,13 +14310,13 @@ static void ixgbe_set_fw_version(struct ixgbe_adapter *adapter)
 	/* The word order for the version format is determined by high order
 	 * word bit 15.
 	 */
-	if ((eeprom_verh & NVM_ETK_VALID) == 0) {
-		etrack_id = eeprom_verh;
-		etrack_id |= (eeprom_verl << NVM_ETK_SHIFT);
-	} else {
-		etrack_id = eeprom_verl;
-		etrack_id |= (eeprom_verh << NVM_ETK_SHIFT);
-	}
+	u32 lo = (eeprom_verh & NVM_ETK_VALID) ? eeprom_verl : eeprom_verh;
+	u32 hi = (eeprom_verh & NVM_ETK_VALID) ? eeprom_verh : eeprom_verl;
+
+	/* Ensure LHS is u32 so shift occurs in unsigned 32-bit
+	 * to avoid implicit u16 -> int promotion by compiler.
+	 */
+	etrack_id = (hi << NVM_ETK_SHIFT) | lo;
 
 	/* Check for SCSI block version format */
 	hw->eeprom.ops.read(hw, 0x17, &offset);
@@ -14326,7 +14332,8 @@ static void ixgbe_set_fw_version(struct ixgbe_adapter *adapter)
 		/* Only display Option Rom if exist */
 		if (eeprom_cfg_blkl && eeprom_cfg_blkh) {
 			major = eeprom_cfg_blkl >> 8;
-			build = (eeprom_cfg_blkl << 8) | (eeprom_cfg_blkh >> 8);
+			/* Use u32 to avoid u16 -> int promotion in left shift */
+			build = ((u32)eeprom_cfg_blkl << 8) | (eeprom_cfg_blkh >> 8);
 			patch = eeprom_cfg_blkh & 0x00ff;
 
 			snprintf(adapter->eeprom_id, sizeof(adapter->eeprom_id),
@@ -14355,7 +14362,7 @@ static int ixgbe_recovery_probe(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	int err = -EIO;
 
-	if (hw->mac.type != ixgbe_mac_E610)
+	if (!ixgbe_is_mac_E6xx(hw->mac.type))
 		goto clean_up_probe;
 
 	ixgbe_init_aci(hw);
@@ -14555,7 +14562,8 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		indices = IXGBE_MAX_RSS_INDICES;
 #endif /* !CONFIG_DCB */
 	}
-	if (mac_type == ixgbe_mac_E610)
+
+	if (ixgbe_is_mac_E6xx(mac_type))
 		indices = IXGBE_MAX_RSS_INDICES_E610;
 
 	netdev = alloc_etherdev_mq(sizeof(struct ixgbe_adapter), indices);
@@ -14591,7 +14599,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		err = -EIO;
 		goto err_ioremap;
 	}
-	if (mac_type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(mac_type)) {
 		struct ixgbe_adapter **padapter = NULL;
 
 		padapter = ixgbe_allocate_devlink(adapter);
@@ -14616,7 +14624,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	if (ixgbe_check_fw_error(adapter))
 		return ixgbe_recovery_probe(adapter);
 
-	if (mac_type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(mac_type)) {
 		u32 status;
 
 		ixgbe_init_aci(hw);
@@ -14637,7 +14645,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	if (adapter->hw.mac.type == ixgbe_mac_82599EB)
 		adapter->flags2 |= IXGBE_FLAG2_AUTO_DISABLE_VF;
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 		if (adapter->flags2 & IXGBE_FLAG2_FWLOG_CAPABLE)
 			ixgbe_fwlog_set_support_ena(hw);
 
@@ -14656,7 +14664,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_a:
 	case ixgbe_mac_X550EM_x:
-		fallthrough;
 	case ixgbe_mac_E610:
 		netdev->udp_tunnel_nic_info = &ixgbe_udp_tunnels_x550;
 		break;
@@ -14675,7 +14682,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_WUS, ~0);
 		break;
@@ -14703,15 +14709,13 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	hw->phy.reset_if_overtemp = true;
 	err = hw->mac.ops.reset_hw(hw);
 	hw->phy.reset_if_overtemp = false;
-	if (err == IXGBE_ERR_SFP_NOT_PRESENT) {
-		err = IXGBE_SUCCESS;
-	} else if (err == IXGBE_ERR_SFP_NOT_SUPPORTED) {
+	if (err == IXGBE_ERR_SFP_NOT_SUPPORTED) {
 		e_dev_err("failed to load because an unsupported SFP+ or QSFP "
 			  "module type was detected.\n");
 		e_dev_err("Reload the driver after installing a supported "
 			  "module.\n");
 		goto err_sw_init;
-	} else if (err) {
+	} else if (err && err != IXGBE_ERR_SFP_NOT_PRESENT) {
 		e_dev_err("HW Init failed: %d\n", err);
 		goto err_sw_init;
 	}
@@ -14836,7 +14840,6 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
-		fallthrough;
 	case ixgbe_mac_E610:
 		netdev->features |= NETIF_F_SCTP_CSUM;
 #ifdef HAVE_NDO_SET_FEATURES
@@ -14893,6 +14896,12 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #ifdef IFF_SUPP_NOFCS
 	netdev->priv_flags |= IFF_SUPP_NOFCS;
 #endif
+
+#ifdef HAVE_XDP_SUPPORT
+	xdp_set_features_flag(netdev, NETDEV_XDP_ACT_BASIC |
+				      NETDEV_XDP_ACT_REDIRECT |
+				      NETDEV_XDP_ACT_XSK_ZEROCOPY);
+#endif /* HAVE_XDP_SUPPORT */
 
 #ifdef HAVE_NETDEVICE_MIN_MAX_MTU
 	/* MTU range: 68 - 9710 */
@@ -15034,7 +15043,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 	strscpy(netdev->name, "eth%d", sizeof(netdev->name));
 	pci_set_drvdata(pdev, adapter);
 
-	if (mac_type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(mac_type)) {
 		ixgbe_devlink_register_port(adapter);
 #ifdef HAVE_SET_NETDEV_DEVLINK_PORT
 		SET_NETDEV_DEVLINK_PORT(adapter->netdev,
@@ -15042,7 +15051,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 #endif
 	}
 
-	if (!((mac_type == ixgbe_mac_E610) &&
+	if (!(ixgbe_is_mac_E6xx(mac_type) &&
 	      (ixgbe_check_fw_error(adapter) ||
 	       ixgbe_check_fw_api_ver(adapter)))) {
 		err = register_netdev(netdev);
@@ -15051,7 +15060,7 @@ static int ixgbe_probe(struct pci_dev *pdev,
 		adapter->netdev_registered = true;
 	}
 #ifndef HAVE_SET_NETDEV_DEVLINK_PORT
-	if (mac_type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(mac_type))
 		devlink_port_type_eth_set(&adapter->devlink_port,
 					  adapter->netdev);
 #endif /* HAVE_SET_NETDEV_DEVLINK_PORT */
@@ -15191,12 +15200,12 @@ no_info_string:
 
 	if (hw->mac.ops.setup_eee &&
 	    (adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)) {
-		bool eee_enable = !!(adapter->flags2 & IXGBE_FLAG2_EEE_ENABLED);
+		bool eee_enable = ixgbe_is_eee_enabled(adapter);
 
 		hw->mac.ops.setup_eee(hw, eee_enable);
 	}
 
-	if (mac_type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(mac_type)) {
 #ifndef HAVE_DEVLINK_PARAMS_PUBLISH
 		bool need_register = true;
 
@@ -15214,6 +15223,8 @@ no_info_string:
 			ixgbe_devlink_register(adapter);
 			need_register = false;
 		}
+#else /* HAVE_DEVLINK_PARAMS_PUBLISH */
+		ixgbe_devlink_register(adapter);
 #endif /* HAVE_DEVLINK_PARAMS_PUBLISH */
 
 		err = ixgbe_devlink_register_params(adapter);
@@ -15227,30 +15238,29 @@ no_info_string:
 #endif /* !HAVE_DEVLINK_PARAMS_PUBLISH */
 	}
 
-#if defined(HAVE_PTP_1588_CLOCK)
-	if (mac_type == ixgbe_mac_E610)
+#ifdef HAVE_PTP_1588_CLOCK
+	if (ixgbe_is_mac_E6xx(mac_type))
 		ixgbe_ptp_init_e600(adapter);
 
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
+#endif /* HAVE_PTP_1588_CLOCK */
 	return 0;
 
 err_devlink_register:
 #ifdef HAVE_DEVLINK_PARAMS_PUBLISH
-	if (mac_type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(mac_type))
 		ixgbe_devlink_unregister(adapter);
 #endif /* HAVE_DEVLINK_PARAMS_PUBLISH */
 err_register:
-	if (mac_type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(mac_type))
 		ixgbe_devlink_unregister_port(adapter);
 err_hw_init:
 	ixgbe_clear_interrupt_scheme(adapter);
 
-	if (mac_type == ixgbe_mac_E610 &&
-	    hw->fwlog_support_ena)
+	if (ixgbe_is_mac_E6xx(mac_type) && hw->fwlog_support_ena)
 		ixgbe_pf_fwlog_deinit(adapter);
 
 err_aci_lock:
-	if (mac_type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(mac_type))
 		ixgbe_shutdown_aci(&adapter->hw);
 err_sw_init:
 	ixgbe_release_hw_control(adapter);
@@ -15265,7 +15275,7 @@ err_sw_init:
 	kfree(adapter->rss_key);
 	bitmap_free(adapter->af_xdp_zc_qps);
 	iounmap(adapter->io_addr);
-	if (mac_type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(mac_type))
 		devlink_free(adapter->devlink);
 err_alloc_devlink:
 
@@ -15307,17 +15317,17 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	if (!adapter)
 		return;
 
-#if defined(HAVE_PTP_1588_CLOCK)
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
+#ifdef HAVE_PTP_1588_CLOCK
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		ixgbe_ptp_release_e600(adapter);
 
-#endif /* HAVE_PTP_1588_CLOCK && LINKVILLE_HW */
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+#endif /* HAVE_PTP_1588_CLOCK */
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 		ixgbe_devlink_unregister(adapter);
 		ixgbe_devlink_destroy_regions(adapter);
 		ixgbe_devlink_unregister_params(adapter);
 	}
-	if (adapter->hw.mac.type == ixgbe_mac_E610 &&
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type) &&
 	    adapter->hw.fwlog_support_ena)
 		ixgbe_pf_fwlog_deinit(adapter);
 
@@ -15329,7 +15339,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 	set_bit(__IXGBE_REMOVING, adapter->state);
 	cancel_work_sync(&adapter->service_task);
 
-	if (adapter->hw.mac.type == ixgbe_mac_E610)
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
 		ixgbe_shutdown_aci(&adapter->hw);
 #if IS_ENABLED(CONFIG_DCA)
 	if (adapter->flags & IXGBE_FLAG_DCA_ENABLED) {
@@ -15361,7 +15371,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 		unregister_netdev(netdev);
 		adapter->netdev_registered = false;
 	}
-	if (adapter->hw.mac.type == ixgbe_mac_E610) {
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
 		ixgbe_devlink_unregister_port(adapter);
 		devlink_free(adapter->devlink);
 	}

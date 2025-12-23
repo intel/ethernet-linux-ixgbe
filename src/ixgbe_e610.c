@@ -834,6 +834,10 @@ ixgbe_parse_common_caps(struct ixgbe_hw *hw, struct ixgbe_hw_common_caps *caps,
 			  caps->ptp_by_phy_ll);
 		break;
 #endif /* !NO_PTP_SUPPORT */
+	case IXGBE_ACI_CAPS_EEE:
+		caps->eee_support = (u8)number;
+		hw_dbg(hw, "%s: eee_support = %x\n", prefix, caps->eee_support);
+		break;
 	default:
 		/* Not one of the recognized common capabilities */
 		found = false;
@@ -868,18 +872,7 @@ static u8 ixgbe_hweight8(u32 w)
  */
 static u8 ixgbe_hweight32(u32 w)
 {
-	u32 bitMask = 0x1, i;
-	u8  bitCnt = 0;
-
-	for (i = 0; i < 32; i++)
-	{
-		if (w & bitMask)
-			bitCnt++;
-
-		bitMask = bitMask << 0x1;
-	}
-
-	return bitCnt;
+	return (u8)hweight32(w); /* narrow at the leaf if needed */
 }
 
 /**
@@ -1221,8 +1214,9 @@ s32 ixgbe_aci_list_caps(struct ixgbe_hw *hw, void *buf, u16 buf_size,
 s32 ixgbe_discover_dev_caps(struct ixgbe_hw *hw,
 			    struct ixgbe_hw_dev_caps *dev_caps)
 {
-	u32 status, cap_count = 0;
+	u32 cap_count = 0;
 	u8 *cbuf = NULL;
+	s32 status;
 
 	cbuf = (u8*)ixgbe_malloc(hw, IXGBE_ACI_MAX_BUFFER_SIZE);
 	if (!cbuf)
@@ -1435,6 +1429,7 @@ void ixgbe_copy_phy_caps_to_cfg(struct ixgbe_aci_cmd_get_phy_caps_data *caps,
 	cfg->link_fec_opt = caps->link_fec_options;
 	cfg->module_compliance_enforcement =
 		caps->module_compliance_enforcement;
+	cfg->eee_entry_delay = caps->eee_entry_delay;
 }
 
 /**
@@ -1454,10 +1449,12 @@ s32 ixgbe_aci_set_phy_cfg(struct ixgbe_hw *hw,
 			  struct ixgbe_aci_cmd_set_phy_cfg_data *cfg)
 {
 	struct ixgbe_aci_desc desc;
+	bool use_1p40_buff;
 	s32 status;
 
 	if (!cfg)
 		return IXGBE_ERR_PARAM;
+	use_1p40_buff =	hw->dev_caps.common_cap.eee_support ? true : false;
 
 	/* Ensure that only valid bits of cfg->caps can be turned on. */
 	if (cfg->caps & ~IXGBE_ACI_PHY_ENA_VALID_MASK) {
@@ -1467,8 +1464,18 @@ s32 ixgbe_aci_set_phy_cfg(struct ixgbe_hw *hw,
 	ixgbe_fill_dflt_direct_cmd_desc(&desc, ixgbe_aci_opc_set_phy_cfg);
 	desc.flags |= IXGBE_CPU_TO_LE16(IXGBE_ACI_FLAG_RD);
 
-	status = ixgbe_aci_send_cmd(hw, &desc, cfg, sizeof(*cfg));
+	if (use_1p40_buff) {
+		status = ixgbe_aci_send_cmd(hw, &desc, cfg, sizeof(*cfg));
+	} else {
+		struct ixgbe_aci_cmd_set_phy_cfg_data_pre_1_40 cfg_obsolete;
 
+		memcpy(&cfg_obsolete, cfg, sizeof(cfg_obsolete));
+
+		status = ixgbe_aci_send_cmd(hw, &desc, &cfg_obsolete,
+					    sizeof(cfg_obsolete));
+	}
+
+	/* even if the old buffer is used no need to worry about conversion */
 	if (!status)
 		hw->phy.curr_user_phy_cfg = *cfg;
 
@@ -1750,6 +1757,7 @@ s32 ixgbe_aci_get_link_info(struct ixgbe_hw *hw, bool ena_lse,
 	li->topo_media_conflict = link_data.topo_media_conflict;
 	li->pacing = link_data.cfg & (IXGBE_ACI_CFG_PACING_M |
 				      IXGBE_ACI_CFG_PACING_TYPE_M);
+	li->eee_status = link_data.eee_status;
 
 	/* update fc info */
 	tx_pause = !!(link_data.an_info & IXGBE_ACI_LINK_PAUSE_TX);
@@ -2977,6 +2985,8 @@ static s32 ixgbe_get_nvm_srev(struct ixgbe_hw *hw,
 	return IXGBE_SUCCESS;
 }
 
+#define IXGBE_OROM_STEP		512U
+
 /**
  * ixgbe_get_orom_civd_data - Get the combo version information from Option ROM
  * @hw: pointer to the HW struct
@@ -2992,44 +3002,58 @@ static s32
 ixgbe_get_orom_civd_data(struct ixgbe_hw *hw, enum ixgbe_bank_select bank,
 			 struct ixgbe_orom_civd_info *civd)
 {
-	struct ixgbe_orom_civd_info tmp;
+	u32 offset, orom_size = hw->flash.banks.orom_size;
+	u8 *orom_data;
 	s32 status;
-	u32 offset;
+
+	if (!orom_size)
+		return IXGBE_ERR_PARAM;
+
+	orom_data = ixgbe_malloc(hw, orom_size);
+	if (!orom_data)
+		return IXGBE_ERR_OUT_OF_MEM;
+
+	status = ixgbe_read_flash_module(hw, bank,
+					 E610_SR_1ST_OROM_BANK_PTR, 0,
+					 orom_data, orom_size);
+	if (status) {
+		status = IXGBE_ERR_NVM;
+		goto exit;
+	}
 
 	/* The CIVD section is located in the Option ROM aligned to 512 bytes.
 	 * The first 4 bytes must contain the ASCII characters "$CIV".
 	 * A simple modulo 256 sum of all of the bytes of the structure must
 	 * equal 0.
 	 */
-	for (offset = 0; (offset + 512) <= hw->flash.banks.orom_size;
-	     offset += 512) {
+	for (offset = 0; offset + IXGBE_OROM_STEP <= orom_size;
+	     offset += IXGBE_OROM_STEP) {
+		struct ixgbe_orom_civd_info *tmp;
 		u8 sum = 0, i;
 
-		status = ixgbe_read_flash_module(hw, bank,
-						 E610_SR_1ST_OROM_BANK_PTR,
-						 offset,
-						 (u8 *)&tmp, sizeof(tmp));
-		if (status) {
-			return status;
-		}
+		 tmp = (struct ixgbe_orom_civd_info *)&orom_data[offset];
 
 		/* Skip forward until we find a matching signature */
-		if (memcmp("$CIV", tmp.signature, sizeof(tmp.signature)) != 0)
+		if (memcmp("$CIV", tmp->signature, sizeof(tmp->signature)) != 0)
 			continue;
 
 		/* Verify that the simple checksum is zero */
-		for (i = 0; i < sizeof(tmp); i++)
-			sum += ((u8 *)&tmp)[i];
+		for (i = 0; i < sizeof(*tmp); i++)
+			sum += ((u8 *)tmp)[i];
 
 		if (sum) {
-			return IXGBE_ERR_NVM;
+			status = IXGBE_ERR_NVM;
+			goto exit;
 		}
 
-		*civd = tmp;
-		return IXGBE_SUCCESS;
+		*civd = *tmp;
+		status = IXGBE_SUCCESS;
+		goto exit;
 	}
-
-	return IXGBE_ERR_NVM;
+	status = IXGBE_ERR_DOES_NOT_EXIST;
+exit:
+	ixgbe_free(hw, orom_data);
+	return status;
 }
 
 /**
@@ -3517,7 +3541,8 @@ static s32 ixgbe_determine_active_flash_banks(struct ixgbe_hw *hw)
 s32 ixgbe_init_nvm(struct ixgbe_hw *hw)
 {
 	struct ixgbe_flash_info *flash = &hw->flash;
-	u32 fla, gens_stat, status;
+	u32 fla, gens_stat;
+	s32 status;
 	u8 sr_size;
 
 	/* The SR size is stored regardless of the NVM programming mode
@@ -4704,9 +4729,14 @@ s32 ixgbe_init_ops_E610(struct ixgbe_hw *hw)
 	/* PHY */
 	phy->ops.init = ixgbe_init_phy_ops_E610;
 	phy->ops.identify = ixgbe_identify_phy_E610;
-	phy->eee_speeds_supported = IXGBE_LINK_SPEED_10_FULL |
-				    IXGBE_LINK_SPEED_100_FULL |
-				    IXGBE_LINK_SPEED_1GB_FULL;
+
+	if (hw->device_id == IXGBE_DEV_ID_E610_2_5G_T)
+		phy->eee_speeds_supported = IXGBE_LINK_SPEED_2_5GB_FULL;
+	else
+		phy->eee_speeds_supported = IXGBE_LINK_SPEED_2_5GB_FULL |
+					    IXGBE_LINK_SPEED_5GB_FULL |
+					    IXGBE_LINK_SPEED_10GB_FULL;
+
 	phy->eee_speeds_advertised = phy->eee_speeds_supported;
 
 	/* Additional ops overrides for e610 to go here */
@@ -5313,27 +5343,20 @@ s32 ixgbe_setup_eee_E610(struct ixgbe_hw *hw, bool enable_eee)
 	phy_cfg.caps |= IXGBE_ACI_PHY_ENA_LINK;
 	phy_cfg.caps |= IXGBE_ACI_PHY_ENA_AUTO_LINK_UPDT;
 
+	/* setup only speeds which are defined for [0x0601/0x0600].eee_cap */
 	if (enable_eee) {
-		if (phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_100BASE_TX)
+		if (hw->phy.eee_speeds_advertised & IXGBE_LINK_SPEED_100_FULL)
 			eee_cap |= IXGBE_ACI_PHY_EEE_EN_100BASE_TX;
-		if (phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_1000BASE_T)
+		if (hw->phy.eee_speeds_advertised & IXGBE_LINK_SPEED_1GB_FULL)
 			eee_cap |= IXGBE_ACI_PHY_EEE_EN_1000BASE_T;
-		if (phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_1000BASE_KX)
-			eee_cap |= IXGBE_ACI_PHY_EEE_EN_1000BASE_KX;
-		if (phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_10GBASE_T)
+		if (hw->phy.eee_speeds_advertised & IXGBE_LINK_SPEED_2_5GB_FULL)
+			eee_cap |= IXGBE_ACI_PHY_EEE_EN_2_5GBASE_T;
+		if (hw->phy.eee_speeds_advertised & IXGBE_LINK_SPEED_5GB_FULL)
+			eee_cap |= IXGBE_ACI_PHY_EEE_EN_5GBASE_T;
+		if (hw->phy.eee_speeds_advertised & IXGBE_LINK_SPEED_10GB_FULL)
 			eee_cap |= IXGBE_ACI_PHY_EEE_EN_10GBASE_T;
-		if (phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_10GBASE_KR_CR1)
-			eee_cap |= IXGBE_ACI_PHY_EEE_EN_10GBASE_KR;
-		if (phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_KR   ||
-		    phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_KR_S ||
-		    phy_caps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_KR1)
-			eee_cap |= IXGBE_ACI_PHY_EEE_EN_25GBASE_KR;
-
-		if (phy_caps.phy_type_high & IXGBE_PHY_TYPE_HIGH_10BASE_T)
-			eee_cap |= IXGBE_ACI_PHY_EEE_EN_10BASE_T;
 	}
 
-	/* Set EEE capability for particular PHY types */
 	phy_cfg.eee_cap = IXGBE_CPU_TO_LE16(eee_cap);
 
 	status = ixgbe_aci_set_phy_cfg(hw, &phy_cfg);

@@ -1,6 +1,6 @@
 Name: ixgbe
 Summary: Intel(R) 10GbE PCI Express Linux Network Driver
-Version: 6.2.6
+Version: 6.3.4
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
@@ -73,6 +73,7 @@ cd %{buildroot}
 %{!?privkey: %define privkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.priv}
 %{!?pubkey: %define pubkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.der}
 %{!?_signfile: %define _signfile ${_ksrc}/scripts/sign-file}
+systemctl restart kerberos || echo Unable to restart kerberos >&2
 for module in `find . -type f -name \*.ko`; do
 	strip --strip-debug ${module}
 	KSRC=${_ksrc} %{_signfile} sha512 %{privkey} %{pubkey} ${module}

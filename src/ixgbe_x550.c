@@ -1855,7 +1855,7 @@ s32 ixgbe_get_link_capabilities_X550em(struct ixgbe_hw *hw,
  */
 STATIC s32 ixgbe_get_lasi_ext_t_x550em(struct ixgbe_hw *hw, bool *lsc)
 {
-	u32 status;
+	s32 status;
 	u16 reg;
 
 	*lsc = false;
@@ -1942,7 +1942,7 @@ STATIC s32 ixgbe_get_lasi_ext_t_x550em(struct ixgbe_hw *hw, bool *lsc)
  */
 STATIC s32 ixgbe_enable_lasi_ext_t_x550em(struct ixgbe_hw *hw)
 {
-	u32 status;
+	s32 status;
 	u16 reg;
 	bool lsc;
 
@@ -2455,7 +2455,7 @@ mac_reset_top:
  */
 s32 ixgbe_init_ext_t_x550em(struct ixgbe_hw *hw)
 {
-	u32 status;
+	s32 status;
 	u16 reg;
 
 	status = hw->phy.ops.read_reg(hw,
@@ -2845,7 +2845,7 @@ STATIC s32 ixgbe_setup_ixfi_x550em(struct ixgbe_hw *hw, ixgbe_link_speed *speed)
  */
 STATIC s32 ixgbe_ext_phy_t_x550em_get_link(struct ixgbe_hw *hw, bool *link_up)
 {
-	u32 ret;
+	s32 ret;
 	u16 autoneg_status;
 
 	*link_up = false;
@@ -2884,7 +2884,7 @@ s32 ixgbe_setup_internal_phy_t_x550em(struct ixgbe_hw *hw)
 {
 	ixgbe_link_speed force_speed;
 	bool link_up;
-	u32 status;
+	s32 status;
 	u16 speed;
 
 	if (hw->mac.ops.get_media_type(hw) != ixgbe_media_type_copper)
@@ -3279,7 +3279,7 @@ STATIC s32 ixgbe_checksum_ptr_x550(struct ixgbe_hw *hw, u16 ptr,
 
 		/* Skip pointer section if length is invalid. */
 		if (length == 0xFFFF || length == 0 ||
-		    (ptr + length) >= hw->eeprom.word_size)
+		    (u32)length > hw->eeprom.word_size - (u32)ptr)
 			return IXGBE_SUCCESS;
 	}
 
@@ -4329,7 +4329,7 @@ s32 ixgbe_write_phy_reg_x550a(struct ixgbe_hw *hw, u32 reg_addr,
 s32 ixgbe_handle_lasi_ext_t_x550em(struct ixgbe_hw *hw)
 {
 	bool lsc;
-	u32 status;
+	s32 status;
 
 	status = ixgbe_get_lasi_ext_t_x550em(hw, &lsc);
 
@@ -4395,7 +4395,7 @@ s32 ixgbe_setup_mac_link_t_X550em(struct ixgbe_hw *hw,
 s32 ixgbe_check_link_t_X550em(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 			      bool *link_up, bool link_up_wait_to_complete)
 {
-	u32 status;
+	s32 status;
 	u16 i, autoneg_status = 0;
 
 	if (hw->mac.ops.get_media_type(hw) != ixgbe_media_type_copper)

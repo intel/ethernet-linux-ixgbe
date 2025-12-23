@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (C) 1999 - 2025 Intel Corporation */
 
+#include "ixgbe.h"
+
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/pci.h>
@@ -12,7 +14,6 @@
 #include <linux/tcp.h>
 #include <linux/ipv6.h>
 
-#include "ixgbe.h"
 #include "ixgbe_type.h"
 #include "ixgbe_sriov.h"
 
@@ -559,6 +560,7 @@ static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf
 		case ixgbe_mbox_api_12:
 		case ixgbe_mbox_api_13:
 		case ixgbe_mbox_api_16:
+		case ixgbe_mbox_api_17:
 			/* Version 1.1 supports jumbo frames on VFs if PF has
 			 * jumbo frames enabled which means legacy VFs are
 			 * disabled
@@ -1106,6 +1108,7 @@ static int ixgbe_negotiate_vf_api(struct ixgbe_adapter *adapter,
 	case ixgbe_mbox_api_12:
 	case ixgbe_mbox_api_13:
 	case ixgbe_mbox_api_16:
+	case ixgbe_mbox_api_17:
 		adapter->vfinfo[vf].vf_api = api;
 		return 0;
 	default:
@@ -1132,6 +1135,7 @@ static int ixgbe_get_vf_queues(struct ixgbe_adapter *adapter,
 	case ixgbe_mbox_api_12:
 	case ixgbe_mbox_api_13:
 	case ixgbe_mbox_api_16:
+	case ixgbe_mbox_api_17:
 		break;
 	default:
 		return -1;
@@ -1176,6 +1180,7 @@ static int ixgbe_get_vf_reta(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 	case ixgbe_mbox_api_12:
 	case ixgbe_mbox_api_13:
 	case ixgbe_mbox_api_16:
+	case ixgbe_mbox_api_17:
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -1209,6 +1214,7 @@ static int ixgbe_get_vf_rss_key(struct ixgbe_adapter *adapter,
 	case ixgbe_mbox_api_12:
 	case ixgbe_mbox_api_13:
 	case ixgbe_mbox_api_16:
+	case ixgbe_mbox_api_17:
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -1236,6 +1242,7 @@ static int ixgbe_update_vf_xcast_mode(struct ixgbe_adapter *adapter,
 		/* Fall threw */
 	case ixgbe_mbox_api_13:
 	case ixgbe_mbox_api_16:
+	case ixgbe_mbox_api_17:
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -1306,6 +1313,7 @@ static int ixgbe_get_vf_link_state(struct ixgbe_adapter *adapter,
 	case ixgbe_mbox_api_12:
 	case ixgbe_mbox_api_13:
 	case ixgbe_mbox_api_16:
+	case ixgbe_mbox_api_17:
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -1316,14 +1324,15 @@ static int ixgbe_get_vf_link_state(struct ixgbe_adapter *adapter,
 	return 0;
 }
 
-static int  ixgbe_get_vf_link_status(struct ixgbe_adapter *adapter,
-				     u32 *msgbuf, u32 vf)
+static int ixgbe_get_vf_link_status(struct ixgbe_adapter *adapter,
+				    u32 *msgbuf, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 
 	switch (adapter->vfinfo[vf].vf_api) {
 	case ixgbe_mbox_api_16:
-		if (hw->mac.type != ixgbe_mac_E610)
+	case ixgbe_mbox_api_17:
+		if (!ixgbe_is_mac_E6xx(hw->mac.type))
 			return -EOPNOTSUPP;
 		break;
 	default:
@@ -1335,6 +1344,32 @@ static int  ixgbe_get_vf_link_status(struct ixgbe_adapter *adapter,
 	 */
 	msgbuf[1] = adapter->link_speed;
 	msgbuf[2] = adapter->link_up;
+
+	return 0;
+}
+
+/**
+ * ixgbe_negotiate_vf_features -  negotiate supported features with VF driver
+ * @adapter: pointer to adapter struct
+ * @msgbuf: pointer to message buffers
+ * @vf: VF identifier
+ *
+ * Return: 0 on success or -EOPNOTSUPP when operation is not supported.
+ */
+static int ixgbe_negotiate_vf_features(struct ixgbe_adapter *adapter,
+				       u32 *msgbuf, u32 vf)
+{
+	u32 features = msgbuf[1];
+
+	switch (adapter->vfinfo[vf].vf_api) {
+	case ixgbe_mbox_api_17:
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	features &= IXGBE_SUPPORTED_FEATURES;
+	msgbuf[1] = features;
 
 	return 0;
 }
@@ -1416,6 +1451,9 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		break;
 	case IXGBE_VF_GET_PF_LINK_STATE:
 		retval = ixgbe_get_vf_link_status(adapter, msgbuf, vf);
+		break;
+	case IXGBE_VF_FEATURES_NEGOTIATE:
+		retval = ixgbe_negotiate_vf_features(adapter, msgbuf, vf);
 		break;
 	default:
 		e_err(drv, "Unhandled Msg %8.8x\n", msgbuf[0]);
@@ -1502,6 +1540,7 @@ void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 
 	if (!adapter->vfinfo)
 		return;
+
 	if (adapter->flags & IXGBE_FLAG_MDD_ENABLED)
 		ixgbe_check_mdd_event(adapter);
 
