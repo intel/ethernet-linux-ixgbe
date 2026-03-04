@@ -88,8 +88,8 @@ echo 'options ixgbe allow_unsupported_sfp=1' > /etc/modprobe.d/ixgbe.conf
 ```bash
 # Install dependencies
 apt update
-apt install -y build-essential dkms proxmox-headers-$(uname -r) libdw-dev
-# For non-Proxmox: apt install -y linux-headers-$(uname -r)
+apt install -y build-essential dkms linux-headers-$(uname -r) libdw-dev
+# For Proxmox: apt install -y proxmox-headers-$(uname -r) instead of linux-headers
 
 # Clone this repo
 git clone https://github.com/FilleMang/ethernet-linux-ixgbe.git
