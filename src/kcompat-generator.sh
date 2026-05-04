@@ -81,9 +81,14 @@ function gen-cleanup() {
 	sh='include/linux/spinlock.h'
 	slabh='include/linux/slab.h'
 	rcuh='include/linux/rcupdate.h'
+	HAVE_MUTEX_GUARD=0
+	if check invocation of macro DEFINE_GUARD matches mutex_lock in "$mh" ||
+	   check invocation of macro DEFINE_LOCK_GUARD_1 matches 'mutex, struct mutex' in "$mh"; then
+		HAVE_MUTEX_GUARD=1
+	fi
 	gen NEED_DEFINE_FREE if macro DEFINE_FREE absent in "$ch"
 	gen NEED___DEFINE_CLASS_IS_CONDITIONAL if macro __DEFINE_CLASS_IS_CONDITIONAL absent in "$ch"
-	gen NEED_DEFINE_GUARD_MUTEX if invocation of macro DEFINE_GUARD absent or lacks mutex_lock in "$mh"
+	gen NEED_DEFINE_GUARD_MUTEX if string "$HAVE_MUTEX_GUARD" equals 0
 	gen NEED_LOCK_GUARD_FOR_RCU if invocation of macro DEFINE_LOCK_GUARD_0 absent or lacks rcu in "$rcuh"
 	gen NEED_DEFINE_FREE_KFREE if invocation of macro DEFINE_FREE absent or lacks kfree in "$slabh"
 	gen NEED_DEFINE_FREE_KVFREE if invocation of macro DEFINE_FREE absent or lacks kvfree in "$slabh"
