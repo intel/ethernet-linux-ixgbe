@@ -115,6 +115,7 @@ function gen-devlink() {
 	gen HAVE_DEVLINK_HEALTH_OPS_EXTACK if method dump of devlink_health_reporter_ops matches extack in "$dh"
 	gen HAVE_DEVLINK_INFO_DRIVER_NAME_PUT if fun devlink_info_driver_name_put in "$dh"
 	gen HAVE_DEVLINK_PARAMS if method validate of devlink_param matches extack in "$dh"
+	gen HAVE_DEVLINK_PARAMS_GET_EXTACK if method get of devlink_param matches extack in "$dh"
 	gen HAVE_DEVLINK_PARAMS_PUBLISH if fun devlink_params_publish in "$dh"
 	gen HAVE_DEVLINK_PARAMS_SET_EXTACK if method set of devlink_param matches extack in "$dh"
 	gen HAVE_DEVLINK_PORT_NEW if method port_new of devlink_ops in "$dh"

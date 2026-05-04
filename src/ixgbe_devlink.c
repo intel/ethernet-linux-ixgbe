@@ -581,16 +581,27 @@ enum ixgbe_devlink_param_id {
  * @devlink: pointer to the devlink instance
  * @id: the parameter ID to get
  * @ctx: context to return the parameter value
+ * @extack: netlink extended ACK structure
  *
  * Returns: zero on success, or an error code on failure.
  */
+#ifdef HAVE_DEVLINK_PARAMS_GET_EXTACK
+static int ixgbe_devlink_minsrev_get(struct devlink *devlink, u32 id,
+				     struct devlink_param_gset_ctx *ctx,
+				     struct netlink_ext_ack *extack)
+#else
 static int ixgbe_devlink_minsrev_get(struct devlink *devlink, u32 id,
 				     struct devlink_param_gset_ctx *ctx)
+#endif
 {
 	struct ixgbe_minsrev_info minsrevs = {};
 	struct ixgbe_adapter *adapter;
 	struct device *dev;
 	s32 status;
+
+#ifdef HAVE_DEVLINK_PARAMS_GET_EXTACK
+	(void)extack;
+#endif
 
 	adapter = *(struct ixgbe_adapter **)devlink_priv(devlink);
 	dev = ixgbe_pf_to_dev(adapter);
