@@ -347,8 +347,8 @@ ifeq (,${MANDIR})
   MANDIR := $(firstword ${MANDIR})
 endif
 ifeq (,${MANDIR})
-  # fallback to /usr/man
-  MANDIR := /usr/man
+  # fallback to /usr/share/man (FHS standard; legacy /usr/man not present on RHEL 9+)
+  MANDIR := /usr/share/man
 endif
 
 ####################

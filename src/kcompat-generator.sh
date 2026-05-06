@@ -83,7 +83,11 @@ function gen-cleanup() {
 	rcuh='include/linux/rcupdate.h'
 	gen NEED_DEFINE_FREE if macro DEFINE_FREE absent in "$ch"
 	gen NEED___DEFINE_CLASS_IS_CONDITIONAL if macro __DEFINE_CLASS_IS_CONDITIONAL absent in "$ch"
-	gen NEED_DEFINE_GUARD_MUTEX if invocation of macro DEFINE_GUARD absent or lacks mutex_lock in "$mh"
+	# Check for mutex guards in both old and new APIs
+	HAVE_MUTEX_GUARDS=0
+	check invocation of macro DEFINE_LOCK_GUARD_1 matches mutex in "$mh" && HAVE_MUTEX_GUARDS=1
+	check invocation of macro DEFINE_GUARD matches mutex in "$mh" && HAVE_MUTEX_GUARDS=1
+	gen NEED_DEFINE_GUARD_MUTEX if string "$HAVE_MUTEX_GUARDS" equals 0
 	gen NEED_LOCK_GUARD_FOR_RCU if invocation of macro DEFINE_LOCK_GUARD_0 absent or lacks rcu in "$rcuh"
 	gen NEED_DEFINE_FREE_KFREE if invocation of macro DEFINE_FREE absent or lacks kfree in "$slabh"
 	gen NEED_DEFINE_FREE_KVFREE if invocation of macro DEFINE_FREE absent or lacks kvfree in "$slabh"
@@ -110,6 +114,7 @@ function gen-devlink() {
 	gen HAVE_DEVLINK_HEALTH_OPS_EXTACK if method dump of devlink_health_reporter_ops matches extack in "$dh"
 	gen HAVE_DEVLINK_INFO_DRIVER_NAME_PUT if fun devlink_info_driver_name_put in "$dh"
 	gen HAVE_DEVLINK_PARAMS if method validate of devlink_param matches extack in "$dh"
+	gen HAVE_DEVLINK_PARAMS_GET_EXTACK if method get of devlink_param matches extack in "$dh"
 	gen HAVE_DEVLINK_PARAMS_PUBLISH if fun devlink_params_publish in "$dh"
 	gen HAVE_DEVLINK_PARAMS_SET_EXTACK if method set of devlink_param matches extack in "$dh"
 	gen HAVE_DEVLINK_PORT_NEW if method port_new of devlink_ops in "$dh"
@@ -182,6 +187,7 @@ function gen-dpll() {
 	gen HAVE_DPLL_PHASE_OFFSET if method phase_offset_get of dpll_pin_ops in "$dh"
 	gen HAVE_DPLL_PHASE_OFFSET_MONITOR if method phase_offset_monitor_set of dpll_device_ops in "$dh"
 	gen NEED_DPLL_NETDEV_PIN_SET if fun dpll_netdev_pin_set absent in "$dh"
+	gen NEED_DPLL_TRACKER if typedef dpll_tracker absent in "$dh"
 }
 
 function gen-ethtool() {
@@ -194,6 +200,7 @@ function gen-ethtool() {
 	gen HAVE_ETHTOOL_EXTENDED_RINGPARAMS if method get_ringparam of ethtool_ops matches 'struct kernel_ethtool_ringparam \\*' in "$eth"
 	gen HAVE_ETHTOOL_FEC_HIST if method get_fec_stats of ethtool_ops matches 'struct ethtool_fec_hist \\*' in "$eth"
 	gen HAVE_ETHTOOL_GET_FEC_STATS_OPS if struct ethtool_ops matches '\\*get_fec_stats' in "$eth"
+	gen HAVE_ETHTOOL_GET_TS_STATS if struct ethtool_ops matches '\\*get_ts_stats' in "$eth"
 	gen HAVE_ETHTOOL_KEEE if struct ethtool_keee in "$eth"
 	gen HAVE_ETHTOOL_KERNEL_TS_INFO if struct kernel_ethtool_ts_info in "$eth"
 	gen HAVE_ETHTOOL_LINK_EXT_STATS if struct ethtool_ops matches '\\*get_link_ext_stats' in "$eth"
@@ -298,8 +305,10 @@ function gen-gnss() {
 	gen NEED_CLASS_CREATE_WITHOUT_OWNER if string "$NEED_CLASS_CREATE" equals 1
 
 	HAVE_GNSS_MODULE=0
-	if ! config_has CONFIG_SUSE_KERNEL && check struct gnss_device in "$gh" ; then
-		HAVE_GNSS_MODULE=1
+	if check struct gnss_device in "$gh" ; then
+		if ! config_has CONFIG_SUSE_KERNEL || config_has CONFIG_SUSE_PRODUCT_SLFO ; then
+			HAVE_GNSS_MODULE=1
+		fi
 	fi
 	gen HAVE_GNSS_MODULE if string "$HAVE_GNSS_MODULE" equals 1
 
@@ -341,6 +350,7 @@ function gen-netdevice() {
 	gen HAVE_NDO_FDB_DEL_EXTACK if method ndo_fdb_del of net_device_ops matches 'struct netlink_ext_ack \\*extack' in "$ndh"
 	gen HAVE_NDO_FDB_DEL_NOTIFIED if method ndo_fdb_del of net_device_ops matches 'bool \\*notified' in "$ndh"
 	gen HAVE_NDO_GET_DEVLINK_PORT if method ndo_get_devlink_port of net_device_ops in "$ndh"
+	gen HAVE_NDO_GET_TSTAMP if method ndo_get_tstamp of net_device_ops in "$ndh"
 	gen HAVE_NDO_SETUP_TC_CHAIN_INDEX if method ndo_setup_tc of net_device_ops matches 'u32 chain_index' in "$ndh"
 	gen HAVE_NDO_SETUP_TC_REMOVE_TC_TO_NETDEV if method '(ndo_setup_tc|ndo_setup_tc_rh)' of '(net_device_ops|netdevice_ops_extended)' matches 'void \\*type_data' in "$ndh"
 	gen HAVE_NDO_UDP_TUNNEL_CALLBACK if method ndo_udp_tunnel_add of net_device_ops in "$ndh"
@@ -375,7 +385,10 @@ function gen-packing() {
 }
 
 function gen-pci() {
+	ioporth='include/linux/ioport.h'
 	pcih='include/linux/pci.h'
+	gen HAVE_RESOURCE_SET_RANGE if fun resource_set_range in "$ioporth"
+	gen HAVE_RESOURCE_SET_SIZE if fun resource_set_size in "$ioporth"
 	gen HAVE_PCI_MSIX_ALLOC_IRQ_AT if fun pci_msix_alloc_irq_at in "$pcih"
 	gen HAVE_PCI_MSIX_CAN_ALLOC_DYN if fun pci_msix_can_alloc_dyn in "$pcih"
 	gen HAVE_PCI_MSIX_FREE_IRQ if fun pci_msix_free_irq in "$pcih"
@@ -400,6 +413,7 @@ function gen-ptp() {
 	gen HAVE_PTP_CANCEL_WORKER_SYNC if fun ptp_cancel_worker_sync in "$clockh"
 	gen HAVE_PTP_CLOCK_DO_AUX_WORK if method do_aux_work of ptp_clock_info in "$clockh"
 	gen HAVE_PTP_CLOCK_INFO_ADJFINE if method adjfine of ptp_clock_info in "$clockh"
+	gen HAVE_PTP_CLOCK_INFO_GETCYCLES64 if method getcycles64 of ptp_clock_info in "$clockh"
 	gen HAVE_PTP_CLOCK_INFO_GETTIME64 if method gettime64 of ptp_clock_info in "$clockh"
 	gen HAVE_PTP_CLOCK_INFO_GETTIMEX64 if method gettimex64 of ptp_clock_info in "$clockh"
 	gen HAVE_PTP_FIND_PIN_UNLOCKED if fun ptp_find_pin_unlocked in "$clockh"
@@ -447,6 +461,8 @@ function gen-vfio() {
 		PASID_SUPPORT=1
 	fi
 	gen HAVE_PASID_SUPPORT if string "${PASID_SUPPORT}" equals 1
+	# iommufd-based PASID passthrough
+	gen HAVE_IOMMUFD_BIND_FLAGS_PASID if anonymous enum matches IOMMUFD_BIND_FLAGS_PASID in include/linux/iommufd.h
 
 	gen HAVE_VFIO_FREE_DEV if fun vfio_free_device in include/linux/vfio.h
 	gen HAVE_LMV1_SUPPORT if macro VFIO_REGION_TYPE_MIGRATION in include/uapi/linux/vfio.h
@@ -457,6 +473,7 @@ function gen-other() {
 	ush='include/linux/u64_stats_sync.h'
 	fsh='include/linux/fortify-string.h'
 	cth='include/linux/compiler_types.h'
+	ch='include/linux/compiler.h'
 	gen HAVE_X86_STEPPING if struct cpuinfo_x86 matches x86_stepping in arch/x86/include/asm/processor.h
 	gen HAVE_PCI_ENABLE_PCIE_ERROR_REPORTING if fun pci_enable_pcie_error_reporting in "$pciaerh"
 	gen NEED_PCI_AER_CLEAR_NONFATAL_STATUS if fun pci_aer_clear_nonfatal_status absent in "$pciaerh"
@@ -464,7 +481,9 @@ function gen-other() {
 	gen NEED_BITMAP_FROM_ARR32 if fun bitmap_from_arr32 absent in include/linux/bitmap.h
 	gen NEED_BITMAP_TO_ARR32 if fun bitmap_to_arr32 absent in include/linux/bitmap.h
 	gen NEED_ASSIGN_BIT if fun assign_bit absent in include/linux/bitops.h
+	gen NEED_BITS_TO_U32 if fun BITS_TO_U32 absent in include/linux/bitops.h
 	gen NEED_STATIC_ASSERT if macro static_assert absent in include/linux/build_bug.h
+	gen NEED____ADDRESSABLE if macro ___ADDRESSABLE absent in "$ch"
 	# special case for kernels 6.2 - 6.6 and __struct_size macro
 	# there is an implicit dependency on CONFIG_FORTIFY_SOURCE config option and inclusion
 	# of 'forify-string.h' header (which includes that macro definition).
@@ -476,6 +495,8 @@ function gen-other() {
 		__STRUCT_SIZE_NEEDED=1
 	fi
 	gen NEED___STRUCT_SIZE if string "${__STRUCT_SIZE_NEEDED}" equals 1
+	gen HAVE_CONFIG_CC_HAS_COUNTED_BY if string "$(config_has CONFIG_CC_HAS_COUNTED_BY && echo 1)" equals 1
+	gen NEED___COUNTED_BY if macro __counted_by absent in "$cth"
 	gen HAVE_COMPLETION_RAW_SPINLOCK if struct completion matches 'struct swait_queue_head' in include/linux/completion.h
 	gen NEED_IS_CONSTEXPR if macro __is_constexpr absent in include/linux/const.h include/linux/minmax.h include/linux/kernel.h
 	gen NEED_DEBUGFS_LOOKUP if fun debugfs_lookup absent in include/linux/debugfs.h
@@ -499,19 +520,22 @@ function gen-other() {
 	gen NEED_DECLARE_STATIC_KEY_FALSE if macro DECLARE_STATIC_KEY_FALSE absent in include/linux/jump_label.h include/linux/jump_label_type.h
 	gen NEED_LOWER_16_BITS if macro lower_16_bits absent in include/linux/kernel.h
 	gen NEED_UPPER_16_BITS if macro upper_16_bits absent in include/linux/kernel.h
+	gen NEED_KTHREAD_RUN_WORKER if macro kthread_run_worker absent in include/linux/kthread.h
 	gen HAVE_LINKMODE if fun linkmode_zero in include/linux/linkmode.h
 	gen NEED_LINKMODE_SET_BIT_ARRAY if fun linkmode_set_bit_array absent in include/linux/linkmode.h
 	gen NEED_LINKMODE_ZERO if fun linkmode_zero absent in include/linux/linkmode.h
 	gen NEED_LIST_COUNT_NODES if fun list_count_nodes absent in include/linux/list.h
 
-	# On aarch64 RHEL systems, mul_u64_u64_div_u64 appears to be declared
-	# in math64 header, but is not provided by kernel
-	# so on these systems, set it to need anyway.
-	NEED_MUL_U64=0
-	if [ "$IS_ARM" ] || check fun mul_u64_u64_div_u64 absent in include/linux/math64.h ; then
-		NEED_MUL_U64=1
+	# mul_u64_u64_div_u64 was a function from Linux 5.9 until 6.19 when it was
+	# converted to a macro (wrapping the new mul_u64_add_u64_div_u64 function).
+	# On aarch64 systems the function may be declared in math64.h but not
+	# actually implemented by the kernel, so the fun check is skipped on ARM.
+	NEED_MUL_U64_U64_DIV_U64=0
+	if check macro mul_u64_u64_div_u64 absent in include/linux/math64.h &&
+	   { [ "$IS_ARM" ] || check fun mul_u64_u64_div_u64 absent in include/linux/math64.h; } ; then
+		NEED_MUL_U64_U64_DIV_U64=1
 	fi
-	gen NEED_MUL_U64_U64_DIV_U64 if string "${NEED_MUL_U64}" equals 1
+	gen NEED_MUL_U64_U64_DIV_U64 if string "${NEED_MUL_U64_U64_DIV_U64}" equals 1
 
 	gen NEED_DIV_U64_ROUND_CLOSEST if macro DIV_U64_ROUND_CLOSEST absent in include/linux/math64.h
 	gen NEED_DIV_U64_ROUND_UP if macro DIV_U64_ROUND_UP absent in include/linux/math64.h
@@ -519,7 +543,10 @@ function gen-other() {
 	gen HAVE_MDEV_GET_DRVDATA if fun mdev_get_drvdata in include/linux/mdev.h
 	gen HAVE_MDEV_REGISTER_PARENT if fun mdev_register_parent in include/linux/mdev.h
 	gen HAVE_VM_FLAGS_API if fun vm_flags_init in include/linux/mm.h
+	gen NEED_MODULE_INFO_WITHOUT_CHECK if implementation of macro MODULE_INFO matches __builtin_strlen in include/linux/moduleparam.h
 	gen HAVE_NL_SET_ERR_MSG_FMT if macro NL_SET_ERR_MSG_FMT in include/linux/netlink.h
+	gen NEED_DEFINE_SIMPLE_DEV_PM_OPS if macro DEFINE_SIMPLE_DEV_PM_OPS absent in include/linux/pm.h
+	gen NEED_PM_SLEEP_PTR if macro pm_sleep_ptr absent in include/linux/pm.h
 	gen NEED_DEV_PM_DOMAIN_ATTACH if fun dev_pm_domain_attach absent in include/linux/pm_domain.h include/linux/pm.h
 	gen NEED_DEV_PM_DOMAIN_DETACH if fun dev_pm_domain_detach absent in include/linux/pm_domain.h include/linux/pm.h
 	gen NEED_RADIX_TREE_EMPTY if fun radix_tree_empty absent in include/linux/radix-tree.h

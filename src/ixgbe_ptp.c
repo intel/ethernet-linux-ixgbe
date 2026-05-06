@@ -2,7 +2,7 @@
 /* Copyright (C) 1999 - 2026 Intel Corporation */
 
 #include "ixgbe.h"
-#include "ixgbe_ptp_e600.h"
+#include "ixgbe_ptp_e610.h"
 #include <linux/ptp_classify.h>
 #include <linux/bitfield.h>
 
@@ -952,7 +952,7 @@ void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work)
 	/* stop polling once we have a valid timestamp */
 	tsynctxctl = IXGBE_READ_REG(hw, IXGBE_TSYNCTXCTL);
 	if (tsynctxctl & IXGBE_TSYNCTXCTL_VALID) {
-		ixgbe_ptp_tx_hwtstamp(adapter);
+		adapter->ptp_tx_hwtstamp(adapter);
 		return;
 	}
 
@@ -1005,8 +1005,8 @@ void ixgbe_ptp_rx_pktstamp(struct ixgbe_q_vector *q_vector,
  * value, then store that result into the shhwtstamps structure which
  * is passed up the network stack
  */
-void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
-			   struct sk_buff *skb)
+static void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
+				  struct sk_buff *skb)
 {
 	struct ixgbe_adapter *adapter;
 	struct ixgbe_hw *hw;
@@ -1048,6 +1048,161 @@ int ixgbe_ptp_get_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr)
 
 	return copy_to_user(ifr->ifr_data, config,
 			    sizeof(*config)) ? -EFAULT : 0;
+}
+
+/**
+ * ixgbe_ptp_clear_tx_timestamp_e6xx - clear Tx timestamp state
+ * @adapter: the private adapter structure
+ *
+ * This function should be called whenever the state related to a Tx timestamp
+ * needs to be cleared. This helps ensure that all related bits are reset for
+ * the next Tx timestamp event.
+ */
+void ixgbe_ptp_clear_tx_timestamp_e6xx(struct ixgbe_adapter *adapter)
+{
+	IXGBE_READ_REG(&adapter->hw, IXGBE_TXSTMPH);
+	if (adapter->ptp_tx_skb) {
+		dev_kfree_skb_any(adapter->ptp_tx_skb);
+		adapter->ptp_tx_skb = NULL;
+	}
+	clear_bit_unlock(__IXGBE_PTP_TX_IN_PROGRESS, adapter->state);
+}
+
+/**
+ * ixgbe_ptp_set_timestamp_mode_e6xx - setup the hardware for the requested mode
+ * @adapter: the private ixgbe adapter structure
+ * @config: the hwtstamp configuration requested
+ *
+ * Outgoing time stamping can be enabled and disabled. Play nice and
+ * disable it when requested, although it shouldn't cause any overhead
+ * when no packet needs it. At most one packet in the queue may be
+ * marked for time stamping, otherwise it would be impossible to tell
+ * for sure to which packet the hardware time stamp belongs.
+ *
+ * Incoming time stamping has to be configured via the hardware
+ * filters. Not all combinations are supported, in particular event
+ * type has to be specified. Matching the kind of event packet is
+ * not supported, with the exception of "all V2 events regardless of
+ * level 2 or 4".
+ *
+ * Since hardware always timestamps Path delay packets when timestamping V2
+ * packets, regardless of the type specified in the register, only use V2
+ * Event mode. This more accurately tells the user what the hardware is going
+ * to do anyways.
+ *
+ * Note: this may modify the hwtstamp configuration towards a more general
+ * mode, if required to support the specifically requested mode.
+ *
+ * Return: 0 on success, -EINVAL on invalid flags, -ERANGE on invalid filter.
+ */
+int ixgbe_ptp_set_timestamp_mode_e6xx(struct ixgbe_adapter *adapter,
+				      struct hwtstamp_config *config)
+{
+	int rx_mtrl_filter = HWTSTAMP_FILTER_NONE;
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 val;
+
+	/* Reserved for future extensions. */
+	if (config->flags)
+		return -EINVAL;
+
+	/* Enable/disable TX. */
+	val = IXGBE_READ_REG(hw, IXGBE_TSYNCTXCTL);
+	switch (config->tx_type) {
+	case HWTSTAMP_TX_OFF:
+		val &= ~IXGBE_TSYNCTXCTL_ENABLED;
+		break;
+	case HWTSTAMP_TX_ON:
+		val |= IXGBE_TSYNCTXCTL_ENABLED;
+		break;
+	default:
+		return -ERANGE;
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_TSYNCTXCTL, val);
+
+	/* Enable/disable RX. */
+	val = IXGBE_READ_REG(hw, IXGBE_TSYNCRXCTL);
+	switch (config->rx_filter) {
+	case HWTSTAMP_FILTER_PTP_V1_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:
+#ifdef HAVE_HWTSTAMP_FILTER_NTP_ALL
+	case HWTSTAMP_FILTER_NTP_ALL:
+#endif /* HAVE_HWTSTAMP_FILTER_NTP_ALL */
+	case HWTSTAMP_FILTER_ALL:
+		/* Per-packet timestamping only works if the filter is set to
+		 * all packets. Since this is desired, always timestamp
+		 * all packets as long as any Rx filter was configured.
+		 *
+		 * Enable timestamping all packets only if at least some packets
+		 * were requested. Otherwise, play nice and disable
+		 * timestamping.
+		 */
+		val = IXGBE_TSYNCRXCTL_ENABLED |
+		      IXGBE_TSYNCRXCTL_TYPE_ALL |
+		      IXGBE_TSYNCRXCTL_TSIP_UT_EN;
+
+		/* Cache original Rx filter for RXMTRL. */
+		rx_mtrl_filter = config->rx_filter;
+		config->rx_filter = HWTSTAMP_FILTER_ALL;
+		adapter->flags |= IXGBE_FLAG_RX_HWTSTAMP_ENABLED;
+		adapter->flags &= ~IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER;
+		break;
+	case HWTSTAMP_FILTER_NONE:
+	default:
+		val &= ~(IXGBE_TSYNCRXCTL_ENABLED | IXGBE_TSYNCRXCTL_TYPE_MASK);
+		adapter->flags &= ~(IXGBE_FLAG_RX_HWTSTAMP_ENABLED |
+				    IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER);
+		if (config->rx_filter != HWTSTAMP_FILTER_NONE) {
+			/* Register RXMTRL must be set in order to do V1
+			 * packets, therefore it is not possible to timestamp
+			 * both V1 Sync and Delay_Req messages unless hardware
+			 * supports timestamping all packets => return error.
+			 */
+			config->rx_filter = HWTSTAMP_FILTER_NONE;
+			return -ERANGE;
+		}
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_TSYNCRXCTL, val);
+
+	/* Define which PTP packets are timestamped. */
+	switch (rx_mtrl_filter) {
+	case HWTSTAMP_FILTER_NONE:
+		val = 0;
+		break;
+	case HWTSTAMP_FILTER_PTP_V1_L4_SYNC:
+		val = IXGBE_RXMTRL_V1_SYNC_MSG | PTP_EV_PORT << 16;
+		break;
+	case HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ:
+		val = IXGBE_RXMTRL_V1_DELAY_REQ_MSG | PTP_EV_PORT << 16;
+		break;
+	default:
+		val = PTP_EV_PORT << 16;
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_RXMTRL, val);
+
+	/* Define ethertype filter for timestamping L2 packets. */
+	if (config->rx_filter != HWTSTAMP_FILTER_NONE)
+		IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_1588),
+				(IXGBE_ETQF_FILTER_EN |
+				 IXGBE_ETQF_1588 |
+				 ETH_P_1588));
+	else
+		IXGBE_WRITE_REG(hw, IXGBE_ETQF(IXGBE_ETQF_FILTER_1588), 0);
+
+	IXGBE_WRITE_FLUSH(hw);
+
+	ixgbe_ptp_clear_tx_timestamp_e6xx(adapter);
+	return 0;
 }
 
 /**
@@ -1245,7 +1400,7 @@ int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr)
 		return -EFAULT;
 
 	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
-		err = ixgbe_ptp_set_timestamp_mode_e600(adapter, &config);
+		err = ixgbe_ptp_set_timestamp_mode_e6xx(adapter, &config);
 	else
 		err = ixgbe_ptp_set_timestamp_mode(adapter, &config);
 	if (err)
@@ -1564,6 +1719,31 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 }
 
 /**
+ * ixgbe_ptp_rx_hwtstamp_legacy - handle RX timestamp for legacy hardware
+ * @rx_ring: the RX ring structure
+ * @rx_desc: the RX descriptor
+ * @skb: the received packet
+ *
+ * Check for an RX timestamp in the register and convert it. Legacy hardware
+ * (82599, X540, X550) uses the RXDADV_STAT_TS status bit and stores the
+ * timestamp in the RXSTMPL/RXSTMPH registers.
+ */
+static void ixgbe_ptp_rx_hwtstamp_legacy(struct ixgbe_ring *rx_ring,
+					 union ixgbe_adv_rx_desc *rx_desc,
+					 struct sk_buff *skb)
+{
+	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
+		return;
+
+	ixgbe_ptp_rx_rgtstamp(rx_ring->q_vector, skb);
+
+	/* Update the last_rx_timestamp timer in order to enable watchdog check
+	 * for error case of latched timestamp on a dropped packet.
+	 */
+	rx_ring->last_rx_timestamp = jiffies;
+}
+
+/**
  * ixgbe_ptp_init
  * @adapter: the ixgbe private adapter structure
  *
@@ -1571,6 +1751,8 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
  * support. If PTP support has already been loaded it simply calls the
  * cyclecounter init routine and exits.
  */
+static void ixgbe_ptp_stop_legacy(struct ixgbe_adapter *adapter);
+
 void ixgbe_ptp_init(struct ixgbe_adapter *adapter)
 {
 	/* initialize the spin lock first since we can't control when a user
@@ -1585,6 +1767,18 @@ void ixgbe_ptp_init(struct ixgbe_adapter *adapter)
 
 	/* we have a clock so we can initialize work now */
 	INIT_WORK(&adapter->ptp_tx_work, ixgbe_ptp_tx_hwtstamp_work);
+
+	/* Set TX timestamp handler for legacy cards */
+	adapter->ptp_tx_hwtstamp = ixgbe_ptp_tx_hwtstamp;
+
+	/* Set RX timestamp handler for legacy cards */
+	adapter->ptp_rx_hwtstamp = ixgbe_ptp_rx_hwtstamp_legacy;
+
+	/* Set stop handler for legacy cards */
+	adapter->ptp_stop = ixgbe_ptp_stop_legacy;
+
+	/* Set reset handler for legacy cards */
+	adapter->ptp_reset = ixgbe_ptp_reset;
 
 	/* reset the PTP related hardware bits */
 	ixgbe_ptp_reset(adapter);
@@ -1618,18 +1812,13 @@ void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter)
 }
 
 /**
- * ixgbe_ptp_stop - close the PTP device
+ * ixgbe_ptp_stop_legacy - close the PTP device for legacy hardware
  * @adapter: pointer to adapter struct
  *
- * completely destroy the PTP device, should only be called when the device is
- * being fully closed.
+ * Destroy the PTP device for 82598/82599/X540/X550.
  */
-void ixgbe_ptp_stop(struct ixgbe_adapter *adapter)
+static void ixgbe_ptp_stop_legacy(struct ixgbe_adapter *adapter)
 {
-	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type)) {
-		ixgbe_ptp_release_e600(adapter);
-		return;
-	}
 
 	/* first, suspend PTP activity */
 	ixgbe_ptp_suspend(adapter);
@@ -1641,4 +1830,17 @@ void ixgbe_ptp_stop(struct ixgbe_adapter *adapter)
 		e_dev_info("removed PHC on %s\n",
 			   adapter->netdev->name);
 	}
+}
+
+/**
+ * ixgbe_ptp_stop - close the PTP device
+ * @adapter: pointer to adapter struct
+ *
+ * completely destroy the PTP device, should only be called when the device is
+ * being fully closed.
+ */
+void ixgbe_ptp_stop(struct ixgbe_adapter *adapter)
+{
+	if (adapter->ptp_stop)
+		adapter->ptp_stop(adapter);
 }

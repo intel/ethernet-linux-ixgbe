@@ -530,6 +530,9 @@ struct ixgbe_nvm_version {
 #define IXGBE_TDH(_i)		(0x06010 + ((_i) * 0x40))
 #define IXGBE_TDT(_i)		(0x06018 + ((_i) * 0x40))
 #define IXGBE_TXDCTL(_i)	(0x06028 + ((_i) * 0x40))
+#define IXGBE_TXDCTL_PTHRESH	GENMASK(6, 0)
+#define IXGBE_TXDCTL_HTHRESH	GENMASK(14, 8)
+#define IXGBE_TXDCTL_WTHRESH	GENMASK(22, 16)
 #define IXGBE_TDWBAL(_i)	(0x06038 + ((_i) * 0x40))
 #define IXGBE_TDWBAH(_i)	(0x0603C + ((_i) * 0x40))
 #define IXGBE_DTXCTL		0x07E00
@@ -746,86 +749,14 @@ struct ixgbe_dmac_config {
 /* Security Control Registers */
 #define IXGBE_SECTXCTRL		0x08800
 #define IXGBE_SECTXSTAT		0x08804
+
+#define IXGBE_SECRXSTAT_SECRX_RDY       BIT(0)
+#define IXGBE_SECRXCTRL_RX_DIS          0x00000002
+
 #define IXGBE_SECTXBUFFAF	0x08808
 #define IXGBE_SECTXMINIFG	0x08810
 #define IXGBE_SECRXCTRL		0x08D00
 #define IXGBE_SECRXSTAT		0x08D04
-
-/* Security Bit Fields and Masks */
-#define IXGBE_SECTXCTRL_SECTX_DIS	0x00000001
-#define IXGBE_SECTXCTRL_TX_DIS		0x00000002
-#define IXGBE_SECTXCTRL_STORE_FORWARD	0x00000004
-
-#define IXGBE_SECTXSTAT_SECTX_RDY	0x00000001
-#define IXGBE_SECTXSTAT_ECC_TXERR	0x00000002
-
-#define IXGBE_SECRXCTRL_SECRX_DIS	0x00000001
-#define IXGBE_SECRXCTRL_RX_DIS		0x00000002
-
-#define IXGBE_SECRXSTAT_SECRX_RDY	0x00000001
-#define IXGBE_SECRXSTAT_ECC_RXERR	0x00000002
-
-/* LinkSec (MacSec) Registers */
-#define IXGBE_LSECTXCAP		0x08A00
-#define IXGBE_LSECRXCAP		0x08F00
-#define IXGBE_LSECTXCTRL	0x08A04
-#define IXGBE_LSECTXSCL		0x08A08 /* SCI Low */
-#define IXGBE_LSECTXSCH		0x08A0C /* SCI High */
-#define IXGBE_LSECTXSA		0x08A10
-#define IXGBE_LSECTXPN0		0x08A14
-#define IXGBE_LSECTXPN1		0x08A18
-#define IXGBE_LSECTXKEY0(_n)	(0x08A1C + (4 * (_n))) /* 4 of these (0-3) */
-#define IXGBE_LSECTXKEY1(_n)	(0x08A2C + (4 * (_n))) /* 4 of these (0-3) */
-#define IXGBE_LSECRXCTRL	0x08F04
-#define IXGBE_LSECRXSCL		0x08F08
-#define IXGBE_LSECRXSCH		0x08F0C
-#define IXGBE_LSECRXSA(_i)	(0x08F10 + (4 * (_i))) /* 2 of these (0-1) */
-#define IXGBE_LSECRXPN(_i)	(0x08F18 + (4 * (_i))) /* 2 of these (0-1) */
-#define IXGBE_LSECRXKEY(_n, _m)	(0x08F20 + ((0x10 * (_n)) + (4 * (_m))))
-#define IXGBE_LSECTXUT		0x08A3C /* OutPktsUntagged */
-#define IXGBE_LSECTXPKTE	0x08A40 /* OutPktsEncrypted */
-#define IXGBE_LSECTXPKTP	0x08A44 /* OutPktsProtected */
-#define IXGBE_LSECTXOCTE	0x08A48 /* OutOctetsEncrypted */
-#define IXGBE_LSECTXOCTP	0x08A4C /* OutOctetsProtected */
-#define IXGBE_LSECRXUT		0x08F40 /* InPktsUntagged/InPktsNoTag */
-#define IXGBE_LSECRXOCTD	0x08F44 /* InOctetsDecrypted */
-#define IXGBE_LSECRXOCTV	0x08F48 /* InOctetsValidated */
-#define IXGBE_LSECRXBAD		0x08F4C /* InPktsBadTag */
-#define IXGBE_LSECRXNOSCI	0x08F50 /* InPktsNoSci */
-#define IXGBE_LSECRXUNSCI	0x08F54 /* InPktsUnknownSci */
-#define IXGBE_LSECRXUNCH	0x08F58 /* InPktsUnchecked */
-#define IXGBE_LSECRXDELAY	0x08F5C /* InPktsDelayed */
-#define IXGBE_LSECRXLATE	0x08F60 /* InPktsLate */
-#define IXGBE_LSECRXOK(_n)	(0x08F64 + (0x04 * (_n))) /* InPktsOk */
-#define IXGBE_LSECRXINV(_n)	(0x08F6C + (0x04 * (_n))) /* InPktsInvalid */
-#define IXGBE_LSECRXNV(_n)	(0x08F74 + (0x04 * (_n))) /* InPktsNotValid */
-#define IXGBE_LSECRXUNSA	0x08F7C /* InPktsUnusedSa */
-#define IXGBE_LSECRXNUSA	0x08F80 /* InPktsNotUsingSa */
-
-/* LinkSec (MacSec) Bit Fields and Masks */
-#define IXGBE_LSECTXCAP_SUM_MASK	0x00FF0000
-#define IXGBE_LSECTXCAP_SUM_SHIFT	16
-#define IXGBE_LSECRXCAP_SUM_MASK	0x00FF0000
-#define IXGBE_LSECRXCAP_SUM_SHIFT	16
-
-#define IXGBE_LSECTXCTRL_EN_MASK	0x00000003
-#define IXGBE_LSECTXCTRL_DISABLE	0x0
-#define IXGBE_LSECTXCTRL_AUTH		0x1
-#define IXGBE_LSECTXCTRL_AUTH_ENCRYPT	0x2
-#define IXGBE_LSECTXCTRL_AISCI		0x00000020
-#define IXGBE_LSECTXCTRL_PNTHRSH_MASK	0xFFFFFF00
-#define IXGBE_LSECTXCTRL_RSV_MASK	0x000000D8
-
-#define IXGBE_LSECRXCTRL_EN_MASK	0x0000000C
-#define IXGBE_LSECRXCTRL_EN_SHIFT	2
-#define IXGBE_LSECRXCTRL_DISABLE	0x0
-#define IXGBE_LSECRXCTRL_CHECK		0x1
-#define IXGBE_LSECRXCTRL_STRICT		0x2
-#define IXGBE_LSECRXCTRL_DROP		0x3
-#define IXGBE_LSECRXCTRL_PLSH		0x00000040
-#define IXGBE_LSECRXCTRL_RP		0x00000080
-#define IXGBE_LSECRXCTRL_RSV_MASK	0xFFFFFF33
-
 /* IpSec Registers */
 #define IXGBE_IPSTXIDX		0x08900
 #define IXGBE_IPSTXSALT		0x08904
@@ -1883,6 +1814,7 @@ enum {
 #define IXGBE_EICR_GPI_SDP0	0x01000000 /* Gen Purpose Interrupt on SDP0 */
 #define IXGBE_EICR_GPI_SDP1	0x02000000 /* Gen Purpose Interrupt on SDP1 */
 #define IXGBE_EICR_GPI_SDP2	0x04000000 /* Gen Purpose Interrupt on SDP2 */
+#define IXGBE_EICR_SEC		0x04000000 /* Sec Offload Interrupt */
 #define IXGBE_EICR_ECC		0x10000000 /* ECC Error */
 #define IXGBE_EICR_GPI_SDP0_X540 0x02000000 /* Gen Purpose Interrupt on SDP0 */
 #define IXGBE_EICR_GPI_SDP1_X540 0x04000000 /* Gen Purpose Interrupt on SDP1 */
@@ -1918,6 +1850,7 @@ enum {
 #define IXGBE_EICS_GPI_SDP0	IXGBE_EICR_GPI_SDP0 /* SDP0 Gen Purpose Int */
 #define IXGBE_EICS_GPI_SDP1	IXGBE_EICR_GPI_SDP1 /* SDP1 Gen Purpose Int */
 #define IXGBE_EICS_GPI_SDP2	IXGBE_EICR_GPI_SDP2 /* SDP2 Gen Purpose Int */
+#define IXGBE_EICS_SEC		IXGBE_EICR_SEC
 #define IXGBE_EICS_ECC		IXGBE_EICR_ECC /* ECC Error */
 #define IXGBE_EICS_GPI_SDP0_BY_MAC(_hw)	IXGBE_EICR_GPI_SDP0_BY_MAC(_hw)
 #define IXGBE_EICS_GPI_SDP1_BY_MAC(_hw)	IXGBE_EICR_GPI_SDP1_BY_MAC(_hw)
@@ -1941,6 +1874,7 @@ enum {
 #define IXGBE_EIMS_GPI_SDP0	IXGBE_EICR_GPI_SDP0 /* SDP0 Gen Purpose Int */
 #define IXGBE_EIMS_GPI_SDP1	IXGBE_EICR_GPI_SDP1 /* SDP1 Gen Purpose Int */
 #define IXGBE_EIMS_GPI_SDP2	IXGBE_EICR_GPI_SDP2 /* SDP2 Gen Purpose Int */
+#define IXGBE_EIMS_SEC		IXGBE_EICR_SEC
 #define IXGBE_EIMS_ECC		IXGBE_EICR_ECC /* ECC Error */
 #define IXGBE_EIMS_GPI_SDP0_BY_MAC(_hw)	IXGBE_EICR_GPI_SDP0_BY_MAC(_hw)
 #define IXGBE_EIMS_GPI_SDP1_BY_MAC(_hw)	IXGBE_EICR_GPI_SDP1_BY_MAC(_hw)
@@ -1963,6 +1897,7 @@ enum {
 #define IXGBE_EIMC_GPI_SDP0	IXGBE_EICR_GPI_SDP0 /* SDP0 Gen Purpose Int */
 #define IXGBE_EIMC_GPI_SDP1	IXGBE_EICR_GPI_SDP1 /* SDP1 Gen Purpose Int */
 #define IXGBE_EIMC_GPI_SDP2	IXGBE_EICR_GPI_SDP2  /* SDP2 Gen Purpose Int */
+#define IXGBE_EIMC_SEC		IXGBE_EICR_SEC
 #define IXGBE_EIMC_ECC		IXGBE_EICR_ECC /* ECC Error */
 #define IXGBE_EIMC_GPI_SDP0_BY_MAC(_hw)	IXGBE_EICR_GPI_SDP0_BY_MAC(_hw)
 #define IXGBE_EIMC_GPI_SDP1_BY_MAC(_hw)	IXGBE_EICR_GPI_SDP1_BY_MAC(_hw)
@@ -3178,6 +3113,7 @@ struct ixgbe_hic_hdr2_rsp {
 };
 
 union ixgbe_hic_hdr2 {
+	u32 buf[1];
 	struct ixgbe_hic_hdr2_req req;
 	struct ixgbe_hic_hdr2_rsp rsp;
 };
@@ -3386,6 +3322,7 @@ struct ixgbe_adv_tx_context_desc {
 #define IXGBE_ADVTXD_MACLEN_SHIFT	9  /* Adv ctxt desc mac len shift */
 #define IXGBE_ADVTXD_MACLEN_MASK	(0x7F << IXGBE_ADVTXD_MACLEN_SHIFT) /* Adv ctxt desc mac len mask */
 #define IXGBE_ADVTXD_VLAN_SHIFT		16  /* Adv ctxt vlan tag shift */
+#define IXGBE_ADVTXD_TUCMD_TSEL		0x00000008 /* if set Timer 0, else Monotonic */
 #define IXGBE_ADVTXD_TUCMD_IPV4		0x00000400 /* IP Packet Type: 1=IPv4 */
 #define IXGBE_ADVTXD_TUCMD_IPV6		0x00000000 /* IP Packet Type: 0=IPv6 */
 #define IXGBE_ADVTXD_TUCMD_L4T_UDP	0x00000000 /* L4 Packet TYPE of UDP */
@@ -3427,6 +3364,7 @@ typedef u32 ixgbe_link_speed;
 #define IXGBE_LINK_SPEED_2_5GB_FULL	0x0400
 #define IXGBE_LINK_SPEED_5GB_FULL	0x0800
 #define IXGBE_LINK_SPEED_10GB_FULL	0x0080
+#define IXGBE_LINK_SPEED_25GB_FULL      0x4000 /* TODO: update when known */
 #define IXGBE_LINK_SPEED_82598_AUTONEG	(IXGBE_LINK_SPEED_1GB_FULL | \
 					 IXGBE_LINK_SPEED_10GB_FULL)
 #define IXGBE_LINK_SPEED_82599_AUTONEG	(IXGBE_LINK_SPEED_100_FULL | \
@@ -4182,7 +4120,6 @@ struct ixgbe_phy_info {
 	u64 phy_type_high;
 	struct ixgbe_aci_cmd_set_phy_cfg_data curr_user_phy_cfg;
 };
-
 #include "ixgbe_mbx.h"
 
 struct ixgbe_hw {

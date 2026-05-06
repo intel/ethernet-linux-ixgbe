@@ -45,4 +45,23 @@
 #define kthread_destroy_worker(worker) destroy_workqueue(worker)
 #endif /* !HAVE_KTHREAD_DELAYED_API */
 
+#ifdef NEED_KTHREAD_RUN_WORKER
+/**
+ * kthread_run_worker - create and wake a kthread worker.
+ * @flags: flags modifying the default behavior of the worker
+ * @namefmt: printf-style name for the thread.
+ *
+ * Description: Convenient wrapper for kthread_create_worker() followed by
+ * wake_up_process().  Returns the kthread_worker or ERR_PTR(-ENOMEM).
+ */
+#define kthread_run_worker(flags, namefmt, ...)				\
+({									\
+	struct kthread_worker *__kw =					\
+		kthread_create_worker(flags, namefmt, ## __VA_ARGS__);	\
+	if (!IS_ERR(__kw))						\
+		wake_up_process(__kw->task);				\
+	__kw;								\
+})
+#endif /* NEED_KTHREAD_RUN_WORKER */
+
 #endif /* _KCOMPAT_KTHREAD_H_ */

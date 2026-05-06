@@ -2827,6 +2827,7 @@ int _kc_pci_iov_vf_id(struct pci_dev *dev)
 #endif /* NEED_PCI_IOV_VF_ID */
 
 #ifdef NEED_MUL_U64_U64_DIV_U64
+#undef mul_u64_u64_div_u64
 u64 mul_u64_u64_div_u64(u64 a, u64 b, u64 c)
 {
 	u64 res = 0, div, rem;
@@ -3001,3 +3002,37 @@ void pci_disable_ptm(struct pci_dev *dev)
 #endif /* HAVE_STRUCT_PCI_DEV_PTM_ENABLED && CONFIG_PCIE_PTM */
 }
 #endif /* NEED_PCI_DISABLE_PTM */
+
+#ifndef HAVE_RESOURCE_SET_SIZE
+/**
+ * resource_set_size - Calculate resource end address from size and start
+ * @res: Resource descriptor
+ * @size: Size of the resource
+ *
+ * Calculate the end address for @res based on @size.
+ *
+ * Note: The start address of @res must be set when calling this function.
+ * Prefer resource_set_range() if setting both the start address and @size.
+ */
+void resource_set_size(struct resource *res, resource_size_t size)
+{
+	res->end = res->start + size - 1;
+}
+#endif /* !HAVE_RESOURCE_SET_SIZE */
+
+#ifndef HAVE_RESOURCE_SET_RANGE
+/**
+ * resource_set_range - Set resource start and end addresses
+ * @res: Resource descriptor
+ * @start: Start address for the resource
+ * @size: Size of the resource
+ *
+ * Set @res start address and calculate the end address based on @size.
+ */
+void resource_set_range(struct resource *res, resource_size_t start,
+			resource_size_t size)
+{
+	res->start = start;
+	resource_set_size(res, size);
+}
+#endif /* !HAVE_RESOURCE_SET_RANGE */

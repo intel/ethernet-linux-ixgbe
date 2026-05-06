@@ -1807,6 +1807,7 @@ int _kc_pci_iov_vf_id(struct pci_dev *dev);
  * 3dc167ba5729 ("sched/cputime: Improve cputime_adjust()")
  */
 #ifdef NEED_MUL_U64_U64_DIV_U64
+#undef mul_u64_u64_div_u64
 u64 mul_u64_u64_div_u64(u64 a, u64 mul, u64 div);
 #endif /* NEED_MUL_U64_U64_DIV_U64 */
 
@@ -3052,6 +3053,10 @@ static inline void assign_bit(long nr, unsigned long *addr, bool value)
 }
 #endif /* NEED_ASSIGN_BIT */
 
+#ifdef NEED_BITS_TO_U32
+#define BITS_TO_U32(nr)		__KERNEL_DIV_ROUND_UP(nr, BITS_PER_TYPE(u32))
+#endif /* NEED_BITS_TO_U32 */
+
 /*
  * __has_builtin is supported on gcc >= 10, clang >= 3 and icc >= 21.
  * In the meantime, to support gcc < 10, we implement __has_builtin
@@ -3423,6 +3428,18 @@ enum dpll_lock_status_error {
 #define dpll_netdev_pin_clear netdev_dpll_pin_clear
 #endif /* NEED_DPLL_NETDEV_PIN_SET */
 
+#ifdef NEED_DPLL_TRACKER
+#ifdef CONFIG_DPLL
+#include <linux/dpll.h>
+#define dpll_device_get(clock_id, device_idx, module, tracker) \
+	dpll_device_get(clock_id, device_idx, module)
+#define dpll_device_put(dpll, tracker) dpll_device_put(dpll)
+#define dpll_pin_get(clock_id, pin_idx, module, prop, tracker) \
+	dpll_pin_get(clock_id, pin_idx, module, prop)
+#define dpll_pin_put(pin, tracker) dpll_pin_put(pin)
+#endif /* CONFIG_DPLL */
+#endif /* NEED_DPLL_TRACKER */
+
 #ifdef NEED_RADIX_TREE_EMPTY
 static inline bool radix_tree_empty(struct radix_tree_root *root)
 {
@@ -3634,5 +3651,45 @@ void _kc_eventfd_signal(struct eventfd_ctx *ctx)
 #ifndef TCP_MIN_MSS
 #define TCP_MIN_MSS 88U
 #endif
+
+#ifdef NEED_DEFINE_SIMPLE_DEV_PM_OPS
+#define DEFINE_SIMPLE_DEV_PM_OPS(name, suspend_fn, resume_fn) \
+    SIMPLE_DEV_PM_OPS(name, suspend_fn, resume_fn)
+#endif /* NEED_DEFINE_SIMPLE_DEV_PM_OPS */
+
+#ifdef NEED_PM_SLEEP_PTR
+#define pm_sleep_ptr(_ptr) (_ptr)
+#endif /* NEED_PM_SLEEP_PTR */
+
+#ifdef NEED_MODULE_INFO_WITHOUT_CHECK
+/* upstream commit ae83f3b72621 ("module: Add compile-time check for embedded
+ * NUL characters") added an assert preventing embedding dishonest licenses,
+ * like "GPL\0, but proprietary for XXX part". Unfortunately __builtin_strlen()
+ * used does not work in some of our CI builds, so just remove that (essentially
+ * "reverting" the upstream commit).
+ */
+#include <linux/moduleparam.h>
+#undef MODULE_INFO
+#define MODULE_INFO(tag, info)					\
+	static const char __UNIQUE_ID(modinfo)[]		\
+	__used __section(".modinfo") __aligned(1)		\
+	= __MODULE_INFO_PREFIX __stringify(tag) "=" info
+#endif /* NEED_MODULE_INFO_WITHOUT_CHECK */
+
+#ifndef HAVE_RESOURCE_SET_SIZE
+void resource_set_size(struct resource *res, resource_size_t size);
+#endif /* !HAVE_RESOURCE_SET_SIZE */
+#ifndef HAVE_RESOURCE_SET_RANGE
+void resource_set_range(struct resource *res, resource_size_t start,
+			resource_size_t size);
+#endif /* !HAVE_RESOURCE_SET_RANGE */
+
+#ifdef NEED___COUNTED_BY
+#ifdef HAVE_CONFIG_CC_HAS_COUNTED_BY
+# define __counted_by(member)		__attribute__((__counted_by__(member)))
+#else
+# define __counted_by(member)
+#endif /* HAVE_CONFIG_CC_HAS_COUNTED_BY */
+#endif /* NEED___COUNTED_BY */
 
 #endif /* _KCOMPAT_IMPL_H_ */

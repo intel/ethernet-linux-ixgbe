@@ -469,6 +469,7 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 	u16 pointer = 0;
 	u16 word = 0;
 	u16 ptr_start = IXGBE_PCIE_ANALOG_PTR;
+	u16 word_end;
 
 	/* Do not use hw->eeprom.ops.read because we do not want to take
 	 * the synchronization semaphores here. Instead use
@@ -515,7 +516,8 @@ s32 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 		    (u32)length > hw->eeprom.word_size - (u32)pointer)
 			continue;
 
-		for (j = pointer + 1; j <= pointer + length; j++) {
+		word_end = pointer + length;
+		for (j = pointer + 1; j <= word_end; j++) {
 			if (ixgbe_read_eerd_generic(hw, j, &word)) {
 				hw_dbg(hw, "EEPROM read failed\n");
 				return IXGBE_ERR_EEPROM;

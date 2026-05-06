@@ -187,6 +187,8 @@ static const char ixgbe_priv_flags_strings[][ETH_GSTRING_LEN] = {
 #endif
 #define IXGBE_PRIV_FLAGS_AUTO_DISABLE_VF	BIT(2)
 	"mdd-disable-vf",
+#define IXGBE_PRIV_LINK_DOWN_ON_CLOSE	BIT(3)
+	"link-down-on-close",
 };
 
 #define IXGBE_PRIV_FLAGS_STR_LEN ARRAY_SIZE(ixgbe_priv_flags_strings)
@@ -290,6 +292,9 @@ static int ixgbe_get_link_ksettings(struct net_device *netdev,
 
 	hw->mac.ops.get_link_capabilities(hw, &supported_link, &autoneg);
 	/* set the supported link speeds */
+	if (supported_link & IXGBE_LINK_SPEED_25GB_FULL)
+		ethtool_link_ksettings_add_link_mode(cmd, supported,
+						     25000baseCR_Full);
 	if (supported_link & IXGBE_LINK_SPEED_10GB_FULL) {
 		ixgbe_set_supported_10gtypes(hw, cmd);
 		ixgbe_set_advertising_10gtypes(hw, cmd);
@@ -333,6 +338,9 @@ static int ixgbe_get_link_ksettings(struct net_device *netdev,
 	/* set the advertised speeds */
 	if (hw->phy.autoneg_advertised)	{
 		ethtool_link_ksettings_zero_link_mode(cmd, advertising);
+		if (supported_link & IXGBE_LINK_SPEED_25GB_FULL)
+			ethtool_link_ksettings_add_link_mode(cmd, advertising,
+							     25000baseCR_Full);
 		if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_10_FULL)
 			ethtool_link_ksettings_add_link_mode(cmd, advertising,
 							     10baseT_Full);
@@ -494,6 +502,9 @@ static int ixgbe_get_link_ksettings(struct net_device *netdev,
 
 	if (netif_carrier_ok(netdev)) {
 		switch (adapter->link_speed) {
+		case IXGBE_LINK_SPEED_25GB_FULL:
+			cmd->base.speed = SPEED_25000;
+			break;
 		case IXGBE_LINK_SPEED_10GB_FULL:
 			cmd->base.speed = SPEED_10000;
 			break;
@@ -802,6 +813,9 @@ static int ixgbe_set_link_ksettings(struct net_device *netdev,
 
 		old = hw->phy.autoneg_advertised;
 		advertised = 0;
+		if (ethtool_link_ksettings_test_link_mode(cmd, advertising,
+							  25000baseCR_Full))
+			advertised |= IXGBE_LINK_SPEED_25GB_FULL;
 		if (ethtool_link_ksettings_test_link_mode(cmd, advertising,
 							  10000baseT_Full))
 			advertised |= IXGBE_LINK_SPEED_10GB_FULL;
@@ -2158,7 +2172,6 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 				    struct ethtool_stats __always_unused *stats, u64 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-
 #ifdef HAVE_NDO_GET_STATS64
 	const struct rtnl_link_stats64 *net_stats;
 	struct rtnl_link_stats64 temp;
@@ -5436,8 +5449,10 @@ ixgbe_get_keee_E610(struct net_device *netdev, struct ethtool_keee *kedata)
 	s32 status;
 	int i;
 
-	if (!(adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE))
+	if (!(adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)) {
+		e_dev_warn("Energy Efficient Ethernet (EEE) feature is currently not supported on this device, please update the device NVM to the latest and try again");
 		return -EOPNOTSUPP;
+	}
 
 	linkmode_zero(kedata->lp_advertised);
 	linkmode_zero(kedata->supported);
@@ -5652,6 +5667,11 @@ static int ixgbe_set_keee_E610(struct net_device *netdev,
 	struct ixgbe_hw *hw = &adapter->hw;
 	s32 ret_val;
 
+	if (!(adapter->flags2 & IXGBE_FLAG2_EEE_CAPABLE)) {
+		e_dev_warn("Energy Efficient Ethernet (EEE) feature is currently not supported on this device, please update the device NVM to the latest and try again");
+		return -EOPNOTSUPP;
+	}
+
 	ret_val = ixgbe_validate_keee(netdev, kedata);
 	if (ret_val == -EALREADY)
 		return 0;
@@ -5789,6 +5809,9 @@ static u32 ixgbe_get_priv_flags(struct net_device *netdev)
 	if (adapter->flags2 & IXGBE_FLAG2_AUTO_DISABLE_VF)
 		priv_flags |= IXGBE_PRIV_FLAGS_AUTO_DISABLE_VF;
 
+	if (adapter->flags2 & IXGBE_FLAG2_LINK_DOWN_ON_CLOSE)
+		priv_flags |= IXGBE_PRIV_LINK_DOWN_ON_CLOSE;
+
 	return priv_flags;
 }
 
@@ -5852,6 +5875,16 @@ static int ixgbe_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 		} else {
 			e_info(probe,
 			       "Cannot set private flags: Operation not supported\n");
+			return -EOPNOTSUPP;
+		}
+	}
+
+	flags2 &= ~IXGBE_FLAG2_LINK_DOWN_ON_CLOSE;
+	if (priv_flags & IXGBE_PRIV_LINK_DOWN_ON_CLOSE) {
+		if (adapter->hw.mac.type == ixgbe_mac_E610) {
+			flags2 |= IXGBE_FLAG2_LINK_DOWN_ON_CLOSE;
+		} else {
+			e_info(probe, "Cannot set private flags: Unsupported hardware\n");
 			return -EOPNOTSUPP;
 		}
 	}
@@ -6051,13 +6084,6 @@ static struct ethtool_ops ixgbe_ethtool_ops_E610 = {
 	.set_flags		= ixgbe_set_flags,
 #endif
 #endif /* HAVE_NDO_SET_FEATURES */
-#ifdef ETHTOOL_GRXRINGS
-	.get_rxnfc		= ixgbe_get_rxnfc,
-	.set_rxnfc		= ixgbe_set_rxnfc,
-#ifdef ETHTOOL_SRXNTUPLE
-	.set_rx_ntuple		= ixgbe_set_rx_ntuple,
-#endif
-#endif /* ETHTOOL_GRXRINGS */
 #ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
 #ifdef HAVE_ETHTOOL_KEEE
 #ifdef ETHTOOL_GEEE
@@ -6067,6 +6093,15 @@ static struct ethtool_ops ixgbe_ethtool_ops_E610 = {
 	.set_eee                = ixgbe_set_keee_E610,
 #endif /* ETHTOOL_SEEE */
 #endif /* HAVE_ETHTOOL_KEEE */
+#endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */
+#ifdef ETHTOOL_GRXRINGS
+	.get_rxnfc		= ixgbe_get_rxnfc,
+	.set_rxnfc		= ixgbe_set_rxnfc,
+#ifdef ETHTOOL_SRXNTUPLE
+	.set_rx_ntuple		= ixgbe_set_rx_ntuple,
+#endif
+#endif /* ETHTOOL_GRXRINGS */
+#ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
 #ifdef ETHTOOL_SCHANNELS
 	.get_channels		= ixgbe_get_channels,
 	.set_channels		= ixgbe_set_channels,

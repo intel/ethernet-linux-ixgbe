@@ -861,7 +861,7 @@ void ixgbe_set_lan_id_multi_port_pcie(struct ixgbe_hw *hw)
 s32 ixgbe_stop_adapter_generic(struct ixgbe_hw *hw)
 {
 	u32 reg_val;
-	u16 i;
+	u32 i;
 
 	DEBUGFUNC("ixgbe_stop_adapter_generic");
 
@@ -1965,6 +1965,7 @@ s32 ixgbe_calc_eeprom_checksum_generic(struct ixgbe_hw *hw)
 	u16 checksum = 0;
 	u16 length = 0;
 	u16 pointer = 0;
+	u16 word_end;
 	u16 word = 0;
 
 	DEBUGFUNC("ixgbe_calc_eeprom_checksum_generic");
@@ -1997,7 +1998,8 @@ s32 ixgbe_calc_eeprom_checksum_generic(struct ixgbe_hw *hw)
 		if (length == 0xFFFF || length == 0)
 			continue;
 
-		for (j = pointer + 1; j <= pointer + length; j++) {
+		word_end = pointer + length;
+		for (j = pointer + 1; j <= word_end; j++) {
 			if (hw->eeprom.ops.read(hw, j, &word)) {
 				hw_dbg(hw, "EEPROM read failed\n");
 				return IXGBE_ERR_EEPROM;

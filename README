@@ -1,7 +1,7 @@
 ixgbe Linux* Base Driver for Intel(R) Ethernet Network Connections
 ******************************************************************
 
-January 16, 2026
+May 06, 2026
 
 
 Contents
@@ -2110,6 +2110,19 @@ If the VLAN tags are necessary AND DCB is NOT used, disable VLAN
 stripping on older kernels at build time with the following:
 
    make CFLAGS_EXTRA=-DIXGBE_DISABLE_8021P_SUPPORT
+
+
+Loss of Existing Configuration During Feature Updates
+-----------------------------------------------------
+
+When configuring the device, it is crucial to follow the proper
+sequence of operations. You should first enable or disable offloads
+and features (such as ATR), and only then proceed with device
+configuration (such as VXLAN setup). Feature modifications may require
+a device reset that clears current configuration. Therefore, all
+feature modifications must be completed before applying the main
+device configuration to avoid unexpected issues or the need for
+reconfiguration.
 
 
 Support

@@ -1454,7 +1454,7 @@ s32 ixgbe_aci_set_phy_cfg(struct ixgbe_hw *hw,
 
 	if (!cfg)
 		return IXGBE_ERR_PARAM;
-	use_1p40_buff =	hw->dev_caps.common_cap.eee_support ? true : false;
+	use_1p40_buff =	hw->func_caps.common_cap.eee_support ? true : false;
 
 	/* Ensure that only valid bits of cfg->caps can be turned on. */
 	if (cfg->caps & ~IXGBE_ACI_PHY_ENA_VALID_MASK) {
@@ -1781,6 +1781,34 @@ s32 ixgbe_aci_get_link_info(struct ixgbe_hw *hw, bool ena_lse,
 	hw->link.get_link_info = false;
 
 	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_disable_phy_link - force phy link to get down
+ * @hw: pointer to hardware structure
+ *
+ * Send 0x0601 with the IXGBE_ACI_PHY_ENA_LINK bit set down.
+ *
+ * Return: the exit code of the operation.
+ */
+s32 ixgbe_disable_phy_link(struct ixgbe_hw *hw)
+{
+	struct ixgbe_aci_cmd_set_phy_cfg_data pcfg = {0};
+	struct ixgbe_aci_cmd_get_phy_caps_data pcaps;
+	s32 err;
+
+	err = ixgbe_aci_get_phy_caps(hw, false, IXGBE_ACI_REPORT_ACTIVE_CFG,
+				     &pcaps);
+	if (err) {
+		return err;
+	}
+
+	ixgbe_copy_phy_caps_to_cfg(&pcaps, &pcfg);
+
+	pcfg.caps &= ~IXGBE_ACI_PHY_ENA_LINK;
+	pcfg.caps |= IXGBE_ACI_PHY_ENA_AUTO_LINK_UPDT;
+
+	return ixgbe_aci_set_phy_cfg(hw, &pcfg);
 }
 
 /**
@@ -5075,6 +5103,9 @@ s32 ixgbe_check_link_E610(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 		case IXGBE_ACI_LINK_SPEED_10GB:
 			*speed = IXGBE_LINK_SPEED_10GB_FULL;
 			break;
+		case IXGBE_ACI_LINK_SPEED_25GB:
+			*speed = IXGBE_LINK_SPEED_25GB_FULL;
+			break;
 		default:
 			*speed = IXGBE_LINK_SPEED_UNKNOWN;
 			break;
@@ -5209,7 +5240,7 @@ void ixgbe_fc_autoneg_E610(struct ixgbe_hw *hw)
 
 	/* Get current link status.
 	 * Current FC mode will be stored in the hw context. */
-	status = ixgbe_aci_get_link_info(hw, false, NULL);
+	status = ixgbe_aci_get_link_info(hw, true, NULL);
 	if (status) {
 		goto out;
 	}
@@ -5529,6 +5560,22 @@ s32 ixgbe_identify_phy_E610(struct ixgbe_hw *hw)
 	    pcaps.phy_type_low  & IXGBE_PHY_TYPE_LOW_10G_SFI_C2C     ||
 	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_10G_USXGMII)
 		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_10GB_FULL;
+	if (pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_T ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_CR ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_CR_S ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_CR1 ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_SR ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_LR ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_KR ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_KR_S ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25GBASE_KR1 ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25G_AUI_AOC_ACC ||
+	    pcaps.phy_type_low & IXGBE_PHY_TYPE_LOW_25G_AUI_C2C ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_25GBASE_KR ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_25GBASE_KR_S ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_25GBASE_KR1 ||
+	    pcaps.phy_type_high & IXGBE_PHY_TYPE_HIGH_25GBASE_AUI_C2C)
+		hw->phy.speeds_supported |= IXGBE_LINK_SPEED_25GB_FULL;
 
 	/* Initialize autoneg speeds */
 	if (!hw->phy.autoneg_advertised)
@@ -5601,8 +5648,7 @@ s32 ixgbe_setup_phy_link_E610(struct ixgbe_hw *hw)
 	u8 rmode = IXGBE_ACI_REPORT_TOPO_CAP_MEDIA;
 	u64 sup_phy_type_low, sup_phy_type_high;
 	s32 rc;
-
-	rc = ixgbe_aci_get_link_info(hw, false, NULL);
+	rc = ixgbe_aci_get_link_info(hw, true, NULL);
 	if (rc) {
 		goto err;
 	}
@@ -5669,6 +5715,23 @@ s32 ixgbe_setup_phy_link_E610(struct ixgbe_hw *hw)
 		pcfg.phy_type_low  |= IXGBE_PHY_TYPE_LOW_10G_SFI_AOC_ACC;
 		pcfg.phy_type_low  |= IXGBE_PHY_TYPE_LOW_10G_SFI_C2C;
 		pcfg.phy_type_high |= IXGBE_PHY_TYPE_HIGH_10G_USXGMII;
+	}
+	if (hw->phy.autoneg_advertised & IXGBE_LINK_SPEED_25GB_FULL) {
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_T;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_CR;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_CR_S;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_CR1;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_SR;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_LR;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_KR;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_KR_S;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25GBASE_KR1;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25G_AUI_AOC_ACC;
+		pcfg.phy_type_low |= IXGBE_PHY_TYPE_LOW_25G_AUI_C2C;
+		pcfg.phy_type_high |= IXGBE_PHY_TYPE_HIGH_25GBASE_KR;
+		pcfg.phy_type_high |= IXGBE_PHY_TYPE_HIGH_25GBASE_KR_S;
+		pcfg.phy_type_high |= IXGBE_PHY_TYPE_HIGH_25GBASE_KR1;
+		pcfg.phy_type_high |= IXGBE_PHY_TYPE_HIGH_25GBASE_AUI_C2C;
 	}
 
 	/* Mask the set values to avoid requesting unsupported link types */
@@ -6040,7 +6103,7 @@ s32 ixgbe_calc_eeprom_checksum_E610(struct ixgbe_hw *hw)
 	/* Calculate SW checksum that covers the whole 64kB shadow RAM
 	 * except the VPD and PCIe ALT Auto-load modules
 	 */
-	for (i = 0; i < hw->eeprom.word_size; i++) {
+	for (i = 0; i < (u16)hw->eeprom.word_size; i++) {
 		/* Read SR page */
 		if ((i % IXGBE_SR_SECTOR_SIZE_IN_WORDS) == 0) {
 			u16 words = IXGBE_SR_SECTOR_SIZE_IN_WORDS;
