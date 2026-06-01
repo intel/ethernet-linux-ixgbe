@@ -902,7 +902,7 @@ void ixgbe_ptp_tx_hang(struct ixgbe_adapter *adapter)
  * value, then store that result into the shhwtstamps structure which
  * is passed up the network stack
  */
-static void ixgbe_ptp_tx_hwtstamp(struct ixgbe_adapter *adapter)
+void ixgbe_ptp_tx_hwtstamp(struct ixgbe_adapter *adapter)
 {
 	struct sk_buff *skb = adapter->ptp_tx_skb;
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -952,7 +952,10 @@ void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work)
 	/* stop polling once we have a valid timestamp */
 	tsynctxctl = IXGBE_READ_REG(hw, IXGBE_TSYNCTXCTL);
 	if (tsynctxctl & IXGBE_TSYNCTXCTL_VALID) {
-		adapter->ptp_tx_hwtstamp(adapter);
+		if (adapter->ptp_tx_hwtstamp)
+			adapter->ptp_tx_hwtstamp(adapter);
+		else
+			ixgbe_ptp_clear_tx_timestamp(adapter);
 		return;
 	}
 

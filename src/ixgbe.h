@@ -1486,6 +1486,7 @@ void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_tx_hang(struct ixgbe_adapter *adapter);
+void ixgbe_ptp_tx_hwtstamp(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_tx_hwtstamp_work(struct work_struct *work);
 void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter);
 static inline void ixgbe_ptp_eicr_timesync(struct ixgbe_adapter *adapter) {
