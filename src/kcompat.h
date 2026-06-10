@@ -53,6 +53,50 @@
 #include "kcompat_xarray.h"
 #endif /* !HAVE_XARRAY_API */
 
+#include <linux/module.h>
+
+/* any of the features that need to alter module_init */
+#if !defined(HAVE_XARRAY_API)
+
+static inline int __init kc_module_init_impl(void)
+{
+#ifdef HAVE_XARRAY_API
+#else
+	kc_xarray_global_init()
+#endif
+;
+	return 0;
+}
+
+/*
+ * ___ADDRESSABLE was introduced in kernel 5.0 with a 2-arg signature.
+ * For older kernels, we provide a compatible implementation that forces
+ * the compiler to emit the symbol and prevent it from being optimized away.
+ */
+#ifdef NEED____ADDRESSABLE
+#define ___ADDRESSABLE(sym, __attrs)					\
+	static void * __used __attrs					\
+	__PASTE(__addressable_, sym) = (void *)(uintptr_t)&sym;
+#endif
+
+#undef module_init
+#define orig_module_init(initfn)	\
+	static inline initcall_t __maybe_unused __inittest(void)\
+	{ return initfn; }					\
+	int init_module(void) __copy(initfn)			\
+		__attribute__((alias(#initfn)));		\
+	___ADDRESSABLE(init_module, __initdata);
+
+#define module_init(driver_init_fn)			\
+static int __init kc_module_init_fn(void)		\
+{							\
+	kc_module_init_impl();				\
+	return driver_init_fn();			\
+}							\
+orig_module_init(kc_module_init_fn)
+
+#endif /* module_init alteration */
+
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
@@ -61,13 +105,11 @@
 #include <linux/if_vlan.h>
 #include <linux/in.h>
 #include <linux/if_link.h>
-#include <linux/init.h>
 #include <linux/ioport.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
 #include <linux/list.h>
 #include <linux/mii.h>
-#include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/pci.h>
 #include <linux/sched.h>

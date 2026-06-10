@@ -294,7 +294,11 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	if (adapter->ring_feature[RING_F_VMDQ].limit == 1)
 		adapter->flags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 
-	adapter->flags &= ~IXGBE_FLAG_SRIOV_ENABLED;
+	adapter->flags &= ~(IXGBE_FLAG_SRIOV_ENABLED |
+			    IXGBE_FLAG_SRIOV_REPLICATION_ENABLE |
+			    IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE);
+	if (hw->mac.type != ixgbe_mac_82598EB)
+		adapter->flags2 |= IXGBE_FLAG2_RSC_CAPABLE;
 	adapter->ring_feature[RING_F_VMDQ].offset = 0;
 
 	/* take a breather then clean up driver data */

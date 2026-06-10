@@ -581,11 +581,16 @@ enum ixgbe_devlink_param_id {
  * @devlink: pointer to the devlink instance
  * @id: the parameter ID to get
  * @ctx: context to return the parameter value
+ * @extack: netlink extended ACK structure
  *
  * Returns: zero on success, or an error code on failure.
  */
 static int ixgbe_devlink_minsrev_get(struct devlink *devlink, u32 id,
-				     struct devlink_param_gset_ctx *ctx)
+				     struct devlink_param_gset_ctx *ctx
+#ifdef HAVE_DEVLINK_PARAMS_GET_EXTACK
+				     , struct netlink_ext_ack __always_unused *extack
+#endif
+)
 {
 	struct ixgbe_minsrev_info minsrevs = {};
 	struct ixgbe_adapter *adapter;
@@ -969,7 +974,8 @@ static int ixgbe_devlink_reload_empr_start(struct devlink *devlink,
  * process. The function currently includes a temporary 10-second wait to
  * ensure completion.
  *
- * Return: Always returns 0, what means success.
+ * Return: 0 on success. A failure to re-read the FW version is non-fatal;
+ * the error is logged and eeprom_id is set to "unknown".
  */
 static int ixgbe_devlink_reload_empr_finish(struct devlink *devlink,
 					    enum devlink_reload_action action,
@@ -980,7 +986,7 @@ static int ixgbe_devlink_reload_empr_finish(struct devlink *devlink,
 	struct ixgbe_adapter *adapter =
 		*(struct ixgbe_adapter **)devlink_priv(devlink);
 	struct ixgbe_hw *hw = &adapter->hw;
-	int i = 0;
+	int err, i = 0;
 	u32 fwsm;
 
 	do {
@@ -999,7 +1005,18 @@ static int ixgbe_devlink_reload_empr_finish(struct devlink *devlink,
 
 	*actions_performed = BIT(DEVLINK_RELOAD_ACTION_FW_ACTIVATE);
 
-	return ixgbe_refresh_fw_version(adapter);
+	/* A failure to re-read the FW version is non-fatal: the EMPR
+	 * completed successfully. Log the error and leave eeprom_id as
+	 * "unknown" (set by ixgbe_refresh_fw_version on error) so that
+	 * ethtool does not show a stale version string.
+	 */
+	err = ixgbe_refresh_fw_version(adapter);
+	if (err)
+		netdev_warn(adapter->netdev,
+			    "Failed to refresh FW version after EMPR, err %d\n",
+			    err);
+
+	return 0;
 }
 #endif /* HAVE_DEVLINK_RELOAD_ACTION_AND_LIMIT */
 

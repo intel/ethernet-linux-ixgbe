@@ -32,6 +32,8 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 
+void kc_xarray_global_init(void);
+
 struct list_lru;
 
 /* Add internal might_alloc implementation without lockdep. */

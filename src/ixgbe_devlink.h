@@ -21,7 +21,7 @@ void ixgbe_devlink_unregister_port(struct ixgbe_adapter *adapter);
 
 struct ixgbe_adapter **ixgbe_allocate_devlink(struct ixgbe_adapter *adapter)
 {
-	return NULL
+	return NULL;
 }
 
 static inline void ixgbe_devlink_register(struct ixgbe_adapter *adapter) { }

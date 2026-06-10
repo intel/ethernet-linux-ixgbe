@@ -327,7 +327,6 @@ IXGBE_PARAM(dmac_watchdog,
 IXGBE_PARAM(vxlan_rx,
 	    "VXLAN receive checksum offload (0,1), default 1 = Enable");
 
-
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
@@ -802,7 +801,7 @@ void ixgbe_check_options(struct ixgbe_adapter *adapter)
 		static struct ixgbe_option opt = {
 			.type = range_option,
 			.name = "Interrupt Throttling Rate (ints/sec)",
-			.err  = "using default of "__MODULE_STRING(DEFAULT_ITR),
+			.err  = "using default of " __MODULE_STRING(DEFAULT_ITR),
 			.def  = DEFAULT_ITR,
 			.arg  = { .r = { .min = MIN_ITR,
 					 .max = MAX_ITR } }

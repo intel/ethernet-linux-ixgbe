@@ -31,6 +31,7 @@
 #ifdef HAVE_XDP_BUFF_RXQ
 #include <net/xdp.h>
 #endif
+#include <linux/jump_label.h>
 
 #ifdef HAVE_NDO_BUSY_POLL
 #include <net/busy_poll.h>
@@ -58,6 +59,7 @@
 #include "ixgbe_e610.h"
 #include "ixgbe_common.h"
 
+/* Production version */
 #define DPRINTK(nlevel, klevel, fmt, args...) \
 	((NETIF_MSG_##nlevel & adapter->msg_enable) ? \
 	(void)(netdev_printk(KERN_##klevel, adapter->netdev, \
@@ -404,31 +406,32 @@ enum ixgbe_ring_state_t {
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 	__IXGBE_TX_DISABLED,
 #endif
+	__IXGBE_RING_STATE_NBITS, /* must be last */
 };
 #ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 
 #define ring_uses_build_skb(ring) \
-	test_bit(__IXGBE_RX_BUILD_SKB_ENABLED, &(ring)->state)
+	test_bit(__IXGBE_RX_BUILD_SKB_ENABLED, (ring)->state)
 #endif
 
 #define check_for_tx_hang(ring) \
-	test_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
+	test_bit(__IXGBE_TX_DETECT_HANG, (ring)->state)
 #define set_check_for_tx_hang(ring) \
-	set_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
+	set_bit(__IXGBE_TX_DETECT_HANG, (ring)->state)
 #define clear_check_for_tx_hang(ring) \
-	clear_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
+	clear_bit(__IXGBE_TX_DETECT_HANG, (ring)->state)
 #define ring_is_rsc_enabled(ring) \
-	test_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+	test_bit(__IXGBE_RX_RSC_ENABLED, (ring)->state)
 #define set_ring_rsc_enabled(ring) \
-	set_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+	set_bit(__IXGBE_RX_RSC_ENABLED, (ring)->state)
 #define clear_ring_rsc_enabled(ring) \
-	clear_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+	clear_bit(__IXGBE_RX_RSC_ENABLED, (ring)->state)
 #define ring_is_xdp(ring) \
-	test_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
+	test_bit(__IXGBE_TX_XDP_RING, (ring)->state)
 #define set_ring_xdp(ring) \
-	set_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
+	set_bit(__IXGBE_TX_XDP_RING, (ring)->state)
 #define clear_ring_xdp(ring) \
-	clear_bit(__IXGBE_TX_XDP_RING, &(ring)->state)
+	clear_bit(__IXGBE_TX_XDP_RING, (ring)->state)
 #define netdev_ring(ring) (ring->netdev)
 #define ring_queue_index(ring) (ring->queue_index)
 
@@ -444,7 +447,7 @@ struct ixgbe_ring {
 		struct ixgbe_tx_buffer *tx_buffer_info;
 		struct ixgbe_rx_buffer *rx_buffer_info;
 	};
-	unsigned long state;
+	DECLARE_BITMAP(state, __IXGBE_RING_STATE_NBITS);
 	u8 __iomem *tail;
 	dma_addr_t dma;			/* phys. address of descriptor ring */
 	unsigned int size;		/* length in bytes */
@@ -568,7 +571,7 @@ static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring __maybe_unused *ring
 #if MAX_SKB_FRAGS < 8
 	return ALIGN(IXGBE_MAX_RXBUFFER / MAX_SKB_FRAGS, 1024);
 #else
-	if (test_bit(__IXGBE_RX_3K_BUFFER, &ring->state))
+	if (test_bit(__IXGBE_RX_3K_BUFFER, ring->state))
 		return IXGBE_RXBUFFER_3K;
 #if (PAGE_SIZE < 8192)
 	if (ring_uses_build_skb(ring))
@@ -581,7 +584,7 @@ static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring __maybe_unused *ring
 static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring __maybe_unused *ring)
 {
 #if (PAGE_SIZE < 8192)
-	if (test_bit(__IXGBE_RX_3K_BUFFER, &ring->state))
+	if (test_bit(__IXGBE_RX_3K_BUFFER, ring->state))
 		return 1;
 #endif
 	return 0;
@@ -652,8 +655,8 @@ struct ixgbe_q_vector {
 	atomic_t state;
 #endif  /* HAVE_NDO_BUSY_POLL */
 #ifdef HAVE_PTP_1588_CLOCK
-	struct list_head ptp_skbs_e600;
-	spinlock_t ptp_skbs_lock_e600; /* Protects ptp_skbs_e600 access. */
+	struct list_head ptp_skbs_e610;
+	spinlock_t ptp_skbs_lock_e610; /* Protects ptp_skbs_e610 access. */
 	bool ptp_hold_rx_skb : 1;
 #endif /* HAVE_PTP_1588_CLOCK */
 
@@ -896,7 +899,7 @@ struct ixgbe_rx_phy_ts_skb_e610 {
 	u16 seq_id;
 };
 
-struct ixgbe_ptp_e600 {
+struct ixgbe_ptp_e610 {
 	bool ptp_by_phy_ena : 1;
 	bool vlan_ena : 1;
 	atomic_t vlan_change;
@@ -911,6 +914,7 @@ struct ixgbe_ptp_e600 {
 	struct kthread_delayed_work ptp_aux_work;
 #endif /* !HAVE_PTP_CANCEL_WORKER_SYNC */
 };
+
 #endif /* HAVE_PTP_1588_CLOCK */
 enum ixgbe_eee_state {
 	IXGBE_EEE_DISABLED,	/* EEE explicitly disabled by user */
@@ -943,46 +947,46 @@ struct ixgbe_adapter {
 	 * thus the additional *_CAPABLE flags.
 	 */
 	u32 flags;
-#define IXGBE_FLAG_MSI_CAPABLE			(u32)(1 << 0)
-#define IXGBE_FLAG_MSI_ENABLED			(u32)(1 << 1)
-#define IXGBE_FLAG_MSIX_CAPABLE			(u32)(1 << 2)
-#define IXGBE_FLAG_MSIX_ENABLED			(u32)(1 << 3)
+#define IXGBE_FLAG_MSI_CAPABLE			BIT(0)
+#define IXGBE_FLAG_MSI_ENABLED			BIT(1)
+#define IXGBE_FLAG_MSIX_CAPABLE			BIT(2)
+#define IXGBE_FLAG_MSIX_ENABLED			BIT(3)
 #ifndef IXGBE_NO_LLI
-#define IXGBE_FLAG_LLI_PUSH			(u32)(1 << 4)
+#define IXGBE_FLAG_LLI_PUSH			BIT(4)
 #endif
 
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
-#define IXGBE_FLAG_DCA_ENABLED			(u32)(1 << 6)
-#define IXGBE_FLAG_DCA_CAPABLE			(u32)(1 << 7)
-#define IXGBE_FLAG_DCA_ENABLED_DATA		(u32)(1 << 8)
+#define IXGBE_FLAG_DCA_ENABLED			BIT(6)
+#define IXGBE_FLAG_DCA_CAPABLE			BIT(7)
+#define IXGBE_FLAG_DCA_ENABLED_DATA		BIT(8)
 #else
-#define IXGBE_FLAG_DCA_ENABLED			(u32)0
-#define IXGBE_FLAG_DCA_CAPABLE			(u32)0
-#define IXGBE_FLAG_DCA_ENABLED_DATA             (u32)0
+#define IXGBE_FLAG_DCA_ENABLED			0
+#define IXGBE_FLAG_DCA_CAPABLE			0
+#define IXGBE_FLAG_DCA_ENABLED_DATA		0
 #endif
-#define IXGBE_FLAG_MQ_CAPABLE			(u32)(1 << 9)
-#define IXGBE_FLAG_DCB_ENABLED			(u32)(1 << 10)
-#define IXGBE_FLAG_VMDQ_ENABLED			(u32)(1 << 11)
-#define IXGBE_FLAG_FAN_FAIL_CAPABLE		(u32)(1 << 12)
-#define IXGBE_FLAG_NEED_LINK_UPDATE		(u32)(1 << 13)
-#define IXGBE_FLAG_NEED_LINK_CONFIG		(u32)(1 << 14)
-#define IXGBE_FLAG_FDIR_HASH_CAPABLE		(u32)(1 << 15)
-#define IXGBE_FLAG_FDIR_PERFECT_CAPABLE		(u32)(1 << 16)
+#define IXGBE_FLAG_MQ_CAPABLE			BIT(9)
+#define IXGBE_FLAG_DCB_ENABLED			BIT(10)
+#define IXGBE_FLAG_VMDQ_ENABLED			BIT(11)
+#define IXGBE_FLAG_FAN_FAIL_CAPABLE		BIT(12)
+#define IXGBE_FLAG_NEED_LINK_UPDATE		BIT(13)
+#define IXGBE_FLAG_NEED_LINK_CONFIG		BIT(14)
+#define IXGBE_FLAG_FDIR_HASH_CAPABLE		BIT(15)
+#define IXGBE_FLAG_FDIR_PERFECT_CAPABLE		BIT(16)
 #if IS_ENABLED(CONFIG_FCOE)
-#define IXGBE_FLAG_FCOE_CAPABLE			(u32)(1 << 17)
-#define IXGBE_FLAG_FCOE_ENABLED			(u32)(1 << 18)
+#define IXGBE_FLAG_FCOE_CAPABLE			BIT(17)
+#define IXGBE_FLAG_FCOE_ENABLED			BIT(18)
 #endif /* CONFIG_FCOE */
-#define IXGBE_FLAG_SRIOV_CAPABLE		(u32)(1 << 19)
-#define IXGBE_FLAG_SRIOV_ENABLED		(u32)(1 << 20)
-#define IXGBE_FLAG_SRIOV_REPLICATION_ENABLE	(u32)(1 << 21)
-#define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE	(u32)(1 << 22)
-#define IXGBE_FLAG_SRIOV_VEPA_BRIDGE_MODE	(u32)(1 << 23)
-#define IXGBE_FLAG_RX_HWTSTAMP_ENABLED          (u32)(1 << 24)
-#define IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE	(u32)(1 << 25)
-#define IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE		(u32)(1 << 26)
-#define IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER	(u32)(1 << 27)
-#define IXGBE_FLAG_MDD_ENABLED			(u32)(1 << 29)
-#define IXGBE_FLAG_DCB_CAPABLE			(u32)(1 << 30)
+#define IXGBE_FLAG_SRIOV_CAPABLE		BIT(19)
+#define IXGBE_FLAG_SRIOV_ENABLED		BIT(20)
+#define IXGBE_FLAG_SRIOV_REPLICATION_ENABLE	BIT(21)
+#define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE	BIT(22)
+#define IXGBE_FLAG_SRIOV_VEPA_BRIDGE_MODE	BIT(23)
+#define IXGBE_FLAG_RX_HWTSTAMP_ENABLED		BIT(24)
+#define IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE	BIT(25)
+#define IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE		BIT(26)
+#define IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER	BIT(27)
+#define IXGBE_FLAG_MDD_ENABLED			BIT(29)
+#define IXGBE_FLAG_DCB_CAPABLE			BIT(30)
 #define IXGBE_FLAG_GENEVE_OFFLOAD_CAPABLE	BIT(31)
 
 /* preset defaults */
@@ -999,27 +1003,28 @@ struct ixgbe_adapter {
 					 IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE)
 
 	u32 flags2;
-#define IXGBE_FLAG2_RSC_CAPABLE			(u32)(1 << 0)
-#define IXGBE_FLAG2_RSC_ENABLED			(u32)(1 << 1)
-#define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE		(u32)(1 << 3)
-#define IXGBE_FLAG2_TEMP_SENSOR_EVENT		(u32)(1 << 4)
-#define IXGBE_FLAG2_SEARCH_FOR_SFP		(u32)(1 << 5)
-#define IXGBE_FLAG2_SFP_NEEDS_RESET		(u32)(1 << 6)
-#define IXGBE_FLAG2_FDIR_REQUIRES_REINIT	(u32)(1 << 8)
-#define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
-#define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
-#define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
-#define IXGBE_FLAG2_FW_ASYNC_EVENT              BIT(12)
+#define IXGBE_FLAG2_RSC_CAPABLE			BIT(0)
+#define IXGBE_FLAG2_RSC_ENABLED			BIT(1)
+#define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE		BIT(3)
+#define IXGBE_FLAG2_TEMP_SENSOR_EVENT		BIT(4)
+#define IXGBE_FLAG2_SEARCH_FOR_SFP		BIT(5)
+#define IXGBE_FLAG2_SFP_NEEDS_RESET		BIT(6)
+#define IXGBE_FLAG2_FDIR_REQUIRES_REINIT	BIT(8)
+#define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		BIT(9)
+#define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		BIT(10)
+#define IXGBE_FLAG2_PTP_PPS_ENABLED		BIT(11)
+#define IXGBE_FLAG2_FW_ASYNC_EVENT		BIT(12)
 #define IXGBE_FLAG2_MOD_POWER_UNSUPPORTED	BIT(13)
-#define IXGBE_FLAG2_EEE_CAPABLE			(u32)(1 << 14)
-#define IXGBE_FLAG2_UDP_TUN_REREG_NEEDED	(u32)(1 << 16)
-#define IXGBE_FLAG2_PHY_INTERRUPT		(u32)(1 << 17)
-#define IXGBE_FLAG2_VLAN_PROMISC		(u32)(1 << 18)
-#define IXGBE_FLAG2_RX_LEGACY			(u32)(1 << 19)
+#define IXGBE_FLAG2_EEE_CAPABLE			BIT(14)
+#define IXGBE_FLAG2_UDP_TUN_REREG_NEEDED	BIT(16)
+#define IXGBE_FLAG2_PHY_INTERRUPT		BIT(17)
+#define IXGBE_FLAG2_VLAN_PROMISC		BIT(18)
+#define IXGBE_FLAG2_RX_LEGACY			BIT(19)
 #define IXGBE_FLAG2_AUTO_DISABLE_VF		BIT(20)
 #define IXGBE_FLAG2_PHY_FW_LOAD_FAILED		BIT(24)
 #define IXGBE_FLAG2_NO_MEDIA			BIT(25)
 #define IXGBE_FLAG2_FWLOG_CAPABLE		BIT(26)
+#define IXGBE_FLAG2_LINK_DOWN_ON_CLOSE		BIT(29)
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -1165,7 +1170,15 @@ struct ixgbe_adapter {
 	u32 tx_hwtstamp_skipped;
 	u32 rx_hwtstamp_cleared;
 	void (*ptp_setup_sdp) (struct ixgbe_adapter *);
-	struct ixgbe_ptp_e600 ptp;
+	void (*ptp_rx_hwtstamp)(struct ixgbe_ring *rx_ring,
+				union ixgbe_adv_rx_desc *rx_desc,
+				struct sk_buff *skb);
+	void (*ptp_tx_hwtstamp)(struct ixgbe_adapter *adapter);
+	void (*ptp_stop)(struct ixgbe_adapter *adapter);
+	void (*ptp_reset)(struct ixgbe_adapter *adapter);
+	union {
+		struct ixgbe_ptp_e610 ptp;
+	};
 #endif /* HAVE_PTP_1588_CLOCK */
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
@@ -1464,8 +1477,8 @@ int ixgbe_find_vlvf_entry(struct ixgbe_hw *hw, u32 vlan);
 #ifdef HAVE_PTP_1588_CLOCK
 #ifdef IXGBE_SYSFS
 #endif /* IXGBE_SYSFS */
-int ixgbe_ptp_fw_intr_e600(struct ixgbe_adapter *adapter);
-void ixgbe_ptp_rx_phytstamp_e600(struct ixgbe_q_vector *q_vector,
+int ixgbe_ptp_fw_intr_e610(struct ixgbe_adapter *adapter);
+void ixgbe_ptp_rx_phytstamp_e610(struct ixgbe_q_vector *q_vector,
 				 struct sk_buff *skb, unsigned int ptp_class);
 void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
@@ -1479,7 +1492,7 @@ static inline void ixgbe_ptp_eicr_timesync(struct ixgbe_adapter *adapter) {
 	int err = -EINTR;
 
 	if (adapter->ptp.ptp_by_phy_ena)
-		err = ixgbe_ptp_fw_intr_e600(adapter);
+		err = ixgbe_ptp_fw_intr_e610(adapter);
 
 	if (err == -EINTR)
 		ixgbe_ptp_check_pps_event(adapter);
@@ -1488,45 +1501,15 @@ static inline void ixgbe_ptp_eicr_timesync(struct ixgbe_adapter *adapter) {
 }
 
 void ixgbe_ptp_rx_pktstamp(struct ixgbe_q_vector *q_vector,
-				  struct sk_buff *skb);
-void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
-				  struct sk_buff *skb);
-static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
-					 union ixgbe_adv_rx_desc *rx_desc,
-					 struct sk_buff *skb)
-{
-	if (unlikely(ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_TSIP))) {
-		struct ixgbe_adapter *adapter = rx_ring->q_vector->adapter;
-		unsigned int ptp_class = PTP_CLASS_NONE;
-
-		if (unlikely(adapter->ptp.ptp_by_phy_ena))
-			ptp_class = ptp_classify_raw(skb);
-
-		if (unlikely(ptp_class != PTP_CLASS_NONE)) {
-			ixgbe_ptp_rx_phytstamp_e600(rx_ring->q_vector, skb,
-						    ptp_class);
-			return;
-		}
-
-		ixgbe_ptp_rx_pktstamp(rx_ring->q_vector, skb);
-		return;
-	}
-
-	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
-		return;
-
-	ixgbe_ptp_rx_rgtstamp(rx_ring->q_vector, skb);
-
-	/* Update the last_rx_timestamp timer in order to enable watchdog check
-	 * for error case of latched timestamp on a dropped packet.
-	 */
-	rx_ring->last_rx_timestamp = jiffies;
-}
+			   struct sk_buff *skb);
 
 int ixgbe_ptp_get_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
+int ixgbe_ptp_set_timestamp_mode_e6xx(struct ixgbe_adapter *adapter,
+				      struct hwtstamp_config *config);
+void ixgbe_ptp_clear_tx_timestamp_e6xx(struct ixgbe_adapter *adapter);
 #endif /* HAVE_PTP_1588_CLOCK */
 #ifdef CONFIG_PCI_IOV
 void ixgbe_sriov_reinit(struct ixgbe_adapter *adapter);

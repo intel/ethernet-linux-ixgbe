@@ -1068,7 +1068,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		 * can be marked as checksum errors.
 		 */
 		if (adapter->hw.mac.type == ixgbe_mac_82599EB)
-			set_bit(__IXGBE_RX_CSUM_UDP_ZERO_ERR, &ring->state);
+			set_bit(__IXGBE_RX_CSUM_UDP_ZERO_ERR, ring->state);
 
 #if IS_ENABLED(CONFIG_FCOE)
 		if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED) {
@@ -1077,7 +1077,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 			if ((rxr_idx >= f->offset) &&
 			    (rxr_idx < f->offset + f->indices)) {
-				set_bit(__IXGBE_RX_FCOE, &ring->state);
+				set_bit(__IXGBE_RX_FCOE, ring->state);
 			}
 		}
 #endif /* CONFIG_FCOE */
@@ -1099,8 +1099,8 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 #ifdef HAVE_PTP_1588_CLOCK
 	/* Init PTP structures. */
-	INIT_LIST_HEAD(&q_vector->ptp_skbs_e600);
-	spin_lock_init(&q_vector->ptp_skbs_lock_e600);
+	INIT_LIST_HEAD(&q_vector->ptp_skbs_e610);
+	spin_lock_init(&q_vector->ptp_skbs_lock_e610);
 
 #endif /* HAVE_PTP_1588_CLOCK */
 	return 0;
