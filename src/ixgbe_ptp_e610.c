@@ -1130,6 +1130,8 @@ void ixgbe_ptp_init_e610(struct ixgbe_adapter *adapter)
 
 	INIT_WORK(&adapter->ptp_tx_work, ixgbe_ptp_tx_hwtstamp_work);
 
+	adapter->ptp_tx_hwtstamp = ixgbe_ptp_tx_hwtstamp;
+
 	/* Set RX timestamp handler for E610 cards */
 	adapter->ptp_rx_hwtstamp = ixgbe_ptp_rx_hwtstamp_e610;
 
