@@ -285,6 +285,7 @@ struct vf_data_storage {
 	int xcast_mode;
 	unsigned int vf_api;
 	u8 primary_abort_count;
+	u32 max_frame;
 };
 
 struct vf_macvlans {

@@ -530,6 +530,39 @@ int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf)
 
 	return err;
 }
+
+static void ixgbe_update_maxfrs(struct ixgbe_adapter *adapter, u32 max_frs)
+{
+	struct net_device *dev = adapter->netdev;
+	u32 new_max_frs;
+	int i;
+
+	new_max_frs = dev->mtu + ETH_HLEN + ETH_FCS_LEN;
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
+	case ixgbe_mac_E610:
+		new_max_frs += IXGBE_TS_HDR_LEN;
+	default:
+		break;
+	}
+
+	for (i = 0; i < adapter->num_vfs; i++) {
+		if (adapter->vfinfo[i].max_frame > new_max_frs)
+			new_max_frs = adapter->vfinfo[i].max_frame;
+	}
+
+	/* Recalculate max_frs on each call. Update only if changed.
+	 * It may decrease when VFs lower their MTU.
+	 */
+	if (max_frs != new_max_frs) {
+		max_frs = new_max_frs << IXGBE_MHADD_MFS_SHIFT;
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_MAXFRS, max_frs);
+	}
+}
+
 static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -606,10 +639,11 @@ static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf
 	max_frs &= IXGBE_MHADD_MFS_MASK;
 	max_frs >>= IXGBE_MHADD_MFS_SHIFT;
 
-	if (max_frs < max_frame) {
-		max_frs = max_frame << IXGBE_MHADD_MFS_SHIFT;
-		IXGBE_WRITE_REG(hw, IXGBE_MAXFRS, max_frs);
-	}
+	/* Preserve the current VF max_frame for future max_frs calculations */
+	adapter->vfinfo[vf].max_frame = max_frame;
+
+	/* Recalculate MAXFRS as max of PF and all active VFs */
+	ixgbe_update_maxfrs(adapter, max_frs);
 
 	e_info(hw, "VF requests change max MTU to %d\n", max_frame);
 
