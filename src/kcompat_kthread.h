@@ -2,6 +2,7 @@
 /* Copyright (C) 1999 - 2026 Intel Corporation */
 
 /* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (C) 2024 Intel Corporation */
 
 #ifndef _KCOMPAT_KTHREAD_H_
 #define _KCOMPAT_KTHREAD_H_

@@ -475,6 +475,7 @@ struct ixgbe_nvm_version {
 #define IXGBE_LMVM_TX		0x8124
 #define IXGBE_WQBR_RX(_i)	(0x2FB0 + ((_i) * 4)) /* 4 total */
 #define IXGBE_WQBR_TX(_i)	(0x8130 + ((_i) * 4)) /* 4 total */
+#define IXGBE_WQBR_REG_COUNT	4
 #define IXGBE_L34T_IMIR(_i)	(0x0E800 + ((_i) * 4)) /*128 of these (0-127)*/
 #define IXGBE_RXFECCERR0	0x051B8
 #define IXGBE_LLITHRESH		0x0EC90
@@ -2532,6 +2533,7 @@ enum {
 #define IXGBE_TSYNCRXCTL_TYPE_ALL	0x08
 #define IXGBE_TSYNCRXCTL_TYPE_EVENT_V2	0x0A
 #define IXGBE_TSYNCRXCTL_ENABLED	0x00000010 /* Rx Timestamping enabled */
+#define IXGBE_TSYNCRXCTL_TSIP_PHYSS	0x00200000 /* Timestamp in PHY mode */
 #define IXGBE_TSYNCRXCTL_TSIP_UT_EN	0x00800000 /* Rx Timestamp in Packet */
 #define IXGBE_TSYNCRXCTL_TSIP_UP_MASK	0xFF000000 /* Rx Timestamp UP Mask */
 
@@ -3322,7 +3324,13 @@ struct ixgbe_adv_tx_context_desc {
 #define IXGBE_ADVTXD_MACLEN_SHIFT	9  /* Adv ctxt desc mac len shift */
 #define IXGBE_ADVTXD_MACLEN_MASK	(0x7F << IXGBE_ADVTXD_MACLEN_SHIFT) /* Adv ctxt desc mac len mask */
 #define IXGBE_ADVTXD_VLAN_SHIFT		16  /* Adv ctxt vlan tag shift */
-#define IXGBE_ADVTXD_TUCMD_TSEL		0x00000008 /* if set Timer 0, else Monotonic */
+/* TSel is TUCMD bit 3. TUCMD occupies descriptor bits [19:10], so TSel is
+ * descriptor bit 13. The neighbouring TUCMD flags below confirm the base:
+ * IPV4 is TUCMD bit 0 (descriptor bit 10) and L4T is TUCMD bits 2:1
+ * (descriptor bits 12:11). On E630 this bit replaces the 82599 MKRREQ.
+ * If set Timer 0 is latched, otherwise the monotonic timer.
+ */
+#define IXGBE_ADVTXD_TUCMD_TSEL		0x00002000
 #define IXGBE_ADVTXD_TUCMD_IPV4		0x00000400 /* IP Packet Type: 1=IPv4 */
 #define IXGBE_ADVTXD_TUCMD_IPV6		0x00000000 /* IP Packet Type: 0=IPv6 */
 #define IXGBE_ADVTXD_TUCMD_L4T_UDP	0x00000000 /* L4 Packet TYPE of UDP */
@@ -3986,6 +3994,7 @@ struct ixgbe_mac_operations {
 	s32 (*dmac_update_tcs)(struct ixgbe_hw *hw);
 	s32 (*dmac_config_tcs)(struct ixgbe_hw *hw);
 	s32 (*dmac_config)(struct ixgbe_hw *hw);
+	void (*init_eee_speeds)(struct ixgbe_hw *hw);
 	s32 (*setup_eee)(struct ixgbe_hw *hw, bool enable_eee);
 	s32 (*read_iosf_sb_reg)(struct ixgbe_hw *, u32, u32, u32 *);
 	s32 (*write_iosf_sb_reg)(struct ixgbe_hw *, u32, u32, u32);
@@ -4362,4 +4371,6 @@ struct ixgbe_hw {
 
 #include "ixgbe_osdep2.h"
 
+#define IXGBE_LINK_SPEED_KBPS_100M	100000
+#define IXGBE_LINK_SPEED_KBPS_25G	25000000
 #endif /* _IXGBE_TYPE_H_ */

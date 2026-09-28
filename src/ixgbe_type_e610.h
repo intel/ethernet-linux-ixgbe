@@ -38,6 +38,7 @@
 
 #define BYTES_PER_WORD	2
 #define BYTES_PER_DWORD	4
+#define BITS_PER_DWORD	32
 
 #ifndef BITS_PER_LONG
 #define BITS_PER_LONG		64
@@ -109,10 +110,46 @@
     ((offset & E610_SR_POINTER_TYPE_BIT) == E610_SR_POINTER_TYPE_BIT) ?     \
         ((offset & E610_SR_POINTER_MASK) * E610_SR_HALF_4KB_SECTOR_UNITS) : \
         (offset & E610_SR_POINTER_MASK)
+#define E610_SR_PQC_MANIFEST_BANK_PTR		0x80
+#define E610_SR_PQC_MANIFEST_BANK_SIZE		0x81
 
 /* Checksum and Shadow RAM pointers */
 #define E610_SR_NVM_CTRL_WORD		0x00
 #define E610_SR_PBA_BLOCK_PTR		0x16
+
+/* Link Default Override TLV in PFA */
+#define E610_SR_LINK_DEFAULT_OVERRIDE_PTR	0x134
+#define E610_SR_PFA_LINK_OVERRIDE_WORDS		10
+#define E610_SR_PFA_LINK_OVERRIDE_PHY_WORDS	8
+#define E610_SR_PFA_LINK_OVERRIDE_OFFSET	2
+
+/* Link Options bits */
+#define IXGBE_LINK_OVERRIDE_PORT_DIS		BIT(2)
+
+#pragma pack(1)
+struct ixgbe_link_default_override_tlv {
+	u16 link_options;	/* Port Options 0 */
+	u16 phy_options;	/* Port Options 1 */
+	u16 phy_types[E610_SR_PFA_LINK_OVERRIDE_PHY_WORDS];	/* words 2-9 */
+};
+#pragma pack()
+
+/* HII Port Disable By Function TLV in PFA */
+#define E610_SR_HII_PORT_DISABLE_BY_FUNC_PTR	0x139
+#define E610_SR_HII_PORT_DISABLE_RDE_WOL_OVRD	BIT(8)
+#define E610_SR_TLV_DATA_OFFSET			2
+
+/* WoL Feature Config, an ANVM feature ID read via ACI 0x0704 (not a PFA TLV) */
+#define E610_NVMCFG_WOL_FEATURE_ID			0x28
+#define E610_NVMCFG_WOL_PF_ENABLED			0x01
+#define E610_NVMCFG_WOL_PF_DISABLED			0x00
+#define E610_NVMCFG_WOL_DISABLED			0x01
+#define E610_NVMCFG_WOL_P0SUP_P0EN			0x02
+#define E610_NVMCFG_WOL_BOTHSUP_P1EN			0x03
+#define E610_NVMCFG_WOL_BOTHSUP_BOTHEN			0x04
+#define E610_NVMCFG_WOL_BOTHSUP_P0EN			0x05
+#define E610_NVMCFG_WOL_BOTHSUP_BOTHDIS			0x06
+#define E610_NVMCFG_WOL_P0SUP_P0DIS			0x07
 
 /* The Orom version topology */
 #define IXGBE_OROM_VER_PATCH_SHIFT	0
@@ -701,6 +738,7 @@ struct ixgbe_aci_cmd_list_caps_elem {
 #define IXGBE_ACI_CAPS_OROM_VER				0x004A
 #define IXGBE_ACI_CAPS_PENDING_OROM_VER			0x004B
 #define IXGBE_ACI_CAPS_PENDING_NET_VER			0x004D
+#define IXGBE_ACI_CAPS_EXTERNAL_PQC_ROT_PRESENT		0x004E
 #define IXGBE_ACI_CAPS_INLINE_IPSEC			0x0070
 #define IXGBE_ACI_CAPS_NUM_ENABLED_PORTS		0x0072
 #define IXGBE_ACI_CAPS_PCIE_RESET_AVOIDANCE		0x0076
@@ -711,6 +749,7 @@ struct ixgbe_aci_cmd_list_caps_elem {
 #define IXGBE_ACI_CAPS_EXT_TOPO_DEV_IMG2		0x0083
 #define IXGBE_ACI_CAPS_EXT_TOPO_DEV_IMG3		0x0084
 #define IXGBE_ACI_CAPS_OROM_RECOVERY_UPDATE		0x0090
+#define IXGBE_ACI_CAPS_PQC_CERT_PROVISIONING	0x0091
 #define IXGBE_ACI_CAPS_NEXT_CLUSTER_ID			0x0096
 #ifndef NO_PTP_SUPPORT
 #define IXGBE_ACI_CAPS_PTP_BY_PHY			0x0097
@@ -1429,6 +1468,11 @@ struct ixgbe_aci_cmd_nvm {
 #define IXGBE_ACI_NVM_PRESERVE_ALL	BIT(1)
 #define IXGBE_ACI_NVM_FACTORY_DEFAULT	(2 << IXGBE_ACI_NVM_PRESERVATION_S)
 #define IXGBE_ACI_NVM_PRESERVE_SELECTED	(3 << IXGBE_ACI_NVM_PRESERVATION_S)
+#define IXGBE_ACI_NVM_OPT_IN_MODE_S		4 /* Used by NVM Write only */
+#define IXGBE_ACI_NVM_OPT_IN_MODE_M		(1 << IXGBE_ACI_NVM_OPT_IN_MODE_S)
+#define IXGBE_ACI_NVM_OPT_IN_MODE_ASYNC	0
+#define IXGBE_ACI_NVM_OPT_IN_MODE_SYNC	1
+#define IXGBE_ACI_NVM_EROT_MINSREV_UPDATE	BIT(5) /* Used by NVM Write only */
 #define IXGBE_ACI_NVM_ACTIV_SEL_NVM	BIT(3) /* Write Activate/SR Dump only */
 #define IXGBE_ACI_NVM_ACTIV_SEL_OROM	BIT(4)
 #define IXGBE_ACI_NVM_ACTIV_SEL_NETLIST	BIT(5)
@@ -1594,6 +1638,7 @@ struct ixgbe_aci_cmd_nvm_comp_tbl {
 #define NVM_COMP_ID_OROM		0x5
 #define NVM_COMP_ID_NVM			0x6
 #define NVM_COMP_ID_NETLIST		0x8
+#define NVM_COMP_ID_MANIFEST		0x12
 
 	u8 comp_class_idx;
 #define FWU_COMP_CLASS_IDX_NOT_USE	0x0
@@ -2337,6 +2382,7 @@ struct ixgbe_hw_common_caps {
 #define IXGBE_NVM_PENDING_NVM_IMAGE		BIT(0)
 #define IXGBE_NVM_PENDING_OROM			BIT(1)
 #define IXGBE_NVM_PENDING_NETLIST		BIT(2)
+	bool external_pqc_rot_present;
 	bool sec_rev_disabled;
 	bool update_disabled;
 	bool nvm_unified_update;
@@ -2365,6 +2411,7 @@ struct ixgbe_hw_common_caps {
 #define IXGBE_EXT_TOPO_DEV_IMG_PROG_EN	BIT(1)
 	/* Support for OROM update in Recovery Mode. */
 	bool orom_recovery_update;
+	bool pqc_cert_provisioning;
 	bool next_cluster_id_support;
 #ifndef NO_PTP_SUPPORT
 	bool ptp_by_phy_support : 1;

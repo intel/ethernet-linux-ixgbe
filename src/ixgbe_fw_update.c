@@ -13,6 +13,15 @@
 
 #include "ixgbe_fw_update.h"
 
+/* Bitmask values for ixgbe_fwu_priv::seen_components */
+#define IXGBE_FWU_COMP_NVM	BIT(0)
+#define IXGBE_FWU_COMP_OROM	BIT(1)
+#define IXGBE_FWU_COMP_NETLIST	BIT(2)
+#define IXGBE_FWU_COMP_MANIFEST	BIT(3)
+#define IXGBE_FWU_COMP_ALL_ROT	(IXGBE_FWU_COMP_NVM | IXGBE_FWU_COMP_OROM | \
+				 IXGBE_FWU_COMP_NETLIST | \
+				 IXGBE_FWU_COMP_MANIFEST)
+
 struct ixgbe_fwu_priv {
 	struct pldmfw context;
 
@@ -33,6 +42,9 @@ struct ixgbe_fwu_priv {
 
 	/* Track if EMP reset is available */
 	u8 emp_reset_available;
+
+	/* Bitmask of auth components seen in this image (IXGBE_FWU_COMP_*) */
+	u8 seen_components;
 };
 
 /**
@@ -84,6 +96,11 @@ static int ixgbe_send_package_data(struct pldmfw *context,
 	return 0;
 }
 
+static bool ixgbe_is_rot_adapter(struct ixgbe_adapter *adapter)
+{
+	return adapter->hw.dev_caps.common_cap.external_pqc_rot_present;
+}
+
 /**
  * ixgbe_check_component_response - Report firmware response to a component
  * @adapter: device private data structure
@@ -108,13 +125,16 @@ static int ixgbe_check_component_response(struct ixgbe_adapter *adapter,
 
 	switch (id) {
 	case NVM_COMP_ID_OROM:
-		component = "fw.undi";
+		component = IXGBE_COMP_FW_UNDI;
 		break;
 	case NVM_COMP_ID_NVM:
-		component = "fw.mgmt";
+		component = IXGBE_COMP_FW_MGMT;
 		break;
 	case NVM_COMP_ID_NETLIST:
-		component = "fw.netlist";
+		component = IXGBE_COMP_FW_NETLIST;
+		break;
+	case NVM_COMP_ID_MANIFEST:
+		component = IXGBE_COMP_FW_PQC_MANIFEST;
 		break;
 	default:
 		WARN(1, "Unexpected unknown component identifier 0x%02x", id);
@@ -251,8 +271,16 @@ static int ixgbe_send_component_table(struct pldmfw *context,
 
 	switch (component->identifier) {
 	case NVM_COMP_ID_OROM:
+		priv->seen_components |= IXGBE_FWU_COMP_OROM;
+		break;
 	case NVM_COMP_ID_NVM:
+		priv->seen_components |= IXGBE_FWU_COMP_NVM;
+		break;
 	case NVM_COMP_ID_NETLIST:
+		priv->seen_components |= IXGBE_FWU_COMP_NETLIST;
+		break;
+	case NVM_COMP_ID_MANIFEST:
+		priv->seen_components |= IXGBE_FWU_COMP_MANIFEST;
 		break;
 	default:
 		dev_err(dev,
@@ -549,6 +577,21 @@ static int ixgbe_switch_flash_banks(struct ixgbe_adapter *adapter,
 	return 0;
 }
 
+static int ixgbe_check_rot_partial_update(struct ixgbe_fwu_priv *priv,
+					  struct netlink_ext_ack *extack)
+{
+	if (!ixgbe_is_rot_adapter(priv->adapter))
+		return 0;
+
+	if ((priv->seen_components & IXGBE_FWU_COMP_ALL_ROT) ==
+	    IXGBE_FWU_COMP_ALL_ROT)
+		return 0;
+
+	NL_SET_ERR_MSG_MOD(extack,
+			   "Partial NVM update not allowed on RoT adapter: image must contain NVM, OROM, NetList and Manifest");
+	return -EPERM;
+}
+
 /**
  * ixgbe_flash_component - Flash a component of the NVM
  * @context: PLDM fw update structure
@@ -576,24 +619,34 @@ static int ixgbe_flash_component(struct pldmfw *context,
 	int err;
 	u8 flag;
 
+	err = ixgbe_check_rot_partial_update(priv, extack);
+	if (err)
+		return err;
+
 	switch (component->identifier) {
 	case NVM_COMP_ID_OROM:
 		module = E610_SR_1ST_OROM_BANK_PTR;
 		flag = IXGBE_ACI_NVM_ACTIV_SEL_OROM;
 		reset_level = NULL;
-		name = "fw.undi";
+		name = IXGBE_COMP_FW_UNDI;
 		break;
 	case NVM_COMP_ID_NVM:
 		module = E610_SR_1ST_NVM_BANK_PTR;
 		flag = IXGBE_ACI_NVM_ACTIV_SEL_NVM;
 		reset_level = &priv->reset_level;
-		name = "fw.mgmt";
+		name = IXGBE_COMP_FW_MGMT;
 		break;
 	case NVM_COMP_ID_NETLIST:
 		module = E610_SR_NETLIST_BANK_PTR;
 		flag = IXGBE_ACI_NVM_ACTIV_SEL_NETLIST;
 		reset_level = NULL;
-		name = "fw.netlist";
+		name = IXGBE_COMP_FW_NETLIST;
+		break;
+	case NVM_COMP_ID_MANIFEST:
+		module = E610_SR_PQC_MANIFEST_BANK_PTR;
+		flag = 0;
+		reset_level = NULL;
+		name = IXGBE_COMP_FW_PQC_MANIFEST;
 		break;
 
 	default:
@@ -779,11 +832,11 @@ static int ixgbe_cancel_pending_update(struct ixgbe_adapter *adapter,
 	 * of the other components.
 	 */
 	if (component) {
-		if (strcmp(component, "fw.mgmt") == 0)
+		if (strcmp(component, IXGBE_COMP_FW_MGMT) == 0)
 			pending &= IXGBE_ACI_NVM_ACTIV_SEL_NVM;
-		else if (strcmp(component, "fw.undi") == 0)
+		else if (strcmp(component, IXGBE_COMP_FW_UNDI) == 0)
 			pending &= IXGBE_ACI_NVM_ACTIV_SEL_OROM;
-		else if (strcmp(component, "fw.netlist") == 0)
+		else if (strcmp(component, IXGBE_COMP_FW_NETLIST) == 0)
 			pending &= IXGBE_ACI_NVM_ACTIV_SEL_NETLIST;
 		else
 			WARN(1, "Unexpected flash component %s", component);
@@ -894,6 +947,9 @@ int ixgbe_flash_pldm_image(struct devlink *devlink,
 	priv.extack = extack;
 	priv.adapter = adapter;
 	priv.activate_flags = preservation;
+
+	if (params->component)
+		return -EOPNOTSUPP;
 
 	devlink_flash_update_status_notify(devlink,
 					   "Preparing to flash", NULL, 0, 0);

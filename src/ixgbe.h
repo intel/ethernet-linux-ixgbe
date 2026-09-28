@@ -1026,6 +1026,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_NO_MEDIA			BIT(25)
 #define IXGBE_FLAG2_FWLOG_CAPABLE		BIT(26)
 #define IXGBE_FLAG2_LINK_DOWN_ON_CLOSE		BIT(29)
+#define IXGBE_FLAG2_TOTAL_PORT_SHUTDOWN_ENA	BIT(30)
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -1126,10 +1127,10 @@ struct ixgbe_adapter {
 	struct timer_list service_timer;
 	struct work_struct service_task;
 
-	struct hlist_head fdir_filter_list;
+	struct hlist_head filter_list;
 	unsigned long fdir_overflow; /* number of times ATR was backed off */
 	union ixgbe_atr_input fdir_mask;
-	int fdir_filter_count;
+	int filter_count;
 	u32 fdir_pballoc;
 	u32 atr_sample_rate;
 	spinlock_t fdir_perfect_lock;
@@ -1296,11 +1297,26 @@ static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
 	}
 }
 
+enum ixgbe_rx_filter_type {
+	IXGBE_RX_FILTER_UNKNOWN,
+	IXGBE_RX_FILTER_FDIR,
+};
+
 struct ixgbe_fdir_filter {
-	struct  hlist_node fdir_node;
 	union ixgbe_atr_input filter;
-	u16 sw_idx;
 	u64 action;
+	u16 fdir_idx;
+};
+
+#define IXGBE_FDIR_IDX_ERR	U16_MAX
+
+struct ixgbe_rx_filter {
+	struct hlist_node filter_node;
+	u16 sw_idx;
+	enum ixgbe_rx_filter_type type;
+	union {
+		struct ixgbe_fdir_filter fdir;
+	};
 };
 
 struct ixgbe_cb {
@@ -1384,9 +1400,24 @@ void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter,
 #if defined(HAVE_UDP_ENC_RX_OFFLOAD) || defined(HAVE_VXLAN_RX_OFFLOAD)
 void ixgbe_clear_udp_tunnel_port(struct ixgbe_adapter *, u32);
 #endif
-int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
-				    struct ixgbe_fdir_filter *input,
-				    u16 sw_idx);
+u16 ixgbe_ethtool_find_free_fdir_idx(struct ixgbe_adapter *adapter);
+int ixgbe_update_ethtool_filter_list(struct ixgbe_adapter *adapter,
+				     struct ixgbe_rx_filter *input,
+				     u16 sw_idx);
+int ixgbe_get_ethtool_filter_entry(struct ixgbe_adapter *adapter,
+				   struct ethtool_rxnfc *cmd);
+int ixgbe_get_ethtool_filter_all(struct ixgbe_adapter *adapter,
+				 struct ethtool_rxnfc *cmd, u32 *rule_locs);
+int ixgbe_get_rss_hash_opts(struct ixgbe_adapter *adapter,
+			    struct ethtool_rxnfc *cmd);
+int ixgbe_add_ethtool_filter_entry(struct ixgbe_adapter *adapter,
+				   struct ethtool_rxnfc *cmd);
+int ixgbe_del_ethtool_filter_entry(struct ixgbe_adapter *adapter,
+				   struct ethtool_rxnfc *cmd);
+int ixgbe_set_rss_hash_opt(struct ixgbe_adapter *adapter,
+			   struct ethtool_rxnfc *nfc);
+void ixgbe_fdir_filter_exit(struct ixgbe_adapter *adapter);
+void ixgbe_fdir_filter_restore(struct ixgbe_adapter *adapter);
 void ixgbe_set_rx_mode(struct net_device *netdev);
 int ixgbe_write_mc_addr_list(struct net_device *netdev);
 int ixgbe_setup_tc(struct net_device *dev, u8 tc);
@@ -1507,6 +1538,13 @@ void ixgbe_ptp_rx_pktstamp(struct ixgbe_q_vector *q_vector,
 
 int ixgbe_ptp_get_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
+#ifdef HAVE_NDO_HWTSTAMP
+int ixgbe_ptp_hwtstamp_get(struct net_device *netdev,
+			   struct kernel_hwtstamp_config *config);
+int ixgbe_ptp_hwtstamp_set(struct net_device *netdev,
+			   struct kernel_hwtstamp_config *config,
+			   struct netlink_ext_ack __always_unused *extack);
+#endif /* HAVE_NDO_HWTSTAMP */
 void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
 int ixgbe_ptp_set_timestamp_mode_e6xx(struct ixgbe_adapter *adapter,

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 1999 - 2026 Intel Corporation
 
+# SPDX-License-Identifier: GPL-2.0
+
+
+
 # to be sourced
 
 # General shell helpers
@@ -135,7 +139,7 @@ function find-macro-decl() {
 	test $# -ge 2
 	local what end
 	# only unindented defines, only whole-word match
-	what="/^#define$WB+$1"'([ \t\(]|$)/'
+	what="/^$WB*#$WB*define$WB+$1"'([ \t\(]|$)/'
 	end=1 # only first line; use find-macro-implementation-decl for full body
 	shift
 	find-decl "$what" "$end" "$@"
@@ -146,7 +150,7 @@ function find-macro-implementation-decl() {
 	test $# -ge 2
 	local what end
 	# only unindented defines, only whole-word match
-	what="/^#define$WB+$1"'([ \t\(]|$)/'
+	what="/^$WB*#$WB*define$WB+$1"'([ \t\(]|$)/'
 	# full implementation, until a line not ending in a backslash.
 	# Does not handle macros with comments embedded within the definition.
 	end='/[^\\]$/'

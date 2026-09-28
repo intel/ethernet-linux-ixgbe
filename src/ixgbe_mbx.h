@@ -38,6 +38,10 @@ struct ixgbe_mbx_info {
 	u32 usec_delay;
 	u32 vf_mailbox;
 	u16 size;
+
+	u32 msg_timeout_count;	/* suppressed timeouts since last print */
+	u8  msg_exp;		/* current backoff exponent (0..16) */
+	unsigned long msg_window_end;	/* jiffies when quiet window expires */
 };
 
 #define IXGBE_VFMAILBOX_SIZE	16 /* 16 32 bit words - 64 bytes */

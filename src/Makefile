@@ -20,6 +20,7 @@ define ixgbe-y
 	ixgbe_dcb_82598.o
 	ixgbe_dcb_82599.o
 	ixgbe_ethtool.o
+	ixgbe_ethtool_filter.o
 	ixgbe_lib.o
 	ixgbe_mbx.o
 	ixgbe_sriov.o

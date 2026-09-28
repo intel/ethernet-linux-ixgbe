@@ -384,31 +384,31 @@ static const struct ixgbe_devlink_version {
 	      ixgbe_info_pba),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_MGMT,
 		ixgbe_info_fw_mgmt),
-	running("fw.mgmt.api",
+	running(IXGBE_COMP_FW_MGMT_API,
 		ixgbe_info_fw_api),
-	running("fw.mgmt.build",
+	running(IXGBE_COMP_FW_MGMT_BUILD,
 		ixgbe_info_fw_build),
 
-	running("fw.mgmt.srev", ixgbe_info_fw_srev),
-	stored("fw.mgmt.srev",
+	running(IXGBE_COMP_FW_MGMT_SREV, ixgbe_info_fw_srev),
+	stored(IXGBE_COMP_FW_MGMT_SREV,
 	       ixgbe_info_pending_fw_srev, ixgbe_info_fw_srev),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_UNDI, ixgbe_info_orom_ver),
 	stored(DEVLINK_INFO_VERSION_GENERIC_FW_UNDI,
 	       ixgbe_info_pending_orom_ver, ixgbe_info_orom_ver),
-	running("fw.undi.srev", ixgbe_info_orom_srev),
-	stored("fw.undi.srev",
+	running(IXGBE_COMP_FW_UNDI_SREV, ixgbe_info_orom_srev),
+	stored(IXGBE_COMP_FW_UNDI_SREV,
 	       ixgbe_info_pending_orom_srev, ixgbe_info_orom_srev),
-	running("fw.psid.api", ixgbe_info_nvm_ver),
-	stored("fw.psid.api",
+	running(IXGBE_COMP_FW_PSID_API, ixgbe_info_nvm_ver),
+	stored(IXGBE_COMP_FW_PSID_API,
 	       ixgbe_info_pending_nvm_ver, ixgbe_info_nvm_ver),
 	running(DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID, ixgbe_info_eetrack),
 	stored(DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID,
 	       ixgbe_info_pending_eetrack, ixgbe_info_eetrack),
-	running("fw.netlist", ixgbe_info_netlist_ver),
-	stored("fw.netlist",
+	running(IXGBE_COMP_FW_NETLIST, ixgbe_info_netlist_ver),
+	stored(IXGBE_COMP_FW_NETLIST,
 	       ixgbe_info_pending_netlist_ver, ixgbe_info_netlist_ver),
-	running("fw.netlist.build", ixgbe_info_netlist_build),
-	stored("fw.netlist.build",
+	running(IXGBE_COMP_FW_NETLIST_BUILD, ixgbe_info_netlist_build),
+	stored(IXGBE_COMP_FW_NETLIST_BUILD,
 	       ixgbe_info_pending_netlist_build, ixgbe_info_netlist_build),
 };
 
@@ -544,8 +544,8 @@ static int ixgbe_devlink_info_get(struct devlink *devlink,
 			}
 			break;
 		case IXGBE_VERSION_RUNNING:
-			err = devlink_info_version_running_put(req, key,
-							       ctx->buf);
+			err = devlink_info_version_running_put_ext(req, key,
+				ctx->buf, DEVLINK_INFO_VERSION_TYPE_COMPONENT);
 			if (err) {
 				NL_SET_ERR_MSG_MOD(extack,
 						   "Unable to set running version");
@@ -553,8 +553,8 @@ static int ixgbe_devlink_info_get(struct devlink *devlink,
 			}
 			break;
 		case IXGBE_VERSION_STORED:
-			err = devlink_info_version_stored_put(req, key,
-							      ctx->buf);
+			err = devlink_info_version_stored_put_ext(req, key,
+				ctx->buf, DEVLINK_INFO_VERSION_TYPE_COMPONENT);
 			if (err) {
 				NL_SET_ERR_MSG_MOD(extack,
 						   "Unable to set stored version");
@@ -712,10 +712,19 @@ static int ixgbe_devlink_minsrev_set(struct devlink *devlink, u32 id,
  * -EINVAL if this function is called with the wrong ID.
  */
 static int ixgbe_devlink_minsrev_validate(struct devlink *devlink, u32 id,
-					  union devlink_param_value val,
+					  union devlink_param_value
+#ifdef NEED_DEVLINK_PARAMS_VALIDATE_VAL_PTR
+					  val_
+#else
+					  *val
+#endif
+,
 					  struct netlink_ext_ack *extack)
 {
 	struct ixgbe_minsrev_info minsrevs = {};
+#ifdef NEED_DEVLINK_PARAMS_VALIDATE_VAL_PTR
+	union devlink_param_value *val = &val_;
+#endif
 	struct ixgbe_adapter *adapter;
 	struct device *dev;
 	s32 status;
@@ -741,40 +750,40 @@ static int ixgbe_devlink_minsrev_validate(struct devlink *devlink, u32 id,
 
 	switch (id) {
 	case IXGBE_DEVLINK_PARAM_ID_FW_MGMT_MINSREV:
-		if (val.vu32 > adapter->hw.flash.nvm.srev) {
+		if (val->vu32 > adapter->hw.flash.nvm.srev) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "Cannot update fw.mgmt minimum security revision higher than the currently running firmware");
 			dev_dbg(dev,
 				"Attempted to set fw.mgmt.minsrev to %u, but running firmware has srev %u\n",
-				val.vu32, adapter->hw.flash.nvm.srev);
+				val->vu32, adapter->hw.flash.nvm.srev);
 			return -EPERM;
 		}
 
-		if (minsrevs.nvm_valid && val.vu32 < minsrevs.nvm) {
+		if (minsrevs.nvm_valid && val->vu32 < minsrevs.nvm) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "Cannot lower the minimum security revision for fw.mgmt flash section");
 			dev_dbg(dev,
 				"Attempted to set fw.mgmt.minsrev to %u, but current minsrev is %u\n",
-				val.vu32, minsrevs.nvm);
+				val->vu32, minsrevs.nvm);
 			return -EPERM;
 		}
 		break;
 	case IXGBE_DEVLINK_PARAM_ID_FW_UNDI_MINSREV:
-		if (val.vu32 > adapter->hw.flash.orom.srev) {
+		if (val->vu32 > adapter->hw.flash.orom.srev) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "Cannot update fw.undi minimum security revision higher than the currently running firmware");
 			dev_dbg(dev,
 				"Attempted to set fw.undi.minsrev to %u, but running firmware has srev %u\n",
-				val.vu32, adapter->hw.flash.orom.srev);
+				val->vu32, adapter->hw.flash.orom.srev);
 			return -EPERM;
 		}
 
-		if (minsrevs.orom_valid && val.vu32 < minsrevs.orom) {
+		if (minsrevs.orom_valid && val->vu32 < minsrevs.orom) {
 			NL_SET_ERR_MSG_MOD(extack,
 					   "Cannot lower the minimum security revision for fw.undi flash section");
 			dev_dbg(dev,
 				"Attempted to set fw.undi.minsrev to %u, but current minsrev is %u\n",
-				val.vu32, minsrevs.orom);
+				val->vu32, minsrevs.orom);
 			return -EPERM;
 		}
 		break;
@@ -786,14 +795,14 @@ static int ixgbe_devlink_minsrev_validate(struct devlink *devlink, u32 id,
 /* devlink parameters for the driver */
 static const struct devlink_param ixgbe_devlink_params[] = {
 	DEVLINK_PARAM_DRIVER(IXGBE_DEVLINK_PARAM_ID_FW_MGMT_MINSREV,
-			     "fw.mgmt.minsrev",
+			     IXGBE_COMP_FW_MGMT_MINSREV,
 			     DEVLINK_PARAM_TYPE_U32,
 			     BIT(DEVLINK_PARAM_CMODE_PERMANENT),
 			     ixgbe_devlink_minsrev_get,
 			     ixgbe_devlink_minsrev_set,
 			     ixgbe_devlink_minsrev_validate),
 	DEVLINK_PARAM_DRIVER(IXGBE_DEVLINK_PARAM_ID_FW_UNDI_MINSREV,
-			     "fw.undi.minsrev",
+			     IXGBE_COMP_FW_UNDI_MINSREV,
 			     DEVLINK_PARAM_TYPE_U32,
 			     BIT(DEVLINK_PARAM_CMODE_PERMANENT),
 			     ixgbe_devlink_minsrev_get,

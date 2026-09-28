@@ -255,8 +255,8 @@ static int ixgbe_xsk_umem_disable(struct ixgbe_adapter *adapter, u16 qid)
 	    !adapter->xsk_pools[qid])
 #else
 	if (!xsk_get_pool_from_qid(adapter->netdev, qid))
-		return -EINVAL;
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
+		return -EINVAL;
 
 	if_running = netif_running(adapter->netdev) &&
 		     READ_ONCE(adapter->xdp_prog);

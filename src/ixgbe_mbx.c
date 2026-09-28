@@ -6,6 +6,7 @@
 
 STATIC s32 ixgbe_poll_for_msg(struct ixgbe_hw *hw, u16 mbx_id);
 STATIC s32 ixgbe_poll_for_ack(struct ixgbe_hw *hw, u16 mbx_id);
+STATIC void ixgbe_mbx_reset_timeout(struct ixgbe_hw *hw);
 
 /**
  * ixgbe_read_mbx - Reads a message from the mailbox
@@ -65,9 +66,13 @@ s32 ixgbe_poll_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size, u16 mbx_id)
 	}
 
 	ret_val = ixgbe_poll_for_msg(hw, mbx_id);
-	/* if ack received read message, otherwise we timed out */
-	if (!ret_val)
-		return mbx->ops[mbx_id].read(hw, msg, size, mbx_id);
+	/* if msg received read it, otherwise we timed out */
+	if (!ret_val) {
+		ret_val = mbx->ops[mbx_id].read(hw, msg, size, mbx_id);
+		if (!ret_val)
+			ixgbe_mbx_reset_timeout(hw);
+		return ret_val;
+	}
 
 	return ret_val;
 }
@@ -191,6 +196,42 @@ s32 ixgbe_clear_mbx(struct ixgbe_hw *hw, u16 mbx_id)
 	return ret_val;
 }
 
+STATIC void ixgbe_mbx_log_timeout(struct ixgbe_hw *hw,
+                                   const char *fmt, ...)
+{
+        struct ixgbe_mbx_info *mbx = &hw->mbx;
+        char buf[128];
+        va_list args;
+
+        if (mbx->msg_window_end && time_before(jiffies, mbx->msg_window_end)) {
+                mbx->msg_timeout_count++;
+                return;
+        }
+
+        va_start(args, fmt);
+        vscnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+
+        if (mbx->msg_timeout_count)
+                printk(KERN_WARNING "[hw=%p] %s (%u messages in last %u seconds)\n",
+                       hw, buf, mbx->msg_timeout_count + 1, 1u << mbx->msg_exp);
+        else
+                printk(KERN_WARNING "[hw=%p] %s\n", hw, buf);
+
+        mbx->msg_exp = min_t(u8, max_t(u8, mbx->msg_exp, 1) + 1, 16);
+        mbx->msg_timeout_count = 0;
+        mbx->msg_window_end = jiffies + (1u << mbx->msg_exp) * HZ;
+}
+
+STATIC void ixgbe_mbx_reset_timeout(struct ixgbe_hw *hw)
+{
+        struct ixgbe_mbx_info *mbx = &hw->mbx;
+
+        mbx->msg_timeout_count = 0;
+        mbx->msg_exp = 1;
+        mbx->msg_window_end = 0;
+}
+
 /**
  * ixgbe_poll_for_msg - Wait for message notification
  * @hw: pointer to the HW structure
@@ -216,8 +257,7 @@ STATIC s32 ixgbe_poll_for_msg(struct ixgbe_hw *hw, u16 mbx_id)
 	}
 
 	if (countdown == 0) {
-		ERROR_REPORT2(IXGBE_ERROR_POLLING,
-			   "Polling for VF%u mailbox message timedout", mbx_id);
+		ixgbe_mbx_log_timeout(hw, "Polling for VF%u mailbox message timedout", mbx_id);
 		return IXGBE_ERR_TIMEOUT;
 	}
 
@@ -249,8 +289,7 @@ STATIC s32 ixgbe_poll_for_ack(struct ixgbe_hw *hw, u16 mbx_id)
 	}
 
 	if (countdown == 0) {
-		ERROR_REPORT2(IXGBE_ERROR_POLLING,
-			     "Polling for VF%u mailbox ack timedout", mbx_id);
+		ixgbe_mbx_log_timeout(hw, "Polling for VF%u mailbox ack timedout", mbx_id);
 		return IXGBE_ERR_TIMEOUT;
 	}
 
@@ -553,7 +592,7 @@ STATIC s32 ixgbe_write_mbx_vf(struct ixgbe_hw *hw, u32 *msg, u16 size,
 	ixgbe_release_mbx_lock_vf(hw, 0);
 
 	/* if msg sent wait until we receive an ack */
-	ixgbe_poll_for_ack(hw, 0);
+	ret_val = ixgbe_poll_for_ack(hw, 0);
 
 	return ret_val;
 }

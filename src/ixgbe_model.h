@@ -9,7 +9,7 @@
 
 struct ixgbe_mat_field {
 	unsigned int off;
-	int (*val)(struct ixgbe_fdir_filter *input,
+	int (*val)(struct ixgbe_rx_filter *input,
 		   union ixgbe_atr_input *mask,
 		   u32 val, u32 m);
 	unsigned int type;
@@ -17,7 +17,7 @@ struct ixgbe_mat_field {
 
 struct ixgbe_jump_table {
 	struct ixgbe_mat_field *mat;
-	struct ixgbe_fdir_filter *input;
+	struct ixgbe_rx_filter *input;
 	union ixgbe_atr_input *mask;
 	u32 link_hdl;
 	unsigned long child_loc_map[32];
@@ -25,20 +25,24 @@ struct ixgbe_jump_table {
 
 #define IXGBE_MAX_HW_ENTRIES 2045
 
-static inline int ixgbe_mat_prgm_sip(struct ixgbe_fdir_filter *input,
+static inline int ixgbe_mat_prgm_sip(struct ixgbe_rx_filter *input,
 				     union ixgbe_atr_input *mask,
 				     u32 val, u32 m)
 {
-	input->filter.formatted.src_ip[0] = val;
+	struct ixgbe_fdir_filter *rule = &input->fdir;
+
+	rule->filter.formatted.src_ip[0] = val;
 	mask->formatted.src_ip[0] = m;
 	return 0;
 }
 
-static inline int ixgbe_mat_prgm_dip(struct ixgbe_fdir_filter *input,
+static inline int ixgbe_mat_prgm_dip(struct ixgbe_rx_filter *input,
 				     union ixgbe_atr_input *mask,
 				     u32 val, u32 m)
 {
-	input->filter.formatted.dst_ip[0] = val;
+	struct ixgbe_fdir_filter *rule = &input->fdir;
+
+	rule->filter.formatted.dst_ip[0] = val;
 	mask->formatted.dst_ip[0] = m;
 	return 0;
 }
@@ -51,14 +55,16 @@ static struct ixgbe_mat_field ixgbe_ipv4_fields[] = {
 	{ .val = NULL } /* terminal node */
 };
 
-static inline int ixgbe_mat_prgm_ports(struct ixgbe_fdir_filter *input,
+static inline int ixgbe_mat_prgm_ports(struct ixgbe_rx_filter *input,
 				       union ixgbe_atr_input *mask,
 				       u32 val, u32 m)
 {
-	input->filter.formatted.src_port = val & 0xffff;
+	struct ixgbe_fdir_filter *rule = &input->fdir;
+
+	rule->filter.formatted.src_port = val & 0xffff;
 	mask->formatted.src_port = m & 0xffff;
 
-	input->filter.formatted.dst_port = val >> 16;
+	rule->filter.formatted.dst_port = val >> 16;
 	mask->formatted.dst_port = m >> 16;
 
 	return 0;

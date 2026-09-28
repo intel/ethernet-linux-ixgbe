@@ -44,6 +44,8 @@ s32 ixgbe_aci_set_phy_cfg(struct ixgbe_hw *hw,
 			  struct ixgbe_aci_cmd_set_phy_cfg_data *cfg);
 s32 ixgbe_aci_set_link_restart_an(struct ixgbe_hw *hw, bool ena_link);
 s32 ixgbe_update_link_info(struct ixgbe_hw *hw);
+s32 ixgbe_aci_get_link_status(struct ixgbe_hw *hw, u8 cmd_flags,
+			    struct ixgbe_aci_cmd_get_link_status_data *link_data);
 s32 ixgbe_get_link_status(struct ixgbe_hw *hw, bool *link_up);
 s32 ixgbe_aci_get_link_info(struct ixgbe_hw *hw, bool ena_lse,
 			    struct ixgbe_link_status *link);
@@ -99,6 +101,10 @@ s32 ixgbe_aci_erase_nvm(struct ixgbe_hw *hw, u16 module_typeid);
 s32 ixgbe_aci_update_nvm(struct ixgbe_hw *hw, u16 module_typeid,
 			 u32 offset, u16 length, void *data,
 			 bool last_command, u8 command_flags);
+
+s32 ixgbe_aci_read_nvm_cfg(struct ixgbe_hw *hw, u8 cmd_flags,
+			   u16 field_id, void *data, u16 buf_size,
+			   u16 *elem_count);
 
 s32 ixgbe_nvm_validate_checksum(struct ixgbe_hw *hw);
 s32 ixgbe_nvm_recalculate_checksum(struct ixgbe_hw *hw);
@@ -180,6 +186,7 @@ void ixgbe_fc_autoneg_E610(struct ixgbe_hw *hw);
 s32 ixgbe_set_fw_drv_ver_E610(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
 			      u8 sub, u16 len, const char *driver_ver);
 void ixgbe_disable_rx_E610(struct ixgbe_hw *hw);
+void ixgbe_init_eee_speeds_E610(struct ixgbe_hw *hw);
 s32 ixgbe_setup_eee_E610(struct ixgbe_hw *hw, bool enable_eee);
 bool ixgbe_fw_recovery_mode_E610(struct ixgbe_hw *hw);
 bool ixgbe_fw_rollback_mode_E610(struct ixgbe_hw *hw);
@@ -206,6 +213,10 @@ s32 ixgbe_read_ee_aci_buffer_E610(struct ixgbe_hw *hw, u16 offset,
 s32 ixgbe_calc_eeprom_checksum_E610(struct ixgbe_hw *hw);
 s32 ixgbe_update_eeprom_checksum_E610(struct ixgbe_hw *hw);
 s32 ixgbe_validate_eeprom_checksum_E610(struct ixgbe_hw *hw, u16 *checksum_val);
+s32 ixgbe_get_link_default_override(struct ixgbe_hw *hw,
+				    struct ixgbe_link_default_override_tlv *ldo);
 s32 ixgbe_read_pba_string_E610(struct ixgbe_hw *hw, u8 *pba_num, u32 pba_num_size);
 
+bool ixgbe_is_rde_wol_override_set(struct ixgbe_hw *hw);
+s32 ixgbe_is_wol_enabled(struct ixgbe_hw *hw);
 #endif /* _IXGBE_E610_H_ */

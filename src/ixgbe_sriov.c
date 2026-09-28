@@ -1118,7 +1118,8 @@ static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
 		 * If the VF is allowed to set MAC filters then turn off
 		 * anti-spoofing to avoid false positives.
 		 */
-		if (adapter->vfinfo[vf].spoofchk_enabled) {
+		if (adapter->vfinfo[vf].spoofchk_enabled &&
+		    adapter->vfinfo[vf].trusted) {
 			struct ixgbe_hw *hw = &adapter->hw;
 
 			hw->mac.ops.set_mac_anti_spoofing(hw, false, vf);

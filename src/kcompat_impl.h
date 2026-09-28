@@ -617,6 +617,33 @@ _kc_devlink_port_attrs_set(struct devlink_port *devlink_port,
 
 #endif /* NEED_DEVLINK_PORT_ATTRS_SET_STRUCT */
 
+#if defined(NEED_DEVLINK_PUT_EXT_VERSION) && defined(HAVE_DEVLINK_INFO_GET)
+enum devlink_info_version_type {
+	DEVLINK_INFO_VERSION_TYPE_NONE,
+	DEVLINK_INFO_VERSION_TYPE_COMPONENT, /* May be used as flash update
+					      * component by name.
+					      */
+};
+
+static inline int devlink_info_version_stored_put_ext(struct devlink_info_req *req,
+					const char *version_name,
+					const char *version_value,
+					enum devlink_info_version_type version_type)
+{
+	return devlink_info_version_stored_put(req, version_name,
+					       version_value);
+}
+
+static inline int devlink_info_version_running_put_ext(struct devlink_info_req *req,
+					 const char *version_name,
+					 const char *version_value,
+					 enum devlink_info_version_type version_type)
+{
+	return devlink_info_version_running_put(req, version_name,
+						version_value);
+}
+#endif /* NEED_DEVLINK_PUT_EXT_VERSION && HAVE_DEVLINK_INFO_GET */
+
 /*
  * NEED_DEVLINK_ALLOC_SETS_DEV
  *
@@ -2277,6 +2304,31 @@ static inline void bitmap_to_arr32(u32 *buf, const unsigned long *bitmap,
 #endif /* BITS_PER_LONG == 64 */
 #endif /* NEED_BITMAP_TO_ARR32 */
 
+#ifdef NEED_BITMAP_PRINT_LIST_TO_BUF
+/* bitmap_print_list_to_buf() was introduced in Linux 6.7 as part of
+ * 'lib/bitmap: split-out string-related operations to a separate files'
+ * to replace bitmap_print_to_pagebuf().
+ */
+static inline int bitmap_print_list_to_buf(char *buf, const unsigned long *maskp,
+					   int nmaskbits, loff_t off, size_t count)
+{
+	return bitmap_print_to_pagebuf(1, buf, maskp, nmaskbits);
+}
+#endif /* NEED_BITMAP_PRINT_LIST_TO_BUF */
+
+/*****************************************************************************/
+#ifdef NEED_BITMAP_PRINT_TO_PAGEBUF
+/* bitmap_print_to_pagebuf() was removed as part of the bitmap string helpers
+ * reorganization; use bitmap_print_list_to_buf() for the list format.
+ */
+static inline int bitmap_print_to_pagebuf(bool list, char *buf,
+					  const unsigned long *maskp,
+					  int nmaskbits)
+{
+	return bitmap_print_list_to_buf(buf, maskp, nmaskbits, 0, PAGE_SIZE);
+}
+#endif /* NEED_BITMAP_PRINT_TO_PAGEBUF */
+
 #ifndef HAVE_INCLUDE_BITFIELD
 /* linux/bitfield.h has been added in Linux 4.9 in upstream commit
  * 3e9b3112ec74 ("add basic register-field manipulation macros")
@@ -3123,6 +3175,20 @@ kmem_cache_alloc_lru(struct kmem_cache *s, struct list_lru *lru, gfp_t gfpflags)
 }
 #endif /* NEED_KMEM_CACHE_ALLOC_LRU */
 
+/* NEED_KTIME_GET_SNAPSHOT_ID
+ *
+ * ktime_get_snapshot() was renamed to ktime_get_snapshot_id() with an
+ * added clockid_t argument. Old kernels always captured CLOCK_REALTIME.
+ */
+#ifdef NEED_KTIME_GET_SNAPSHOT_ID
+static inline void ktime_get_snapshot_id(clockid_t __clock_id __always_unused,
+					  struct system_time_snapshot *snap)
+{
+	ktime_get_snapshot(snap);
+}
+#define ptp_cts_clock_id(cts) CLOCK_REALTIME
+#endif /* NEED_KTIME_GET_SNAPSHOT_ID */
+
 /* NEED_XDP_DO_FLUSH
  *
  * Upstream commit 1d233886dd90 ("xdp: Use bulking for non-map XDP_REDIRECT
@@ -3153,20 +3219,24 @@ enum netdev_xdp_act {
 typedef u32 xdp_features_t;
 
 static inline void
-xdp_set_features_flag(struct net_device *dev, xdp_features_t val)
-{
-}
-
-static inline void xdp_clear_features_flag(struct net_device *dev)
+xdp_set_features_flag(struct net_device __always_unused *dev,
+		      xdp_features_t __always_unused val)
 {
 }
 
 static inline void
-xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
+xdp_clear_features_flag(struct net_device __always_unused *dev)
 {
 }
 
-static inline void xdp_features_clear_redirect_target(struct net_device *dev)
+static inline void
+xdp_features_set_redirect_target(struct net_device __always_unused *dev,
+				 bool __always_unused support_sg)
+{
+}
+
+static inline void
+xdp_features_clear_redirect_target(struct net_device __always_unused *dev)
 {
 }
 #endif /* NEED_XDP_FEATURES */
@@ -3625,6 +3695,17 @@ static inline const char *str_yes_no(bool v)
 #define timer_delete del_timer
 #define timer_delete_sync del_timer_sync
 #endif /* NEED_TIMER_DELETE */
+
+/* NEED_TIMER_SHUTDOWN_SYNC
+ *
+ * timer_shutdown_sync() was introduced by commit 0f7352557a35 ("timers:
+ * Provide timer_shutdown[_sync]()") in v6.2. On older kernels fall back to
+ * timer_delete_sync(), which is itself shimmed via NEED_TIMER_DELETE on
+ * kernels predating commit 9b13df3fb64e.
+ */
+#ifdef NEED_TIMER_SHUTDOWN_SYNC
+#define timer_shutdown_sync timer_delete_sync
+#endif /* NEED_TIMER_SHUTDOWN_SYNC */
 
 /* Since commit 3652117f8548 ("eventfd: simplify eventfd_signal()") the
  * eventfd_signal() function only takes a single argument. The second
