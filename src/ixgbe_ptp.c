@@ -1417,6 +1417,64 @@ int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr)
 		-EFAULT : 0;
 }
 
+#ifdef HAVE_NDO_HWTSTAMP
+/**
+ * ixgbe_ptp_hwtstamp_get - ndo interface to read the timestamping config
+ * @netdev: network interface device structure
+ * @config: kernel timestamping configuration structure
+ *
+ * Copy the current timestamping configuration to the caller.
+ */
+int ixgbe_ptp_hwtstamp_get(struct net_device *netdev,
+			   struct kernel_hwtstamp_config *config)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+
+	config->flags = adapter->tstamp_config.flags;
+	config->tx_type = adapter->tstamp_config.tx_type;
+	config->rx_filter = adapter->tstamp_config.rx_filter;
+
+	return 0;
+}
+
+/**
+ * ixgbe_ptp_hwtstamp_set - ndo interface to set the timestamping config
+ * @netdev: network interface device structure
+ * @config: kernel timestamping configuration structure
+ * @extack: netlink extended ack structure (currently unused)
+ *
+ * Set hardware to requested mode and return the actual configuration.
+ */
+int ixgbe_ptp_hwtstamp_set(struct net_device *netdev,
+			   struct kernel_hwtstamp_config *config,
+			   struct netlink_ext_ack __always_unused *extack)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct hwtstamp_config legacy_cfg;
+	int err;
+
+	legacy_cfg.flags = config->flags;
+	legacy_cfg.tx_type = config->tx_type;
+	legacy_cfg.rx_filter = config->rx_filter;
+
+	if (ixgbe_is_mac_E6xx(adapter->hw.mac.type))
+		err = ixgbe_ptp_set_timestamp_mode_e6xx(adapter, &legacy_cfg);
+	else
+		err = ixgbe_ptp_set_timestamp_mode(adapter, &legacy_cfg);
+	if (err)
+		return err;
+
+	memcpy(&adapter->tstamp_config, &legacy_cfg,
+	       sizeof(adapter->tstamp_config));
+
+	config->flags = adapter->tstamp_config.flags;
+	config->tx_type = adapter->tstamp_config.tx_type;
+	config->rx_filter = adapter->tstamp_config.rx_filter;
+
+	return 0;
+}
+#endif /* HAVE_NDO_HWTSTAMP */
+
 static void ixgbe_ptp_link_speed_adjust(struct ixgbe_adapter *adapter,
 					u32 *shift, u32 *incval)
 {

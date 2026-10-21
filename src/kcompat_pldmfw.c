@@ -661,6 +661,7 @@ pldm_parse_one_record(struct pldmfw_priv *data,
 static int pldm_parse_records(struct pldmfw_priv *data)
 {
 	const struct __pldmfw_component_area *component_area;
+	struct device *dev = data->context->dev;
 	const struct __pldmfw_record_info *record;
 	int err;
 	u8 i;
@@ -683,6 +684,14 @@ static int pldm_parse_records(struct pldmfw_priv *data)
 	data->component_count =
 		get_unaligned_le16(&component_area->component_image_count);
 	data->component_start = component_area->components;
+
+	if (data->component_count > data->component_bitmap_len ||
+	    data->component_count > U8_MAX) {
+		dev_dbg(dev, "Invalid component count. Expected at most %u components but got %u\n",
+			min_t(u16, data->component_bitmap_len, U8_MAX),
+			data->component_count);
+		return -EINVAL;
+	}
 
 	return 0;
 }

@@ -148,4 +148,14 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
 					  bool autoneg_wait_to_complete);
 void ixgbe_set_soft_rate_select_speed(struct ixgbe_hw *hw,
 				      ixgbe_link_speed speed);
+
+/* ixgbe_rmw - read-modify-write a register field */
+static inline u32 ixgbe_rmw(struct ixgbe_hw *hw, u32 reg, u32 mask, u32 val)
+{
+	u32 orig = IXGBE_READ_REG(hw, reg);
+	u32 tmp = (orig & ~mask) | (val & mask);
+
+	IXGBE_WRITE_REG(hw, reg, tmp);
+	return orig;
+}
 #endif /* IXGBE_COMMON */

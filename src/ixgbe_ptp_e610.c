@@ -635,7 +635,7 @@ static int ixgbe_ptp_rx_complete_tstamp_e610(struct ixgbe_adapter *adapter,
 	if (!ixgbe_ptp_rx_find_skb_e610(adapter, seq_id, ns)) {
 		struct ixgbe_rx_phy_ts_skb_e610 *tstamp;
 
-		tstamp = kzalloc(sizeof(*tstamp), GFP_KERNEL);
+		tstamp = kzalloc(sizeof(*tstamp), GFP_ATOMIC);
 		if (!tstamp)
 			return -ENOMEM;
 
@@ -819,7 +819,7 @@ void ixgbe_ptp_rx_phytstamp_e610(struct ixgbe_q_vector *q_vector,
 		return;
 
 	/* Add skb to the list. */
-	rx_skb = kzalloc(sizeof(*rx_skb), GFP_KERNEL);
+	rx_skb = kzalloc(sizeof(*rx_skb), GFP_ATOMIC);
 	if (!rx_skb)
 		return;
 

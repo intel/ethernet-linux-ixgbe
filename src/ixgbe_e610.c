@@ -129,12 +129,10 @@ STATIC s32
 ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 			   void *buf, u16 buf_size)
 {
-	u32 hicr = 0, tmp_buf_size = 0, i = 0;
-	u32 *raw_desc = (u32 *)desc;
+	u32 i, hicr, tmp_buf_size = 0, *tmp_buf = NULL, *raw_desc = (u32 *)desc;
 	s32 status = IXGBE_SUCCESS;
 	bool valid_buf = false;
-	u32 *tmp_buf = NULL;
-	u16 opcode = 0;
+	u16 opcode;
 
 	do {
 		hw->aci.last_status = IXGBE_ACI_RC_OK;
@@ -206,9 +204,8 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 						IXGBE_LE32_TO_CPU(tmp_buf[i]));
 				}
 			}
+			ixgbe_aci_debug(hw, (void *)desc, tmp_buf, (u16)tmp_buf_size);
 		}
-
-		ixgbe_aci_debug(hw, (void *)desc, tmp_buf, (u16)tmp_buf_size);
 
 		/* Descriptor is written to specific registers */
 		for (i = 0; i < IXGBE_ACI_DESC_SIZE_IN_DWORDS; i++)
@@ -218,9 +215,8 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		/* SW has to set PF_HICR.C bit and clear PF_HICR.SV and
 		 * PF_HICR_EV
 		 */
-		hicr = IXGBE_READ_REG(hw, PF_HICR);
-		hicr = (hicr | PF_HICR_C) & ~(PF_HICR_SV | PF_HICR_EV);
-		IXGBE_WRITE_REG(hw, PF_HICR, hicr);
+		ixgbe_rmw(hw, PF_HICR,
+			  PF_HICR_C | PF_HICR_SV | PF_HICR_EV, PF_HICR_C);
 
 		/* Wait for sync Admin Command response */
 		for (i = 0; i < IXGBE_ACI_SYNC_RESPONSE_TIMEOUT; i += 1) {
@@ -267,7 +263,9 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 				  desc->opcode);
 			status = IXGBE_ERR_ACI_TIMEOUT;
 			break;
-		} else if (!(hicr & PF_HICR_SV) && !(hicr & PF_HICR_EV)) {
+		}
+
+		if (!(hicr & PF_HICR_SV) && !(hicr & PF_HICR_EV)) {
 			hw_dbg(hw, "Error: Admin Command 0x%X invalid state of HICR register\n",
 				  desc->opcode);
 			status = IXGBE_ERR_ACI_ERROR;
@@ -286,7 +284,7 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 			break;
 		}
 
-		if (desc->retval != IXGBE_ACI_RC_OK) {
+		if (desc->retval) {
 			hw_dbg(hw, "Error: Admin Command failed with error %x\n",
 				  desc->retval);
 			hw->aci.last_status = (enum ixgbe_aci_err)desc->retval;
@@ -307,8 +305,7 @@ ixgbe_aci_send_cmd_execute(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		}
 	} while (0);
 
-	if (tmp_buf)
-		ixgbe_free(hw, tmp_buf);
+	ixgbe_free(hw, tmp_buf);
 
 	return status;
 }
@@ -369,8 +366,7 @@ s32 ixgbe_aci_send_cmd(struct ixgbe_hw *hw, struct ixgbe_aci_desc *desc,
 		msec_delay(IXGBE_ACI_SEND_DELAY_TIME_MS);
 	} while (++idx < IXGBE_ACI_SEND_MAX_EXECUTE);
 
-	if (buf_cpy)
-		ixgbe_free(hw, buf_cpy);
+	ixgbe_free(hw, buf_cpy);
 
 	return status;
 }
@@ -520,7 +516,7 @@ s32 ixgbe_aci_send_driver_ver(struct ixgbe_hw *hw, struct ixgbe_driver_ver *dv)
 {
 	struct ixgbe_aci_cmd_driver_ver *cmd;
 	struct ixgbe_aci_desc desc;
-	u16 len;
+	u16 len = 0;
 
 	cmd = &desc.params.driver_ver;
 
@@ -535,7 +531,6 @@ s32 ixgbe_aci_send_driver_ver(struct ixgbe_hw *hw, struct ixgbe_driver_ver *dv)
 	cmd->build_ver = dv->build_ver;
 	cmd->subbuild_ver = dv->subbuild_ver;
 
-	len = 0;
 	while (len < sizeof(dv->driver_string) &&
 	       IS_ASCII(dv->driver_string[len]) && dv->driver_string[len])
 		len++;
@@ -643,7 +638,7 @@ s32 ixgbe_acquire_res(struct ixgbe_hw *hw, enum ixgbe_aci_res_ids res,
 #define IXGBE_RES_POLLING_DELAY_MS	10
 	u32 delay = IXGBE_RES_POLLING_DELAY_MS;
 	u32 res_timeout = timeout;
-	u32 retry_timeout = 0;
+	u32 retry_timeout;
 	s32 status;
 
 	status = ixgbe_aci_req_res(hw, res, access, 0, &res_timeout);
@@ -699,8 +694,8 @@ void ixgbe_release_res(struct ixgbe_hw *hw, enum ixgbe_aci_res_ids res)
 	/* There are some rare cases when trying to release the resource
 	 * results in an admin command timeout, so handle them correctly.
 	 */
-	while ((status == IXGBE_ERR_ACI_TIMEOUT) &&
-	       (total_delay < IXGBE_ACI_RELEASE_RES_TIMEOUT)) {
+	while (status == IXGBE_ERR_ACI_TIMEOUT &&
+	       total_delay < IXGBE_ACI_RELEASE_RES_TIMEOUT) {
 		msec_delay(1);
 		status = ixgbe_aci_release_res(hw, res, 0);
 		total_delay++;
@@ -772,6 +767,9 @@ ixgbe_parse_common_caps(struct ixgbe_hw *hw, struct ixgbe_hw_common_caps *caps,
 	case IXGBE_ACI_CAPS_PENDING_NET_VER:
 		caps->nvm_update_pending_netlist = true;
 		break;
+	case IXGBE_ACI_CAPS_EXTERNAL_PQC_ROT_PRESENT:
+		caps->external_pqc_rot_present = (number == 1);
+		break;
 	case IXGBE_ACI_CAPS_NVM_MGMT:
 		caps->sec_rev_disabled =
 			(number & IXGBE_NVM_MGMT_SEC_REV_DISABLED) ?
@@ -816,7 +814,9 @@ ixgbe_parse_common_caps(struct ixgbe_hw *hw, struct ixgbe_hw_common_caps *caps,
 	case IXGBE_ACI_CAPS_OROM_RECOVERY_UPDATE:
 		caps->orom_recovery_update = (number == 1);
 		break;
-
+	case IXGBE_ACI_CAPS_PQC_CERT_PROVISIONING:
+		caps->pqc_cert_provisioning = (number == 1);
+		break;
 	case IXGBE_ACI_CAPS_NEXT_CLUSTER_ID:
 		caps->next_cluster_id_support = (number == 1);
 		hw_dbg(hw, "%s: next_cluster_id_support = %d\n",
@@ -1214,9 +1214,9 @@ s32 ixgbe_aci_list_caps(struct ixgbe_hw *hw, void *buf, u16 buf_size,
 s32 ixgbe_discover_dev_caps(struct ixgbe_hw *hw,
 			    struct ixgbe_hw_dev_caps *dev_caps)
 {
-	u32 cap_count = 0;
-	u8 *cbuf = NULL;
+	u32 cap_count;
 	s32 status;
+	u8 *cbuf;
 
 	cbuf = (u8*)ixgbe_malloc(hw, IXGBE_ACI_MAX_BUFFER_SIZE);
 	if (!cbuf)
@@ -1234,8 +1234,7 @@ s32 ixgbe_discover_dev_caps(struct ixgbe_hw *hw,
 	if (!status)
 		ixgbe_parse_dev_caps(hw, dev_caps, cbuf, cap_count);
 
-	if (cbuf)
-		ixgbe_free(hw, cbuf);
+	ixgbe_free(hw, cbuf);
 
 	return status;
 }
@@ -1253,9 +1252,9 @@ s32 ixgbe_discover_dev_caps(struct ixgbe_hw *hw,
 s32 ixgbe_discover_func_caps(struct ixgbe_hw *hw,
 			     struct ixgbe_hw_func_caps *func_caps)
 {
-	u32 cap_count = 0;
-	u8 *cbuf = NULL;
+	u32 cap_count;
 	s32 status;
+	u8 *cbuf;
 
 	cbuf = (u8*)ixgbe_malloc(hw, IXGBE_ACI_MAX_BUFFER_SIZE);
 	if(!cbuf)
@@ -1273,8 +1272,7 @@ s32 ixgbe_discover_func_caps(struct ixgbe_hw *hw,
 	if (!status)
 		ixgbe_parse_func_caps(hw, func_caps, cbuf, cap_count);
 
-	if (cbuf)
-		ixgbe_free(hw, cbuf);
+	ixgbe_free(hw, cbuf);
 
 	return status;
 }
@@ -1701,6 +1699,48 @@ s32 ixgbe_get_link_status(struct ixgbe_hw *hw, bool *link_up)
 }
 
 /**
+ * ixgbe_aci_get_link_status - execute Get Link Status ACI cmd.
+ * @hw: pointer to the HW struct
+ * @cmd_flags: Command flags of the command- LinkStatusEvent reporting
+ * @link_data: current parameters of the link.
+ *
+ * Get the current link status and other operating 
+ * link parameters of a port using ACI command 
+ * GET Link Status (0x607).
+ *
+ * Return:
+ * * - IXGBE_SUCCESS - cmd sent or device is FPGA.
+ * * - IXGBE_ERR_PARAM - null ptr argument or invalid 
+ * *   command flags provided.
+ * * - exit code of ixgbe_aci_send_cmd
+ */
+s32 ixgbe_aci_get_link_status(struct ixgbe_hw *hw, u8 cmd_flags,
+			    struct ixgbe_aci_cmd_get_link_status_data *link_data)
+{
+	struct ixgbe_aci_desc desc;
+	s32 status;
+
+	if (!hw || !link_data)
+		return IXGBE_ERR_PARAM;
+
+	switch (cmd_flags)
+	{
+	case IXGBE_ACI_LSE_NOP:
+	case IXGBE_ACI_LSE_DIS:
+	case IXGBE_ACI_LSE_ENA:
+		break;
+	default:
+		return IXGBE_ERR_PARAM;
+	}
+
+	ixgbe_fill_dflt_direct_cmd_desc(&desc, ixgbe_aci_opc_get_link_status);
+
+	status = ixgbe_aci_send_cmd(hw, &desc, link_data, sizeof(*link_data));
+
+	return status;
+}
+
+/**
  * ixgbe_aci_get_link_info - get the link status
  * @hw: pointer to the HW struct
  * @ena_lse: enable/disable LinkStatusEvent reporting
@@ -1716,10 +1756,8 @@ s32 ixgbe_aci_get_link_info(struct ixgbe_hw *hw, bool ena_lse,
 			    struct ixgbe_link_status *link)
 {
 	struct ixgbe_aci_cmd_get_link_status_data link_data = { 0 };
-	struct ixgbe_aci_cmd_get_link_status *resp;
 	struct ixgbe_link_status *li_old, *li;
 	struct ixgbe_fc_info *hw_fc_info;
-	struct ixgbe_aci_desc desc;
 	bool tx_pause, rx_pause;
 	u8 cmd_flags;
 	s32 status;
@@ -1731,12 +1769,8 @@ s32 ixgbe_aci_get_link_info(struct ixgbe_hw *hw, bool ena_lse,
 	li = &hw->link.link_info;
 	hw_fc_info = &hw->fc;
 
-	ixgbe_fill_dflt_direct_cmd_desc(&desc, ixgbe_aci_opc_get_link_status);
 	cmd_flags = (ena_lse) ? IXGBE_ACI_LSE_ENA : IXGBE_ACI_LSE_DIS;
-	resp = &desc.params.get_link_status;
-	resp->cmd_flags = cmd_flags;
-
-	status = ixgbe_aci_send_cmd(hw, &desc, &link_data, sizeof(link_data));
+	status = ixgbe_aci_get_link_status(hw, cmd_flags, &link_data);
 
 	if (status != IXGBE_SUCCESS)
 		return status;
@@ -1771,7 +1805,7 @@ s32 ixgbe_aci_get_link_info(struct ixgbe_hw *hw, bool ena_lse,
 	else
 		hw_fc_info->current_mode = ixgbe_fc_none;
 
-	li->lse_ena = !!(resp->cmd_flags & IXGBE_ACI_LSE_IS_ENABLED);
+	li->lse_ena = !!(cmd_flags);
 
 	/* save link status information */
 	if (link)
@@ -2489,6 +2523,42 @@ s32 ixgbe_aci_update_nvm(struct ixgbe_hw *hw, u16 module_typeid,
 	desc.flags |= IXGBE_CPU_TO_LE16(IXGBE_ACI_FLAG_RD);
 
 	return ixgbe_aci_send_cmd(hw, &desc, data, length);
+}
+
+/**
+ * ixgbe_aci_read_nvm_cfg - read an NVM config block
+ * @hw: pointer to the HW struct
+ * @cmd_flags: NVM access admin command bits
+ * @field_id: field or feature ID
+ * @data: buffer for result
+ * @buf_size: buffer size
+ * @elem_count: pointer to count of elements read by FW
+ *
+ * Reads a single or multiple feature/field ID and data using ACI command
+ * (0x0704).
+ *
+ * Return: the exit code of the operation.
+ */
+s32 ixgbe_aci_read_nvm_cfg(struct ixgbe_hw *hw, u8 cmd_flags,
+			   u16 field_id, void *data, u16 buf_size,
+			   u16 *elem_count)
+{
+	struct ixgbe_aci_cmd_nvm_cfg *cmd;
+	struct ixgbe_aci_desc desc;
+	s32 status;
+
+	cmd = &desc.params.nvm_cfg;
+
+	ixgbe_fill_dflt_direct_cmd_desc(&desc, ixgbe_aci_opc_nvm_cfg_read);
+
+	cmd->cmd_flags = cmd_flags;
+	cmd->id = IXGBE_CPU_TO_LE16(field_id);
+
+	status = ixgbe_aci_send_cmd(hw, &desc, data, buf_size);
+	if (!status && elem_count)
+		*elem_count = IXGBE_LE16_TO_CPU(cmd->count);
+
+	return status;
 }
 
 /**
@@ -4630,8 +4700,7 @@ static s32 ixgbe_aci_fwlog_get(struct ixgbe_hw *hw, struct ixgbe_fwlog_cfg *cfg)
 	}
 
 status_out:
-	if (buf)
-		ixgbe_free(hw, buf);
+	ixgbe_free(hw, buf);
 	return status;
 }
 
@@ -4745,6 +4814,7 @@ s32 ixgbe_init_ops_E610(struct ixgbe_hw *hw)
 	mac->ops.fc_autoneg = ixgbe_fc_autoneg_E610;
 	mac->ops.set_fw_drv_ver = ixgbe_set_fw_drv_ver_E610;
 	mac->ops.disable_rx = ixgbe_disable_rx_E610;
+	mac->ops.init_eee_speeds = ixgbe_init_eee_speeds_E610;
 	mac->ops.setup_eee = ixgbe_setup_eee_E610;
 	mac->ops.fw_recovery_mode = ixgbe_fw_recovery_mode_E610;
 	mac->ops.fw_rollback_mode = ixgbe_fw_rollback_mode_E610;
@@ -4765,7 +4835,8 @@ s32 ixgbe_init_ops_E610(struct ixgbe_hw *hw)
 					    IXGBE_LINK_SPEED_5GB_FULL |
 					    IXGBE_LINK_SPEED_10GB_FULL;
 
-	phy->eee_speeds_advertised = phy->eee_speeds_supported;
+	/* eee_speeds_advertised is set from netlist DFLT_CFG after ACI init */
+	phy->eee_speeds_advertised = 0;
 
 	/* Additional ops overrides for e610 to go here */
 	eeprom->ops.init_params = ixgbe_init_eeprom_params_E610;
@@ -5184,8 +5255,7 @@ s32 ixgbe_cfg_phy_fc(struct ixgbe_hw *hw,
 	/* set the new capabilities */
 	cfg->caps |= pause_mask;
 
-	if (pcaps)
-		ixgbe_free(hw, pcaps);
+	ixgbe_free(hw, pcaps);
 	return status;
 }
 
@@ -5346,6 +5416,31 @@ void ixgbe_disable_rx_E610(struct ixgbe_hw *hw)
 			}
 		}
 	}
+}
+
+/**
+ * ixgbe_init_eee_speeds_E610 - initialize EEE advertised speeds from netlist
+ * @hw: pointer to the HW structure
+ *
+ * Read the netlist default EEE configuration via ACI 0x0600 with DFLT_CFG
+ * report mode and populate eee_speeds_advertised accordingly.
+ */
+void ixgbe_init_eee_speeds_E610(struct ixgbe_hw *hw)
+{
+	struct ixgbe_aci_cmd_get_phy_caps_data pcaps = { 0 };
+
+	hw->phy.eee_speeds_advertised = 0;
+
+	if (ixgbe_aci_get_phy_caps(hw, false,
+				   IXGBE_ACI_REPORT_DFLT_CFG, &pcaps))
+		return;
+
+	if (pcaps.eee_cap & IXGBE_ACI_PHY_EEE_EN_2_5GBASE_T)
+		hw->phy.eee_speeds_advertised |= IXGBE_LINK_SPEED_2_5GB_FULL;
+	if (pcaps.eee_cap & IXGBE_ACI_PHY_EEE_EN_5GBASE_T)
+		hw->phy.eee_speeds_advertised |= IXGBE_LINK_SPEED_5GB_FULL;
+	if (pcaps.eee_cap & IXGBE_ACI_PHY_EEE_EN_10GBASE_T)
+		hw->phy.eee_speeds_advertised |= IXGBE_LINK_SPEED_10GB_FULL;
 }
 
 /**
@@ -5852,18 +5947,12 @@ s32 ixgbe_write_i2c_eeprom_E610(struct ixgbe_hw *hw, u8 byte_offset,
 s32 ixgbe_check_overtemp_E610(struct ixgbe_hw *hw)
 {
 	struct ixgbe_aci_cmd_get_link_status_data link_data = { 0 };
-	struct ixgbe_aci_cmd_get_link_status *resp;
-	struct ixgbe_aci_desc desc;
 	s32 status = IXGBE_SUCCESS;
 
 	if (!hw)
 		return IXGBE_ERR_PARAM;
 
-	ixgbe_fill_dflt_direct_cmd_desc(&desc, ixgbe_aci_opc_get_link_status);
-	resp = &desc.params.get_link_status;
-	resp->cmd_flags = IXGBE_CPU_TO_LE16(IXGBE_ACI_LSE_NOP);
-
-	status = ixgbe_aci_send_cmd(hw, &desc, &link_data, sizeof(link_data));
+	status = ixgbe_aci_get_link_status(hw, IXGBE_ACI_LSE_NOP, &link_data);
 	if (status != IXGBE_SUCCESS)
 		return status;
 
@@ -6236,7 +6325,8 @@ s32 ixgbe_validate_eeprom_checksum_E610(struct ixgbe_hw *hw, u16 *checksum_val)
  *
  * Return: the exit code of the operation.
  */
-STATIC s32 ixgbe_get_pfa_module_tlv(struct ixgbe_hw *hw, u16 *module_tlv,
+static s32
+ixgbe_get_pfa_module_tlv(struct ixgbe_hw *hw, u16 *module_tlv,
 				    u16 *module_tlv_len, u16 module_type)
 {
 	u16 pfa_len, pfa_ptr, pfa_end_ptr;
@@ -6285,6 +6375,128 @@ STATIC s32 ixgbe_get_pfa_module_tlv(struct ixgbe_hw *hw, u16 *module_tlv,
 	}
 	/* Module does not exist */
 	return IXGBE_ERR_DOES_NOT_EXIST;
+}
+
+/**
+ * ixgbe_get_link_default_override - Get link default override from NVM
+ * @hw: pointer to hardware structure
+ * @ldo: pointer to link default override struct to populate
+ *
+ * Read the Link Default Override TLV (0x134) from the NVM PFA and return
+ * the full per-port override configuration including options, PHY config,
+ * and PHY types. All port data is read in a single bulk NVM access.
+ *
+ * Return: the exit code of the operation.
+ */
+s32 ixgbe_get_link_default_override(struct ixgbe_hw *hw,
+				    struct ixgbe_link_default_override_tlv *ldo)
+{
+	u16 tlv, tlv_len, tlv_start;
+	s32 status;
+
+	status = ixgbe_get_pfa_module_tlv(hw, &tlv, &tlv_len,
+					  E610_SR_LINK_DEFAULT_OVERRIDE_PTR);
+	if (status) {
+		return status;
+	}
+
+	tlv_start = tlv + E610_SR_PFA_LINK_OVERRIDE_OFFSET +
+		    hw->bus.func * E610_SR_PFA_LINK_OVERRIDE_WORDS;
+
+	/* Read all port-specific words in a single NVM access */
+	status = ixgbe_read_ee_aci_buffer_E610(hw, tlv_start,
+					       E610_SR_PFA_LINK_OVERRIDE_WORDS,
+					       (u16 *)ldo);
+	if (status) {
+		return status;
+	}
+
+	return IXGBE_SUCCESS;
+}
+
+/**
+ * ixgbe_is_rde_wol_override_set - Check if RDE WoL Override PF Driver is set
+ * @hw: pointer to hardware structure
+ *
+ * Read the HII Port Disable By Function TLV (0x139) from the NVM PFA and
+ * check the RDE WoL Override PF Driver flag. When the flag is set, firmware
+ * overrides an OS driver disable of WoL when entering S5.
+ *
+ * Return: true if the flag is set, false otherwise or if the read failed.
+ */
+bool ixgbe_is_rde_wol_override_set(struct ixgbe_hw *hw)
+{
+	u16 tlv, tlv_len, buf;
+	s32 status;
+
+	status = ixgbe_get_pfa_module_tlv(hw, &tlv, &tlv_len,
+					  E610_SR_HII_PORT_DISABLE_BY_FUNC_PTR);
+	if (status) {
+		return false;
+	}
+
+	status = ixgbe_read_ee_aci_E610(hw, tlv + E610_SR_TLV_DATA_OFFSET, &buf);
+	if (status) {
+		return false;
+	}
+
+	return !!(buf & E610_SR_HII_PORT_DISABLE_RDE_WOL_OVRD);
+}
+
+/**
+ * ixgbe_is_wol_enabled - Check if WoL is enabled for this port in the NVM
+ * @hw: pointer to hardware structure
+ *
+ * Read the WoL Feature Config field (0x28) using the NVM Config Read ACI
+ * command (0x0704). This is an ANVM feature ID, not a PFA TLV, so it is not
+ * directly addressable in the Shadow RAM. A single value encodes the WoL
+ * state of both ports, so it is decoded against the PCI function number.
+ *
+ * Return: E610_NVMCFG_WOL_PF_ENABLED or E610_NVMCFG_WOL_PF_DISABLED, or a
+ *         negative error code if the NVM read failed or the value is not
+ *         recognized.
+ */
+s32 ixgbe_is_wol_enabled(struct ixgbe_hw *hw)
+{
+	struct ixgbe_aci_cmd_nvm_cfg_data cfg = {0};
+	bool wol_ena;
+	s32 status;
+
+	status = ixgbe_acquire_nvm(hw, IXGBE_RES_READ);
+	if (status) {
+		return status;
+	}
+
+	status = ixgbe_aci_read_nvm_cfg(hw, 0, E610_NVMCFG_WOL_FEATURE_ID, &cfg,
+					sizeof(cfg), NULL);
+
+	ixgbe_release_nvm(hw);
+
+	if (status) {
+		return status;
+	}
+
+	switch (IXGBE_LE16_TO_CPU(cfg.field_value)) {
+	case E610_NVMCFG_WOL_DISABLED:
+	case E610_NVMCFG_WOL_P0SUP_P0DIS:
+	case E610_NVMCFG_WOL_BOTHSUP_BOTHDIS:
+		wol_ena = false;
+		break;
+	case E610_NVMCFG_WOL_P0SUP_P0EN:
+	case E610_NVMCFG_WOL_BOTHSUP_P0EN:
+		wol_ena = (hw->bus.func == 0);
+		break;
+	case E610_NVMCFG_WOL_BOTHSUP_P1EN:
+		wol_ena = (hw->bus.func == 1);
+		break;
+	case E610_NVMCFG_WOL_BOTHSUP_BOTHEN:
+		wol_ena = true;
+		break;
+	default:
+		return IXGBE_ERR_EEPROM;
+	}
+
+	return wol_ena ? E610_NVMCFG_WOL_PF_ENABLED : E610_NVMCFG_WOL_PF_DISABLED;
 }
 
 /**

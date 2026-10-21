@@ -291,9 +291,8 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 			max_tc = map[i];
 	}
 
-
 	/* Configure PFC Tx thresholds per TC */
-	for (i = 0; i <= max_tc; i++) {
+	for (i = 0; i < max_tc; i++) {
 		int enabled = 0;
 
 		for (j = 0; j < IXGBE_DCB_MAX_USER_PRIORITY; j++) {
