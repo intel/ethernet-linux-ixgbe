@@ -1314,6 +1314,18 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		if (status != IXGBE_SUCCESS)
 			goto err_read_i2c_eeprom;
 
+		/* 10GBase-T SFP+ modules have no SFF-8472 compliance code
+		 * (the standard only defines bits for fiber: SR, LR, LRM, ER).
+		 * They report comp_codes_10g=0x00 and cable_tech=0x00, causing
+		 * the driver to reject them before allow_unsupported_sfp is
+		 * consulted. Force SR classification so the module is accepted
+		 * when allow_unsupported_sfp is explicitly enabled.
+		 */
+		if (comp_codes_10g == 0 && cable_tech == 0 &&
+		    hw->allow_unsupported_sfp) {
+			comp_codes_10g = IXGBE_SFF_10GBASESR_CAPABLE;
+		}
+
 		 /* ID Module
 		  * =========
 		  * 0   SFP_DA_CU
